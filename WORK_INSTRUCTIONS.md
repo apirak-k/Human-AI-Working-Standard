@@ -47,6 +47,15 @@ Before substantial changes:
 3. identify dependencies, risks, and appropriate checks
 4. follow confirmed instructions and methods
 
+For substantial Git-based work, inspecting the current state includes verifying
+the actual repository and active branch. Do not rely solely on a Handoff,
+previous conversation, or expected branch name.
+
+When diagnosing a problem, determine whether the cause is local or shared.
+Within the confirmed scope, prefer the smallest responsible root-cause fix over
+duplicated local workarounds. Before changing shared logic, report the affected
+areas, risks, and why a shared change is appropriate.
+
 When a better method is found:
 
 1. compare it with the current method
