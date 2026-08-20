@@ -224,3 +224,28 @@ analysis solely to invent new rules.
 Protect confidential, personal, company, credential, financial, and
 security-sensitive information. Use only the access, data, context, and
 permissions necessary for the work. Clarify when authorization is uncertain.
+
+## 8. Architecture and UI standards
+
+The following principles apply to all projects involving user interfaces,
+spreadsheets, or systems where web and offline calculation logic coexist.
+
+### 8.1 Responsive UI
+
+All user interfaces must use fluid responsive design. Avoid fixed-width
+layouts. The UI must adapt gracefully to different screen sizes, devices, and
+orientations without breaking layout or functionality.
+
+### 8.2 Web and Excel parity
+
+When business logic exists in both a web application and an Excel workbook,
+the two must produce identical results for the same inputs. Maintain a 1:1
+correspondence between web calculations and Excel formulas. Any change to one
+must be reflected in the other.
+
+### 8.3 Excel formula safety
+
+Every Excel formula must be wrapped with `IFERROR` (or an equivalent error
+handler appropriate to the context). This is a Pokayoke measure to prevent
+unhandled errors from propagating through dependent cells and producing
+misleading results.
