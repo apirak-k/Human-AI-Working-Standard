@@ -192,3 +192,35 @@ Propose changes according to their scope:
 
 Do not update these sources automatically. Propose the smallest necessary
 change and wait for review and confirmation.
+
+## 8. AI-generated patch workflow (local apply)
+
+Use when code changes are drafted by an AI that has no direct write access to
+the user's local repository or remote (e.g. a sandboxed AI session).
+
+1. Confirm scope conversationally (use `[grill-me]` if underspecified) before
+   requesting a patch.
+2. The AI must state the exact base state the patch is generated from (e.g.
+   "based on the file(s) you uploaded on [date]"). If the local repository may
+   have diverged since, re-share the current file(s) before generating a new
+   patch — do not assume the previous diff still applies cleanly.
+3. The AI chooses the patch format appropriate to the change:
+   - **Unified diff** (`git apply`-compatible) for small, targeted edits to
+     existing files.
+   - **Full file replacement** when the file is new, changes exceed roughly
+     half the file, or diff-conflict risk is high.
+   The AI states which format it used and why.
+4. Apply changes on a dedicated feature branch, not directly on the default
+   branch:
+   ```
+   git checkout -b feature/<short-name>
+   git apply <patch-file>   # or manually replace full files
+   ```
+5. Run appropriate build/test checks locally before committing.
+6. Before committing, verify no confidential or real production/factory data
+   is staged, per applicable Project Specific confidentiality rules.
+7. Commit and push the feature branch; merge to the default branch only after
+   verification.
+8. Update `HANDOFF.md` at the checkpoint. The next AI session must be given
+   the latest actual file state (not solely the previous diff or prior
+   conversation memory) before further changes are requested.
