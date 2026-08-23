@@ -236,16 +236,21 @@ All user interfaces must use fluid responsive design. Avoid fixed-width
 layouts. The UI must adapt gracefully to different screen sizes, devices, and
 orientations without breaking layout or functionality.
 
-### 8.2 Web and Excel parity
+### 8.2 Parity across computation sources
 
-When business logic exists in both a web application and an Excel workbook,
-the two must produce identical results for the same inputs. Maintain a 1:1
-correspondence between web calculations and Excel formulas. Any change to one
-must be reflected in the other.
+When business logic exists in more than one place (e.g. a web app and a
+spreadsheet, a backend and a cached frontend calculation, two services
+computing the same value), all sources must produce identical results for
+the same inputs. Maintain a 1:1 correspondence, and reflect any change to
+one source in the other(s).
 
-### 8.3 Excel formula safety
+### 8.3 Calculation error safety
 
-Every Excel formula must be wrapped with `IFERROR` (or an equivalent error
-handler appropriate to the context). This is a Pokayoke measure to prevent
-unhandled errors from propagating through dependent cells and producing
-misleading results.
+Every calculation, formula, or derived-value expression — regardless of the
+tool or language it runs in — must handle predictable failure cases
+(missing input, divide-by-zero, invalid type) explicitly, so that a single
+failure does not halt the surrounding process or block the user from
+proceeding. The fallback shown must be safe and honestly labeled (e.g. a
+visible "missing" or "N/A" status) rather than a misleading number. This is
+a Pokayoke measure to prevent unhandled errors from propagating and
+producing misleading results.
