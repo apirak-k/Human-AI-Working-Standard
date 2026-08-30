@@ -1,0 +1,11 @@
+{
+  "name": "haws-marketplace",
+  "owner": { "name": "apirak-k" },
+  "plugins": [
+    {
+      "name": "haws",
+      "source": "./plugins/haws",
+      "description": "Human-AI Working Standard"
+    }
+  ]
+}
