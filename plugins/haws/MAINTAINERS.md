@@ -31,45 +31,41 @@ HAWS supports both **custom in-house skills** and **external open-source skills 
 
 ---
 
-### B. Integrating Open-Source / External Skills Repositories
+### B. Managing Embedded Open-Source Git Submodules
 
-You can incorporate external community or open-source skills using one of three approaches:
+HAWS currently embeds **18 authentic open-source skills repositories** under `plugins/haws/skills/` via official Git Submodules (`.gitmodules`):
 
-#### Approach 1: Reference as an External Plugin via Marketplace (Recommended for Whole Repos)
-If the open-source skills repo is packaged as a plugin, add it as an additional entry in `.claude-plugin/marketplace.json`:
-
-```json
-{
-  "name": "haws-marketplace",
-  "owner": { "name": "apirak-k" },
-  "plugins": [
-    {
-      "name": "haws",
-      "source": "./plugins/haws",
-      "description": "Human-AI Working Standard"
-    },
-    {
-      "name": "community-skills",
-      "source": "github:organization/community-skills-repo",
-      "description": "Curated open-source skills collection"
-    }
-  ]
-}
+#### 1. Setup on a New Device (Initial Clone)
+When cloning the HAWS repository to a new machine, always include `--recurse-submodules` to pull all embedded skills simultaneously:
+```bash
+git clone --recurse-submodules https://github.com/apirak-k/Human-AI-Working-Standard.git
 ```
 
-#### Approach 2: Git Submodule (Recommended for Version-Locked Upstream Sync)
-Embed an upstream open-source skills repository directly under `plugins/haws/skills/`:
+If already cloned without submodules:
+```bash
+git submodule update --init --recursive
+```
+
+#### 2. Syncing & Updating Skills from Upstream GitHub
+When original skill authors publish updates or bug fixes on their GitHub repositories:
 
 ```bash
-git submodule add https://github.com/organization/skill-repo.git plugins/haws/skills/skill-repo
-```
-To update upstream changes later:
-```bash
+# 1. Pull the latest commits from all upstream GitHub repositories
 git submodule update --remote --merge
+
+# 2. Stage and commit the updated submodule commit pointers
+git add .
+git commit -m "chore(skills): update submodules to latest upstream commits"
+git push origin main
 ```
 
-#### Approach 3: Standalone Import (Recommended for Individual Skills)
-Copy individual open-source `SKILL.md` files directly into `plugins/haws/skills/<skill-name>/SKILL.md`, ensuring frontmatter compatibility (`name`, `description`) and preserving upstream attribution/license comments.
+#### 3. Adding a New External Skill Submodule
+To add a new open-source repository as an official submodule:
+```bash
+git submodule add https://github.com/<owner>/<repo>.git plugins/haws/skills/<skill-name>
+git commit -m "feat(skills): add <skill-name> submodule"
+git push
+```
 
 ---
 
@@ -99,6 +95,7 @@ Copy individual open-source `SKILL.md` files directly into `plugins/haws/skills/
    - `frontend-engineer`: `Read, Write, Edit, Grep, Glob` (no shell execution)
    - `backend-engineer`: `Read, Write, Edit, Grep, Glob, Bash` (service/DB/API execution)
    - `tester`: `Read, Grep, Glob, Bash` (test execution & diagnostic verification)
+   - `researcher`: `Read, Grep, Glob` (read-only codebase reconnaissance & documentation discovery)
 
 4. **Write the System Prompt**:
    Define the role's domain responsibilities, engineering bar, and scope discipline.
@@ -109,17 +106,25 @@ Copy individual open-source `SKILL.md` files directly into `plugins/haws/skills/
 
 ---
 
-## 3. How to Push Updates to All Devices
+## 3. How to Push & Pull Updates Across Devices
 
-1. **On the authoring device**:
-   ```bash
-   git add .
-   git commit -m "Update HAWS plugin: <summary of changes>"
-   git push
-   ```
+### On the Authoring Device (Making Changes)
+```bash
+# Stage changes (including submodules and rules)
+git add .
+git commit -m "Update HAWS: <summary of changes>"
+git push origin main
+```
 
-2. **On consumer/client devices**:
-   ```text
-   /plugin marketplace update haws-marketplace
-   /plugin update haws@haws-marketplace
-   ```
+### On Consumer / Client Devices (Receiving Updates)
+
+#### Option A: Via AI Chat (Claude Code / Antigravity)
+```text
+/plugin marketplace update haws-marketplace
+/plugin update haws@haws-marketplace
+```
+
+#### Option B: Via Git Terminal
+```bash
+git pull --recurse-submodules
+```
