@@ -12,6 +12,21 @@ The goal and required outcome are always prioritized over blindly following a ri
 
 ---
 
+## Quick Install
+
+Install HAWS skills and subagents globally across detected AI environments (**Google Antigravity** and **Claude Code**) in one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/install.sh | bash
+```
+
+To update to the latest version across all tools:
+```bash
+curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/update.sh | bash
+```
+
+---
+
 ## Repository Structure
 
 ```text
