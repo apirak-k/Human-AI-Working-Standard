@@ -44,13 +44,13 @@ HAWS is designed with a **Portability First** philosophy and supports two operat
 
 ### Mode 1: Native Plugin Installation (Claude Code / Antigravity)
 
-Install HAWS directly into your agent environment to auto-load rules, all 4 specialized subagents, and all 18 authentic upstream skills simultaneously in a single command:
+Install HAWS directly into your agent environment to auto-load rules, all 4 specialized subagents, and all 12 curated upstream skills simultaneously in a single command:
 
 ```text
 # 1. Add the marketplace source
 /plugin marketplace add apirak-k/Human-AI-Working-Standard
 
-# 2. 1-Click Install HAWS (installs rules, 4 subagents & 18 authentic Git submodules at once)
+# 2. 1-Click Install HAWS (installs rules, 4 subagents & 12 authentic Git submodules at once)
 /plugin install haws@haws-marketplace
 ```
 
@@ -86,11 +86,11 @@ When running as a plugin, the Main Agent dynamically orchestrates four specializ
 
 ---
 
-## Skills Catalog (18 Verified External Repositories)
+## Skills Catalog (12 Verified Curated Skills)
 
-The marketplace manifest (`.claude-plugin/marketplace.json`) catalogs **18 verified external open-source skills & packs** (pointing directly to their upstream GitHub repositories):
-- **Single Skills**: `drawio-skill` (`/drawio`), `planning-with-files` (`/plan`), `ui-ux-pro-max-skill` (`/ui-ux`), `taste-skill` (`/taste`), `humanizer` (`/humanize`), `graphify` (`/graphify`), `caveman` (`/caveman`).
-- **Skill Packs**: `superpowers` (`/tdd`, `/debug`), `ecc`, `agent-skills` (`/perf`, `/a11y`), `vercel-agent-skills`, `anthropic-cybersecurity-skills` (`/security-audit`), `anthropics-skills`, `mattpocock-skills`, `emilkowalski-skills`, `claude-skills-community`, `agentic-awesome-skills`, `scientific-agent-skills`.
+The marketplace manifest (`.claude-plugin/marketplace.json`) catalogs **12 verified curated open-source skills & packs** (pointing directly to their upstream GitHub repositories):
+- **Single Skills (7)**: `drawio-skill` (`/drawio`), `planning-with-files` (`/plan`), `ui-ux-pro-max-skill` (`/ui-ux`), `taste-skill` (`/taste`), `humanizer` (`/humanize`), `graphify` (`/graphify`), `caveman` (`/caveman`).
+- **Skill Packs (Top 5)**: `superpowers` (`/tdd`, `/debug`), `ecc` (`/ecc`, `/audit`), `agent-skills` (`/perf`, `/a11y`), `anthropics-skills`, `mattpocock-skills`.
 
 See [`plugins/haws/MAINTAINERS.md`](plugins/haws/MAINTAINERS.md) for full instructions on authoring custom skills and adding marketplace plugins.
 

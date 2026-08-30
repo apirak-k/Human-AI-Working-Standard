@@ -33,7 +33,7 @@ HAWS supports both **custom in-house skills** and **external open-source skills 
 
 ### B. Managing Embedded Open-Source Git Submodules
 
-HAWS currently embeds **18 authentic open-source skills repositories** under `plugins/haws/skills/` via official Git Submodules (`.gitmodules`):
+HAWS currently embeds **12 curated open-source skills repositories** (7 Single Skills + Top 5 Skill Packs) under `plugins/haws/skills/` via official Git Submodules (`.gitmodules`):
 
 #### 1. Setup on a New Device (Initial Clone)
 When cloning the HAWS repository to a new machine, always include `--recurse-submodules` to pull all embedded skills simultaneously:

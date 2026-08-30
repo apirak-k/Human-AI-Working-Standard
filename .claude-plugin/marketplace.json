@@ -69,18 +69,6 @@
       "description": "[Skill Pack] Production-grade engineering skills for performance, a11y, and refactoring (/perf, /a11y)"
     },
     {
-      "name": "vercel-agent-skills",
-      "source": "github:vercel-labs/agent-skills",
-      "category": "skill-pack",
-      "description": "[Skill Pack] Official Vercel collection for Next.js App Router, React Server Components, and Web Vitals"
-    },
-    {
-      "name": "anthropic-cybersecurity-skills",
-      "source": "github:mukul975/Anthropic-Cybersecurity-Skills",
-      "category": "skill-pack",
-      "description": "[Skill Pack] Structured cybersecurity skills mapped to MITRE ATT&CK and NIST frameworks (/security-audit)"
-    },
-    {
       "name": "anthropics-skills",
       "source": "github:anthropics/skills",
       "category": "skill-pack",
@@ -91,30 +79,7 @@
       "source": "github:mattpocock/skills",
       "category": "skill-pack",
       "description": "[Skill Pack] TypeScript strict typing, architecture improvements, and developer skills"
-    },
-    {
-      "name": "emilkowalski-skills",
-      "source": "github:emilkowalski/skills",
-      "category": "skill-pack",
-      "description": "[Skill Pack] UI motion physics, interaction design, and CSS polish skills"
-    },
-    {
-      "name": "claude-skills-community",
-      "source": "github:alirezarezvani/claude-skills",
-      "category": "skill-pack",
-      "description": "[Skill Pack] Curated community collection of 380+ Claude Code skills, commands, and workflows"
-    },
-    {
-      "name": "agentic-awesome-skills",
-      "source": "github:sickn33/agentic-awesome-skills",
-      "category": "skill-pack",
-      "description": "[Skill Pack] Catalog discovery and control plane with 2,005+ agentic skills"
-    },
-    {
-      "name": "scientific-agent-skills",
-      "source": "github:K-Dense-AI/scientific-agent-skills",
-      "category": "skill-pack",
-      "description": "[Skill Pack] Validated agent skills library for scientific, biological, and chemistry research"
     }
   ]
 }
+
