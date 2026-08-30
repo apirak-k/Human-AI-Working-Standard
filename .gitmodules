@@ -28,27 +28,10 @@
 [submodule "plugins/haws/skills/agent-skills"]
 	path = plugins/haws/skills/agent-skills
 	url = https://github.com/addyosmani/agent-skills.git
-[submodule "plugins/haws/skills/vercel-agent-skills"]
-	path = plugins/haws/skills/vercel-agent-skills
-	url = https://github.com/vercel-labs/agent-skills.git
-[submodule "plugins/haws/skills/anthropic-cybersecurity-skills"]
-	path = plugins/haws/skills/anthropic-cybersecurity-skills
-	url = https://github.com/mukul975/Anthropic-Cybersecurity-Skills.git
 [submodule "plugins/haws/skills/anthropics-skills"]
 	path = plugins/haws/skills/anthropics-skills
 	url = https://github.com/anthropics/skills.git
 [submodule "plugins/haws/skills/mattpocock-skills"]
 	path = plugins/haws/skills/mattpocock-skills
 	url = https://github.com/mattpocock/skills.git
-[submodule "plugins/haws/skills/emilkowalski-skills"]
-	path = plugins/haws/skills/emilkowalski-skills
-	url = https://github.com/emilkowalski/skills.git
-[submodule "plugins/haws/skills/claude-skills-community"]
-	path = plugins/haws/skills/claude-skills-community
-	url = https://github.com/alirezarezvani/claude-skills.git
-[submodule "plugins/haws/skills/agentic-awesome-skills"]
-	path = plugins/haws/skills/agentic-awesome-skills
-	url = https://github.com/sickn33/agentic-awesome-skills.git
-[submodule "plugins/haws/skills/scientific-agent-skills"]
-	path = plugins/haws/skills/scientific-agent-skills
-	url = https://github.com/K-Dense-AI/scientific-agent-skills.git
+
