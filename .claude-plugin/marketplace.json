@@ -5,7 +5,116 @@
     {
       "name": "haws",
       "source": "./plugins/haws",
-      "description": "Human-AI Working Standard"
+      "category": "core",
+      "description": "[Core] Human-AI Working Standard core orchestration rules and specialized subagents"
+    },
+    {
+      "name": "drawio-skill",
+      "source": "github:Agents365-ai/drawio-skill",
+      "category": "single-skill",
+      "description": "[Single Skill] Generate draw.io diagrams from natural language prompts (/drawio)"
+    },
+    {
+      "name": "planning-with-files",
+      "source": "github:OthmanAdi/planning-with-files",
+      "category": "single-skill",
+      "description": "[Single Skill] Crash-proof file-based planning and session recovery (/plan)"
+    },
+    {
+      "name": "ui-ux-pro-max-skill",
+      "source": "github:nextlevelbuilder/ui-ux-pro-max-skill",
+      "category": "single-skill",
+      "description": "[Single Skill] Design intelligence and professional UI/UX guidance (/ui-ux)"
+    },
+    {
+      "name": "taste-skill",
+      "source": "github:Leonxlnx/taste-skill",
+      "category": "single-skill",
+      "description": "[Single Skill] Design aesthetic taste standards against generic AI slop (/taste)"
+    },
+    {
+      "name": "humanizer",
+      "source": "github:blader/humanizer",
+      "category": "single-skill",
+      "description": "[Single Skill] Refine and naturalize AI-generated text and remove AI buzzwords (/humanize)"
+    },
+    {
+      "name": "graphify",
+      "source": "github:Graphify-Labs/graphify",
+      "category": "single-skill",
+      "description": "[Single Skill] Turn codebase into queryable knowledge graph (/graphify)"
+    },
+    {
+      "name": "caveman",
+      "source": "github:JuliusBrussee/caveman",
+      "category": "single-skill",
+      "description": "[Single Skill] Ultra-concise communication mode for token reduction (/caveman)"
+    },
+    {
+      "name": "superpowers",
+      "source": "github:obra/superpowers",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Software development methodology pack including TDD, debugging, and plan execution (/tdd, /debug)"
+    },
+    {
+      "name": "ecc",
+      "source": "github:affaan-m/ECC",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Agent harness performance optimization and security auditing pack (/ecc, /audit)"
+    },
+    {
+      "name": "agent-skills",
+      "source": "github:addyosmani/agent-skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Production-grade engineering skills for performance, a11y, and refactoring (/perf, /a11y)"
+    },
+    {
+      "name": "vercel-agent-skills",
+      "source": "github:vercel-labs/agent-skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Official Vercel collection for Next.js App Router, React Server Components, and Web Vitals"
+    },
+    {
+      "name": "anthropic-cybersecurity-skills",
+      "source": "github:mukul975/Anthropic-Cybersecurity-Skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Structured cybersecurity skills mapped to MITRE ATT&CK and NIST frameworks (/security-audit)"
+    },
+    {
+      "name": "anthropics-skills",
+      "source": "github:anthropics/skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Official Anthropic repository for agent skills, data analysis, and document processing"
+    },
+    {
+      "name": "mattpocock-skills",
+      "source": "github:mattpocock/skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] TypeScript strict typing, architecture improvements, and developer skills"
+    },
+    {
+      "name": "emilkowalski-skills",
+      "source": "github:emilkowalski/skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] UI motion physics, interaction design, and CSS polish skills"
+    },
+    {
+      "name": "claude-skills-community",
+      "source": "github:alirezarezvani/claude-skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Curated community collection of 380+ Claude Code skills, commands, and workflows"
+    },
+    {
+      "name": "agentic-awesome-skills",
+      "source": "github:sickn33/agentic-awesome-skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Catalog discovery and control plane with 2,005+ agentic skills"
+    },
+    {
+      "name": "scientific-agent-skills",
+      "source": "github:K-Dense-AI/scientific-agent-skills",
+      "category": "skill-pack",
+      "description": "[Skill Pack] Validated agent skills library for scientific, biological, and chemistry research"
     }
   ]
 }

@@ -1,77 +1,108 @@
 # Human–AI Working Standard (HAWS)
 
-A shared working standard and practical framework for collaboration between
-humans and AI agents — across projects, tools, sessions, and environments.
+A shared working standard, orchestration rules, and specialized subagents for collaboration between humans and AI agents — built for cross-tool portability across **Claude Code**, **Antigravity**, **Cursor**, **ChatGPT**, **Gemini**, and any AI coding assistant.
+
+---
 
 ## What is HAWS?
 
-HAWS defines the **principles, responsibilities, safeguards, and expected
-outcomes** that govern how a user and AI agent work together. It is not tied to
-any specific tool, language, or platform.
+HAWS defines the **principles, responsibilities, safeguards, and expected outcomes** that govern human-AI collaboration. It establishes a consistent engineering bar, dynamic orchestration model, and reliable verification practices across tasks, sessions, and platforms.
 
-The goal and required outcome are always more important than blindly following a
-procedure.
+The goal and required outcome are always prioritized over blindly following a rigid procedure.
 
-## Repository structure
+---
 
-| Path | Purpose |
-|------|---------|
-| [`HAWS.md`](HAWS.md) | The core standard — principles, priorities, safeguards, and verification requirements |
-| [`WORK_INSTRUCTIONS.md`](WORK_INSTRUCTIONS.md) | Practical step-by-step procedures that translate HAWS into daily work |
-| [`TEMPLATES.md`](TEMPLATES.md) | Starter prompt, blank `PROJECT_SPECIFIC.md` template, and blank `HANDOFF.md` template |
-| [`skills/`](skills/) | Directory of on-demand working modes as standalone `.md` files |
-| ├── [`skills/grill-me.md`](skills/grill-me.md) | Requirement interview mode — extracts and clarifies scope before building |
-| ├── [`skills/caveman.md`](skills/caveman.md) | Ultra-compressed communication mode — minimizes token usage while keeping accuracy |
-| └── [`skills/qa-edgecase.md`](skills/qa-edgecase.md) | QA and edge case detection mode — spots edge cases, boundary errors, and Excel safety issues |
+## Repository Structure
 
-### Adding new skills
+```text
+├── core/                                # Universal Plain Markdown Standards (Copy-pasteable for any AI)
+│   ├── HAWS.md                          # Core principles, priority hierarchy, safety & safeguards
+│   ├── WORK_INSTRUCTIONS.md             # Step-by-step procedures, context loading & verification
+│   ├── TEMPLATES.md                     # Starter prompt, PROJECT_SPECIFIC.md & HANDOFF.md templates
+│   └── HANDOFF.md                       # Active work state & continuity checkpoint
+├── .claude-plugin/
+│   └── marketplace.json                 # Marketplace manifest for Claude Code / Antigravity plugins
+└── plugins/
+    └── haws/
+        ├── plugin.json                  # Plugin manifest metadata
+        ├── rules/
+        │   └── haws.md                  # Unified orchestration rule & Main Agent Orchestrator role
+        ├── agents/
+        │   ├── frontend-engineer.md     # UI, styling, client state, accessibility & web performance
+        │   ├── backend-engineer.md      # APIs, service logic, databases, security & server performance
+        │   ├── tester.md                # Test execution, boundary verification & regression analysis
+        │   └── researcher.md            # Deep codebase exploration, documentation lookup & dependency verification
+        ├── skills/                      # Custom in-house skills directory
+        └── MAINTAINERS.md               # Guide for adding skills, agents, and multi-device updates
+```
 
-You can add new skills at any time:
-1. Create a new `<skill-name>.md` inside the [`skills/`](skills/) directory.
-2. Define its **Purpose**, **When to use**, **Behavior**, and **Output format**.
-3. Activate it on-demand during conversations using `[<skill-name>]`.
+---
 
-### Per-project files (created when needed)
+## How to Use HAWS
 
-| File | When to create |
-|------|---------------|
-| `PROJECT_SPECIFIC.md` | When stable, confirmed project rules exist |
-| `HANDOFF.md` | When work must continue in another session or context |
+HAWS is designed with a **Portability First** philosophy and supports two operational modes:
 
-These are **not** included in this repository as empty placeholders. See
-[`TEMPLATES.md`](TEMPLATES.md) for blank templates.
+### Mode 1: Native Plugin Installation (Claude Code / Antigravity)
 
-## Quick start
+Install HAWS directly into your agent environment to auto-load rules, all 4 specialized subagents, and all 18 authentic upstream skills simultaneously in a single command:
 
-1. Copy `HAWS.md` and `WORK_INSTRUCTIONS.md` into your project (or reference
-   this repository).
-2. Copy the [`skills/`](skills/) directory and [`TEMPLATES.md`](TEMPLATES.md).
-3. At the start of a new AI session, use the **Master Starter Prompt** from
-   [`TEMPLATES.md`](TEMPLATES.md) to load context.
-4. Create `PROJECT_SPECIFIC.md` when your project has confirmed rules.
-5. Create `HANDOFF.md` when you need to pause and resume later.
+```text
+# 1. Add the marketplace source
+/plugin marketplace add apirak-k/Human-AI-Working-Standard
 
-## Priority hierarchy
+# 2. 1-Click Install HAWS (installs rules, 4 subagents & 18 authentic Git submodules at once)
+/plugin install haws@haws-marketplace
+```
 
-When instructions or information conflict, use this order:
+To update across devices whenever new skills or agents are added:
+```text
+/plugin marketplace update haws-marketplace
+/plugin update haws@haws-marketplace
+```
 
-1. **Safety, privacy, legal, authorization, security, and irreversible action
-   constraints**
+---
+
+### Mode 2: Universal Plain Markdown (Any AI Assistant)
+
+For AI tools that read plain markdown files (ChatGPT, Claude Web, Gemini, Cursor):
+
+1. Reference or copy the [`core/`](core/) directory (or specifically [`core/HAWS.md`](core/HAWS.md) and [`core/WORK_INSTRUCTIONS.md`](core/WORK_INSTRUCTIONS.md)) into your project workspace.
+2. At the start of a session, use the **Master Starter Prompt** in [`core/TEMPLATES.md`](core/TEMPLATES.md) to bootstrap context.
+3. Use [`PROJECT_SPECIFIC.md`](core/TEMPLATES.md#2-project_specificmd--blank-template) when stable project-level rules exist.
+4. Use [`core/HANDOFF.md`](core/HANDOFF.md) to preserve state when pausing and resuming work across sessions.
+
+---
+
+## Specialized Subagents
+
+When running as a plugin, the Main Agent dynamically orchestrates four specialized subagents based on software engineering judgment (no rigid, hardcoded sequencing):
+
+| Subagent | Scoped Tools | Focus Areas |
+|---|---|---|
+| [`frontend-engineer`](plugins/haws/agents/frontend-engineer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob` | UI components, client-side state, styling, responsive design, a11y (WCAG), performance |
+| [`backend-engineer`](plugins/haws/agents/backend-engineer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob`, `Bash` | REST/GraphQL APIs, domain logic, DB schemas/queries, auth, security, data integrity |
+| [`tester`](plugins/haws/agents/tester.md) | `Read`, `Grep`, `Glob`, `Bash` | Automated test suites, edge cases, regression detection, bug reproduction, boundary checks |
+| [`researcher`](plugins/haws/agents/researcher.md) | `Read`, `Grep`, `Glob` | Codebase reconnaissance, technical documentation lookup, dependency verification, architecture mapping |
+
+---
+
+## Skills Catalog (18 Verified External Repositories)
+
+The marketplace manifest (`.claude-plugin/marketplace.json`) catalogs **18 verified external open-source skills & packs** (pointing directly to their upstream GitHub repositories):
+- **Single Skills**: `drawio-skill` (`/drawio`), `planning-with-files` (`/plan`), `ui-ux-pro-max-skill` (`/ui-ux`), `taste-skill` (`/taste`), `humanizer` (`/humanize`), `graphify` (`/graphify`), `caveman` (`/caveman`).
+- **Skill Packs**: `superpowers` (`/tdd`, `/debug`), `ecc`, `agent-skills` (`/perf`, `/a11y`), `vercel-agent-skills`, `anthropic-cybersecurity-skills` (`/security-audit`), `anthropics-skills`, `mattpocock-skills`, `emilkowalski-skills`, `claude-skills-community`, `agentic-awesome-skills`, `scientific-agent-skills`.
+
+See [`plugins/haws/MAINTAINERS.md`](plugins/haws/MAINTAINERS.md) for full instructions on authoring custom skills and adding marketplace plugins.
+
+---
+
+## Priority Hierarchy
+
+When instructions or information conflict, always resolve in this order:
+
+1. **Safety, privacy, legal, authorization, security, and irreversible action constraints**
 2. **The user's latest clear intent and instruction**
 3. **HAWS**
 4. **Confirmed Project Specific requirements**
 5. **Applicable Work Instructions**
 6. **Handoff** as a description of current work state
-
-## Contributing
-
-Propose changes according to their scope:
-
-- Broadly reusable principle → `HAWS.md`
-- Recurring procedure → `WORK_INSTRUCTIONS.md`
-- New on-demand skill → create `<skill-name>.md` inside `skills/`
-- One-project rule → `PROJECT_SPECIFIC.md`
-- Current work state → `HANDOFF.md`
-
-Do not update central files automatically. Propose the smallest necessary
-change and wait for review and confirmation.

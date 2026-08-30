@@ -31,6 +31,20 @@ conflicting, or historical verification is required.
 Read only the Specific, Handoff, and reusable information relevant to the
 current project and task.
 
+### 1.1 Context window discipline
+
+To prevent context rot and maintain high reasoning precision across long sessions:
+
+- **Lean context principle**: Avoid flooding the active session with entire dumps
+  of large unparsed files, build logs, or repetitive test output. Retrieve and
+  quote only relevant snippets.
+- **File-backed state over memory**: Do not rely on ephemeral chat history to track
+  active plans or critical decisions. Always persist state into structured files
+  (`HANDOFF.md`, task checklists, or implementation plans).
+- **Proactive session compaction**: When a task phase completes or context grows
+  excessively large, summarize progress, update `HANDOFF.md`, and clean temporary
+  inspection artifacts before initiating the next phase.
+
 ## 2. Starting and performing work
 
 For a new project:

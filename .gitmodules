@@ -1,0 +1,54 @@
+[submodule "plugins/haws/skills/drawio-skill"]
+	path = plugins/haws/skills/drawio-skill
+	url = https://github.com/Agents365-ai/drawio-skill.git
+[submodule "plugins/haws/skills/planning-with-files"]
+	path = plugins/haws/skills/planning-with-files
+	url = https://github.com/OthmanAdi/planning-with-files.git
+[submodule "plugins/haws/skills/ui-ux-pro-max-skill"]
+	path = plugins/haws/skills/ui-ux-pro-max-skill
+	url = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
+[submodule "plugins/haws/skills/taste-skill"]
+	path = plugins/haws/skills/taste-skill
+	url = https://github.com/Leonxlnx/taste-skill.git
+[submodule "plugins/haws/skills/humanizer"]
+	path = plugins/haws/skills/humanizer
+	url = https://github.com/blader/humanizer.git
+[submodule "plugins/haws/skills/graphify"]
+	path = plugins/haws/skills/graphify
+	url = https://github.com/Graphify-Labs/graphify.git
+[submodule "plugins/haws/skills/caveman"]
+	path = plugins/haws/skills/caveman
+	url = https://github.com/JuliusBrussee/caveman.git
+[submodule "plugins/haws/skills/superpowers"]
+	path = plugins/haws/skills/superpowers
+	url = https://github.com/obra/superpowers.git
+[submodule "plugins/haws/skills/ecc"]
+	path = plugins/haws/skills/ecc
+	url = https://github.com/affaan-m/ECC.git
+[submodule "plugins/haws/skills/agent-skills"]
+	path = plugins/haws/skills/agent-skills
+	url = https://github.com/addyosmani/agent-skills.git
+[submodule "plugins/haws/skills/vercel-agent-skills"]
+	path = plugins/haws/skills/vercel-agent-skills
+	url = https://github.com/vercel-labs/agent-skills.git
+[submodule "plugins/haws/skills/anthropic-cybersecurity-skills"]
+	path = plugins/haws/skills/anthropic-cybersecurity-skills
+	url = https://github.com/mukul975/Anthropic-Cybersecurity-Skills.git
+[submodule "plugins/haws/skills/anthropics-skills"]
+	path = plugins/haws/skills/anthropics-skills
+	url = https://github.com/anthropics/skills.git
+[submodule "plugins/haws/skills/mattpocock-skills"]
+	path = plugins/haws/skills/mattpocock-skills
+	url = https://github.com/mattpocock/skills.git
+[submodule "plugins/haws/skills/emilkowalski-skills"]
+	path = plugins/haws/skills/emilkowalski-skills
+	url = https://github.com/emilkowalski/skills.git
+[submodule "plugins/haws/skills/claude-skills-community"]
+	path = plugins/haws/skills/claude-skills-community
+	url = https://github.com/alirezarezvani/claude-skills.git
+[submodule "plugins/haws/skills/agentic-awesome-skills"]
+	path = plugins/haws/skills/agentic-awesome-skills
+	url = https://github.com/sickn33/agentic-awesome-skills.git
+[submodule "plugins/haws/skills/scientific-agent-skills"]
+	path = plugins/haws/skills/scientific-agent-skills
+	url = https://github.com/K-Dense-AI/scientific-agent-skills.git

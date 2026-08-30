@@ -89,6 +89,26 @@ Before relying on information, verify that its source, scope, status, and
 effective version apply to the current work. When sources conflict, identify
 the currently confirmed source instead of combining them silently.
 
+### 3.1 LLM coding discipline and pitfall prevention
+
+To prevent common automated coding errors and preserve context integrity:
+
+- **Preserve documentation integrity**: Never delete, truncate, or strip existing
+  comments, docstrings, type annotations, or developer notes unless explicitly
+  instructed.
+- **Targeted edits over broad rewrites**: Do not perform unrequested refactoring of
+  surrounding functional code when resolving a localized issue. Limit changes to
+  the minimum necessary scope.
+- **Verify dependency reality**: Always verify imports, methods, and API
+  signatures against actually installed package versions in the project rather
+  than assuming or inventing deprecated signatures.
+- **Preserve working conventions**: Match existing codebase architecture, naming
+  conventions, and styling patterns instead of introducing conflicting paradigms.
+- **Respect upstream sources & no synthetic duplication**: When given external repositories,
+  packages, or URLs to catalog or reference, strictly maintain external references or Git submodules.
+  Never unilaterally author local mock files or synthetic duplicate implementations unless
+  explicitly commanded to create custom local code.
+
 ## 4. Flow and information organization
 
 Work from the actual current state. Do not unnecessarily restart completed
@@ -154,6 +174,13 @@ recommendations must not become authoritative reusable information.
 Where practical, maintain a clear source of truth, avoid uncontrolled
 duplication, keep information current and traceable, and retrieve only what is
 relevant to the current task.
+
+### 5.1 Minimalist engineering (YAGNI)
+
+The best code is the code you never wrote. Avoid premature abstraction, unnecessary
+wrapper layers, speculative features, and over-engineered design patterns. Deliver
+the simplest correct solution that satisfies all constraints, quality standards,
+and edge cases without adding unnecessary cognitive or maintenance burden.
 
 ## 6. Review, confirmation, and scope
 
@@ -293,6 +320,20 @@ conflicting, or historical verification is required.
 
 Read only the Specific, Handoff, and reusable information relevant to the
 current project and task.
+
+### 1.1 Context window discipline
+
+To prevent context rot and maintain high reasoning precision across long sessions:
+
+- **Lean context principle**: Avoid flooding the active session with entire dumps
+  of large unparsed files, build logs, or repetitive test output. Retrieve and
+  quote only relevant snippets.
+- **File-backed state over memory**: Do not rely on ephemeral chat history to track
+  active plans or critical decisions. Always persist state into structured files
+  (`HANDOFF.md`, task checklists, or implementation plans).
+- **Proactive session compaction**: When a task phase completes or context grows
+  excessively large, summarize progress, update `HANDOFF.md`, and clean temporary
+  inspection artifacts before initiating the next phase.
 
 ## 2. Starting and performing work
 
@@ -496,7 +537,7 @@ The main orchestrating agent serves as the primary collaborative partner with th
 
 ### Primary Responsibilities
 1. **Brainstorming & Ideation**: Partner closely with the user during exploratory, architectural, and requirement-gathering phases to clarify intent, surface constraints, and evaluate technical trade-offs before committing to implementation.
-2. **Work Triage & Dynamic Delegation**: Analyze incoming tasks, decompose complex objectives, and decide which specialized subagent(s) — `frontend-engineer`, `backend-engineer`, `tester` — to delegate to based on the technical domains involved.
+2. **Work Triage & Dynamic Delegation**: Analyze incoming tasks, decompose complex objectives, and decide which specialized subagent(s) — `frontend-engineer`, `backend-engineer`, `tester`, `researcher` — to delegate to based on the technical domains involved.
 
 ### Flexible Delegation Model
 - **Dynamic Routing Over Rigid Sequences**: Delegation decisions must be driven by standard software engineering judgment rather than rigid, hardcoded multi-agent pipelines. The main agent determines case-by-case which specialist is needed, in what order, or whether only a single specialist is required.
@@ -506,3 +547,9 @@ The main orchestrating agent serves as the primary collaborative partner with th
 - **When to Intervene Directly**: The main agent possesses the same engineering standards, rigor, and technical domain competence as each specialized subagent. It may resolve a problem directly without delegating when a subagent is blocked, unavailable, or when a targeted direct fix is significantly faster.
 - **Context Pulling Before Action**: Before directly taking over work previously handled by a subagent, the main agent must retrieve fine-grained working context (inspecting current file modifications, reviewing error logs, or requesting a concise handoff summary) rather than proceeding on stale assumptions.
 - **Delegation Preference**: Direct intervention is an exception for efficiency or unblocking; dynamic delegation to available specialists remains the primary operational model.
+
+### Orchestration Workflow Architecture (Command ➔ Agent ➔ Skill)
+- **Layer 1: Command Interface**: User or external triggers invoke high-level intentions via natural language or targeted Slash Commands (e.g. `/plan`, `/tdd`, `/drawio`, `/perf`, `/security-audit`).
+- **Layer 2: Agent Responsibility Layer**: The Main Orchestrator decomposes tasks and delegates domain work to the appropriate specialist (`frontend-engineer`, `backend-engineer`, `tester`, `researcher`) or executes directly when appropriate.
+- **Layer 3: Invocable Skills & Tools**: Agents execute specific capabilities by dynamically loading modular skills (`plugins/haws/skills/` or external marketplace skills) as scoped tool chains rather than hardcoding procedural scripts.
+

@@ -85,6 +85,26 @@ Before relying on information, verify that its source, scope, status, and
 effective version apply to the current work. When sources conflict, identify
 the currently confirmed source instead of combining them silently.
 
+### 3.1 LLM coding discipline and pitfall prevention
+
+To prevent common automated coding errors and preserve context integrity:
+
+- **Preserve documentation integrity**: Never delete, truncate, or strip existing
+  comments, docstrings, type annotations, or developer notes unless explicitly
+  instructed.
+- **Targeted edits over broad rewrites**: Do not perform unrequested refactoring of
+  surrounding functional code when resolving a localized issue. Limit changes to
+  the minimum necessary scope.
+- **Verify dependency reality**: Always verify imports, methods, and API
+  signatures against actually installed package versions in the project rather
+  than assuming or inventing deprecated signatures.
+- **Preserve working conventions**: Match existing codebase architecture, naming
+  conventions, and styling patterns instead of introducing conflicting paradigms.
+- **Respect upstream sources & no synthetic duplication**: When given external repositories,
+  packages, or URLs to catalog or reference, strictly maintain external references or Git submodules.
+  Never unilaterally author local mock files or synthetic duplicate implementations unless
+  explicitly commanded to create custom local code.
+
 ## 4. Flow and information organization
 
 Work from the actual current state. Do not unnecessarily restart completed
@@ -150,6 +170,13 @@ recommendations must not become authoritative reusable information.
 Where practical, maintain a clear source of truth, avoid uncontrolled
 duplication, keep information current and traceable, and retrieve only what is
 relevant to the current task.
+
+### 5.1 Minimalist engineering (YAGNI)
+
+The best code is the code you never wrote. Avoid premature abstraction, unnecessary
+wrapper layers, speculative features, and over-engineered design patterns. Deliver
+the simplest correct solution that satisfies all constraints, quality standards,
+and edge cases without adding unnecessary cognitive or maintenance burden.
 
 ## 6. Review, confirmation, and scope
 
