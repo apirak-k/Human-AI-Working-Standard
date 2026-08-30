@@ -16,9 +16,11 @@ At the beginning of a new thread or work context:
 1. read the latest `HAWS.md`
 2. read the latest `WORK_INSTRUCTIONS.md`
 3. inspect the current project source
-4. read `PROJECT_SPECIFIC.md` if it exists
-5. read `HANDOFF.md` when continuing existing work
-6. report the understood goal, scope, current state, and starting point
+4. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
+5. read `design.md` if it exists (system architecture & design blueprint)
+6. read `PROJECT_SPECIFIC.md` if it exists
+7. read `HANDOFF.md` when continuing existing work
+8. report the understood goal, scope, current state, and starting point
 
 Read HAWS and applicable project information once per thread or work context.
 
@@ -47,9 +49,10 @@ To prevent context rot and maintain high reasoning precision across long session
 
 ## 2. Starting and performing work
 
-For a new project:
+For a new project or major feature:
 
-- do not invent project rules
+- do not invent project rules blindly
+- during ideation / architectural kickoff, formulate and preserve the technical design in `design.md`
 - create or update `PROJECT_SPECIFIC.md` when stable project rules are
   confirmed
 - create `HANDOFF.md` only when continuity information is needed
@@ -60,6 +63,17 @@ Before substantial changes:
 2. inspect the affected area and current state
 3. identify dependencies, risks, and appropriate checks
 4. follow confirmed instructions and methods
+
+### 2.1 Autonomous skill selection and invocation (Flexible & Proportional)
+
+Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against available skill descriptions:
+1. **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without loading heavy skills or announcing tags.
+2. **Substantial Work & Critical Milestones**:
+   - **Project / Feature Kickoff**: Naturally invoke brainstorming capabilities (e.g. `superpowers/brainstorming`) to explore trade-offs and draft `design.md`.
+   - **Checkpoint / Session Handoff**: Naturally invoke session persistence (e.g. `planning-with-files` / `HANDOFF.md`) to record state and resume points.
+   - **Domain Tasks**: Proactively match task context with the description of domain skills (e.g. `taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD / debugging, `humanizer` for copy).
+3. **Transparent Tagging**: For substantial tasks where a skill is auto-activated, prefix the turn with a concise tag: `[Auto-Skill: <skill-name>] <brief reason>`.
+
 
 For substantial Git-based work, inspecting the current state includes verifying
 the actual repository and active branch. Do not rely solely on a Handoff,
@@ -212,7 +226,7 @@ change and wait for review and confirmation.
 Use when code changes are drafted by an AI that has no direct write access to
 the user's local repository or remote (e.g. a sandboxed AI session).
 
-1. Confirm scope conversationally (use `[grill-me]` if underspecified) before
+1. Confirm scope conversationally (use brainstorming or clarifying questions if underspecified) before
    requesting a patch.
 2. The AI must state the exact base state the patch is generated from (e.g.
    "based on the file(s) you uploaded on [date]"). If the local repository may

@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/
 ├── core/                                # Universal Plain Markdown Standards (Copy-pasteable for any AI)
 │   ├── HAWS.md                          # Core principles, priority hierarchy, safety & safeguards
 │   ├── WORK_INSTRUCTIONS.md             # Step-by-step procedures, context loading & verification
-│   ├── TEMPLATES.md                     # Starter prompt, PROJECT_SPECIFIC.md & HANDOFF.md templates
+│   ├── TEMPLATES.md                     # Starter prompt, design.md (TH), PROJECT_SPECIFIC.md & HANDOFF.md templates
 │   └── HANDOFF.md                       # Active work state & continuity checkpoint
 ├── .claude-plugin/
 │   └── marketplace.json                 # Marketplace manifest for Claude Code / Antigravity plugins
@@ -83,7 +83,7 @@ For AI tools that read plain markdown files (ChatGPT, Claude Web, Gemini, Cursor
 
 1. Reference or copy the [`core/`](core/) directory (or specifically [`core/HAWS.md`](core/HAWS.md) and [`core/WORK_INSTRUCTIONS.md`](core/WORK_INSTRUCTIONS.md)) into your project workspace.
 2. At the start of a session, use the **Master Starter Prompt** in [`core/TEMPLATES.md`](core/TEMPLATES.md) to bootstrap context.
-3. Use [`PROJECT_SPECIFIC.md`](core/TEMPLATES.md#2-project_specificmd--blank-template) when stable project-level rules exist.
+3. Use [`PROJECT_SPECIFIC.md`](core/TEMPLATES.md#3-project_specificmd--blank-template) when stable project-level rules exist.
 4. Use [`core/HANDOFF.md`](core/HANDOFF.md) to preserve state when pausing and resuming work across sessions.
 
 ---
@@ -108,6 +108,29 @@ The marketplace manifest (`.claude-plugin/marketplace.json`) catalogs **12 verif
 - **Skill Packs (Top 5)**: `superpowers` (`/tdd`, `/debug`), `ecc` (`/ecc`, `/audit`), `agent-skills` (`/perf`, `/a11y`), `anthropics-skills`, `mattpocock-skills`.
 
 See [`plugins/haws/MAINTAINERS.md`](plugins/haws/MAINTAINERS.md) for full instructions on authoring custom skills and adding marketplace plugins.
+
+---
+
+## Autonomous Skill Selection (Flexible & Context-Driven)
+
+HAWS empowers AI agents to **autonomously evaluate when to pick the right skill** based on context and each skill's `description`, rather than following rigid, mechanical sequences or forcing the human to memorize slash commands.
+
+- **Proportionality (Keep Simple Work Simple)**: Trivial tasks (typo fixes, quick 1-line edits, direct Q&A) execute directly and immediately without loading skills or announcing tags.
+- **Natural Milestones**:
+  1. **Project & Feature Kickoff**: Automatically evaluates brainstorming capabilities (e.g. `superpowers/brainstorming`) to explore trade-offs and draft a technical blueprint in `design.md`.
+  2. **Session Checkpoints**: Automatically evaluates session persistence (e.g. `planning-with-files` / `HANDOFF.md`) to record state and resume points when pausing.
+  3. **Task-Specific Execution**: Proactively matches context with domain skills when substantial.
+
+| Situation / Intent | Auto-Activated Skill | What the AI Does |
+|---|---|---|
+| Brainstorming, ideation, design exploration | `superpowers` (*brainstorming*) | Refines rough ideas into structured specs with trade-off analysis (creates `design.md`) |
+| Multi-step execution (>3 steps), handoffs, pausing work | `planning-with-files` / `HANDOFF.md` | Crash-proof file-backed planning and session recovery |
+| Frontend UI/UX, styling, aesthetic polish | `taste-skill` + `ui-ux-pro-max` | Applies anti-slop design bar, typography, and responsive design systems |
+| Backend feature logic & test coverage | `superpowers` (*test-driven-development*) | Enforces Red-Green-Refactor ("no code without failing test first") |
+| Bug fixing, crashes, unexpected errors | `superpowers` (*systematic-debugging*) | Traces root causes (`input ➔ state ➔ output`) rather than guessing fixes |
+| Documentation, copywriting, READMEs | `humanizer` | Removes AI clichés and buzzwords for clean, natural prose |
+| Codebase architecture & dependency exploration | `graphify` / `drawio-skill` | Builds codebase knowledge graphs and generates system diagrams |
+| Brevity or token-saving request | `caveman` | Ultra-concise communication mode |
 
 ---
 

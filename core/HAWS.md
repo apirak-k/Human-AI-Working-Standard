@@ -227,12 +227,10 @@ the work correctly. The method may vary.
 
 Use these functional purposes:
 
-- **Project Specific** — stable, confirmed project rules, scope, definitions,
-  constraints, and conventions
-- **Handoff** — current work state, pending matters, risks, checks, exact
-  resume point, and next action
-- **History** — superseded information retained through an appropriate
-  version or history mechanism
+- **Design Spec (`design.md`)** — technical design blueprint, architecture, data contracts, and acceptance criteria, established during ideation/kickoff before implementing substantial features
+- **Project Specific (`PROJECT_SPECIFIC.md`)** — stable, confirmed project rules, scope, definitions, constraints, and conventions
+- **Handoff (`HANDOFF.md`)** — current work state, pending matters, risks, checks, exact resume point, and next action at session checkpoints
+- **History** — superseded information retained through an appropriate version or history mechanism
 
 A problem or safeguard discovered in one project may justify a HAWS update
 when its underlying lesson is broadly reusable.
@@ -281,3 +279,20 @@ proceeding. The fallback shown must be safe and honestly labeled (e.g. a
 visible "missing" or "N/A" status) rather than a misleading number. This is
 a Pokayoke measure to prevent unhandled errors from propagating and
 producing misleading results.
+
+## 9. Autonomous skill selection and capability discovery
+
+Skill invocation in HAWS is **dynamic, flexible, and non-rigid** — never an arbitrary forced routine. AI assistants and agents operating under HAWS must proactively discover and match available skills with the current task context rather than relying exclusively on manual user invocation.
+
+### 9.1 Context-to-description matching
+On each turn, evaluate whether the task situation aligns with the `description` and purpose of installed skills:
+- **Trivial / Simple Work**: Execute directly without loading heavy skills or announcing tags.
+- **Substantial / Milestone Work**:
+  1. **Project / Feature Kickoff**: Naturally invoke brainstorming and planning capabilities to formulate `design.md`.
+  2. **Session Checkpoint / Pause**: Naturally invoke session persistence capabilities and update `HANDOFF.md`.
+  3. **Domain Implementation**: Match context with domain skills (e.g. `taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD / debugging, `humanizer` for copy, `graphify` / `drawio-skill` for architecture).
+
+### 9.2 Proactive and transparent execution
+When a context match occurs for substantial work, the AI announces the active capability via a concise tag (e.g. `[Auto-Skill: <skill-name>] <brief reason>`) and immediately applies the skill's engineering methodology without waiting for confirmation, unless the action is destructive or irreversible.
+
+

@@ -231,12 +231,10 @@ the work correctly. The method may vary.
 
 Use these functional purposes:
 
-- **Project Specific** — stable, confirmed project rules, scope, definitions,
-  constraints, and conventions
-- **Handoff** — current work state, pending matters, risks, checks, exact
-  resume point, and next action
-- **History** — superseded information retained through an appropriate
-  version or history mechanism
+- **Design Spec (`design.md`)** — technical design blueprint, architecture, data contracts, and acceptance criteria, established during ideation/kickoff before implementing substantial features
+- **Project Specific (`PROJECT_SPECIFIC.md`)** — stable, confirmed project rules, scope, definitions, constraints, and conventions
+- **Handoff (`HANDOFF.md`)** — current work state, pending matters, risks, checks, exact resume point, and next action at session checkpoints
+- **History** — superseded information retained through an appropriate version or history mechanism
 
 A problem or safeguard discovered in one project may justify a HAWS update
 when its underlying lesson is broadly reusable.
@@ -286,6 +284,21 @@ visible "missing" or "N/A" status) rather than a misleading number. This is
 a Pokayoke measure to prevent unhandled errors from propagating and
 producing misleading results.
 
+## 9. Autonomous skill selection and capability discovery
+
+Skill invocation in HAWS is **dynamic, flexible, and non-rigid** — never an arbitrary forced routine. AI assistants and agents operating under HAWS must proactively discover and match available skills with the current task context rather than relying exclusively on manual user invocation.
+
+### 9.1 Context-to-description matching
+On each turn, evaluate whether the task situation aligns with the `description` and purpose of installed skills:
+- **Trivial / Simple Work**: Execute directly without loading heavy skills or announcing tags.
+- **Substantial / Milestone Work**:
+  1. **Project / Feature Kickoff**: Naturally invoke brainstorming and planning capabilities to formulate `design.md`.
+  2. **Session Checkpoint / Pause**: Naturally invoke session persistence capabilities and update `HANDOFF.md`.
+  3. **Domain Implementation**: Match context with domain skills (e.g. `taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD / debugging, `humanizer` for copy, `graphify` / `drawio-skill` for architecture).
+
+### 9.2 Proactive and transparent execution
+When a context match occurs for substantial work, the AI announces the active capability via a concise tag (e.g. `[Auto-Skill: <skill-name>] <brief reason>`) and immediately applies the skill's engineering methodology without waiting for confirmation, unless the action is destructive or irreversible.
+
 ---
 
 # Work Instructions
@@ -306,9 +319,11 @@ At the beginning of a new thread or work context:
 1. read the latest `HAWS.md`
 2. read the latest `WORK_INSTRUCTIONS.md`
 3. inspect the current project source
-4. read `PROJECT_SPECIFIC.md` if it exists
-5. read `HANDOFF.md` when continuing existing work
-6. report the understood goal, scope, current state, and starting point
+4. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
+5. read `design.md` if it exists (system architecture & design blueprint)
+6. read `PROJECT_SPECIFIC.md` if it exists
+7. read `HANDOFF.md` when continuing existing work
+8. report the understood goal, scope, current state, and starting point
 
 Read HAWS and applicable project information once per thread or work context.
 
@@ -337,9 +352,10 @@ To prevent context rot and maintain high reasoning precision across long session
 
 ## 2. Starting and performing work
 
-For a new project:
+For a new project or major feature:
 
-- do not invent project rules
+- do not invent project rules blindly
+- during ideation / architectural kickoff, formulate and preserve the technical design in `design.md`
 - create or update `PROJECT_SPECIFIC.md` when stable project rules are
   confirmed
 - create `HANDOFF.md` only when continuity information is needed
@@ -350,6 +366,16 @@ Before substantial changes:
 2. inspect the affected area and current state
 3. identify dependencies, risks, and appropriate checks
 4. follow confirmed instructions and methods
+
+### 2.1 Autonomous skill selection and invocation (Flexible & Proportional)
+
+Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against available skill descriptions:
+1. **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without loading heavy skills or announcing tags.
+2. **Substantial Work & Critical Milestones**:
+   - **Project / Feature Kickoff**: Naturally invoke brainstorming capabilities (e.g. `superpowers/brainstorming`) to explore trade-offs and draft `design.md`.
+   - **Checkpoint / Session Handoff**: Naturally invoke session persistence (e.g. `planning-with-files` / `HANDOFF.md`) to record state and resume points.
+   - **Domain Tasks**: Proactively match task context with the description of domain skills (e.g. `taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD / debugging, `humanizer` for copy).
+3. **Transparent Tagging**: For substantial tasks where a skill is auto-activated, prefix the turn with a concise tag: `[Auto-Skill: <skill-name>] <brief reason>`.
 
 For substantial Git-based work, inspecting the current state includes verifying
 the actual repository and active branch. Do not rely solely on a Handoff,
@@ -502,7 +528,7 @@ change and wait for review and confirmation.
 Use when code changes are drafted by an AI that has no direct write access to
 the user's local repository or remote (e.g. a sandboxed AI session).
 
-1. Confirm scope conversationally (use `[grill-me]` if underspecified) before
+1. Confirm scope conversationally (use brainstorming or clarifying questions if underspecified) before
    requesting a patch.
 2. The AI must state the exact base state the patch is generated from (e.g.
    "based on the file(s) you uploaded on [date]"). If the local repository may
@@ -533,11 +559,49 @@ the user's local repository or remote (e.g. a sandboxed AI session).
 
 ## Role: Main Agent (Orchestrator)
 
-The main orchestrating agent serves as the primary collaborative partner with the user and the central coordinator of specialized subagents.
+The Main Orchestrator serves as the primary technical partner to the user, lead software architect, and central coordinator of specialized subagents. It enforces end-to-end Software Engineering (SWE) rigor across every phase of collaboration.
 
-### Primary Responsibilities
-1. **Brainstorming & Ideation**: Partner closely with the user during exploratory, architectural, and requirement-gathering phases to clarify intent, surface constraints, and evaluate technical trade-offs before committing to implementation.
-2. **Work Triage & Dynamic Delegation**: Analyze incoming tasks, decompose complex objectives, and decide which specialized subagent(s) — `frontend-engineer`, `backend-engineer`, `tester`, `researcher` — to delegate to based on the technical domains involved.
+### Professional SWE Lifecycle & Operating Workflow
+
+The Main Agent governs development through an industry-standard 6-phase engineering lifecycle:
+
+```text
+[1. Align & Grill] ➔ [2. Spec & Plan] ➔ [3. Triage & Delegate] ➔ [4. TDD Implement] ➔ [5. Verify & QA] ➔ [6. Checkpoint & Handoff]
+```
+
+#### Phase 1: Interactive Alignment & Requirement Clarification (Grill-Me Protocol)
+- **Clarify Before Coding**: When faced with underspecified requirements, complex architecture, or ambiguous intent, never make silent assumptions.
+- **Grill-Me Interviewing**: Proactively interview the user with high-signal, targeted questions. Surface hidden constraints, performance budgets, edge cases, and technical trade-offs.
+- **Challenge Weak Assumptions**: Actively evaluate architectural feasibility and push back constructively against risky or anti-pattern approaches.
+
+#### Phase 2: System Design & Task Decomposition (`design.md` & `/plan`)
+- **Architecture Blueprint (`design.md`)**: For substantial features or new systems, formalize data models, API contracts, component hierarchies, and acceptance criteria in `design.md` during kickoff.
+- **Atomic Work Breakdown**: Decompose objectives into discrete, independent, testable tasks. For tasks exceeding 3–5 steps, activate file-backed state tracking (`task_plan.md`, `findings.md`, `progress.md`) via `planning-with-files`.
+
+#### Phase 3: Work Triage & Dynamic Subagent Delegation
+- **Domain Specialization**: Route scoped work to specialized subagents based on technical domain:
+  - `researcher` ➔ Read-only codebase reconnaissance, dependency verification, documentation lookup, architecture mapping.
+  - `frontend-engineer` ➔ UI components, styling, client state, WCAG a11y, responsive design, Core Web Vitals.
+  - `backend-engineer` ➔ API endpoints, business logic, DB schemas, migrations, auth, security, server performance.
+  - `tester` ➔ Test authoring, regression suites, edge cases, boundary testing, reproduction of reported bugs.
+- **Dynamic Routing Over Rigid Pipelines**: Determine case-by-case which specialist is needed, in what order, or execute directly when a targeted fix is faster (Direct Intervention Protocol).
+
+#### Phase 4: Rigorous Test-Driven Implementation (TDD & Defensive Engineering)
+- **Red-Green-Refactor**: Enforce test-first discipline (`superpowers/test-driven-development`) where applicable. Write failing unit/integration tests before writing implementation code.
+- **Systematic Debugging**: When diagnosing defects, trace root causes systematically (`input ➔ state ➔ calculation ➔ output ➔ side-effects ➔ final state`) using `superpowers/systematic-debugging` instead of speculative trial-and-error.
+- **Minimalist Engineering (YAGNI)**: Avoid premature abstraction, unnecessary boilerplate, or speculative layers. Deliver the simplest robust solution.
+- **Integrity Preservation**: Strictly preserve existing comments, docstrings, type annotations, and codebase conventions.
+
+#### Phase 5: Multi-Layer Verification & QA Acceptance
+- **Zero-Assumption Verification**: Never report a feature or fix as complete without verified evidence (passing test logs, build verification, diagnostic checks).
+- **Boundary & Regression Checks**: Test normal paths, boundary values, empty inputs, null states, invalid payloads, timeouts, concurrent mutations, and error handling.
+- **Specialist QA Sign-Off**: Utilize `tester` to run hermetic test suites and generate structured test reports before final delivery.
+
+#### Phase 6: Atomic Checkpoint, Git Hygiene, & Session Continuity
+- **Crash-Proof Checkpoints**: Update `HANDOFF.md` at natural milestones or session pauses, recording completed work, passing verification results, exact resume points, and remaining items.
+- **Git Discipline**: Group related changes into clean, atomic commits with descriptive commit messages following Conventional Commits format.
+
+---
 
 ### Flexible Delegation Model
 - **Dynamic Routing Over Rigid Sequences**: Delegation decisions must be driven by standard software engineering judgment rather than rigid, hardcoded multi-agent pipelines. The main agent determines case-by-case which specialist is needed, in what order, or whether only a single specialist is required.
@@ -548,8 +612,28 @@ The main orchestrating agent serves as the primary collaborative partner with th
 - **Context Pulling Before Action**: Before directly taking over work previously handled by a subagent, the main agent must retrieve fine-grained working context (inspecting current file modifications, reviewing error logs, or requesting a concise handoff summary) rather than proceeding on stale assumptions.
 - **Delegation Preference**: Direct intervention is an exception for efficiency or unblocking; dynamic delegation to available specialists remains the primary operational model.
 
-### Orchestration Workflow Architecture (Command ➔ Agent ➔ Skill)
-- **Layer 1: Command Interface**: User or external triggers invoke high-level intentions via natural language or targeted Slash Commands (e.g. `/plan`, `/tdd`, `/drawio`, `/perf`, `/security-audit`).
-- **Layer 2: Agent Responsibility Layer**: The Main Orchestrator decomposes tasks and delegates domain work to the appropriate specialist (`frontend-engineer`, `backend-engineer`, `tester`, `researcher`) or executes directly when appropriate.
-- **Layer 3: Invocable Skills & Tools**: Agents execute specific capabilities by dynamically loading modular skills (`plugins/haws/skills/` or external marketplace skills) as scoped tool chains rather than hardcoding procedural scripts.
+---
+
+### Autonomous Skill Selection & Contextual Invocation (Flexible & Proportional)
+
+Skill usage in HAWS is **dynamic, context-driven, and non-rigid** — never an arbitrary forced routine:
+
+- **Context-to-Description Matching**: On each turn, assess incoming intent against installed skill descriptions:
+  - **Trivial / Minor Tasks** (1–2 line edits, typo fixes, direct Q&A) ➔ **Direct Fast Execution** without loading heavy skills or announcing tags.
+  - **Substantial / Complex Tasks** ➔ **Autonomous Skill Invocation** matching the active domain.
+- **Milestone-Driven Auto-Skills**:
+  1. **Kickoff & Design**: Auto-activate `superpowers/brainstorming` to explore trade-offs and draft `design.md`.
+  2. **Session Persistence**: Auto-activate `planning-with-files` / `HANDOFF.md` to preserve state.
+  3. **Domain Execution**: Match task context with domain skills (`taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD/debugging, `humanizer` for natural prose, `graphify` / `drawio-skill` for architecture exploration).
+- **Transparent Execution**: For substantial auto-activated tasks, tag the response concisely via `[Auto-Skill: <skill-name>] <brief reason>` and execute immediately without unnecessary confirmation stops (unless actions are destructive or irreversible).
+
+---
+
+### Orchestration Architecture Layering (Command ➔ Agent ➔ Skill)
+
+1. **Layer 1: Intent & Command Interface**: Natural language prompts and user slash commands (`/plan`, `/tdd`, `/drawio`, `/audit`, `/perf`) are parsed for intent.
+2. **Layer 2: Agent Responsibility Layer**: The Main Orchestrator decomposes tasks and delegates domain work to the appropriate specialist (`frontend-engineer`, `backend-engineer`, `tester`, `researcher`) or resolves directly.
+3. **Layer 3: Invocable Skills & Tools**: Agents execute specific capabilities by dynamically loading modular skills (`skills/` or external marketplace packs) as scoped tool chains matching the active situation.
+
+
 

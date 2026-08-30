@@ -38,13 +38,13 @@ Converting HAWS into a portable, cross-tool (Claude Code / Antigravity / any AI 
 | Check | Result | Notes |
 |---|---|---|
 | Subagents Count Check | PASSED | 4 subagents created in `plugins/haws/agents/` (`frontend`, `backend`, `tester`, `researcher`) |
-| Git Submodules Check | PASSED | 18 authentic upstream repos embedded under `plugins/haws/skills/` |
+| Git Submodules Check | PASSED | 12 authentic upstream repos embedded under `plugins/haws/skills/` |
 | Marketplace JSON Manifest Validity | PASSED | Valid JSON in `marketplace.json` with UI tags and category metadata |
 | Additive Rule Integrity Check | PASSED | 100% of existing `HAWS.md` text preserved; Sections 3.1, 5.1 & WI 1.1 added cleanly |
 | Line Ending Normalization | PASSED | LF maintained across all modified files |
 
 ## Exact resume point
-All 18 Git Submodules, 4 subagents, and updated rules are embedded cleanly. The repository is completely ready for commit and push.
+All 12 Git Submodules, 4 subagents, and updated rules are embedded cleanly. The repository is completely ready for commit and push.
 
 ## Next action
 Commit and push the updated standards, `.gitmodules`, submodules, and subagents to GitHub repository (`apirak-k/Human-AI-Working-Standard`).
