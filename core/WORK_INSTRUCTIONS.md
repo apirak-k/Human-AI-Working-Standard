@@ -53,10 +53,12 @@ To prevent context rot and maintain high reasoning precision across long session
 For a new project or major feature:
 
 - do not invent project rules blindly
+- for a new project or repository, create or verify `AGENTS.md` at the project root using the standard open template in `core/TEMPLATES.md` to declare executable setup, test, and build commands
 - during ideation / architectural kickoff, formulate and preserve the technical design in `design.md`
 - create or update `PROJECT_SPECIFIC.md` when stable project rules are
   confirmed
 - create `HANDOFF.md` only when continuity information is needed
+
 
 Before substantial changes:
 
@@ -65,15 +67,22 @@ Before substantial changes:
 3. identify dependencies, risks, and appropriate checks
 4. follow confirmed instructions and methods
 
-### 2.1 Autonomous skill selection and invocation (Flexible & Proportional)
+### 2.1 Autonomous skill selection and invocation (5-Drawer Taxonomy & Progressive Disclosure)
 
-Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against available skill descriptions:
-1. **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without loading heavy skills or announcing tags.
-2. **Substantial Work & Critical Milestones**:
-   - **Project / Feature Kickoff**: Naturally invoke brainstorming capabilities (e.g. `superpowers/brainstorming`) to explore trade-offs and draft `design.md`.
-   - **Checkpoint / Session Handoff**: Naturally invoke session persistence (e.g. `planning-with-files` / `HANDOFF.md`) to record state and resume points.
-   - **Domain Tasks**: Proactively match task context with the description of domain skills (e.g. `taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD / debugging, `humanizer` for copy).
+Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against the 5 drawers in `SKILL_TAXONOMY.md`:
+1. **Dual Invocation Modes**:
+   - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/plan`, `/tdd`, `/drawio`, `/debug`, `/audit`).
+   - **Autonomous Agent Matching**: Both the Main Agent and Subagents proactively match task context against installed skill descriptions.
+2. **Proportionality Rule**:
+   - **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without loading heavy skills or announcing tags.
+   - **Substantial Work & Critical Milestones**:
+     - **Drawer 1 (Thinking & Planning)**: Invoke `brainstorming` or `writing-plans` to explore trade-offs and draft `DESIGN.md`.
+     - **Drawer 2 (Code & Engineering)**: Apply `test-driven-development`, `api-and-interface-design`, or `bigquery-sql`.
+     - **Drawer 3 (UX/UI & Frontend)**: Apply `ui-ux-pro-max`, `taste-skill`, or `browser-testing-with-devtools`.
+     - **Drawer 4 (Audit & Verification)**: Apply `verification-before-completion`, `systematic-debugging`, or delegate to `@tester`.
+     - **Drawer 5 (Docs & Communication / Skill Authoring)**: Apply `caveman`, `humanizer`, document generation, or apply `skill-creator` / `writing-skills` to author and review any new skills before deployment.
 3. **Transparent Tagging**: For substantial tasks where a skill is auto-activated, prefix the turn with a concise tag: `[Auto-Skill: <skill-name>] <brief reason>`.
+
 
 
 For substantial Git-based work, inspecting the current state includes verifying
@@ -270,7 +279,7 @@ Prompting without curated context causes model failure. Context Engineering ensu
 To ensure the AI remembers user preferences, habits, and past mistakes across sessions, machines, and AI tools:
 
 - **`USER_PREFERENCES.md`**: Stores stable preferences, preferred frameworks, architectural patterns, and communication style (chat-first, clean responses).
-- **`ANTI_PATTERNS.md`**: Stores hard constraints, forbidden libraries, and past mistakes (the `/learn` mechanism). When a correction or mistake occurs, record the root cause and prohibition here.
+- **`ANTI_PATTERNS.md`**: Stores hard constraints, forbidden libraries, and past mistakes (via autonomous self-learning or learning skills/tools). When a correction, mistake, or operational constraint occurs, the AI autonomously records the root cause and prohibition here.
 - **Loading Rule**: All tools under HAWS load these files during session initialization, guaranteeing continuity and zero repetition of past errors.
 
 ---
@@ -300,18 +309,19 @@ The Main Agent governs development through an industry-standard 6-phase engineer
 - **Domain Specialization**: Route scoped work to specialized subagents based on technical domain:
   - `researcher` ➔ Read-only codebase reconnaissance, dependency verification, documentation lookup, architecture mapping.
   - `frontend-engineer` ➔ UI components, styling, client state, WCAG a11y, responsive design, Core Web Vitals.
+  - `organizer` ➔ Skill inventory, workspace hygiene, context budgeting, and pattern learning ledger.
   - `backend-engineer` ➔ API endpoints, business logic, DB schemas, migrations, auth, security, server performance.
   - `tester` ➔ Test authoring, regression suites, edge cases, boundary testing, reproduction of reported bugs.
 - **Dynamic Routing Over Rigid Pipelines**: Determine case-by-case which specialist is needed, in what order, or execute directly when a targeted fix is faster (Direct Intervention Protocol).
 
 #### Phase 4: Rigorous Test-Driven Implementation (TDD & Defensive Engineering)
-- **Red-Green-Refactor**: Enforce test-first discipline (`superpowers/test-driven-development`). Write failing unit/integration tests before writing implementation code.
-- **Systematic Debugging**: When diagnosing defects, trace root causes systematically (`input ➔ state ➔ calculation ➔ output ➔ side-effects ➔ final state`) using `superpowers/systematic-debugging` instead of speculative trial-and-error.
+- **Red-Green-Refactor**: Enforce test-first discipline (`test-driven-development`). Write failing unit/integration tests before writing implementation code.
+- **Systematic Debugging**: When diagnosing defects, trace root causes systematically (`input ➔ state ➔ calculation ➔ output ➔ side-effects ➔ final state`) using `systematic-debugging` or `diagnosing-bugs` instead of speculative trial-and-error.
 - **Minimalist Engineering (YAGNI)**: Avoid premature abstraction, unnecessary boilerplate, or speculative layers. Deliver the simplest robust solution.
 - **Integrity Preservation**: Strictly preserve existing comments, docstrings, type annotations, and codebase conventions.
 
 #### Phase 5: Multi-Layer Verification & QA Acceptance
-- **Zero-Assumption Verification**: Never report a feature or fix as complete without verified evidence (passing test logs, build verification, diagnostic checks).
+- **Zero-Assumption Verification**: Never report a feature or fix as complete without verified evidence (passing test logs, build verification, diagnostic checks) using `verification-before-completion`.
 - **Boundary & Regression Checks**: Test normal paths, boundary values, empty inputs, null states, invalid payloads, timeouts, concurrent mutations, and error handling.
 - **Specialist QA Sign-Off**: Utilize `tester` to run hermetic test suites and generate structured test reports before final delivery.
 
@@ -325,17 +335,3 @@ The Main Agent governs development through an industry-standard 6-phase engineer
 - **Dynamic Routing Over Rigid Sequences**: Delegation decisions must be driven by standard software engineering judgment rather than rigid, hardcoded multi-agent pipelines.
 - **Direct Intervention Protocol**: The Main Agent may resolve a problem directly without delegating when a subagent is blocked, unavailable, or when a targeted direct fix is significantly faster.
 - **Context Isolation**: When delegating to subagents, the Main Agent sends only the atomic task assignment (via `<task_assignment>`), never dumping the entire conversation history. Subagents return concise summaries (via `<task_report>`), keeping all context windows lean and free from rot.
-
----
-
-### Autonomous Skill Selection & Contextual Invocation (Flexible & Proportional)
-
-Skill usage in HAWS is **dynamic, context-driven, and non-rigid** — never an arbitrary forced routine:
-
-- **Context-to-Description Matching**: On each turn, assess incoming intent against installed skill descriptions:
-  - **Trivial / Minor Tasks** (1–2 line edits, typo fixes, direct Q&A) ➔ **Direct Fast Execution** without loading heavy skills or announcing tags.
-  - **Substantial / Complex Tasks** ➔ **Autonomous Skill Invocation** matching the active domain.
-- **Dual Invocation Modes**:
-  - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/plan`, `/tdd`, `/drawio`, `/debug`, `/audit`).
-  - **Autonomous Agent Invocation**: Both the Main Agent and Subagents can autonomously invoke ANY skill (Single or Pack) when task context matches the skill's description.
-- **Transparent Execution**: For substantial auto-activated tasks, tag the turn concisely via `[Auto-Skill: <skill-name>] <brief reason>` and execute immediately without unnecessary confirmation stops (unless actions are destructive or irreversible).

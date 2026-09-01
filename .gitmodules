@@ -22,9 +22,6 @@
 [submodule "skills/superpowers"]
 	path = skills/superpowers
 	url = https://github.com/obra/superpowers.git
-[submodule "skills/ecc"]
-	path = skills/ecc
-	url = https://github.com/affaan-m/ECC.git
 [submodule "skills/agent-skills"]
 	path = skills/agent-skills
 	url = https://github.com/addyosmani/agent-skills.git

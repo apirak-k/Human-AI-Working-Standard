@@ -1,6 +1,6 @@
 # Anti-Patterns & Learned Lessons (Second Brain)
 
-This document is the permanent registry of strictly prohibited patterns, past mistakes, and lessons learned (incorporating the `/learn` mechanism). All AI agents operating under HAWS must strictly respect these guardrails across all tools and sessions.
+This document is the permanent registry of strictly prohibited patterns, past mistakes, and lessons learned (powered by autonomous continuous learning across all AI platforms). All AI agents operating under HAWS must strictly respect these guardrails across all tools and sessions.
 
 ---
 
@@ -21,7 +21,12 @@ This document is the permanent registry of strictly prohibited patterns, past mi
 
 ---
 
-## 3. Dynamic Learning Log (`/learn`)
-*Whenever the user corrects an approach, identifies a recurring bug, or provides a hard operational constraint, add the lesson below in this format:*
+## 3. Dynamic Learning Log (Autonomous Cross-Platform Learning)
+*Learning is an inherent, cross-platform objective across all AI environments (Claude Code, Antigravity, Cursor, ChatGPT, etc.). Whether triggered natively through conversational feedback, active learning skills, or tool-specific commands (such as `/learn`), the AI must autonomously capture and preserve lessons below in this format:*
 
-- **[Learned YYYY-MM-DD]**: `[Short description of mistake]` ➔ `[Mandatory rule / countermeasure]`
+- **[Learned 2026-09-01]**: `Unannounced heavy network pulls / submodule downloads` ➔ **NEVER unilaterally run heavy background clones or submodule downloads without explicit user approval and clear communication of download time/size.**
+- **[Learned 2026-09-01]**: `Artificial skill renaming and prefix distortion` ➔ **ALWAYS preserve exact upstream skill names from YAML frontmatter (`name:`) or folder names without inserting artificial prefixes (e.g. keep `brainstorming`, never rename to `superpowers-brainstorming`).**
+- **[Learned 2026-09-01]**: `Perspective shifting during architectural explanations` ➔ **ALWAYS clearly distinguish between "HAWS configuration mode" (editing `E:\Human-AI-Working-Standard`) vs "Project execution mode" (working in `D:\Project-A`) to avoid user confusion.**
+- **[Learned 2026-09-01]**: `Multi-platform execution friction` ➔ **ALWAYS maintain a zero-friction Universal 1-Way Standard (`install.sh` / `update.sh`) executable across all operating systems via standard Bash/Git Bash that performs all operations (Git Pull, Submodules, Linking, Auto-Prune) in a single unified action.**
+- **[Learned 2026-09-02]**: `Unilateral file deletion & assumption` ➔ **NEVER delete, prune, or discard any files without presenting an explicit candidate list to the user and waiting for direct user deletion instructions first.**
+- **[Learned 2026-09-02]**: `Handoff hallucination & synthetic rule invention` ➔ **NEVER invent synthetic rules, numerical thresholds (e.g. "100-skills limit"), or tool-locked constraints in HANDOFF.md or session summaries that the user never commanded. Second Brain files (`USER_PREFERENCES.md` / `ANTI_PATTERNS.md`) are the permanent single source of truth for user intent.**

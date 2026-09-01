@@ -8,6 +8,14 @@ set -euo pipefail
 REPO_URL="https://github.com/apirak-k/Human-AI-Working-Standard.git"
 CANONICAL_DIR="${HOME}/haws"
 
+# CLI Arguments
+INCLUDE_ALL_SKILLS=false
+for arg in "$@"; do
+    if [ "$arg" = "--all-skills" ]; then
+        INCLUDE_ALL_SKILLS=true
+    fi
+done
+
 echo "=== HAWS Cross-Tool Installer ==="
 echo ""
 
@@ -47,6 +55,9 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "${SCRIPT_DIR}/core/HAWS.md" ]; then
     SOURCE_DIR="${SCRIPT_DIR}"
+    echo "Using current repository directory as source: ${SOURCE_DIR}"
+elif [ -f "${SCRIPT_DIR}/../core/HAWS.md" ]; then
+    SOURCE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
     echo "Using current repository directory as source: ${SOURCE_DIR}"
 else
     SOURCE_DIR="${CANONICAL_DIR}"
@@ -102,12 +113,12 @@ safe_link_file() {
             return 0
         fi
     elif [ -f "${dest}" ]; then
-        if cmp -s "${src}" "${dest}"; then
+        if diff -q --strip-trailing-cr "${src}" "${dest}" >/dev/null 2>&1; then
             SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
             return 0
         else
-            echo "  [WARN] Existing file at ${dest} differs from source (Skipping to prevent overwrite)"
-            WARNINGS_COUNT=$((WARNINGS_COUNT + 1))
+            cp -f "${src}" "${dest}"
+            echo "  [UPDATED] ${label}: ${dest} -> ${src}"
             return 0
         fi
     fi
@@ -143,15 +154,20 @@ safe_link_dir() {
             return 0
         fi
     elif [ -d "${dest}" ]; then
-        if [ -f "${src}/agent.md" ] && [ -f "${dest}/agent.md" ] && cmp -s "${src}/agent.md" "${dest}/agent.md"; then
+        local src_marker="${src}/SKILL.md"
+        [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
+        local dest_marker="${dest}/SKILL.md"
+        [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
+
+        if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] && diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
             SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
             return 0
-        elif [ -f "${src}/SKILL.md" ] && [ -f "${dest}/SKILL.md" ] && cmp -s "${src}/SKILL.md" "${dest}/SKILL.md"; then
+        elif [ -f "${src}/agent.md" ] && [ -f "${dest}/agent.md" ] && diff -q --strip-trailing-cr "${src}/agent.md" "${dest}/agent.md" >/dev/null 2>&1; then
             SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
             return 0
         else
-            echo "  [WARN] Existing directory at ${dest} differs from source (Skipping to prevent overwrite)"
-            WARNINGS_COUNT=$((WARNINGS_COUNT + 1))
+            cp -rf "${src}"/* "${dest}/" 2>/dev/null || cp -rf "${src}" "${dest_dir}/"
+            echo "  [UPDATED] ${label}: ${dest} -> ${src}"
             return 0
         fi
     fi
@@ -209,9 +225,14 @@ if [ "$DETECTED_GEMINI" = true ]; then
 fi
 echo ""
 
-# 5. Link Skills (Smart Recursive Discovery: Single Skills & Multi-Skill Packs)
+# 5. Link Skills (Smart Discovery: Upstream Skill Names & Multi-Skill Packs)
 echo "--- Linking Skills ---"
 declare -A PROCESSED_SKILLS
+
+MANIFEST_FILE="${HOME}/.haws_manifest"
+TMP_MANIFEST="${HOME}/.haws_manifest.tmp"
+rm -f "${TMP_MANIFEST}"
+touch "${TMP_MANIFEST}"
 
 find_and_link_skills() {
     local base_dir="$1"
@@ -221,23 +242,23 @@ find_and_link_skills() {
 
     while IFS= read -r -d '' skill_file; do
         local skill_dir
-        skill_dir="$(dirname "${skill_file}")"
-        local rel_path="${skill_dir#"${base_dir}/"}"
 
-        # If skill is directly in a subfolder (e.g. taste-skill)
-        local skill_name
-        if [[ "${rel_path}" != *"/"* ]]; then
-            skill_name="${rel_path}"
-        else
-            # If skill is nested in a pack (e.g. superpowers/skills/brainstorming)
-            # Flatten name: replace slashes with hyphens or pack-subskill
-            skill_name="$(echo "${rel_path}" | tr '/' '-')"
-            # If it has "skills-" in name, clean it up for elegance (e.g. superpowers-skills-brainstorming -> superpowers-brainstorming)
-            skill_name="${skill_name/-skills-/-}"
+        skill_dir="$(dirname "${skill_file}")"
+
+        # Extract exact upstream skill name from YAML frontmatter (name: <name>)
+        local skill_name=""
+        if [ -f "${skill_file}" ]; then
+            skill_name="$(grep -E '^[[:space:]]*name:[[:space:]]*' "${skill_file}" | head -n 1 | sed -E 's/^[[:space:]]*name:[[:space:]]*["'"'"']?([^"'"'"'#\r\n]+)["'"'"']?.*$/\1/' | tr -d '\r\n' | xargs 2>/dev/null || true)"
+        fi
+
+        # Fallback to upstream folder basename if YAML name is not defined
+        if [ -z "${skill_name}" ]; then
+            skill_name="$(basename "${skill_dir}")"
         fi
 
         if [ -n "${skill_name}" ] && [ -z "${PROCESSED_SKILLS[${skill_name}]:-}" ]; then
             PROCESSED_SKILLS[${skill_name}]=1
+            echo "skill:${skill_name}" >> "${TMP_MANIFEST}"
 
             if [ "$DETECTED_CLAUDE" = true ]; then
                 safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${skill_name}" "Claude Skill [${skill_name}]"
@@ -248,7 +269,7 @@ find_and_link_skills() {
                 SKILLS_LINKED=$((SKILLS_LINKED + 1))
             fi
         fi
-    done < <(find "${base_dir}" -type f -name "SKILL.md" -print0 2>/dev/null || true)
+    done < <(find "${base_dir}" -type f \( -name "SKILL.md" -o -name "skill.md" \) -print0 2>/dev/null || true)
 }
 
 find_and_link_skills "${SOURCE_DIR}/skills"
@@ -266,6 +287,7 @@ if [ -d "${SOURCE_DIR}/agents" ]; then
     for agent_file in "${SOURCE_DIR}/agents"/*.md; do
         if [ -f "${agent_file}" ]; then
             agent_name="$(basename "${agent_file}" .md)"
+            echo "agent:${agent_name}" >> "${TMP_MANIFEST}"
             
             # Claude Code: links directly as ~/.claude/agents/<name>.md
             if [ "$DETECTED_CLAUDE" = true ]; then
@@ -306,7 +328,12 @@ if [ ! -d "${SOURCE_DIR}/agents" ]; then
 fi
 echo ""
 
-# 7. Summary Report
+# 7. Commit Manifest File
+if [ -f "${TMP_MANIFEST}" ]; then
+    mv -f "${TMP_MANIFEST}" "${MANIFEST_FILE}"
+fi
+
+# 8. Summary Report
 echo "=== Installation Summary ==="
 echo "Tools Setup   : Claude Code ($DETECTED_CLAUDE), Google Antigravity ($DETECTED_GEMINI)"
 echo "Global Rules  : ${RULES_LINKED}"

@@ -256,7 +256,7 @@ Use these lightweight XML payloads when the Main Agent delegates scoped work to 
 ### A. Main ➔ Subagent: `<task_assignment>`
 ```xml
 <task_assignment>
-  <role>[frontend-engineer | backend-engineer | tester | researcher]</role>
+  <role>[frontend-engineer | backend-engineer | tester | researcher | organizer]</role>
   <task_id>[e.g. TASK-01]</task_id>
   <objective>[Specific, atomic goal to achieve]</objective>
   <target_files>
@@ -300,4 +300,38 @@ Before acting, read and follow canonical rules in `@~/.haws/core/HAWS.md` and `@
 This environment operates under the Human-AI Working Standard (HAWS).
 Follow canonical rules in `core/HAWS.md` and practical procedures in `core/WORK_INSTRUCTIONS.md`.
 ```
+
+---
+
+## 8. AGENTS.md — Project-Level Instruction Template (Standard Open Format)
+
+Use this template to create `AGENTS.md` at the root of a project repository, providing explicit, high-signal instructions conforming to both the [agents.md specification](https://agents.md/) and HAWS engineering standards.
+
+```markdown
+# AGENTS.md
+
+## 1. Setup & Execution Commands
+- Install dependencies: `pnpm install`
+- Start dev server: `pnpm dev`
+- Run test suites: `pnpm test`
+- Run typecheck & lint: `pnpm typecheck && pnpm lint`
+- Production build: `pnpm build`
+
+## 2. Tech Stack & Architecture
+- Runtime & Language: Node 20+, TypeScript (Strict mode)
+- Framework: Next.js 15 (App Router)
+- Styling: Tailwind CSS (Fluid responsive, no hardcoded fixed widths)
+- State Management: React Custom Hooks + Server State
+
+## 3. Code Style & Engineering Standards
+- Separation of Concerns: Keep business logic separated from presentation components.
+- Defensive Calculations: Handle null, missing, or zero-division inputs with safe fallbacks (e.g. "N/A"), adhering to HAWS error-safety.
+- Integrity: Strictly preserve existing comments, docstrings, and type annotations.
+
+## 4. Boundaries & Prohibitions
+- Never commit or modify `.env*` secrets without explicit authorization.
+- Never edit past database migrations directly in database directories.
+- Targeted edits only; avoid unprompted refactoring of surrounding stable code.
+```
+
 

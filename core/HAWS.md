@@ -227,12 +227,16 @@ the work correctly. The method may vary.
 
 Use these functional purposes:
 
-- **Design Spec (`design.md`)** — technical design blueprint, architecture, data contracts, and acceptance criteria, established during ideation/kickoff before implementing substantial features
+- **Design Spec (`DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
+- **Skill Taxonomy (`SKILL_TAXONOMY.md`)** — 5-drawer tooling catalog, subagent affinities, and progressive disclosure rules
+- **Starter & Golden Templates (`TEMPLATES.md`)** — reusable project scaffolds, clean React custom hook patterns, and validated code templates
+- **Project Instruction Spec (`AGENTS.md`)** — project-level setup, test, and execution commands conforming to `agents.md` open standard and template in `TEMPLATES.md`
 - **Project Specific (`PROJECT_SPECIFIC.md`)** — stable, confirmed project rules, scope, definitions, constraints, and conventions
 - **Handoff (`HANDOFF.md`)** — current work state, pending matters, risks, checks, exact resume point, and next action at session checkpoints
 - **User Preferences (`USER_PREFERENCES.md`)** — personal habits, communication style (chat-first), preferred architectures, and conventions preserved across sessions and tools
-- **Anti-Patterns & Learned Safeguards (`ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned (the `/learn` mechanism) to prevent repeating past errors
+- **Anti-Patterns & Learned Safeguards (`ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors
 - **History** — superseded information retained through an appropriate version or history mechanism
+
 
 A problem or safeguard discovered in one project may justify a HAWS update
 when its underlying lesson is broadly reusable.

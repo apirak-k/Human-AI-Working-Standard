@@ -12,6 +12,8 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "${SCRIPT_DIR}/core/HAWS.md" ]; then
     SOURCE_DIR="${SCRIPT_DIR}"
+elif [ -f "${SCRIPT_DIR}/../core/HAWS.md" ]; then
+    SOURCE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 else
     SOURCE_DIR="${CANONICAL_DIR}"
 fi
@@ -31,16 +33,66 @@ else
 fi
 echo ""
 
+MANIFEST_FILE="${HOME}/.haws_manifest"
+PREV_MANIFEST="${HOME}/.haws_manifest.prev"
+rm -f "${PREV_MANIFEST}"
+[ -f "${MANIFEST_FILE}" ] && cp -f "${MANIFEST_FILE}" "${PREV_MANIFEST}"
+
 # Run install.sh to ensure any newly added skills/agents are linked
 echo "Re-syncing symlinks for all detected AI environments..."
-bash "${SOURCE_DIR}/install.sh"
+if [ -f "${SOURCE_DIR}/scripts/install.sh" ]; then
+    bash "${SOURCE_DIR}/scripts/install.sh" "$@"
+else
+    bash "${SOURCE_DIR}/install.sh" "$@"
+fi
 echo ""
 
-# Check for dangling symlinks
-echo "--- Checking for Dangling Symlinks ---"
-DANGLING_FOUND=0
+# Check and auto-prune dangling and removed items
+echo "--- Auto-Pruning Orphaned & Dangling Links ---"
+PRUNED_COUNT=0
 
-check_dangling() {
+DETECTED_CLAUDE=false
+DETECTED_GEMINI=false
+[ -d "${HOME}/.claude" ] && DETECTED_CLAUDE=true
+[ -d "${HOME}/.gemini" ] && DETECTED_GEMINI=true
+
+# 1. Prune items removed from HAWS manifest
+if [ -f "${PREV_MANIFEST}" ] && [ -f "${MANIFEST_FILE}" ]; then
+    while IFS= read -r entry || [ -n "$entry" ]; do
+        [ -z "$entry" ] && continue
+        if ! grep -q -F "${entry}" "${MANIFEST_FILE}" 2>/dev/null; then
+            type="${entry%%:*}"
+            name="${entry#*:}"
+            if [ "$type" = "skill" ]; then
+                if [ "$DETECTED_CLAUDE" = true ] && [ -e "${HOME}/.claude/skills/${name}" ]; then
+                    rm -rf "${HOME}/.claude/skills/${name}"
+                    echo "  [PRUNED] Claude Skill [${name}]"
+                    PRUNED_COUNT=$((PRUNED_COUNT + 1))
+                fi
+                if [ "$DETECTED_GEMINI" = true ] && [ -e "${HOME}/.gemini/config/skills/${name}" ]; then
+                    rm -rf "${HOME}/.gemini/config/skills/${name}"
+                    echo "  [PRUNED] Antigravity Skill [${name}]"
+                    PRUNED_COUNT=$((PRUNED_COUNT + 1))
+                fi
+            elif [ "$type" = "agent" ]; then
+                if [ "$DETECTED_CLAUDE" = true ] && [ -e "${HOME}/.claude/agents/${name}.md" ]; then
+                    rm -rf "${HOME}/.claude/agents/${name}.md"
+                    echo "  [PRUNED] Claude Agent [${name}]"
+                    PRUNED_COUNT=$((PRUNED_COUNT + 1))
+                fi
+                if [ "$DETECTED_GEMINI" = true ] && [ -e "${HOME}/.gemini/config/agents/${name}" ]; then
+                    rm -rf "${HOME}/.gemini/config/agents/${name}"
+                    echo "  [PRUNED] Antigravity Agent [${name}]"
+                    PRUNED_COUNT=$((PRUNED_COUNT + 1))
+                fi
+            fi
+        fi
+    done < "${PREV_MANIFEST}"
+    rm -f "${PREV_MANIFEST}"
+fi
+
+# 2. Prune dangling symlinks
+prune_dangling() {
     local target_dir="$1"
     local label="$2"
 
@@ -50,25 +102,24 @@ check_dangling() {
                 if [ ! -e "${link}" ]; then
                     local target
                     target="$(readlink "${link}" || true)"
-                    echo "  [DANGLING] ${label}: ${link} -> ${target} (Target missing)"
-                    DANGLING_FOUND=$((DANGLING_FOUND + 1))
+                    rm -rf "${link}"
+                    echo "  [PRUNED] ${label}: Removed orphaned link ${link} -> ${target}"
+                    PRUNED_COUNT=$((PRUNED_COUNT + 1))
                 fi
             fi
         done
     fi
 }
 
-check_dangling "${HOME}/.claude/skills" "Claude Skill"
-check_dangling "${HOME}/.claude/agents" "Claude Agent"
-check_dangling "${HOME}/.gemini/config/skills" "Antigravity Skill"
-check_dangling "${HOME}/.gemini/config/agents" "Antigravity Agent"
+[ "$DETECTED_CLAUDE" = true ] && prune_dangling "${HOME}/.claude/skills" "Claude Skill"
+[ "$DETECTED_CLAUDE" = true ] && prune_dangling "${HOME}/.claude/agents" "Claude Agent"
+[ "$DETECTED_GEMINI" = true ] && prune_dangling "${HOME}/.gemini/config/skills" "Antigravity Skill"
+[ "$DETECTED_GEMINI" = true ] && prune_dangling "${HOME}/.gemini/config/agents" "Antigravity Agent"
 
-if [ ${DANGLING_FOUND} -eq 0 ]; then
-    echo "  [✓] No dangling symlinks found."
+if [ ${PRUNED_COUNT} -eq 0 ]; then
+    echo "  [✓] All links clean and healthy (0 orphaned links found)."
 else
-    echo ""
-    echo "Note: ${DANGLING_FOUND} dangling symlink(s) detected above."
-    echo "If these skills/agents were intentionally removed from HAWS, you may safely delete those symlinks manually."
+    echo "  [✓] Successfully pruned and removed ${PRUNED_COUNT} orphaned item(s)."
 fi
 
 echo ""
