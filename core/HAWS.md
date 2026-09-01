@@ -230,6 +230,8 @@ Use these functional purposes:
 - **Design Spec (`design.md`)** — technical design blueprint, architecture, data contracts, and acceptance criteria, established during ideation/kickoff before implementing substantial features
 - **Project Specific (`PROJECT_SPECIFIC.md`)** — stable, confirmed project rules, scope, definitions, constraints, and conventions
 - **Handoff (`HANDOFF.md`)** — current work state, pending matters, risks, checks, exact resume point, and next action at session checkpoints
+- **User Preferences (`USER_PREFERENCES.md`)** — personal habits, communication style (chat-first), preferred architectures, and conventions preserved across sessions and tools
+- **Anti-Patterns & Learned Safeguards (`ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned (the `/learn` mechanism) to prevent repeating past errors
 - **History** — superseded information retained through an appropriate version or history mechanism
 
 A problem or safeguard discovered in one project may justify a HAWS update

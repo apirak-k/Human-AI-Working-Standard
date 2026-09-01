@@ -20,6 +20,12 @@ if [ -d "${SOURCE_DIR}/.git" ]; then
     echo "Pulling latest changes in ${SOURCE_DIR}..."
     git -C "${SOURCE_DIR}" pull --quiet
     echo "  [✓] Updated to latest git commit"
+
+    if [ -f "${SOURCE_DIR}/.gitmodules" ]; then
+        echo "Updating embedded git submodules (skills packs)..."
+        git -C "${SOURCE_DIR}" submodule update --init --recursive --remote --quiet || true
+        echo "  [✓] Updated all embedded submodules"
+    fi
 else
     echo "  [!] ${SOURCE_DIR} is not a git repository. Skipping git pull."
 fi

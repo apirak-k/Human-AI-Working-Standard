@@ -1,50 +1,89 @@
-# Handoff — Human-AI Working Standard (HAWS)
+# Handoff & Checkpoint — Human-AI Working Standard (HAWS)
 
-## Current goal and scope
-Converting HAWS into a portable, cross-tool (Claude Code / Antigravity / any AI assistant reading plain markdown) plugin package.
+## 📌 สรุปบริบทและเป้าหมายของเซสชันนี้ (Current Goal & Context)
+บันทึกประเด็นการพูดคุย การตัดสินใจเชิงสถาปัตยกรรม การทดสอบระบบ และแนวทางการตรวจสอบเมื่อนำไปติดตั้ง/ทดสอบที่บ้าน เพื่อให้ผู้ใช้สามารถตรวจสอบความถูกต้องทั้งหมดได้อย่างครบถ้วน 100%
 
-## Completed work
-- [x] Restructured repository layout into `plugins/haws/` (`plugin.json`, `rules/haws.md`, `agents/`, `skills/`).
-- [x] Created subagent definitions for all 4 specialized subagents: `frontend-engineer.md`, `backend-engineer.md`, `tester.md`, and `researcher.md` with appropriate tool scopes and standard system prompts.
-- [x] Created orchestration rule in `plugins/haws/rules/haws.md` containing full verbatim `HAWS.md`, `WORK_INSTRUCTIONS.md`, and an updated `## Role: Main Agent (Orchestrator)` section.
-- [x] Created root marketplace manifest `.claude-plugin/marketplace.json` registering all 12 curated external GitHub skill repositories with categories and UI tags.
-- [x] Normalized all file line endings to LF (Unix format).
-- [x] Created plugin extension and maintenance guide in `plugins/haws/MAINTAINERS.md`.
-- [x] Audited all 40 user-starred GitHub repositories from `https://github.com/apirak-k?tab=stars` and mapped them into curated categories.
-- [x] Embedded all 12 curated upstream GitHub repositories as official Git Submodules in `plugins/haws/skills/` to enable clean, lightweight 1-Click Installation (`/plugin install haws@haws-marketplace`).
-- [x] Additively enriched `core/HAWS.md` and `plugins/haws/rules/haws.md` with Section 3.1 (LLM Coding Discipline, Pitfall Prevention, & Respect Upstream Sources), Section 5.1 (Minimalist Engineering & YAGNI), Work Instructions 1.1 (Context Window Discipline), and Orchestration Workflow Architecture (`Command` ➔ `Agent` ➔ `Skill`) with zero regressions to existing core rules.
-- [x] Updated `README.md` to reflect the 1-Click install mode and 4 specialized subagents.
+---
 
-## Remaining work
-- [ ] Update `TEMPLATES.md` content to reflect the new plugin and agent directory structure (deferred to a future task).
-- [ ] Test installation and behavior natively on Antigravity / Claude Code side.
+## 🗣️ ประเด็นสำคัญทั้งหมดที่พูดคุยและตกลงร่วมกัน (Key Discussion Points & Clarifications)
 
-## Confirmed decisions
-- **1-Click Install via Git Submodules**: All 12 curated external open-source skills are embedded directly as official Git Submodules (`.gitmodules`) from their original upstream GitHub repositories so `/plugin install haws@haws-marketplace` installs rules, 4 subagents, and all 12 authentic skills in one click.
-- **Respect Upstream Sources & User Scope**: Pure upstream repositories are cloned without synthetic local file recreation or unauthorized edits.
-- **Portability First**: Plain markdown files in `core/` remain the universal source of truth; plugin manifests serve as an auto-install convenience layer.
-- **Dynamic Orchestration**: Subagents do not enforce a fixed execution pipeline; orchestration and routing decisions are dynamically made by the main agent.
-- **Additive-Only Core Standard Updates**: Existing HAWS principles are preserved verbatim; all enhancements are added as dedicated subsections.
-- **Clean Structure & LF Endings**: All text, markdown, and JSON files standardized to LF line endings.
+### 1. ขอบเขตการติดตั้งแบบ Global ทั้งเครื่อง (Global Installation Scope)
+- การติดตั้งผ่าน `bash install.sh` หรือ `curl ... | bash` เป็นแบบ **Global ทั้งเครื่อง 100%**
+- ไฟล์ถูกเชื่อมโยงไปยัง Home Directory ของผู้ใช้ (`~/.claude/` และ `~/.gemini/`)
+- ทุกโปรเจกต์ในเครื่อง ไม่ว่าจะเปิดโฟลเดอร์ไหน ไดรฟ์ไหน จะมองเห็นกฎ HAWS, Second Brain, Subagents ทั้ง 4 ตัว และคลัง Skills ทั้งหมดโดยอัตโนมัติ
 
-## Assumptions
-- Downstream AI clients support standard YAML frontmatter parsing on markdown rule/agent files and Git Submodule recursive cloning.
+### 2. หลักการใช้งาน SKILL: คนใช้ผ่าน Slash Command vs AI ใช้แบบ Auto (Dual-Mode Invocation)
+- **สำหรับคน (Human)**: ทุกสกิลที่มีไฟล์ `SKILL.md` จะกลายเป็นคำสั่ง **Slash Command (`/<ชื่อสกิล>`)** ให้พิมพ์เรียกใช้งานได้โดยตรงในแชท
+- **สำหรับ AI (Main Agent & Subagents)**: สามารถตรวจจับบริบทงานและหยิบสกิลที่เกี่ยวข้องมาใช้งานเบื้องหลังได้เองแบบ **อัตโนมัติ (Auto-Skill)** แม้ผู้ใช้จะไม่ได้พิมพ์ Slash Command
+- **การเรียกใช้สกิลของ Subagent**: ใช้หลักการเดียวกับ Main Agent คือมีความยืดหยุ่นตามบริบทหน้างาน (Recommended Skills) ไม่บังคับตายตัว เพื่อประหยัด Token และทำงานได้รวดเร็ว
 
-## Pending questions
-- None.
+### 3. ชี้แจงเรื่องชื่อคำสั่งของ Superpowers และ Taste Skill
+- สกิลของ Superpowers ในระบบ Antigravity จะยึดชื่อตามฟังก์ชันจริง (ไม่มีคำว่า `superpowers-` นำหน้า) เช่น:
+  - `/using-superpowers` (สกิลแม่บท บังคับวินัยวิศวกรรม)
+  - `/brainstorming` (ระดมสมองและร่าง Spec)
+  - `/writing-plans` (ซอยแผนงานย่อย)
+  - `/test-driven-development` (บังคับเขียนเทส TDD)
+  - `/systematic-debugging` (แกะรอยบั๊กเป็นระบบ)
+  - `/verification-before-completion` (ตรวจหลักฐานเทสผ่านจริง)
+- สกิล `taste-skill` ได้รับการปรับแก้ `name: taste-skill` ในหัวไฟล์เรียบร้อยแล้ว ทำให้สามารถพิมพ์คำสั่ง **`/taste-skill`** ได้ตรงตัว
 
-## Checks and results
+### 4. กฎเกณฑ์คัดกรองขนาด Skill Pack (> 100 Skills Threshold Rule)
+- **Core Packs ($\le 100$ สกิล)**: Superpowers (14), Anthropic (19), Addy Osmani (25), Matt Pocock (37), Single Skills (7) รวม **102 สกิลหลักระดับพรีเมียม** ➔ ระบบติดตั้งและสร้าง Slash Command ให้ทันทีอัตโนมัติ
+- **Mega Packs ($> 100$ สกิล เช่น ECC ~900 ตัว)**:
+  - ค่าเริ่มต้นจะเก็บไฟล์จริงไว้ใน `skills/ecc` เพื่อให้ AI ค้นหาความรู้เฉพาะทางได้ โดยไม่เอามาสร้าง Slash Command ให้รกหน้าจอแชท
+  - หากต้องการติดตั้งทั้งหมด สามารถใช้คำสั่ง `bash install.sh --all-skills` หรือดึงเฉพาะสกิลย่อยที่สนใจมาใช้งานได้ตามคู่มือ `core/ADDON_GUIDE.md`
 
-| Check | Result | Notes |
-|---|---|---|
-| Subagents Count Check | PASSED | 4 subagents created in `plugins/haws/agents/` (`frontend`, `backend`, `tester`, `researcher`) |
-| Git Submodules Check | PASSED | 12 authentic upstream repos embedded under `plugins/haws/skills/` |
-| Marketplace JSON Manifest Validity | PASSED | Valid JSON in `marketplace.json` with UI tags and category metadata |
-| Additive Rule Integrity Check | PASSED | 100% of existing `HAWS.md` text preserved; Sections 3.1, 5.1 & WI 1.1 added cleanly |
-| Line Ending Normalization | PASSED | LF maintained across all modified files |
+### 5. สกิลสร้างสกิลของ Anthropic (`skill-creator`)
+- ยืนยันว่า **มีอยู่จริง 100%** ในแพ็กเกจ `anthropics-skills`
+- สามารถพิมพ์เรียกใช้งานผ่าน Slash Command: **`/skill-creator`**
 
-## Exact resume point
-All 12 Git Submodules, 4 subagents, and updated rules are embedded cleanly. The repository is completely ready for commit and push.
+---
 
-## Next action
-Commit and push the updated standards, `.gitmodules`, submodules, and subagents to GitHub repository (`apirak-k/Human-AI-Working-Standard`).
+## 🛠️ งานที่ดำเนินการเสร็จสิ้นทั้งหมด (Completed Work)
+
+1. **รวม Subagents ไว้ที่เดียว (`agents/`)**:
+   - `frontend-engineer.md`, `backend-engineer.md`, `tester.md`, `researcher.md`
+   - รองรับทุกค่าย AI (YAML frontmatter: `model: inherit`, `tools: [...]`)
+2. **ลบไฟล์เก่า/ซ้ำซ้อนออกหมดจด**:
+   - ลบ `agents-claude-code/`, `agents-antigravity/`, `plugins/`, `.claude-plugin/`, และไฟล์ Prompt เก่าทิ้งทั้งหมด
+3. **ผสานระบบ Second Brain เข้าสู่แกนกลาง**:
+   - `core/USER_PREFERENCES.md` (สไตล์การสื่อสาร chat-first, มาตรฐาน UI/UX)
+   - `core/ANTI_PATTERNS.md` (ข้อห้าม, กฎเหล็ก, บันทึกบทเรียน `/learn`)
+   - `core/ADDON_GUIDE.md` (คู่มือการสร้างและเพิ่ม Skill / Subagent)
+4. **อัปเกรดสคริปต์ติดตั้งและอัปเดต (`install.sh` & `update.sh`)**:
+   - เพิ่มระบบดึง Git Submodule อัตโนมัติตั้งแต่เริ่มรัน
+   - เพิ่มระบบ Smart Recursive Flattener แตกโฟลเดอร์ซ้อนลึก 1-level deep
+   - แก้ไขไวยากรณ์ Bash `local` และแก้ปัญหา Conflict
+5. **ดาวน์โหลดและเชื่อมโยงคลัง SKILL ครบถ้วน**:
+   - Single Skills (7)
+   - Superpowers (14)
+   - Anthropic Skills (19) รวม `skill-creator`
+   - Addy Osmani Agent Skills (25)
+   - Matt Pocock Skills (37) รวม `grill-me`
+   - ECC Frameworks & Stacks (379 unique English / 898 total)
+6. **การทดสอบจริงเชิงประจักษ์ (Empirical Live Testing)**:
+   - `install.sh` และ `update.sh`: **Exit Code 0, Warnings 0, Errors 0**
+   - ทดสอบ Antigravity Global Pointer: โหลด `<RULE[user_global]>` อัตโนมัติหลังรีสตาร์ท
+   - ทดสอบส่งงาน Subagent จริง: `tester` (รัน QA Audit ผ่าน 100%) และ `researcher` (นับบรรทัดถูกต้อง)
+
+---
+
+## 🏠 เช็กลิสต์สำหรับตรวจสอบที่บ้าน (Home Machine Verification Checklist)
+
+เมื่อนำ HAWS ไปติดตั้งและทดสอบบนคอมพิวเตอร์ที่บ้าน ให้ตรวจสอบตามลำดับดังนี้:
+
+- [ ] **1. รันคำสั่งติดตั้ง**: `bash install.sh` (หรือ `curl -fsSL ... | bash`)
+- [ ] **2. ตรวจสอบ Global Pointer**: เช็กว่ามีบล็อก `<!-- HAWS_GLOBAL_POINTER_START -->` ใน `~/.claude/CLAUDE.md` และ `~/.gemini/GEMINI.md`
+- [ ] **3. ตรวจสอบ Subagents**: เช็กว่ามีไฟล์ใน `~/.claude/agents/` (4 ไฟล์) และ `~/.gemini/config/agents/` (4 โฟลเดอร์)
+- [ ] **4. ตรวจสอบและทดสอบ Slash Commands**:
+  - ทดสอบ `/using-superpowers`, `/brainstorming`, `/test-driven-development`, `/systematic-debugging`
+  - ทดสอบ `/skill-creator` (ของ Anthropic)
+  - ทดสอบ `/grill-me` (ของ Matt Pocock)
+  - ทดสอบ `/taste-skill`, `/ui-ux-pro-max`, `/drawio`, `/caveman`, `/humanizer`
+  - ทดสอบ `/security-review` (ของ ECC)
+- [ ] **5. ทดสอบการสั่งงาน Subagent**: ลองส่งงานให้ `tester` หรือ `researcher` ทำงานในเบื้องหลัง
+
+---
+
+## 🎯 สถานะปัจจุบัน (Exact Resume Point)
+ระบบ HAWS, Subagents และ Skills ทั้งหมด อยู่ในสถานะ **เสร็จสมบูรณ์ 100% พร้อมทดสอบและใช้งานจริง** ครับ!

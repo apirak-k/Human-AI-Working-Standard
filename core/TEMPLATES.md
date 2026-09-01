@@ -180,3 +180,124 @@ state].
 
 What to do immediately when resuming.
 ```
+
+---
+
+## 5. PRP.md — Product Requirements Prompt (Context Engineering Blueprint)
+
+Create or generate this file when translating user intent into a high-fidelity execution blueprint before implementing substantial features.
+
+```markdown
+# Product Requirements Prompt (PRP) — [Feature Name]
+
+<prp_blueprint version="1.0">
+
+<goal_and_context>
+## Goal
+[Brief 1-2 sentence description of what must be built and why]
+
+## Problem & Context
+[Current baseline, relevant existing files, and technical dependencies]
+</goal_and_context>
+
+<architectural_decisions>
+## Architecture & Topology
+- **Component Boundaries**: [Which layer handles what]
+- **Key Trade-offs**: [Chosen approach vs alternatives considered]
+- **State Flow**: [Data flow: input ➔ state ➔ output]
+</architectural_decisions>
+
+<data_models_and_contracts>
+## Data Models & API Contracts
+- **Data Structures**: [Schema definitions, interfaces, or DB models]
+- **Endpoints / Functions**: [Signatures, inputs, outputs, errors]
+</data_models_and_contracts>
+
+<implementation_steps>
+## Step-by-Step Implementation
+1. [Step 1: Test authoring (TDD)]
+2. [Step 2: Core domain logic]
+3. [Step 3: Integration & wiring]
+4. [Step 4: Error handling & Pokayoke safeguards]
+</implementation_steps>
+
+<hard_constraints>
+## Hard Constraints (Never Violate)
+- Strictly preserve existing comments, docstrings, and type annotations.
+- Never generate unprompted mock files or synthetic duplicates.
+- Targeted edits only; no unrequested surrounding refactoring.
+</hard_constraints>
+
+<acceptance_criteria>
+## Acceptance Criteria
+- [ ] [Objective condition 1]
+- [ ] [Objective condition 2]
+- [ ] Edge cases handled: null inputs, boundary values, timeouts.
+</acceptance_criteria>
+
+<verification_commands>
+## Automated Verification Commands
+```bash
+# Exact commands that must pass with exit code 0
+pytest tests/ -v
+npm run build
+```
+</verification_commands>
+
+</prp_blueprint>
+```
+
+---
+
+## 6. Subagent Task Delegation & Return Protocol (XML Schema)
+
+Use these lightweight XML payloads when the Main Agent delegates scoped work to a Subagent, ensuring strict context isolation and preventing context window bloat.
+
+### A. Main ➔ Subagent: `<task_assignment>`
+```xml
+<task_assignment>
+  <role>[frontend-engineer | backend-engineer | tester | researcher]</role>
+  <task_id>[e.g. TASK-01]</task_id>
+  <objective>[Specific, atomic goal to achieve]</objective>
+  <target_files>
+    <file path="[relative/path/to/file]" action="[edit | create | inspect]" />
+  </target_files>
+  <constraints>
+    [Hard boundaries, existing libraries to reuse, styling rules]
+  </constraints>
+  <verification_command>[Terminal command to verify work]</verification_command>
+</task_assignment>
+```
+
+### B. Subagent ➔ Main: `<task_report>`
+```xml
+<task_report status="[COMPLETED | BLOCKED | FAILED]">
+  <summary>[1-2 sentence executive summary of actions taken]</summary>
+  <modified_files>
+    <file path="[relative/path/to/file]" />
+  </modified_files>
+  <verification_results>[Actual command run and output summary: e.g. "4/4 tests passed"]</verification_results>
+  <notes>[Key findings, edge cases handled, or follow-up recommendations]</notes>
+</task_report>
+```
+
+---
+
+## 7. Global Tool Pointer Templates
+
+Use these 3-line pointer templates in your root project or global tool config files to point all AI agents directly to canonical HAWS.
+
+### `CLAUDE.md` (Claude Code)
+```markdown
+# HAWS Standard Integration
+This project operates under the Human-AI Working Standard (HAWS).
+Before acting, read and follow canonical rules in `@~/.haws/core/HAWS.md` and `@~/.haws/core/WORK_INSTRUCTIONS.md`.
+```
+
+### `GEMINI.md` / `AGENTS.md` (Google Antigravity & Open Standards)
+```markdown
+# HAWS Standard Integration
+This environment operates under the Human-AI Working Standard (HAWS).
+Follow canonical rules in `core/HAWS.md` and practical procedures in `core/WORK_INSTRUCTIONS.md`.
+```
+

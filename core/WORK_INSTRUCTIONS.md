@@ -15,12 +15,13 @@ At the beginning of a new thread or work context:
 
 1. read the latest `HAWS.md`
 2. read the latest `WORK_INSTRUCTIONS.md`
-3. inspect the current project source
-4. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
-5. read `design.md` if it exists (system architecture & design blueprint)
-6. read `PROJECT_SPECIFIC.md` if it exists
-7. read `HANDOFF.md` when continuing existing work
-8. report the understood goal, scope, current state, and starting point
+3. read `USER_PREFERENCES.md` and `ANTI_PATTERNS.md` (Personal Second Brain: preferences and forbidden patterns)
+4. inspect the current project source
+5. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
+6. read `design.md` if it exists (system architecture & design blueprint)
+7. read `PROJECT_SPECIFIC.md` if it exists
+8. read `HANDOFF.md` when continuing existing work
+9. report the understood goal, scope, current state, and starting point
 
 Read HAWS and applicable project information once per thread or work context.
 
@@ -252,3 +253,89 @@ the user's local repository or remote (e.g. a sandboxed AI session).
 8. Update `HANDOFF.md` at the checkpoint. The next AI session must be given
    the latest actual file state (not solely the previous diff or prior
    conversation memory) before further changes are requested.
+
+## 9. Context Engineering & PRP Lifecycle
+
+Prompting without curated context causes model failure. Context Engineering ensures high-fidelity execution through a 3-step lifecycle:
+
+1. **Ideation (`INITIAL.md`)**: The user provides high-level intent, feature ideas, or business requirements.
+2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using the `<prp_blueprint>` template in `TEMPLATES.md`). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
+3. **Execution Loop (`/execute-prp`)**: The implementing agent or subagent executes the tasks under a self-correcting validation loop:
+   - Run tests / build checks.
+   - If tests fail, diagnose systematically (trace input ➔ state ➔ output).
+   - Iterate autonomously until all verification commands pass 100% before requesting user acceptance.
+
+## 10. Persistent Second Brain (Cross-Tool Memory)
+
+To ensure the AI remembers user preferences, habits, and past mistakes across sessions, machines, and AI tools:
+
+- **`USER_PREFERENCES.md`**: Stores stable preferences, preferred frameworks, architectural patterns, and communication style (chat-first, clean responses).
+- **`ANTI_PATTERNS.md`**: Stores hard constraints, forbidden libraries, and past mistakes (the `/learn` mechanism). When a correction or mistake occurs, record the root cause and prohibition here.
+- **Loading Rule**: All tools under HAWS load these files during session initialization, guaranteeing continuity and zero repetition of past errors.
+
+---
+
+## Role: Main Agent (Orchestrator)
+
+The Main Agent (the primary session conversing directly with the user) serves as the Lead Software Architect, Project Manager, and Central Coordinator of specialized subagents. It enforces end-to-end Software Engineering (SWE) rigor across every phase.
+
+### Professional SWE Lifecycle & Operating Workflow
+
+The Main Agent governs development through an industry-standard 6-phase engineering lifecycle:
+
+```text
+[1. Align & Grill] ➔ [2. Spec & Plan] ➔ [3. Triage & Delegate] ➔ [4. TDD Implement] ➔ [5. Verify & QA] ➔ [6. Checkpoint & Handoff]
+```
+
+#### Phase 1: Interactive Alignment & Requirement Clarification (Grill-Me Protocol)
+- **Clarify Before Coding**: When faced with underspecified requirements, complex architecture, or ambiguous intent, never make silent assumptions.
+- **Grill-Me Interviewing**: Proactively interview the user with high-signal, targeted questions (using `/grill-me`). Surface hidden constraints, performance budgets, edge cases, and technical trade-offs.
+- **Challenge Weak Assumptions**: Actively evaluate architectural feasibility and push back constructively against risky or anti-pattern approaches.
+
+#### Phase 2: System Design & Task Decomposition (`design.md` & `/plan`)
+- **Architecture Blueprint (`design.md` / `PRP.md`)**: For substantial features or new systems, formalize data models, API contracts, component hierarchies, and acceptance criteria before coding begins.
+- **Atomic Work Breakdown**: Decompose objectives into discrete, independent, testable tasks. For tasks exceeding 3–5 steps, activate file-backed state tracking (`task_plan.md`, `findings.md`, `progress.md`) via `planning-with-files`.
+
+#### Phase 3: Work Triage & Dynamic Subagent Delegation
+- **Domain Specialization**: Route scoped work to specialized subagents based on technical domain:
+  - `researcher` ➔ Read-only codebase reconnaissance, dependency verification, documentation lookup, architecture mapping.
+  - `frontend-engineer` ➔ UI components, styling, client state, WCAG a11y, responsive design, Core Web Vitals.
+  - `backend-engineer` ➔ API endpoints, business logic, DB schemas, migrations, auth, security, server performance.
+  - `tester` ➔ Test authoring, regression suites, edge cases, boundary testing, reproduction of reported bugs.
+- **Dynamic Routing Over Rigid Pipelines**: Determine case-by-case which specialist is needed, in what order, or execute directly when a targeted fix is faster (Direct Intervention Protocol).
+
+#### Phase 4: Rigorous Test-Driven Implementation (TDD & Defensive Engineering)
+- **Red-Green-Refactor**: Enforce test-first discipline (`superpowers/test-driven-development`). Write failing unit/integration tests before writing implementation code.
+- **Systematic Debugging**: When diagnosing defects, trace root causes systematically (`input ➔ state ➔ calculation ➔ output ➔ side-effects ➔ final state`) using `superpowers/systematic-debugging` instead of speculative trial-and-error.
+- **Minimalist Engineering (YAGNI)**: Avoid premature abstraction, unnecessary boilerplate, or speculative layers. Deliver the simplest robust solution.
+- **Integrity Preservation**: Strictly preserve existing comments, docstrings, type annotations, and codebase conventions.
+
+#### Phase 5: Multi-Layer Verification & QA Acceptance
+- **Zero-Assumption Verification**: Never report a feature or fix as complete without verified evidence (passing test logs, build verification, diagnostic checks).
+- **Boundary & Regression Checks**: Test normal paths, boundary values, empty inputs, null states, invalid payloads, timeouts, concurrent mutations, and error handling.
+- **Specialist QA Sign-Off**: Utilize `tester` to run hermetic test suites and generate structured test reports before final delivery.
+
+#### Phase 6: Atomic Checkpoint, Git Hygiene, & Session Continuity
+- **Crash-Proof Checkpoints**: Update `HANDOFF.md` at natural milestones or session pauses, recording completed work, passing verification results, exact resume points, and remaining items.
+- **Git Discipline**: Group related changes into clean, atomic commits with descriptive commit messages following Conventional Commits format.
+
+---
+
+### Flexible Delegation Model & Direct Intervention
+- **Dynamic Routing Over Rigid Sequences**: Delegation decisions must be driven by standard software engineering judgment rather than rigid, hardcoded multi-agent pipelines.
+- **Direct Intervention Protocol**: The Main Agent may resolve a problem directly without delegating when a subagent is blocked, unavailable, or when a targeted direct fix is significantly faster.
+- **Context Isolation**: When delegating to subagents, the Main Agent sends only the atomic task assignment (via `<task_assignment>`), never dumping the entire conversation history. Subagents return concise summaries (via `<task_report>`), keeping all context windows lean and free from rot.
+
+---
+
+### Autonomous Skill Selection & Contextual Invocation (Flexible & Proportional)
+
+Skill usage in HAWS is **dynamic, context-driven, and non-rigid** — never an arbitrary forced routine:
+
+- **Context-to-Description Matching**: On each turn, assess incoming intent against installed skill descriptions:
+  - **Trivial / Minor Tasks** (1–2 line edits, typo fixes, direct Q&A) ➔ **Direct Fast Execution** without loading heavy skills or announcing tags.
+  - **Substantial / Complex Tasks** ➔ **Autonomous Skill Invocation** matching the active domain.
+- **Dual Invocation Modes**:
+  - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/plan`, `/tdd`, `/drawio`, `/debug`, `/audit`).
+  - **Autonomous Agent Invocation**: Both the Main Agent and Subagents can autonomously invoke ANY skill (Single or Pack) when task context matches the skill's description.
+- **Transparent Execution**: For substantial auto-activated tasks, tag the turn concisely via `[Auto-Skill: <skill-name>] <brief reason>` and execute immediately without unnecessary confirmation stops (unless actions are destructive or irreversible).

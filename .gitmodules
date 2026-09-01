@@ -1,37 +1,36 @@
-[submodule "plugins/haws/skills/drawio-skill"]
-	path = plugins/haws/skills/drawio-skill
+[submodule "skills/drawio-skill"]
+	path = skills/drawio-skill
 	url = https://github.com/Agents365-ai/drawio-skill.git
-[submodule "plugins/haws/skills/planning-with-files"]
-	path = plugins/haws/skills/planning-with-files
+[submodule "skills/planning-with-files"]
+	path = skills/planning-with-files
 	url = https://github.com/OthmanAdi/planning-with-files.git
-[submodule "plugins/haws/skills/ui-ux-pro-max-skill"]
-	path = plugins/haws/skills/ui-ux-pro-max-skill
+[submodule "skills/ui-ux-pro-max-skill"]
+	path = skills/ui-ux-pro-max
 	url = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
-[submodule "plugins/haws/skills/taste-skill"]
-	path = plugins/haws/skills/taste-skill
+[submodule "skills/taste-skill"]
+	path = skills/taste-skill
 	url = https://github.com/Leonxlnx/taste-skill.git
-[submodule "plugins/haws/skills/humanizer"]
-	path = plugins/haws/skills/humanizer
+[submodule "skills/humanizer"]
+	path = skills/humanizer
 	url = https://github.com/blader/humanizer.git
-[submodule "plugins/haws/skills/graphify"]
-	path = plugins/haws/skills/graphify
+[submodule "skills/graphify"]
+	path = skills/graphify
 	url = https://github.com/Graphify-Labs/graphify.git
-[submodule "plugins/haws/skills/caveman"]
-	path = plugins/haws/skills/caveman
+[submodule "skills/caveman"]
+	path = skills/caveman
 	url = https://github.com/JuliusBrussee/caveman.git
-[submodule "plugins/haws/skills/superpowers"]
-	path = plugins/haws/skills/superpowers
+[submodule "skills/superpowers"]
+	path = skills/superpowers
 	url = https://github.com/obra/superpowers.git
-[submodule "plugins/haws/skills/ecc"]
-	path = plugins/haws/skills/ecc
+[submodule "skills/ecc"]
+	path = skills/ecc
 	url = https://github.com/affaan-m/ECC.git
-[submodule "plugins/haws/skills/agent-skills"]
-	path = plugins/haws/skills/agent-skills
+[submodule "skills/agent-skills"]
+	path = skills/agent-skills
 	url = https://github.com/addyosmani/agent-skills.git
-[submodule "plugins/haws/skills/anthropics-skills"]
-	path = plugins/haws/skills/anthropics-skills
+[submodule "skills/anthropics-skills"]
+	path = skills/anthropics-skills
 	url = https://github.com/anthropics/skills.git
-[submodule "plugins/haws/skills/mattpocock-skills"]
-	path = plugins/haws/skills/mattpocock-skills
+[submodule "skills/mattpocock-skills"]
+	path = skills/mattpocock-skills
 	url = https://github.com/mattpocock/skills.git
-

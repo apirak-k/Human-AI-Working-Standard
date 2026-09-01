@@ -32,23 +32,19 @@ curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/
 ```text
 ├── core/                                # Universal Plain Markdown Standards (Copy-pasteable for any AI)
 │   ├── HAWS.md                          # Core principles, priority hierarchy, safety & safeguards
-│   ├── WORK_INSTRUCTIONS.md             # Step-by-step procedures, context loading & verification
-│   ├── TEMPLATES.md                     # Starter prompt, design.md (TH), PROJECT_SPECIFIC.md & HANDOFF.md templates
+│   ├── WORK_INSTRUCTIONS.md             # Step-by-step procedures, context loading & SWE lifecycle
+│   ├── USER_PREFERENCES.md              # Personal Second Brain: User preferences & communication style
+│   ├── ANTI_PATTERNS.md                 # Personal Second Brain: Guardrails, forbidden patterns & learned lessons
+│   ├── TEMPLATES.md                     # Starter prompt, PRP blueprint, XML delegation schemas, and pointers
 │   └── HANDOFF.md                       # Active work state & continuity checkpoint
-├── .claude-plugin/
-│   └── marketplace.json                 # Marketplace manifest for Claude Code / Antigravity plugins
-└── plugins/
-    └── haws/
-        ├── plugin.json                  # Plugin manifest metadata
-        ├── rules/
-        │   └── haws.md                  # Unified orchestration rule & Main Agent Orchestrator role
-        ├── agents/
-        │   ├── frontend-engineer.md     # UI, styling, client state, accessibility & web performance
-        │   ├── backend-engineer.md      # APIs, service logic, databases, security & server performance
-        │   ├── tester.md                # Test execution, boundary verification & regression analysis
-        │   └── researcher.md            # Deep codebase exploration, documentation lookup & dependency verification
-        ├── skills/                      # Custom in-house skills directory
-        └── MAINTAINERS.md               # Guide for adding skills, agents, and multi-device updates
+├── agents/                              # Unified Subagent Source (Author Once, Deploy to All AI Tools)
+│   ├── frontend-engineer.md             # UI components, client state, styling, responsive design & a11y
+│   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
+│   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
+│   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
+├── skills/                              # Single Skills and Multi-Skill Packs (curated & extensible)
+├── install.sh                           # Global cross-tool installer (Claude Code & Antigravity)
+└── update.sh                            # One-click universal updater (git + submodules + symlinks)
 ```
 
 ---
@@ -57,22 +53,17 @@ curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/
 
 HAWS is designed with a **Portability First** philosophy and supports two operational modes:
 
-### Mode 1: Native Plugin Installation (Claude Code / Antigravity)
+### Mode 1: Global Cross-Tool Setup (Google Antigravity & Claude Code)
 
-Install HAWS directly into your agent environment to auto-load rules, all 4 specialized subagents, and all 12 curated upstream skills simultaneously in a single command:
+Run the one-line global installer to configure global pointers, install all 4 specialized subagents, and link all skills simultaneously across your machine:
 
-```text
-# 1. Add the marketplace source
-/plugin marketplace add apirak-k/Human-AI-Working-Standard
-
-# 2. 1-Click Install HAWS (installs rules, 4 subagents & 12 authentic Git submodules at once)
-/plugin install haws@haws-marketplace
+```bash
+curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/install.sh | bash
 ```
 
-To update across devices whenever new skills or agents are added:
-```text
-/plugin marketplace update haws-marketplace
-/plugin update haws@haws-marketplace
+To update HAWS, subagents, and all embedded skill submodules anytime:
+```bash
+curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/update.sh | bash
 ```
 
 ---
@@ -94,20 +85,20 @@ When running as a plugin, the Main Agent dynamically orchestrates four specializ
 
 | Subagent | Scoped Tools | Focus Areas |
 |---|---|---|
-| [`frontend-engineer`](plugins/haws/agents/frontend-engineer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob` | UI components, client-side state, styling, responsive design, a11y (WCAG), performance |
-| [`backend-engineer`](plugins/haws/agents/backend-engineer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob`, `Bash` | REST/GraphQL APIs, domain logic, DB schemas/queries, auth, security, data integrity |
-| [`tester`](plugins/haws/agents/tester.md) | `Read`, `Grep`, `Glob`, `Bash` | Automated test suites, edge cases, regression detection, bug reproduction, boundary checks |
-| [`researcher`](plugins/haws/agents/researcher.md) | `Read`, `Grep`, `Glob` | Codebase reconnaissance, technical documentation lookup, dependency verification, architecture mapping |
+| [`frontend-engineer`](agents/frontend-engineer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob` | UI components, client-side state, styling, responsive design, a11y (WCAG), performance |
+| [`backend-engineer`](agents/backend-engineer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob`, `Bash` | REST/GraphQL APIs, domain logic, DB schemas/queries, auth, security, data integrity |
+| [`tester`](agents/tester.md) | `Read`, `Grep`, `Glob`, `Bash` | Automated test suites, edge cases, regression detection, bug reproduction, boundary checks |
+| [`researcher`](agents/researcher.md) | `Read`, `Grep`, `Glob` | Codebase reconnaissance, technical documentation lookup, dependency verification, architecture mapping |
 
 ---
 
-## Skills Catalog (12 Verified Curated Skills)
+## Skills Catalog & Multi-Skill Packs
 
-The marketplace manifest (`.claude-plugin/marketplace.json`) catalogs **12 verified curated open-source skills & packs** (pointing directly to their upstream GitHub repositories):
-- **Single Skills (7)**: `drawio-skill` (`/drawio`), `planning-with-files` (`/plan`), `ui-ux-pro-max-skill` (`/ui-ux`), `taste-skill` (`/taste`), `humanizer` (`/humanize`), `graphify` (`/graphify`), `caveman` (`/caveman`).
-- **Skill Packs (Top 5)**: `superpowers` (`/tdd`, `/debug`), `ecc` (`/ecc`, `/audit`), `agent-skills` (`/perf`, `/a11y`), `anthropics-skills`, `mattpocock-skills`.
+HAWS bundles curated open-source skills & packs (pointing directly to their upstream GitHub repositories):
+- **Single Skills**: `drawio-skill` (`/drawio`), `planning-with-files` (`/plan`), `ui-ux-pro-max-skill` (`/ui-ux`), `taste-skill` (`/taste`), `humanizer` (`/humanize`), `graphify` (`/graphify`), `caveman` (`/caveman`).
+- **Skill Packs**: `superpowers` (`/tdd`, `/debug`), `ecc` (`/ecc`, `/audit`), `agent-skills` (`/perf`, `/a11y`), `anthropics-skills`, `mattpocock-skills`.
 
-See [`plugins/haws/MAINTAINERS.md`](plugins/haws/MAINTAINERS.md) for full instructions on authoring custom skills and adding marketplace plugins.
+> 📖 For full instructions on adding new skills and subagents, see the [Add-on & Extensibility Guide](core/ADDON_GUIDE.md).
 
 ---
 
@@ -131,6 +122,19 @@ HAWS empowers AI agents to **autonomously evaluate when to pick the right skill*
 | Documentation, copywriting, READMEs | `humanizer` | Removes AI clichés and buzzwords for clean, natural prose |
 | Codebase architecture & dependency exploration | `graphify` / `drawio-skill` | Builds codebase knowledge graphs and generates system diagrams |
 | Brevity or token-saving request | `caveman` | Ultra-concise communication mode |
+
+---
+
+## Persistent Second Brain & Context Engineering
+
+HAWS includes persistent memory architecture and high-fidelity context engineering:
+
+- **Personal Second Brain**:
+  - [`core/USER_PREFERENCES.md`](core/USER_PREFERENCES.md): Stores user preferences, communication style (chat-first), and architectural habits.
+  - [`core/ANTI_PATTERNS.md`](core/ANTI_PATTERNS.md): Permanent registry of forbidden patterns and learned lessons (powered by `/learn`).
+- **Context Engineering & Self-Correction Loop**:
+  - Features are blueprinted via Product Requirements Prompts ([`core/TEMPLATES.md`](core/TEMPLATES.md)).
+  - Implementing agents operate under an automated **Self-Correcting Validation Loop**: writing tests (TDD), executing verification commands, diagnosing failures systematically, and iterating autonomously until all checks pass with zero assumptions.
 
 ---
 
