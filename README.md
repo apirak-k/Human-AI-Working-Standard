@@ -12,17 +12,22 @@ The goal and required outcome are always prioritized over blindly following a ri
 
 ---
 
-## Quick Install
+## Quick Install & Universal Management
 
-Install HAWS skills and subagents globally across detected AI environments (**Google Antigravity** and **Claude Code**) in one command:
+Manage HAWS, skills, and subagents globally across detected AI environments (**Google Antigravity** and **Claude Code**) via the unified `haws.sh` command engine:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/install.sh | bash
+# Clone the repository
+git clone https://github.com/apirak-k/Human-AI-Working-Standard.git
+cd Human-AI-Working-Standard
+
+# Run all-in-one setup & sync
+bash haws.sh sync
 ```
 
-To update to the latest version across all tools:
+Or run directly via remote curl:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/update.sh | bash
+curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/haws.sh | bash -s -- sync
 ```
 
 ---
@@ -32,36 +37,29 @@ curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/
 ```text
 ├── core/                                # Universal Plain Markdown Standards (Copy-pasteable for any AI)
 │   ├── HAWS.md                          # Core principles, priority hierarchy, safety & safeguards
-│   ├── WORK_INSTRUCTIONS.md             # Step-by-step procedures, context loading & SWE lifecycle
+│   ├── WORK_INSTRUCTIONS.md             # Step-by-step procedures, context loading & SWE disciplines
+│   ├── WORKFLOW.md                      # 6-phase engineering lifecycle & primary/secondary skill mapping
 │   ├── USER_PREFERENCES.md              # Personal Second Brain: User preferences & communication style
 │   ├── ANTI_PATTERNS.md                 # Personal Second Brain: Guardrails, forbidden patterns & learned lessons
-│   ├── TEMPLATES.md                     # Starter prompt, PRP blueprint, XML delegation schemas, and pointers
-│   ├── DESIGN.md                        # Official Design System standard (WCAG AA tokens)
-│   ├── HANDOFF.md                       # Active session checkpoint, verification records & resume state
-│   └── SKILL_TAXONOMY.md                # 5-Drawer dynamic skill taxonomy & subagent affinities (@organizer)
+│   └── SKILL_TAXONOMY.md                # Dynamic skill taxonomy & semantic router (@organizer)
 ├── agents/                              # Unified Subagent Source (Author Once, Deploy to All AI Tools)
 │   ├── organizer.md                     # Skill inventory health, workspace hygiene & pattern learning ledger
 │   ├── frontend-engineer.md             # UI components, client state, styling, responsive design & a11y
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
+├── templates/                           # Standalone Project Blueprint & Quality Gate Templates
+│   ├── README.md                        # Blueprint guide and usage instructions
+│   ├── DESIGN.md                        # Official Design System standard (WCAG AA tokens)
+│   ├── PROJECT.md                       # Project-specific scope, stack, and convention template
+│   ├── ARCHITECTURE.md                  # System architecture, topology, and component boundaries
+│   ├── CONSTRAINTS.md                   # Non-negotiable quality gates, linters, and coverage contracts
+│   └── HANDOFF.md                       # Session checkpoint, active task backlog & exact resume point
 ├── skills/                              # Single Skills and Multi-Skill Packs (curated & extensible)
-│   └── custom/                          # Proprietary & AI-authored in-house skills (highest linking precedence)
-├── scripts/                             # Utility & health monitoring scripts
-│   ├── check-skills.sh                  # Sub-second skill inventory & token budget checker (Bash/POSIX)
-│   ├── check-skills.ps1                 # High-performance native checker for Windows (PowerShell)
-│   ├── haws_doctor.py                   # Comprehensive system diagnostics utility (haws doctor)
-│   ├── haws-doctor.sh                   # Bash wrapper for haws doctor
-│   ├── haws-doctor.ps1                  # PowerShell wrapper for haws doctor
-│   ├── haws                             # Unified CLI entrypoint (Bash)
-│   └── haws.ps1                         # Unified CLI entrypoint (PowerShell)
-├── tests/                               # Automated unit test suite
-│   └── test_haws_doctor.py              # Test suite for haws doctor diagnostics
-├── tools/                               # Standalone utilities & monitoring dashboards
-│   └── haws-monitor/                    # Ultra-low-latency health & analytics monitor backend & web UI
-├── .agents/                             # Agent workflows & slash commands (Antigravity / Gemini CLI)
-├── install.sh                           # Global cross-tool installer (Claude Code & Antigravity)
-└── update.sh                            # One-click universal updater (git + submodules + symlinks)
+│   ├── custom/                          # Proprietary & AI-authored in-house skills
+│   │   └── haws/                        # Master orchestrator, doctor diagnostics & web telemetry
+│   └── ...                              # Curated submodule skill packs (agent-skills, superpowers, etc.)
+└── haws.sh                              # Standalone Universal CLI Engine (sync, status, doctor, test)
 ```
 
 ---
@@ -72,18 +70,20 @@ HAWS is designed with a **Portability First** philosophy and supports two operat
 
 ### Mode 1: Global Cross-Tool Setup (Google Antigravity & Claude Code)
 
-Run the one-line global installer to configure global pointers, install all 5 specialized subagents, and link all skills simultaneously across your machine:
+Run the universal command engine to configure global pointers, install all 5 specialized subagents, and link all skills simultaneously across your machine:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/install.sh | bash
+# All-in-one smart sync (pull updates, link skills & subagents, auto-prune obsolete items)
+bash haws.sh sync
+
+# Instant sub-second health and token budget check (< 0.2s)
+bash haws.sh status
+
+# Comprehensive 5-axis system diagnostics
+bash haws.sh doctor
 ```
 
-*(On Windows, run within **Git Bash** or clone and run `bash install.sh`)*
-
-To update HAWS, subagents, and all embedded skill submodules anytime:
-```bash
-curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/update.sh | bash
-```
+*(On Windows, run within **Git Bash**)*
 
 ---
 
@@ -92,9 +92,9 @@ curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/
 For AI tools that read plain markdown files (ChatGPT, Claude Web, Gemini, Cursor):
 
 1. Reference or copy the [`core/`](core/) directory (or specifically [`core/HAWS.md`](core/HAWS.md) and [`core/WORK_INSTRUCTIONS.md`](core/WORK_INSTRUCTIONS.md)) into your project workspace.
-2. At the start of a session, use the **Master Starter Prompt** in [`core/TEMPLATES.md`](core/TEMPLATES.md) to bootstrap context.
-3. Use [`PROJECT_SPECIFIC.md`](core/TEMPLATES.md#3-project_specificmd--blank-template) when stable project-level rules exist.
-4. Use the **HANDOFF** template in [`core/TEMPLATES.md`](core/TEMPLATES.md) to preserve state when pausing and resuming work across sessions.
+2. At the start of a session, use the project blueprint templates in [`templates/`](templates/) to bootstrap context.
+3. Use [`templates/PROJECT.md`](templates/PROJECT.md) when stable project-level rules exist.
+4. Use [`templates/HANDOFF.md`](templates/HANDOFF.md) to preserve state when pausing and resuming work across sessions.
 
 ---
 
@@ -139,17 +139,17 @@ Proprietary or AI-authored skills reside in `skills/custom/<skill-name>/` and ho
    ## Step-by-Step Workflow
    ## Verification & Quality Bar
    ```
-2. Run `bash install.sh` (or `bash update.sh`) to link globally. Custom skills in `skills/custom/` automatically override upstream submodule versions if naming conflicts occur.
+2. Run `bash haws.sh sync` to link globally. Custom skills in `skills/custom/` automatically override upstream submodule versions if naming conflicts occur.
 
 ### 2. Adding an External Skill Pack (Git Submodule)
 ```bash
 git submodule add https://github.com/<owner>/<repo>.git skills/<pack-name>
-bash install.sh
+bash haws.sh sync
 ```
-`install.sh` automatically discovers all nested `SKILL.md` files and links them directly into all AI environments.
+`haws.sh sync` automatically discovers all nested `SKILL.md` files and links them directly into all AI environments.
 
 ### 3. Adding a New Subagent
-Create `agents/<agent-name>.md` with YAML frontmatter (`tools`, `model: inherit`), then run `bash install.sh`. It is automatically deployed to `~/.claude/agents/` and `~/.gemini/config/agents/`.
+Create `agents/<agent-name>.md` with YAML frontmatter (`tools`, `model: inherit`), then run `bash haws.sh sync`. It is automatically deployed to `~/.claude/agents/` and `~/.gemini/config/agents/`.
 
 ---
 
@@ -184,7 +184,7 @@ HAWS includes persistent memory architecture and high-fidelity context engineeri
   - [`core/USER_PREFERENCES.md`](core/USER_PREFERENCES.md): Stores user preferences, communication style (chat-first), and architectural habits.
   - [`core/ANTI_PATTERNS.md`](core/ANTI_PATTERNS.md): Permanent registry of forbidden patterns and learned lessons (powered by autonomous continuous self-learning across all AI platforms).
 - **Context Engineering & Self-Correction Loop**:
-  - Features are blueprinted via Product Requirements Prompts ([`core/TEMPLATES.md`](core/TEMPLATES.md)).
+  - Features are blueprinted via Product Requirements Prompts ([`templates/`](templates/)).
   - Implementing agents operate under an automated **Self-Correcting Validation Loop**: writing tests (TDD), executing verification commands, diagnosing failures systematically, and iterating autonomously until all checks pass with zero assumptions.
 
 ---

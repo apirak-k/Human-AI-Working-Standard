@@ -53,10 +53,9 @@ To prevent context rot and maintain high reasoning precision across long session
 For a new project or major feature:
 
 - do not invent project rules blindly
-- for a new project or repository, create or verify `AGENTS.md` at the project root using the standard open template in `core/TEMPLATES.md` to declare executable setup, test, and build commands
-- during ideation / architectural kickoff, formulate and preserve the technical design in `design.md`
-- create or update `PROJECT_SPECIFIC.md` when stable project rules are
-  confirmed
+- for a new project or repository, scaffold project blueprints from `templates/` (`PROJECT.md`, `ARCHITECTURE.md`, `CONSTRAINTS.md`, `HANDOFF.md`, `DESIGN.md`)
+- during ideation / architectural kickoff, formulate and preserve the technical design in `templates/DESIGN.md`
+- create or update `PROJECT.md` when stable project rules are confirmed
 - create `HANDOFF.md` only when continuity information is needed
 
 
@@ -75,12 +74,12 @@ Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task a
    - **Autonomous Agent Execution**: The AI proactively matches task context against installed skill workflows and executes their protocols directly.
 2. **Genuine Protocol Execution (No Performative Tagging)**:
    - Do NOT use hollow vanity tags (e.g. `[Auto-Skill: ...]`).
-   - When a skill applies, execute its actual rigorous workflow (e.g. `ask_question` one-by-one for `/grill-me`, Red-Green-Refactor for `/tdd`, 5-axis checks for `/review`) and transparently state the active Slash Command (e.g. "กำลังใช้งาน `/grill-me`...").
+   - When a skill applies, execute its actual rigorous workflow (e.g. `ask_question` one-by-one for `/grill-me`, Red-Green-Refactor for `/tdd`, 5-axis checks for `/review`) and transparently state the active Slash Command (e.g. "Applying `/grill-me`...").
 3. **Proportionality Rule**:
    - **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without overhead.
    - **Substantial Work & Critical Milestones**: Apply specialized domain skills dynamically as categorized by `@organizer` in `SKILL_TAXONOMY.md`.
 4. **Sub-Second Native Inspection**:
-   - For skill counts and health auditing, always run the native fast checker (`scripts/check-skills.ps1` / `scripts/check-skills.sh`) to obtain instant results (< 0.5s) without slow shell loops.
+   - For skill counts and health auditing, always run the native fast checker (`bash haws.sh status`) to obtain instant results (< 0.5s) without slow shell loops.
 
 
 
@@ -268,7 +267,7 @@ the user's local repository or remote (e.g. a sandboxed AI session).
 Prompting without curated context causes model failure. Context Engineering ensures high-fidelity execution through a 3-step lifecycle:
 
 1. **Ideation (`INITIAL.md`)**: The user provides high-level intent, feature ideas, or business requirements.
-2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using the `<prp_blueprint>` template in `TEMPLATES.md`). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
+2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using `templates/ARCHITECTURE.md` and `templates/PROJECT.md` as reference blueprints). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
 3. **Execution Loop (`/execute-prp`)**: The implementing agent or subagent executes the tasks under a self-correcting validation loop:
    - Run tests / build checks.
    - If tests fail, diagnose systematically (trace input ➔ state ➔ output).
@@ -290,44 +289,16 @@ The Main Agent (the primary session conversing directly with the user) serves as
 
 ### Professional SWE Lifecycle & Operating Workflow
 
-The Main Agent governs development through an industry-standard 6-phase engineering lifecycle:
+The Main Agent and Subagents execute software engineering work strictly according to the 6-phase engineering lifecycle and deterministic skill mapping defined in [`core/WORKFLOW.md`](WORKFLOW.md):
 
-```text
-[1. Align & Grill] ➔ [2. Spec & Plan] ➔ [3. Triage & Delegate] ➔ [4. TDD Implement] ➔ [5. Verify & QA] ➔ [6. Checkpoint & Handoff]
-```
+1. **Phase 1: Discovery & Clarification** (`/interview-me`, `/grill-me`, `/research`)
+2. **Phase 2: Ideation & Architecture** (`/brainstorming`, `/idea-refine`, `/domain-modeling`, `/drawio-skill`)
+3. **Phase 3: Specification & Task Breakdown** (`/writing-plans`, `/planning-with-files`, `/spec-driven-development`)
+4. **Phase 4: Implementation** (`/tdd`, `/test-driven-development`, `/ui-ux-pro-max`, `/source-driven-development`)
+5. **Phase 5: Verification & Quality Audit** (`/verification-before-completion`, `/systematic-debugging`, `/code-review`)
+6. **Phase 6: Delivery & Handoff** (`/humanizer`, `/caveman`, `/documentation-and-adrs`, `/haws`)
 
-#### Phase 1: Interactive Alignment & Requirement Clarification (Grill-Me Protocol)
-- **Clarify Before Coding**: When faced with underspecified requirements, complex architecture, or ambiguous intent, never make silent assumptions.
-- **Grill-Me Interviewing**: Proactively interview the user with high-signal, targeted questions (using `/grill-me`). Surface hidden constraints, performance budgets, edge cases, and technical trade-offs.
-- **Challenge Weak Assumptions**: Actively evaluate architectural feasibility and push back constructively against risky or anti-pattern approaches.
-
-#### Phase 2: System Design & Task Decomposition (`design.md` & `/plan`)
-- **Architecture Blueprint (`design.md` / `PRP.md`)**: For substantial features or new systems, formalize data models, API contracts, component hierarchies, and acceptance criteria before coding begins.
-- **Atomic Work Breakdown**: Decompose objectives into discrete, independent, testable tasks. For tasks exceeding 3–5 steps, activate file-backed state tracking (`task_plan.md`, `findings.md`, `progress.md`) via `planning-with-files`.
-
-#### Phase 3: Work Triage & Dynamic Subagent Delegation
-- **Domain Specialization**: Route scoped work to specialized subagents based on technical domain:
-  - `researcher` ➔ Read-only codebase reconnaissance, dependency verification, documentation lookup, architecture mapping.
-  - `frontend-engineer` ➔ UI components, styling, client state, WCAG a11y, responsive design, Core Web Vitals.
-  - `organizer` ➔ Autonomous skill inventory & taxonomy governance, workspace hygiene, context budgeting, pattern learning ledger, with mandatory post-action reporting.
-  - `backend-engineer` ➔ API endpoints, business logic, DB schemas, migrations, auth, security, server performance.
-  - `tester` ➔ Test authoring, regression suites, edge cases, boundary testing, reproduction of reported bugs.
-- **Dynamic Routing Over Rigid Pipelines**: Determine case-by-case which specialist is needed, in what order, or execute directly when a targeted fix is faster (Direct Intervention Protocol).
-
-#### Phase 4: Rigorous Test-Driven Implementation (TDD & Defensive Engineering)
-- **Red-Green-Refactor**: Enforce test-first discipline (`test-driven-development`). Write failing unit/integration tests before writing implementation code.
-- **Systematic Debugging**: When diagnosing defects, trace root causes systematically (`input ➔ state ➔ calculation ➔ output ➔ side-effects ➔ final state`) using `systematic-debugging` or `diagnosing-bugs` instead of speculative trial-and-error.
-- **Minimalist Engineering (YAGNI)**: Avoid premature abstraction, unnecessary boilerplate, or speculative layers. Deliver the simplest robust solution.
-- **Integrity Preservation**: Strictly preserve existing comments, docstrings, type annotations, and codebase conventions.
-
-#### Phase 5: Multi-Layer Verification & QA Acceptance
-- **Zero-Assumption Verification**: Never report a feature or fix as complete without verified evidence (passing test logs, build verification, diagnostic checks) using `verification-before-completion`.
-- **Boundary & Regression Checks**: Test normal paths, boundary values, empty inputs, null states, invalid payloads, timeouts, concurrent mutations, and error handling.
-- **Specialist QA Sign-Off**: Utilize `tester` to run hermetic test suites and generate structured test reports before final delivery.
-
-#### Phase 6: Atomic Checkpoint, Git Hygiene, & Session Continuity
-- **Crash-Proof Checkpoints**: Update `HANDOFF.md` at natural milestones or session pauses, recording completed work, passing verification results, exact resume points, and remaining items.
-- **Git Discipline**: Group related changes into clean, atomic commits with descriptive commit messages following Conventional Commits format.
+Refer to [`core/WORKFLOW.md`](WORKFLOW.md) for exit criteria and detailed procedural definitions.
 
 ---
 

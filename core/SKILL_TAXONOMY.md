@@ -10,13 +10,13 @@ This document defines the functional categorization, discovery rules, and subage
 
 1. **Usage-Driven Categorization**: Taxonomy is NOT dogmatically restricted to an arbitrary fixed number of drawers. `@organizer` continuously structures, merges, splits, or creates new domain drawers (e.g., Cloud & DevOps, AI/ML, Mobile & Native) dynamically according to real-world workflows.
 2. **Autonomous Governance by `@organizer`**: Subagent `@organizer` has full authority to evaluate and assign skills to the best-fitting drawer, always providing a transparent post-action summary in chat.
-3. **Sub-Second Native Inspection**: Health auditing and skill counting must execute instantly via `scripts/check-skills.ps1` / `scripts/check-skills.sh` (< 0.5s) without slow shell loops.
+3. **Sub-Second Native Inspection**: Health auditing and skill counting must execute instantly via `bash haws.sh status` (< 0.5s) without slow shell loops.
 4. **Progressive Disclosure**: Agents MUST NOT load all skills at once. They browse Level 1 metadata and load Level 2 (`SKILL.md`) only on demand.
 
 
 ---
 
-## 🗄️ Active Tooling Drawers & Complete 104 Skills Mapping
+## 🗄️ Active Tooling Drawers & Complete 103 Skills Mapping
 
 ### 🧠 Drawer 1: Thinking & Planning (26 Skills)
 * **Purpose**: Intent extraction, architectural design, requirements engineering, decision stress-testing, and vertical task breakdown.
@@ -95,7 +95,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `slack-gif-creator` — Animated GIF generation and optimization for Slack.
   - `algorithmic-art` — Procedural and algorithmic visual art generation.
 
-### 🔍 Drawer 4: Audit & Verification (15 Skills)
+### 🔍 Drawer 4: Audit & Verification (14 Skills)
 * **Purpose**: Code verification, root cause debugging, security hardening, performance audits, and QA.
 * **Primary Subagent**: @tester, @organizer
 * **Catalog**:
@@ -103,17 +103,17 @@ This document defines the functional categorization, discovery rules, and subage
   - `systematic-debugging` — Systematic root-cause debugging without guesswork (`Input ➔ State ➔ Output`).
   - `diagnosing-bugs` — Hard bug and performance regression diagnosis loop.
   - `debugging-and-error-recovery` — Contained error recovery and fault isolation.
-  - `code-review-and-quality` — Multi-axis code review (Correctness, Security, Architecture, etc.).
-  - `code-review` — Standard peer review workflows and feedback generation.
-  - `requesting-code-review` — Pre-merge review verification against requirements.
-  - `receiving-code-review` — Technical rigor when evaluating review suggestions.
+  - `receiving-code-review` — Technical verification of code review feedback.
+  - `requesting-code-review` — Pre-merge quality and specification adherence audits.
+  - `doubt-driven-development` — Adversarial decision verification before standing.
+  - `code-review` — Two-axis review against local standards and originating specs.
+  - `code-review-and-quality` — Multi-axis code review across correctness, security, and style.
   - `security-and-hardening` — Security auditing, input sanitization, and vulnerability checks.
   - `performance-optimization` — Profiling, latency optimization, and memory tuning.
   - `observability-and-instrumentation` — Metrics, structured logging, and tracing.
   - `retro` — Engineering retrospectives and continuous process improvement.
   - `loop-me` — Autonomous iterative testing and verification loops.
-  - `haws` — HAWS master slash command for instant environment health and token audit.
-  - `haws-status` — Dedicated sub-second inspector for skill synchronization and token budget.
+  - `haws` — Unified master CLI, sub-second environment health inspector, diagnostics, and telemetry dashboard.
 
 ### 📝 Drawer 5: Docs & Communication (25 Skills)
 * **Purpose**: Document processing, token compression, humanizer, meta-tools, and skill authoring.
@@ -160,7 +160,7 @@ This document defines the functional categorization, discovery rules, and subage
 ---
 
 ## 🔄 Autonomous Maintenance Protocol for @organizer
-1. **Full Autonomous Authority**: @organizer operates with full autonomous authority to dynamically categorize new skills, adjust drawer mappings, and optimize the taxonomy across `SKILL_TAXONOMY.md` whenever new skills or tooling packages are installed (e.g. via `update.sh`, submodule updates, or `skill-creator`).
+1. **Full Autonomous Authority**: @organizer operates with full autonomous authority to dynamically categorize new skills, adjust drawer mappings, and optimize the taxonomy across `SKILL_TAXONOMY.md` whenever new skills or tooling packages are installed (e.g. via `bash haws.sh sync`, submodule updates, or `skill-creator`).
 2. **Mandatory Post-Action Reporting**: After performing any taxonomy modifications, drawer adjustments, or skill categorizations, @organizer MUST always deliver a structured, transparent change summary directly in chat for human awareness (`[Taxonomy Update] <skills categorized / drawers created>`).
 3. **Anthropic Standard Gatekeeping**: Whenever creating new custom in-house skills, @organizer ensures they strictly follow the **Anthropic Skill Standard** (`skill-creator` / `writing-skills`) before mapping them to their appropriate Drawer.
 4. **Skill Usage & Invocations Telemetry**: @organizer continuously monitors and records the usage metrics and exact invocation counts of every skill used by the Main Agent and Subagents across all tasks. This quantitative telemetry is analyzed to dynamically optimize drawer categorization, retire unused capabilities, or expand new Drawers (e.g., DevOps & Cloud, AI/ML Engineering, Mobile & Native) when high-frequency domain clusters emerge.

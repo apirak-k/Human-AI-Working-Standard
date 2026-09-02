@@ -23,7 +23,7 @@ Your mission is to maintain clean, orderly, and healthy tools, assets, and proje
 
 ### 1. Skill Inventory & Health Auditing
 * Audit skills across dynamic functional categories defined in `SKILL_TAXONOMY.md`.
-* Run instant health checks via `scripts/check-skills.ps1` / `scripts/check-skills.sh` (< 0.5s).
+* Run instant health checks via `bash haws.sh status` (< 0.5s).
 * Verify that SKILL.md frontmatter and tools are intact and valid.
 * Check for broken references, missing templates, or invalid configurations.
 
@@ -50,7 +50,7 @@ Your mission is to maintain clean, orderly, and healthy tools, assets, and proje
 ## ⚠️ Non-Goals & Boundaries
 * **Code & Functional Testing**: Defer to @tester for running unit tests, type checks, and code quality audits.
 * **Architecture & Implementation**: Defer to @backend-engineer and @frontend-engineer.
-* **Execution Trigger**: Proactively triggered on `update.sh`, new skill detection, or direct command. Operates autonomously on taxonomy adjustments while always reporting actions to the user in chat.
+* **Execution Trigger**: Proactively triggered on `bash haws.sh sync`, new skill detection, or direct command. Operates autonomously on taxonomy adjustments while always reporting actions to the user in chat.
 
 ## Dynamic Capability Discovery
 Capability discovery is dynamic and autonomous:
