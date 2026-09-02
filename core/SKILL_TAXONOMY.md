@@ -16,7 +16,7 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🗄️ Active Tooling Drawers & Complete 103 Skills Mapping
+## 🗄️ Active Tooling Drawers & Complete 102 Skills Mapping
 
 ### 🧠 Drawer 1: Thinking & Planning (26 Skills)
 * **Purpose**: Intent extraction, architectural design, requirements engineering, decision stress-testing, and vertical task breakdown.
@@ -95,7 +95,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `slack-gif-creator` — Animated GIF generation and optimization for Slack.
   - `algorithmic-art` — Procedural and algorithmic visual art generation.
 
-### 🔍 Drawer 4: Audit & Verification (14 Skills)
+### 🔍 Drawer 4: Audit & Verification (13 Skills)
 * **Purpose**: Code verification, root cause debugging, security hardening, performance audits, and QA.
 * **Primary Subagent**: @tester, @organizer
 * **Catalog**:
@@ -113,7 +113,6 @@ This document defines the functional categorization, discovery rules, and subage
   - `observability-and-instrumentation` — Metrics, structured logging, and tracing.
   - `retro` — Engineering retrospectives and continuous process improvement.
   - `loop-me` — Autonomous iterative testing and verification loops.
-  - `haws` — Unified master CLI, sub-second environment health inspector, diagnostics, and telemetry dashboard.
 
 ### 📝 Drawer 5: Docs & Communication (25 Skills)
 * **Purpose**: Document processing, token compression, humanizer, meta-tools, and skill authoring.

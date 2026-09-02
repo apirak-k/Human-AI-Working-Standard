@@ -125,9 +125,20 @@ run_doctor() {
         check_item "${SCRIPT_DIR}/agents/${f}" "agents/${f}"
     done
 
-    # 4. Check Custom Skills
-    [ "$json_mode" = false ] && echo "" && echo "4. Checking In-House Custom Skills..."
-    check_item "${SCRIPT_DIR}/skills/custom/haws/SKILL.md" "skills/custom/haws/SKILL.md"
+    # 4. Check Skills Structure (3 Clean Categories)
+    [ "$json_mode" = false ] && echo "" && echo "4. Checking Skills Structure (3 Clean Categories)..."
+    local skill_dirs=("custom" "packs" "standalone")
+    for d in "${skill_dirs[@]}"; do
+        if [ -d "${SCRIPT_DIR}/skills/${d}" ]; then
+            passed=$((passed + 1))
+            [ "$json_mode" = false ] && echo "   [PASS] skills/${d}/"
+            details+=("{\"item\":\"skills/${d}/\",\"status\":\"PASS\"}")
+        else
+            failed=$((failed + 1))
+            [ "$json_mode" = false ] && echo "   [FAIL] skills/${d}/ missing"
+            details+=("{\"item\":\"skills/${d}/\",\"status\":\"FAIL\"}")
+        fi
+    done
 
     # 5. Check Root Hygiene
     [ "$json_mode" = false ] && echo "" && echo "5. Checking Root Hygiene..."

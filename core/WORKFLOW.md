@@ -65,5 +65,5 @@ This document specifies the standard 6-phase software engineering lifecycle unde
   - `/humanizer` ➔ Refine prose to eliminate artificial AI boilerplate.
   - `/caveman` ➔ Ultra-terse summaries and compressed status reports.
   - `/documentation-and-adrs` ➔ Record architectural decisions and user documentation.
-  - `/haws-status` ➔ Verify skill health, token budget, and platform synchronization.
+  - `haws.sh status` ➔ Verify skill health, token budget, and platform synchronization.
 - **Exit Criteria**: Second Brain updated (`USER_PREFERENCES.md` / `ANTI_PATTERNS.md`), and local project `HANDOFF.md` updated.

@@ -20,14 +20,14 @@
 	path = skills/caveman
 	url = https://github.com/JuliusBrussee/caveman.git
 [submodule "skills/superpowers"]
-	path = skills/superpowers
+	path = skills/packs/superpowers
 	url = https://github.com/obra/superpowers.git
 [submodule "skills/agent-skills"]
-	path = skills/agent-skills
+	path = skills/packs/agent-skills
 	url = https://github.com/addyosmani/agent-skills.git
 [submodule "skills/anthropics-skills"]
-	path = skills/anthropics-skills
+	path = skills/packs/anthropics-skills
 	url = https://github.com/anthropics/skills.git
 [submodule "skills/mattpocock-skills"]
-	path = skills/mattpocock-skills
+	path = skills/packs/mattpocock-skills
 	url = https://github.com/mattpocock/skills.git

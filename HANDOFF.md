@@ -1,59 +1,52 @@
 # Session Checkpoint & Handoff — Human-AI Working Standard (HAWS)
 
 ## 🎯 Current Goal & Active Task
-- **Goal**: Complete architectural consolidation of HAWS: unifying all sync/update/diagnostic scripts into a single standalone engine (`haws.sh`), extracting the 6-phase engineering lifecycle into `core/WORKFLOW.md`, modularizing project blueprints into `templates/`, performing exhaustive test verification across all suites, and publishing changes to GitHub.
-- **Current Milestone**: Universal CLI Engine & Modular Blueprint Architecture v2.0 finalized, verified 100% healthy, and pushed to remote origin.
+- **Goal**: Reorganize the `skills/` directory into three clean, logical categories (`custom/`, `packs/`, and `standalone/`), completely eliminate redundant `skills/custom/haws/` (both `SKILL.md` and `web/` dashboard) to follow strict YAGNI principles, update `.gitmodules` and `haws.sh`, verify all 22 system doctor checks, and push the lean architecture to GitHub.
+- **Current Milestone**: Lean 3-Category Skill Structure & CLI Engine Consolidation finalized and verified 100% healthy.
 
 ---
 
 ## 📋 Task Checklist
-- [x] Consolidate fragmented maintenance scripts (`install.sh`, `update.sh`, `scripts/check-skills.*`, `scripts/haws*`, `scripts/haws_doctor.py`) into unified `haws.sh`
-- [x] Implement subcommands in `haws.sh`: `sync` (remote fetch, pull, submodules, link, prune), `status` (fast skill & token count), `doctor` (with structured `--json` option), and `test`
-- [x] Resolve WindowsApps Python stub issue in `haws.sh status` to accurately calculate token consumption (10,994 tokens / 54% SAFE)
-- [x] Extract 6-phase SWE lifecycle and deterministic skill mapping into dedicated [`core/WORKFLOW.md`](core/WORKFLOW.md)
-- [x] Modularize project scaffolds into [`templates/`](templates/) (`DESIGN.md`, `PROJECT.md`, `ARCHITECTURE.md`, `CONSTRAINTS.md`, `HANDOFF.md`, `README.md`)
-- [x] Relocate interactive web telemetry dashboard into [`skills/custom/haws/web/`](skills/custom/haws/web/) and verify JSON schema
-- [x] Clean up obsolete monolithic files (`core/TEMPLATES.md`, `core/DESIGN.md`, `core/HANDOFF.md`) and legacy directories (`.agents/`, `tools/haws-monitor/`)
-- [x] Execute exhaustive multi-suite testing:
-  - `haws.sh doctor`: 20/20 checks passed (100% Green)
-  - `haws.sh status`: 100% in sync across Antigravity (132 skills) and Claude Code (103 skills)
-  - `skills/agent-skills/scripts/`: all validation suites and unit tests passing
-  - `skills/superpowers/`: Antigravity tool mapping and brainstorm-server unit tests passing
-  - `skills/mattpocock-skills/`: version parity check passing
-- [x] Resolve documentation drift across `README.md`, `SKILL_TAXONOMY.md`, `USER_PREFERENCES.md`, `WORK_INSTRUCTIONS.md`, and `organizer.md`
-- [x] Commit all changes with Conventional Commits and push to GitHub (`origin/main`)
+- [x] Restructure `skills/` into three distinct, non-overlapping categories:
+  - `skills/custom/` ➔ Empty directory reserved for user-defined proprietary skills (with guidance `README.md`)
+  - `skills/packs/` ➔ Multi-skill Git submodules (`agent-skills`, `superpowers`, `anthropics-skills`, `mattpocock-skills`)
+  - `skills/standalone/` ➔ Single-purpose tools (`caveman`, `drawio-skill`, `graphify`, `humanizer`, `planning-with-files`, `taste-skill`, `ui-ux-pro-max`)
+- [x] Update Git submodule paths in `.gitmodules` via `git mv`
+- [x] Delete redundant `skills/custom/haws/` (`SKILL.md` and `web/` telemetry dashboard) to eliminate architectural bloat and keep only `haws.sh`
+- [x] Update `haws.sh doctor` Check 4 to validate the 3 skill categories (`custom/`, `packs/`, `standalone/`)
+- [x] Update `core/SKILL_TAXONOMY.md`, `core/WORKFLOW.md`, and `README.md` to reflect 102 skills and the 3-category layout
+- [x] Run `bash haws.sh doctor` (22/22 PASS) and `bash haws.sh sync` to auto-prune deleted skills from AI environments
+- [x] Commit and push changes to GitHub (`origin/main`)
 
 ---
 
 ## ⚖️ Confirmed Architectural Decisions
-- **Unified Engine (`haws.sh`)**: A single portable Bash script handles all setup, synchronization, status reporting, and diagnostics across Windows, macOS, and Linux without dependency on external Python wrappers or scattered shell scripts.
-- **Dedicated Project Blueprints (`templates/`)**: Child repositories scaffold standard governance files directly from `templates/` without coupling to internal HAWS core standards.
-- **Dedicated Lifecycle Specification (`core/WORKFLOW.md`)**: The 6-phase engineering lifecycle is decoupled into its own authoritative document, leaving `core/WORK_INSTRUCTIONS.md` focused on operational procedures and context loading.
-- **Single Canonical Home for HAWS Custom Skill (`skills/custom/haws/`)**: Houses the skill definition, telemetry dashboard, and health data in compliance with Anthropic Skill Standard and local priority rules.
+- **Strict YAGNI & Single Source of Truth**: All status checks, synchronization, and diagnostics are performed strictly through the standalone `haws.sh` CLI engine. No redundant in-house skill wrapper or HTML web monitor exists inside HAWS.
+- **Three-Tier Skills Architecture**:
+  1. `skills/custom/`: For proprietary user skills with highest override precedence.
+  2. `skills/packs/`: For third-party multi-skill submodules.
+  3. `skills/standalone/`: For individual third-party standalone skills.
+- **Global Portability Without Bloat**: Users invoke HAWS status directly via CLI or natural conversation with AI agents without requiring a redundant skill wrapper.
 
 ---
 
 ## ❓ Open Questions & Unverified Assumptions
-- None. All 20 diagnostics pass and cross-tool symlinks/manifest remain in 100% parity.
+- None. All 22 diagnostics pass, `.gitmodules` is aligned, and working tree is verified clean.
 
 ---
 
 ## 📊 Verification Status
 | Check / Test Suite | Command | Result | Notes |
 | :--- | :--- | :---: | :--- |
-| HAWS System Doctor | `bash haws.sh doctor` | 🟢 PASS | 20/20 checks passed |
+| HAWS System Doctor | `bash haws.sh doctor` | 🟢 PASS | 22/22 checks passed (100% Green) |
 | HAWS Doctor JSON | `bash haws.sh doctor --json` | 🟢 PASS | Structured JSON valid |
-| Fast Status & Token Budget | `bash haws.sh status` | 🟢 PASS | 10,994 tokens (54% / SAFE) |
-| Agent Skills Validation | `node scripts/validate-skills.js` | 🟢 PASS | 25/25 skills valid |
-| Command Parity | `node scripts/validate-commands.js` | 🟢 PASS | 9/9 commands valid |
-| Artifact Paths | `node scripts/validate-artifact-paths.js` | 🟢 PASS | 7/7 files valid |
-| Version Check | `node scripts/validate-versions.js` | 🟢 PASS | Plugin version 0.6.8 |
-| Superpowers Integration | `bash tests/antigravity/run-tests.sh` | 🟢 PASS | Antigravity tool mappings verified |
-| Matt Pocock Skills | `node scripts/sync-plugin-version.mjs --check` | 🟢 PASS | Plugin version 1.2.3 in sync |
+| Fast Status & Token Budget | `bash haws.sh status` | 🟢 PASS | Token budget safe (54% / SAFE) |
+| Skills Structure Check | `skills/{custom,packs,standalone}` | 🟢 PASS | All 3 categories verified |
+| Submodule Integrity | `git status` / `.gitmodules` | 🟢 PASS | Submodules tracked cleanly |
 | Relative Link Integrity | Node markdown link scanner | 🟢 PASS | 0 broken links |
 
 ---
 
 ## 📍 Exact Resume Point
-- **Last Action**: Created root `HANDOFF.md`, staged all files, committed changes, and pushed to GitHub `origin/main`.
-- **Next Action**: Repository is clean, fully synchronized, and ready for feature workflows or project bootstrapping using `templates/`.
+- **Last Action**: Reorganized `skills/` into `custom/`, `packs/`, and `standalone/`, pruned `custom/haws`, updated `haws.sh` diagnostics, verified 22/22 checks, updated `HANDOFF.md`, committed, and pushed to GitHub.
+- **Next Action**: Repository is 100% clean, simplified, and ready for development.

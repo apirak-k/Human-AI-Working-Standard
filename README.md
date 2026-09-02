@@ -55,10 +55,10 @@ curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/
 │   ├── ARCHITECTURE.md                  # System architecture, topology, and component boundaries
 │   ├── CONSTRAINTS.md                   # Non-negotiable quality gates, linters, and coverage contracts
 │   └── HANDOFF.md                       # Session checkpoint, active task backlog & exact resume point
-├── skills/                              # Single Skills and Multi-Skill Packs (curated & extensible)
-│   ├── custom/                          # Proprietary & AI-authored in-house skills
-│   │   └── haws/                        # Master orchestrator, doctor diagnostics & web telemetry
-│   └── ...                              # Curated submodule skill packs (agent-skills, superpowers, etc.)
+├── skills/                              # Curated Skill Repository (3 Clean Categories)
+│   ├── custom/                          # User-defined proprietary skills (empty/extensible)
+│   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, etc.)
+│   └── standalone/                      # Single-purpose standalone skills (taste-skill, ui-ux-pro-max, etc.)
 └── haws.sh                              # Standalone Universal CLI Engine (sync, status, doctor, test)
 ```
 
@@ -115,8 +115,9 @@ When running, the Main Agent dynamically orchestrates five specialized subagents
 ## Skills Catalog & Multi-Skill Packs
 
 HAWS bundles curated open-source skills & packs (pointing directly to their upstream GitHub repositories):
-- **Single Skills**: `drawio-skill` (`/drawio-skill`), `planning-with-files` (`/planning-with-files`), `ui-ux-pro-max` (`/ui-ux-pro-max`), `taste-skill` (`/taste-skill`), `humanizer` (`/humanizer`), `graphify` (`/graphify`), `caveman` (`/caveman`).
-- **Skill Packs**: `superpowers` (`/test-driven-development`, `/systematic-debugging`, `/brainstorming`), `agent-skills` (`/performance-optimization`, `/security-and-hardening`), `anthropics-skills` (`/skill-creator`), `mattpocock-skills` (`/grill-me`, `/interview-me`).
+- **Standalone Skills (`skills/standalone/`)**: `drawio-skill`, `planning-with-files`, `ui-ux-pro-max`, `taste-skill`, `humanizer`, `graphify`, `caveman`.
+- **Skill Packs (`skills/packs/`)**: `superpowers`, `agent-skills`, `anthropics-skills`, `mattpocock-skills`.
+- **Custom Skills (`skills/custom/`)**: Reserved for user-defined proprietary skills.
 
 ---
 
