@@ -272,7 +272,12 @@ find_and_link_skills() {
     done < <(find "${base_dir}" -type f \( -name "SKILL.md" -o -name "skill.md" \) -print0 2>/dev/null || true)
 }
 
+# Prioritize custom in-house skills over external submodules
+if [ -d "${SOURCE_DIR}/skills/custom" ]; then
+    find_and_link_skills "${SOURCE_DIR}/skills/custom"
+fi
 find_and_link_skills "${SOURCE_DIR}/skills"
+
 
 if [ ${#PROCESSED_SKILLS[@]} -eq 0 ]; then
     echo "  (No skills found in ${SOURCE_DIR}/skills)"
@@ -328,16 +333,52 @@ if [ ! -d "${SOURCE_DIR}/agents" ]; then
 fi
 echo ""
 
-# 7. Commit Manifest File
+# 7. Link Custom Skills to Slash Commands (for Claude Code ~/.claude/commands)
+echo "--- Linking Slash Commands for Custom Skills ---"
+COMMANDS_LINKED=0
+if [ "$DETECTED_CLAUDE" = true ]; then
+    mkdir -p "${HOME}/.claude/commands"
+    if [ -d "${SOURCE_DIR}/skills/custom" ]; then
+        for custom_skill_dir in "${SOURCE_DIR}/skills/custom"/*; do
+            if [ -d "${custom_skill_dir}" ]; then
+                custom_name="$(basename "${custom_skill_dir}")"
+                cmd_target="${HOME}/.claude/commands/${custom_name}.md"
+                desc="Execute the custom ${custom_name} skill workflow."
+                
+                for sfile in "${custom_skill_dir}/SKILL.md" "${custom_skill_dir}/skill.md"; do
+                    if [ -f "$sfile" ]; then
+                        extracted_desc=$(grep -E '^[[:space:]]*description:[[:space:]]*' "$sfile" | head -n 1 | sed -E 's/^[[:space:]]*description:[[:space:]]*["'"'"']?([^"'"'"'#\r\n]+)["'"'"']?.*$/\1/' | tr -d '\r\n' | xargs 2>/dev/null || true)
+                        [ -n "$extracted_desc" ] && desc="$extracted_desc"
+                        break
+                    fi
+                done
+
+                cat <<EOF > "${cmd_target}"
+---
+description: ${desc}
+---
+Execute the ${custom_name} skill workflow defined in ~/.claude/skills/${custom_name}/SKILL.md.
+EOF
+                echo "  [COMMAND] Claude Slash Command [/${custom_name}]: ${cmd_target}"
+                COMMANDS_LINKED=$((COMMANDS_LINKED + 1))
+            fi
+        done
+    fi
+fi
+echo ""
+
+# 8. Commit Manifest File
 if [ -f "${TMP_MANIFEST}" ]; then
     mv -f "${TMP_MANIFEST}" "${MANIFEST_FILE}"
 fi
 
-# 8. Summary Report
+# 9. Summary Report
 echo "=== Installation Summary ==="
 echo "Tools Setup   : Claude Code ($DETECTED_CLAUDE), Google Antigravity ($DETECTED_GEMINI)"
 echo "Global Rules  : ${RULES_LINKED}"
 echo "Skills Linked : ${SKILLS_LINKED}"
+echo "Commands Ready: ${COMMANDS_LINKED}"
+
 echo "Agents Linked : ${AGENTS_LINKED}"
 echo "Skipped Items : ${SKIPPED_COUNT}"
 echo "Warnings      : ${WARNINGS_COUNT}"

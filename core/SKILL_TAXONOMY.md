@@ -16,9 +16,9 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🗄️ Active Tooling Drawers & Complete 102 Skills Mapping
+## 🗄️ Active Tooling Drawers & Complete 104 Skills Mapping
 
-### 🧠 Drawer 1: Thinking & Planning (25 Skills)
+### 🧠 Drawer 1: Thinking & Planning (26 Skills)
 * **Purpose**: Intent extraction, architectural design, requirements engineering, decision stress-testing, and vertical task breakdown.
 * **Primary Subagent**: Leader, @researcher
 * **Catalog**:
@@ -37,6 +37,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `grill-with-docs` — Stress-test designs against official documentation and primary sources.
   - `domain-modeling` — Build domain models, ubiquitous language, and ADRs.
   - `codebase-design` — Evaluate architectural patterns and component boundaries.
+  - `graphify` — Codebase knowledge graph, community detection, and architectural relationship mapping.
   - `prototype` — Fast spike prototypes to validate technical feasibility.
   - `research` — High-trust primary source investigation and Markdown synthesis.
   - `discernment-nudge` — Strategic sanity-checking of engineering decisions.
@@ -94,7 +95,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `slack-gif-creator` — Animated GIF generation and optimization for Slack.
   - `algorithmic-art` — Procedural and algorithmic visual art generation.
 
-### 🔍 Drawer 4: Audit & Verification (13 Skills)
+### 🔍 Drawer 4: Audit & Verification (15 Skills)
 * **Purpose**: Code verification, root cause debugging, security hardening, performance audits, and QA.
 * **Primary Subagent**: @tester, @organizer
 * **Catalog**:
@@ -111,8 +112,10 @@ This document defines the functional categorization, discovery rules, and subage
   - `observability-and-instrumentation` — Metrics, structured logging, and tracing.
   - `retro` — Engineering retrospectives and continuous process improvement.
   - `loop-me` — Autonomous iterative testing and verification loops.
+  - `haws` — HAWS master slash command for instant environment health and token audit.
+  - `haws-status` — Dedicated sub-second inspector for skill synchronization and token budget.
 
-### 📝 Drawer 5: Docs & Communication (26 Skills)
+### 📝 Drawer 5: Docs & Communication (25 Skills)
 * **Purpose**: Document processing, token compression, humanizer, meta-tools, and skill authoring.
 * **Primary Subagent**: Leader, @organizer
 * **Catalog**:
@@ -140,7 +143,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `scaffold-exercises` — Coding exercise generation with tests and solutions.
   - `academy-guide` — Interactive learning guides and curriculum authoring.
   - `setup-matt-pocock-skills` — Configuration and environment setup for Matt Pocock skills.
-  - `template` — Template authoring and standardization.
+  - `template-skill` — Standardized skill and document templating.
 
 ---
 

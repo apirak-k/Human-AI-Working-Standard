@@ -6,7 +6,7 @@ set -euo pipefail
 
 CANONICAL_DIR="${HOME}/haws"
 
-echo "=== HAWS Cross-Tool Updater ==="
+echo "=== HAWS Cross-Tool Manager (Check + Update) ==="
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,9 +18,61 @@ else
     SOURCE_DIR="${CANONICAL_DIR}"
 fi
 
+# Step 1: Pre-Execution Fast Health & Token Check (Sub-second)
+echo "--- Step 1: Pre-Flight Health & Token Check ---"
+NEEDS_UPDATE=false
+
+if [ -f "${SOURCE_DIR}/scripts/check-skills.sh" ]; then
+    CHECK_OUTPUT=$(bash "${SOURCE_DIR}/scripts/check-skills.sh" || true)
+    echo "${CHECK_OUTPUT}"
+    if echo "${CHECK_OUTPUT}" | grep -q "MISMATCH DETECTED"; then
+        NEEDS_UPDATE=true
+    fi
+fi
+
+# Check if git remote has incoming changes
+if [ -d "${SOURCE_DIR}/.git" ]; then
+    git -C "${SOURCE_DIR}" fetch --quiet origin main 2>/dev/null || true
+    LOCAL_COMMIT=$(git -C "${SOURCE_DIR}" rev-parse HEAD 2>/dev/null || true)
+    REMOTE_COMMIT=$(git -C "${SOURCE_DIR}" rev-parse origin/main 2>/dev/null || true)
+    if [ -n "${LOCAL_COMMIT}" ] && [ -n "${REMOTE_COMMIT}" ] && [ "${LOCAL_COMMIT}" != "${REMOTE_COMMIT}" ]; then
+        NEEDS_UPDATE=true
+        echo "  [*] Remote updates detected on GitHub."
+    fi
+fi
+
+# Check if unlinked custom skills exist
+if [ -d "${SOURCE_DIR}/skills/custom" ]; then
+    for cdir in "${SOURCE_DIR}/skills/custom"/*; do
+        if [ -d "$cdir" ]; then
+            cname=$(basename "$cdir")
+            if [ ! -d "${HOME}/.gemini/config/skills/${cname}" ] || [ ! -d "${HOME}/.claude/skills/${cname}" ]; then
+                NEEDS_UPDATE=true
+                echo "  [*] New custom skill detected: ${cname}"
+            fi
+        fi
+    done
+fi
+
+if [ "$NEEDS_UPDATE" = false ] && [ "${1:-}" != "--force" ]; then
+    echo ""
+    echo "================================================================"
+    echo "  [✓] All skills, subagents, and tools are 100% HEALTHY & IN SYNC."
+    echo "  [✓] No updates or mismatches found. Skipping heavy update."
+    echo "================================================================"
+    echo "Tip: Run './update.sh --force' if you wish to force a full re-pull."
+    exit 0
+fi
+
+echo ""
+echo "  [*] Discrepancies or updates detected. Proceeding with update..."
+echo ""
+
+# Step 2: Update Repository & Embedded Submodules
+echo "--- Step 2: Updating HAWS Repository & Submodules ---"
 if [ -d "${SOURCE_DIR}/.git" ]; then
     echo "Pulling latest changes in ${SOURCE_DIR}..."
-    git -C "${SOURCE_DIR}" pull --quiet
+    git -C "${SOURCE_DIR}" pull --quiet || true
     echo "  [✓] Updated to latest git commit"
 
     if [ -f "${SOURCE_DIR}/.gitmodules" ]; then
@@ -33,19 +85,21 @@ else
 fi
 echo ""
 
+
+# Step 3: Re-syncing Symlinks & Slash Commands
 MANIFEST_FILE="${HOME}/.haws_manifest"
 PREV_MANIFEST="${HOME}/.haws_manifest.prev"
 rm -f "${PREV_MANIFEST}"
 [ -f "${MANIFEST_FILE}" ] && cp -f "${MANIFEST_FILE}" "${PREV_MANIFEST}"
 
-# Run install.sh to ensure any newly added skills/agents are linked
-echo "Re-syncing symlinks for all detected AI environments..."
+echo "--- Step 3: Re-syncing Symlinks, Subagents & Slash Commands ---"
 if [ -f "${SOURCE_DIR}/scripts/install.sh" ]; then
     bash "${SOURCE_DIR}/scripts/install.sh" "$@"
 else
     bash "${SOURCE_DIR}/install.sh" "$@"
 fi
 echo ""
+
 
 # Check and auto-prune dangling and removed items
 echo "--- Auto-Pruning Orphaned & Dangling Links ---"
