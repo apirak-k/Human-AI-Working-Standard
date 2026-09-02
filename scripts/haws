@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# HAWS Unified CLI Entrypoint (haws)
+# ==============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMAND="${1:-status}"
+
+case "${COMMAND}" in
+    doctor)
+        shift
+        exec "${SCRIPT_DIR}/haws-doctor.sh" "$@"
+        ;;
+    status|health|check)
+        shift 2>/dev/null || true
+        exec "${SCRIPT_DIR}/check-skills.sh" "$@"
+        ;;
+    *)
+        echo "Usage: haws [status|doctor] [options]"
+        echo "  haws status        Instant sub-second check of skill counts and tokens"
+        echo "  haws doctor        Comprehensive system diagnostics (core files, subagents, git, scripts)"
+        echo "  haws doctor --json Output diagnostics in JSON format"
+        exit 1
+        ;;
+esac

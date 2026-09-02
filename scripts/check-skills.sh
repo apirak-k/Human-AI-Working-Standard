@@ -20,7 +20,8 @@ if command -v python3 &>/dev/null || command -v py &>/dev/null; then
     est_tokens=$($py_cmd -c "
 import glob, os, re
 gemini_dir = os.path.expanduser('~/.gemini/config/skills')
-files = glob.glob(os.path.join(gemini_dir, '*', 'SKILL.md')) + glob.glob(os.path.join(gemini_dir, '*', 'skill.md'))
+raw_files = glob.glob(os.path.join(gemini_dir, '*', 'SKILL.md')) + glob.glob(os.path.join(gemini_dir, '*', 'skill.md'))
+files = list({os.path.normcase(f): f for f in raw_files}.values())
 chars = 0
 for f in files:
     try:

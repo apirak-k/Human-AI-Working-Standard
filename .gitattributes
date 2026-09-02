@@ -4,6 +4,7 @@
 # Ensure shell scripts always use LF line endings across OS
 *.sh text eol=lf
 *.bash text eol=lf
+*.ps1 text eol=lf
 
 # Windows batch files
 *.cmd text eol=crlf

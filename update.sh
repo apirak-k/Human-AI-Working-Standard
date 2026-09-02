@@ -33,11 +33,10 @@ fi
 # Check if git remote has incoming changes
 if [ -d "${SOURCE_DIR}/.git" ]; then
     git -C "${SOURCE_DIR}" fetch --quiet origin main 2>/dev/null || true
-    LOCAL_COMMIT=$(git -C "${SOURCE_DIR}" rev-parse HEAD 2>/dev/null || true)
-    REMOTE_COMMIT=$(git -C "${SOURCE_DIR}" rev-parse origin/main 2>/dev/null || true)
-    if [ -n "${LOCAL_COMMIT}" ] && [ -n "${REMOTE_COMMIT}" ] && [ "${LOCAL_COMMIT}" != "${REMOTE_COMMIT}" ]; then
+    INCOMING_COMMITS=$(git -C "${SOURCE_DIR}" rev-list HEAD..origin/main --count 2>/dev/null || echo 0)
+    if [ "${INCOMING_COMMITS}" -gt 0 ]; then
         NEEDS_UPDATE=true
-        echo "  [*] Remote updates detected on GitHub."
+        echo "  [*] Remote updates detected on GitHub (${INCOMING_COMMITS} new commits)."
     fi
 fi
 

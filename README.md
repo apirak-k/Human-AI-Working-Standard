@@ -37,6 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/
 │   ├── ANTI_PATTERNS.md                 # Personal Second Brain: Guardrails, forbidden patterns & learned lessons
 │   ├── TEMPLATES.md                     # Starter prompt, PRP blueprint, XML delegation schemas, and pointers
 │   ├── DESIGN.md                        # Official Design System standard (WCAG AA tokens)
+│   ├── HANDOFF.md                       # Active session checkpoint, verification records & resume state
 │   └── SKILL_TAXONOMY.md                # 5-Drawer dynamic skill taxonomy & subagent affinities (@organizer)
 ├── agents/                              # Unified Subagent Source (Author Once, Deploy to All AI Tools)
 │   ├── organizer.md                     # Skill inventory health, workspace hygiene & pattern learning ledger
@@ -45,6 +46,20 @@ curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
 ├── skills/                              # Single Skills and Multi-Skill Packs (curated & extensible)
+│   └── custom/                          # Proprietary & AI-authored in-house skills (highest linking precedence)
+├── scripts/                             # Utility & health monitoring scripts
+│   ├── check-skills.sh                  # Sub-second skill inventory & token budget checker (Bash/POSIX)
+│   ├── check-skills.ps1                 # High-performance native checker for Windows (PowerShell)
+│   ├── haws_doctor.py                   # Comprehensive system diagnostics utility (haws doctor)
+│   ├── haws-doctor.sh                   # Bash wrapper for haws doctor
+│   ├── haws-doctor.ps1                  # PowerShell wrapper for haws doctor
+│   ├── haws                             # Unified CLI entrypoint (Bash)
+│   └── haws.ps1                         # Unified CLI entrypoint (PowerShell)
+├── tests/                               # Automated unit test suite
+│   └── test_haws_doctor.py              # Test suite for haws doctor diagnostics
+├── tools/                               # Standalone utilities & monitoring dashboards
+│   └── haws-monitor/                    # Ultra-low-latency health & analytics monitor backend & web UI
+├── .agents/                             # Agent workflows & slash commands (Antigravity / Gemini CLI)
 ├── install.sh                           # Global cross-tool installer (Claude Code & Antigravity)
 └── update.sh                            # One-click universal updater (git + submodules + symlinks)
 ```
@@ -110,18 +125,21 @@ HAWS bundles curated open-source skills & packs (pointing directly to their upst
 HAWS supports the open **AgentSkills.io** / Anthropic specification across Google Antigravity and Claude Code:
 
 ### 1. Adding a Custom In-House Skill
-1. Create `skills/<skill-name>/SKILL.md` following the **Anthropic Skill Standard** (`skill-creator` / `writing-skills`):
+Proprietary or AI-authored skills reside in `skills/custom/<skill-name>/` and hold highest linking priority over external submodules to prevent upstream collisions (per [`core/USER_PREFERENCES.md`](core/USER_PREFERENCES.md)).
+1. Create `skills/custom/<skill-name>/SKILL.md` following the **Anthropic Skill Standard** (`skill-creator` / `writing-skills`):
    ```markdown
    ---
    name: <skill-name>
    description: Brief capability summary. Use when [triggers]. Do NOT use when [anti-triggers].
+   origin: ai-generated        # Required: "ai-generated" or "user-authored"
+   author: HAWS Multi-Agent System
    ---
    # <Skill Title>
    ## Overview & Purpose
    ## Step-by-Step Workflow
    ## Verification & Quality Bar
    ```
-2. Run `bash install.sh` (or `bash update.sh`) to link globally.
+2. Run `bash install.sh` (or `bash update.sh`) to link globally. Custom skills in `skills/custom/` automatically override upstream submodule versions if naming conflicts occur.
 
 ### 2. Adding an External Skill Pack (Git Submodule)
 ```bash

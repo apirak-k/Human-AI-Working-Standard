@@ -1,4 +1,4 @@
-﻿---
+---
 name: haws
 description: HAWS master slash command. Triggers on "/haws", "haws", "haws status", or "haws health". Provides immediate sub-second audit of active skills, cross-platform synchronization, and customization token budget.
 origin: ai-generated
@@ -26,11 +26,17 @@ Provides an immediate, sub-second audit (< 0.2s) of active skills, cross-platfor
 ### Windows (PowerShell)
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\check-skills.ps1
+# Full System Diagnostics:
+powershell -ExecutionPolicy Bypass -File .\scripts\haws.ps1 doctor
+powershell -ExecutionPolicy Bypass -File .\scripts\haws.ps1 doctor -Json
 ```
 
 ### macOS / Linux / Git Bash (POSIX)
 ```bash
 bash scripts/check-skills.sh
+# Full System Diagnostics:
+bash scripts/haws doctor
+bash scripts/haws doctor --json
 ```
 
 ---
