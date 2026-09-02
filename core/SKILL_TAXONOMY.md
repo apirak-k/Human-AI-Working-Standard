@@ -6,70 +6,141 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🧭 Dynamic Taxonomy Principles
+## 🧭 Dynamic Purpose-Driven Taxonomy Principles
 
-1. **Base Baseline (5 Drawers)**: Current skills are organized into 5 primary functional drawers.
-2. **Extensibility Rule**: As skills grow, new drawers can be added dynamically (e.g., DevOps & Infrastructure, Mobile & Native, AI/ML Engineering) whenever it improves discovery and usability.
-3. **Progressive Disclosure**: Agents MUST NOT load all skills at once. They browse Level 1 metadata and load Level 2 (SKILL.md) only on demand.
+1. **Usage-Driven Categorization**: Taxonomy is NOT dogmatically restricted to an arbitrary fixed number of drawers. `@organizer` continuously structures, merges, splits, or creates new domain drawers (e.g., Cloud & DevOps, AI/ML, Mobile & Native) dynamically according to real-world workflows.
+2. **Autonomous Governance by `@organizer`**: Subagent `@organizer` has full authority to evaluate and assign skills to the best-fitting drawer, always providing a transparent post-action summary in chat.
+3. **Sub-Second Native Inspection**: Health auditing and skill counting must execute instantly via `scripts/check-skills.ps1` / `scripts/check-skills.sh` (< 0.5s) without slow shell loops.
+4. **Progressive Disclosure**: Agents MUST NOT load all skills at once. They browse Level 1 metadata and load Level 2 (`SKILL.md`) only on demand.
+
 
 ---
 
-## 🗄️ Active Tooling Drawers
+## 🗄️ Active Tooling Drawers & Complete 102 Skills Mapping
 
-### 🧠 Drawer 1: Thinking & Planning
-* **Purpose**: Intent extraction, architectural design, requirements engineering, and decision stress-testing.
+### 🧠 Drawer 1: Thinking & Planning (25 Skills)
+* **Purpose**: Intent extraction, architectural design, requirements engineering, decision stress-testing, and vertical task breakdown.
 * **Primary Subagent**: Leader, @researcher
-* **Core Skills**:
-  - `brainstorming` - Explore user intent, requirements, and design before coding.
-  - `writing-plans` - Break complex multi-step requirements into executable plans.
-  - `spec-driven-development` - Create formal specs before coding.
-  - `idea-refine` - Divergent & convergent thinking to sharpen vague ideas.
-  - `interview-me` - One-question-at-a-time interview to extract true underlying intent.
-  - `grill-me` / `grilling` - Relentless stress-testing of designs and architecture.
-  - `domain-modeling` - Build domain models, glossaries, and ADRs.
-  - `planning-with-files` - Persistent file-based planning across multi-turn sessions.
+* **Catalog**:
+  - `brainstorming` — Explore user intent, requirements, and design before coding.
+  - `writing-plans` — Break complex multi-step requirements into executable plans.
+  - `executing-plans` — Execute multi-step implementation plans systematically.
+  - `planning-and-task-breakdown` — Vertical slice task breakdown with checkpoints.
+  - `planning-with-files` — Persistent file-based planning across multi-turn sessions (`task_plan.md`).
+  - `spec-driven-development` — Create formal specifications before coding.
+  - `to-spec` — Convert unstructured thoughts and conversations into structured specs.
+  - `to-tickets` — Break design specs down into granular engineering tickets.
+  - `to-questionnaire` — Generate targeted questionnaires for stakeholders.
+  - `idea-refine` — Divergent & convergent thinking to sharpen vague ideas.
+  - `interview-me` — One-question-at-a-time interview to extract true underlying intent.
+  - `grill-me` / `grilling` — Relentless stress-testing of designs and architecture.
+  - `grill-with-docs` — Stress-test designs against official documentation and primary sources.
+  - `domain-modeling` — Build domain models, ubiquitous language, and ADRs.
+  - `codebase-design` — Evaluate architectural patterns and component boundaries.
+  - `prototype` — Fast spike prototypes to validate technical feasibility.
+  - `research` — High-trust primary source investigation and Markdown synthesis.
+  - `discernment-nudge` — Strategic sanity-checking of engineering decisions.
+  - `doubt-driven-development` — Rigorous questioning of architectural assumptions.
+  - `ask-matt` — Domain consultation on TypeScript and modern software architecture.
+  - `wayfinder` — Route complex requests to the right engineering workflow.
+  - `wait-what` — Intercept ambiguous requirements before making mistaken assumptions.
+  - `wizard` — Interactive multi-step setup and wizard workflows.
+  - `triage` — Rapid assessment and priority triage of bugs and tasks.
 
-### 💻 Drawer 2: Code & Engineering
-* **Purpose**: Core implementation, API design, database querying, and cloud pipelines.
-* **Primary Subagent**: @backend
-* **Core Skills**:
-  - `test-driven-development` / `tdd` - Red-Green-Refactor development.
-  - `api-and-interface-design` - Stable API contracts and module boundaries.
-  - `bigquery-sql` - Optimized BigQuery SQL and performance tuning.
-  - `bigquery-ai-ml` - BigQuery ML and GenAI capabilities.
-  - `gcp-data-pipelines` / `gcp-spark` / `gcp-dataflow` - Cloud data engineering pipelines.
-  - `mcp-builder` - FastMCP and TypeScript MCP server development.
-  - `code-simplification` - Refactoring and removing unnecessary complexity.
+### 💻 Drawer 2: Code & Engineering (25 Skills)
+* **Purpose**: Core implementation, API design, database querying, refactoring, and cloud pipelines.
+* **Primary Subagent**: @backend-engineer
+* **Catalog**:
+  - `test-driven-development` / `tdd` — Red-Green-Refactor implementation discipline.
+  - `implement` — Direct, focused execution of approved specifications.
+  - `implement-spec` — Spec-compliant vertical implementation workflow.
+  - `api-and-interface-design` — Stable REST/RPC contracts and module boundaries.
+  - `code-simplification` — Refactoring and removing unnecessary boilerplate (YAGNI).
+  - `improve-codebase-architecture` — Structural codebase refactoring and modernization.
+  - `source-driven-development` — Documentation-grounded implementation with official sources.
+  - `incremental-implementation` — Delivering complex features in small, verifiable steps.
+  - `constraint-driven-development` — Building software within explicit system constraints.
+  - `mcp-builder` — FastMCP and TypeScript Model Context Protocol server development.
+  - `claude-api` — Direct SDK integration with Anthropic Claude API.
+  - `migrate-to-shoehorn` — Type-safe test fixture migrations without `as` casting.
+  - `setup-ts-deep-modules` — Clean TypeScript project layouts and deep module exports.
+  - `setup-pre-commit` — Automated Git pre-commit hooks configuration.
+  - `subagent-driven-development` — Coordinated multi-step task execution via subagents.
+  - `dispatching-parallel-agents` — Parallel subagent execution for independent tasks.
+  - `using-git-worktrees` — Isolated Git worktrees for safe parallel development.
+  - `git-workflow-and-versioning` — Branching strategies, SemVer, and commit hygiene.
+  - `git-guardrails-claude-code` — Safeguards preventing uncommitted data loss.
+  - `resolving-merge-conflicts` — Structured Git merge and rebase conflict resolution.
+  - `deprecation-and-migration` — Safe sunsetting and migration of legacy systems.
+  - `finishing-a-development-branch` — Verification, squashing, and merging workflows.
+  - `shipping-and-launch` — Production launch checklists and deployment strategies.
+  - `ci-cd-and-automation` — Automated build pipelines, GitHub Actions, and quality gates.
 
-### 🎨 Drawer 3: UX/UI & Frontend
-* **Purpose**: Production UI design, design tokens, component architecture, and visual polish.
-* **Primary Subagent**: @frontend
-* **Core Skills**:
-  - `ui-ux-pro-max` - Comprehensive UI/UX intelligence, palettes, font pairings, and responsive UX.
-  - `taste-skill` - Anti-slop frontend design system enforcement for landing pages and apps.
-  - `frontend-design` / `frontend-ui-engineering` - Accessible, responsive UI implementation.
-  - `drawio-skill` - Flowcharts, architecture diagrams, sequence diagrams, and visual maps.
-  - `browser-testing-with-devtools` / `webapp-testing` - Real browser inspection and testing.
+### 🎨 Drawer 3: UX/UI & Frontend (13 Skills)
+* **Purpose**: Production UI design, design tokens, component architecture, visual polish, and diagrams.
+* **Primary Subagent**: @frontend-engineer
+* **Catalog**:
+  - `ui-ux-pro-max` — Comprehensive UI/UX intelligence, palettes, font pairings, and responsive UX.
+  - `taste-skill` — Anti-slop frontend design system enforcement for landing pages and apps.
+  - `frontend-design` — Accessible, distinctive visual design and typography.
+  - `frontend-ui-engineering` — High-performance frontend component architecture.
+  - `drawio-skill` — Flowcharts, architecture diagrams, sequence diagrams, and visual maps.
+  - `canvas-design` — Canvas rendering, graphics manipulation, and visual layout.
+  - `brand-guidelines` — Official brand colors, typography, and visual design standards.
+  - `theme-factory` — Multi-theme management (dark/light mode, custom palettes).
+  - `web-artifacts-builder` — Interactive HTML/React web artifact development.
+  - `browser-testing-with-devtools` — Real browser inspection and DevTools debugging.
+  - `webapp-testing` — End-to-end browser automation and interaction testing with Playwright.
+  - `slack-gif-creator` — Animated GIF generation and optimization for Slack.
+  - `algorithmic-art` — Procedural and algorithmic visual art generation.
 
-### 🔍 Drawer 4: Audit & Verification
-* **Purpose**: Code verification, root cause debugging, security hardening, and standard audits.
+### 🔍 Drawer 4: Audit & Verification (13 Skills)
+* **Purpose**: Code verification, root cause debugging, security hardening, performance audits, and QA.
 * **Primary Subagent**: @tester, @organizer
-* **Core Skills**:
-  - `verification-before-completion` - Mandatory empirical evidence verification before completion.
-  - `systematic-debugging` / `diagnosing-bugs` - Systematic root-cause debugging without guesswork.
-  - `code-review-and-quality` / `code-review` - Multi-axis standards and spec review.
-  - `security-and-hardening` - Security auditing, input sanitization, and vulnerability checks.
-  - `receiving-code-review` / `requesting-code-review` - Rigorous review handling.
+* **Catalog**:
+  - `verification-before-completion` — Mandatory empirical evidence verification before completion.
+  - `systematic-debugging` — Systematic root-cause debugging without guesswork (`Input ➔ State ➔ Output`).
+  - `diagnosing-bugs` — Hard bug and performance regression diagnosis loop.
+  - `debugging-and-error-recovery` — Contained error recovery and fault isolation.
+  - `code-review-and-quality` — Multi-axis code review (Correctness, Security, Architecture, etc.).
+  - `code-review` — Standard peer review workflows and feedback generation.
+  - `requesting-code-review` — Pre-merge review verification against requirements.
+  - `receiving-code-review` — Technical rigor when evaluating review suggestions.
+  - `security-and-hardening` — Security auditing, input sanitization, and vulnerability checks.
+  - `performance-optimization` — Profiling, latency optimization, and memory tuning.
+  - `observability-and-instrumentation` — Metrics, structured logging, and tracing.
+  - `retro` — Engineering retrospectives and continuous process improvement.
+  - `loop-me` — Autonomous iterative testing and verification loops.
 
-### 📝 Drawer 5: Docs & Communication
-* **Purpose**: Document processing, tabular manipulation, concise formatting, and humanizer.
+### 📝 Drawer 5: Docs & Communication (26 Skills)
+* **Purpose**: Document processing, token compression, humanizer, meta-tools, and skill authoring.
 * **Primary Subagent**: Leader, @organizer
-* **Core Skills**:
-  - `caveman` - Ultra-compressed token-efficient communication mode.
-  - `humanizer` - Natural prose rewriting removing AI-sounding filler.
-  - `docx` / `pdf` / `pptx` / `xlsx` - Professional file parsing, extraction, and generation.
-  - `doc-coauthoring` / `internal-comms` - Structured technical writing and status reports.
-  - `skill-creator` / `writing-skills` - Authoring and benchmarking new agent skills.
+* **Catalog**:
+  - `caveman` — Ultra-compressed token-efficient communication mode.
+  - `humanizer` — Natural prose rewriting removing AI-sounding filler.
+  - `doc-coauthoring` — Structured technical writing and collaborative documentation.
+  - `documentation-and-adrs` — Architecture Decision Records and public API documentation.
+  - `internal-comms` — Team announcements, status updates, and release notes.
+  - `docx` — Microsoft Word document parsing, formatting, and generation.
+  - `pdf` — PDF extraction, form filling, and report compilation.
+  - `pptx` — Presentation slides creation and styling.
+  - `xlsx` — Spreadsheet creation, formulas, and tabular data manipulation.
+  - `writing-for-agents` — Authoring clear, deterministic documentation for AI agents.
+  - `writing-beats` — Narrative rhythm and pacing for technical writing.
+  - `writing-shape` — Structural shaping of long-form essays and documentation.
+  - `writing-fragments` — Modular writing pieces and reusable documentation snippets.
+  - `skill-creator` — Authoring and benchmarking new agent skills (Anthropic Standard).
+  - `writing-skills` — Step-by-step skill authoring, TDD, and validation.
+  - `using-superpowers` — Meta-skill for skill discovery and invocation protocols.
+  - `using-agent-skills` — Discovery engine for Addy Osmani agent skills.
+  - `context-engineering` — Context window optimization and rule file structuring.
+  - `claude-handoff` — Multi-session continuity and handoff document generation.
+  - `handoff` — Project checkpointing and session state persistence.
+  - `teach` — Interactive technical tutorial generation and concept explanation.
+  - `scaffold-exercises` — Coding exercise generation with tests and solutions.
+  - `academy-guide` — Interactive learning guides and curriculum authoring.
+  - `setup-matt-pocock-skills` — Configuration and environment setup for Matt Pocock skills.
+  - `template` — Template authoring and standardization.
 
 ---
 
@@ -85,7 +156,9 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🔄 Maintenance Protocol for @organizer
-1. **Anthropic Standard Gatekeeping**: Whenever creating new custom in-house skills, @organizer ensures they strictly follow the **Anthropic Skill Standard** (`skill-creator` / `writing-skills`) before mapping them to their appropriate Drawer.
-2. **Skill Usage & Invocations Telemetry**: @organizer continuously monitors and records the usage metrics and exact invocation counts of every skill used by the Main Agent and Subagents across all tasks. This quantitative telemetry is analyzed to optimize drawer categorization, retire unused capabilities, and guide new skill creation when high-frequency workflows emerge.
-3. If a drawer grows beyond ~30 skills or a new specialized domain emerges, @organizer proposes a new Drawer branch to the user for approval.
+## 🔄 Autonomous Maintenance Protocol for @organizer
+1. **Full Autonomous Authority**: @organizer operates with full autonomous authority to dynamically categorize new skills, adjust drawer mappings, and optimize the taxonomy across `SKILL_TAXONOMY.md` whenever new skills or tooling packages are installed (e.g. via `update.sh`, submodule updates, or `skill-creator`).
+2. **Mandatory Post-Action Reporting**: After performing any taxonomy modifications, drawer adjustments, or skill categorizations, @organizer MUST always deliver a structured, transparent change summary directly in chat for human awareness (`[Taxonomy Update] <skills categorized / drawers created>`).
+3. **Anthropic Standard Gatekeeping**: Whenever creating new custom in-house skills, @organizer ensures they strictly follow the **Anthropic Skill Standard** (`skill-creator` / `writing-skills`) before mapping them to their appropriate Drawer.
+4. **Skill Usage & Invocations Telemetry**: @organizer continuously monitors and records the usage metrics and exact invocation counts of every skill used by the Main Agent and Subagents across all tasks. This quantitative telemetry is analyzed to dynamically optimize drawer categorization, retire unused capabilities, or expand new Drawers (e.g., DevOps & Cloud, AI/ML Engineering, Mobile & Native) when high-frequency domain clusters emerge.
+

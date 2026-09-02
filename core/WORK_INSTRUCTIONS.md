@@ -67,21 +67,21 @@ Before substantial changes:
 3. identify dependencies, risks, and appropriate checks
 4. follow confirmed instructions and methods
 
-### 2.1 Autonomous skill selection and invocation (5-Drawer Taxonomy & Progressive Disclosure)
+### 2.1 Autonomous skill selection and invocation (Dynamic Taxonomy & Genuine Execution)
 
-Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against the 5 drawers in `SKILL_TAXONOMY.md`:
+Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against the active categories in `SKILL_TAXONOMY.md`:
 1. **Dual Invocation Modes**:
-   - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/plan`, `/tdd`, `/drawio`, `/debug`, `/audit`).
-   - **Autonomous Agent Matching**: Both the Main Agent and Subagents proactively match task context against installed skill descriptions.
-2. **Proportionality Rule**:
-   - **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without loading heavy skills or announcing tags.
-   - **Substantial Work & Critical Milestones**:
-     - **Drawer 1 (Thinking & Planning)**: Invoke `brainstorming` or `writing-plans` to explore trade-offs and draft `DESIGN.md`.
-     - **Drawer 2 (Code & Engineering)**: Apply `test-driven-development`, `api-and-interface-design`, or `bigquery-sql`.
-     - **Drawer 3 (UX/UI & Frontend)**: Apply `ui-ux-pro-max`, `taste-skill`, or `browser-testing-with-devtools`.
-     - **Drawer 4 (Audit & Verification)**: Apply `verification-before-completion`, `systematic-debugging`, or delegate to `@tester`.
-     - **Drawer 5 (Docs & Communication / Skill Authoring)**: Apply `caveman`, `humanizer`, document generation, or apply `skill-creator` / `writing-skills` to author and review any new skills before deployment.
-3. **Transparent Tagging**: For substantial tasks where a skill is auto-activated, prefix the turn with a concise tag: `[Auto-Skill: <skill-name>] <brief reason>`.
+   - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/grill-me`, `/brainstorming`, `/tdd`, `/drawio`, `/review`).
+   - **Autonomous Agent Execution**: The AI proactively matches task context against installed skill workflows and executes their protocols directly.
+2. **Genuine Protocol Execution (No Performative Tagging)**:
+   - Do NOT use hollow vanity tags (e.g. `[Auto-Skill: ...]`).
+   - When a skill applies, execute its actual rigorous workflow (e.g. `ask_question` one-by-one for `/grill-me`, Red-Green-Refactor for `/tdd`, 5-axis checks for `/review`) and transparently state the active Slash Command (e.g. "กำลังใช้งาน `/grill-me`...").
+3. **Proportionality Rule**:
+   - **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without overhead.
+   - **Substantial Work & Critical Milestones**: Apply specialized domain skills dynamically as categorized by `@organizer` in `SKILL_TAXONOMY.md`.
+4. **Sub-Second Native Inspection**:
+   - For skill counts and health auditing, always run the native fast checker (`scripts/check-skills.ps1` / `scripts/check-skills.sh`) to obtain instant results (< 0.5s) without slow shell loops.
+
 
 
 
@@ -309,7 +309,7 @@ The Main Agent governs development through an industry-standard 6-phase engineer
 - **Domain Specialization**: Route scoped work to specialized subagents based on technical domain:
   - `researcher` ➔ Read-only codebase reconnaissance, dependency verification, documentation lookup, architecture mapping.
   - `frontend-engineer` ➔ UI components, styling, client state, WCAG a11y, responsive design, Core Web Vitals.
-  - `organizer` ➔ Skill inventory, workspace hygiene, context budgeting, and pattern learning ledger.
+  - `organizer` ➔ Autonomous skill inventory & taxonomy governance, workspace hygiene, context budgeting, pattern learning ledger, with mandatory post-action reporting.
   - `backend-engineer` ➔ API endpoints, business logic, DB schemas, migrations, auth, security, server performance.
   - `tester` ➔ Test authoring, regression suites, edge cases, boundary testing, reproduction of reported bugs.
 - **Dynamic Routing Over Rigid Pipelines**: Determine case-by-case which specialist is needed, in what order, or execute directly when a targeted fix is faster (Direct Intervention Protocol).
