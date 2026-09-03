@@ -55,10 +55,17 @@ print(round(chars / 3.8))
     local token_pct=0
     [ "${est_tokens}" -gt 0 ] && token_pct=$(( (est_tokens * 100) / token_limit ))
 
+    local unmanaged_gemini=0
+    local unmanaged_claude=0
+    [ "${manifest_count}" -gt 0 ] && [ "${gemini_count}" -gt "${manifest_count}" ] && unmanaged_gemini=$((gemini_count - manifest_count))
+    [ "${manifest_count}" -gt 0 ] && [ "${claude_count}" -gt "${manifest_count}" ] && unmanaged_claude=$((claude_count - manifest_count))
+    local total_unmanaged=$((unmanaged_gemini + unmanaged_claude))
+
     echo "=== HAWS Fast Skill & Token Status ==="
     echo "Antigravity Active Skills : ${gemini_count}"
     echo "Claude Code Active Skills : ${claude_count}"
     echo "Manifest Registered Skills: ${manifest_count}"
+    [ "${total_unmanaged}" -gt 0 ] && echo "Unmanaged Foreign Skills  : [ALERT: ${total_unmanaged} foreign skill(s) detected - Run './haws.sh sync --clean']"
 
     if [ "${est_tokens}" -ge 18000 ]; then
         echo "Token Budget Status       : [CRITICAL DANGER: ~${est_tokens} / ${token_limit} (${token_pct}%)]"
@@ -70,8 +77,10 @@ print(round(chars / 3.8))
         echo "Token Budget Status       : [SAFE: ~${est_tokens} / ${token_limit} (${token_pct}%)]"
     fi
 
-    if [ "${claude_count}" -eq "${manifest_count}" ] && [ "${gemini_count}" -ge "${manifest_count}" ]; then
+    if [ "${claude_count}" -eq "${manifest_count}" ] && [ "${gemini_count}" -eq "${manifest_count}" ]; then
         echo "Sync Health Status        : [100% HEALTHY & IN SYNC]"
+    elif [ "${total_unmanaged}" -gt 0 ]; then
+        echo "Sync Health Status        : [UNMANAGED SKILLS DETECTED - Run './haws.sh sync --clean']"
     else
         echo "Sync Health Status        : [MISMATCH DETECTED - Run './haws.sh sync']"
     fi
@@ -161,6 +170,42 @@ run_doctor() {
         details+=("{\"item\":\"Zero redundant scripts/ directory\",\"status\":\"WARN\"}")
     fi
 
+    # 6. Check for Unmanaged Foreign Skills
+    [ "$json_mode" = false ] && echo "" && echo "6. Checking for Unmanaged Foreign Skills..."
+    local foreign_count=0
+    local manifest="${HOME}/.haws_manifest"
+    local gemini_skills="${HOME}/.gemini/config/skills"
+    local claude_skills="${HOME}/.claude/skills"
+    if [ -f "${manifest}" ]; then
+        declare -A known_skills
+        while IFS= read -r line || [ -n "$line" ]; do
+            if [[ "$line" =~ ^skill:(.+) ]]; then
+                known_skills["${BASH_REMATCH[1]}"]=1
+            fi
+        done < "${manifest}"
+
+        for dir in "${gemini_skills}" "${claude_skills}"; do
+            if [ -d "${dir}" ]; then
+                for s in "${dir}"/*; do
+                    [ ! -d "${s}" ] && [ ! -L "${s}" ] && continue
+                    local sname
+                    sname="$(basename "${s}")"
+                    if [ -z "${known_skills[${sname}]:-}" ]; then
+                        foreign_count=$((foreign_count + 1))
+                    fi
+                done
+            fi
+        done
+    fi
+    if [ "${foreign_count}" -eq 0 ]; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] Zero unmanaged foreign skills"
+        details+=("{\"item\":\"Zero unmanaged foreign skills\",\"status\":\"PASS\"}")
+    else
+        [ "$json_mode" = false ] && echo "   [WARN] ${foreign_count} unmanaged skill(s) detected (run './haws.sh sync --clean' to purge)"
+        details+=("{\"item\":\"Zero unmanaged foreign skills\",\"status\":\"WARN\"}")
+    fi
+
     local overall_status="HEALTHY & READY"
     [ "${failed}" -gt 0 ] && overall_status="ATTENTION REQUIRED"
 
@@ -188,6 +233,10 @@ EOF
 }
 
 run_sync() {
+    local CLEAN_UNMANAGED=false
+    for opt in "$@"; do
+        [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
+    done
     shift || true
     echo "=== HAWS Universal Command Engine (All-in-One Sync) ==="
     echo ""
@@ -514,6 +563,30 @@ EOF
     else
         echo "  [✓] Auto-pruned ${PRUNED} obsolete item(s)."
     fi
+
+    if [ "$CLEAN_UNMANAGED" = true ] && [ -f "${MANIFEST_FILE}" ]; then
+        echo "  [*] Purging unmanaged foreign skills (--clean requested)..."
+        local UNMANAGED_PURGED=0
+        for dir in "${HOME}/.gemini/config/skills" "${HOME}/.claude/skills"; do
+            if [ -d "${dir}" ]; then
+                for s in "${dir}"/*; do
+                    [ ! -d "${s}" ] && [ ! -L "${s}" ] && continue
+                    local sname
+                    sname="$(basename "${s}")"
+                    if ! grep -q "^skill:${sname}$" "${MANIFEST_FILE}" 2>/dev/null; then
+                        rm -rf "${s}" 2>/dev/null || true
+                        echo "  [PURGED UNMANAGED] Skill [${sname}]"
+                        UNMANAGED_PURGED=$((UNMANAGED_PURGED + 1))
+                    fi
+                done
+            fi
+        done
+        if [ "${UNMANAGED_PURGED}" -eq 0 ]; then
+            echo "  [✓] Zero unmanaged foreign skills found."
+        else
+            echo "  [✓] Purged ${UNMANAGED_PURGED} unmanaged foreign skill(s)."
+        fi
+    fi
     echo ""
 
     # 9. Summary & Fast Status
@@ -543,10 +616,10 @@ case "${COMMAND}" in
         run_sync "$@"
         ;;
     *)
-        echo "Usage: ./haws.sh [sync|status|doctor]"
-        echo "  sync     All-in-one Smart Sync (check remote, pull, link, auto-prune, status)"
-        echo "  status   Instant sub-second skill count and token budget check"
-        echo "  doctor   Run comprehensive 5-axis system diagnostics"
+        echo "Usage: ./haws.sh [sync|status|doctor] [--clean]"
+        echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
+        echo "  status          Instant sub-second skill count and token budget check"
+        echo "  doctor          Run comprehensive 6-axis system diagnostics"
         exit 1
         ;;
 esac

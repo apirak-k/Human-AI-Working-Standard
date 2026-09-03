@@ -76,10 +76,13 @@ Run the universal command engine to configure global pointers, install all 5 spe
 # All-in-one smart sync (pull updates, link skills & subagents, auto-prune obsolete items)
 bash haws.sh sync
 
+# Force purge foreign unmanaged skills not in HAWS
+bash haws.sh sync --clean
+
 # Instant sub-second health and token budget check (< 0.2s)
 bash haws.sh status
 
-# Comprehensive 5-axis system diagnostics
+# Comprehensive 6-axis system diagnostics
 bash haws.sh doctor
 ```
 
