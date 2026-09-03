@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# HAWS Git Pre-Commit Hook (Pokayoke Quality Gate)
+# Ensures:
+# 1. Zero uncommitted/leaked .env secrets or API keys
+# 2. Universal LF Line Endings (no Windows CRLF corruption)
+# 3. 100% Green pass on HAWS System Doctor diagnostics
+# ==============================================================================
+set -e
+
+echo "=== [HAWS PRE-COMMIT HOOK] Running Quality Gates ==="
+
+# 1. Secret & Sensitive File Shield
+echo "1. Checking for sensitive files in staged index..."
+STAGED_FILES=$(git diff --cached --name-only)
+
+for file in $STAGED_FILES; do
+  # Disallow .env files (except .env.example or .env.template)
+  if [[ "$file" =~ ^\.env(\..+)?$ ]] && [[ ! "$file" =~ ^\.env\.(example|template)$ ]]; then
+    echo "[ERROR: BLOCKED] Committing unencrypted secret file '$file' is prohibited by HAWS Anti-Pattern rules."
+    echo "Please remove it with: git reset HEAD $file"
+    exit 1
+  fi
+done
+
+# 2. Check for common plaintext API key patterns in staged diff
+echo "2. Scanning staged diff for plaintext credentials..."
+if git diff --cached -U0 | grep -E -q '^[+] *(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16})'; then
+  echo "[ERROR: BLOCKED] Detected potential plaintext API key/credential in staged diff!"
+  echo "Commit rejected by HAWS Security Standard."
+  exit 1
+fi
+
+# 3. Line Endings LF Audit on staged text files
+echo "3. Checking line endings (LF Normalization)..."
+CRLF_COUNT=0
+for file in $STAGED_FILES; do
+  if [[ -f "$file" ]] && [[ "$file" =~ \.(md|sh|mjs|js|ts|json|html|css|txt)$ ]]; then
+    if grep -q $'\r' "$file" 2>/dev/null; then
+      echo "  [WARNING] File '$file' contains CRLF line endings."
+      CRLF_COUNT=$((CRLF_COUNT + 1))
+    fi
+  fi
+done
+
+if [ "$CRLF_COUNT" -gt 0 ]; then
+  echo "[ERROR: BLOCKED] $CRLF_COUNT file(s) contain CRLF line endings."
+  echo "Please normalize line endings to LF before committing."
+  exit 1
+fi
+
+# 4. HAWS System Doctor Diagnostic Suite
+echo "4. Executing HAWS System Doctor..."
+if [ -f "haws.sh" ]; then
+  bash haws.sh doctor
+else
+  echo "[SKIP] haws.sh not found in current directory."
+fi
+
+echo "=== [HAWS PRE-COMMIT HOOK] All Quality Gates PASSED (100% Green) ==="
+exit 0

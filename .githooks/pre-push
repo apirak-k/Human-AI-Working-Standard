@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# HAWS Git Pre-Push Hook (Human Safeguard & Push Blocker)
+# Directly enforces HAWS Human-in-the-loop Guardrail:
+# "Push github ต้องผ่านผมก่อน" (Remote push requires explicit human authorization)
+# ==============================================================================
+set -e
+
+echo "=== [HAWS PRE-PUSH HOOK] Verifying Push Authorization ==="
+
+# Check environment variable authorization
+if [ "$HAWS_ALLOW_PUSH" = "1" ] || [ "$HAWS_ALLOW_PUSH" = "true" ]; then
+  echo "[AUTHORIZED] HAWS_ALLOW_PUSH=$HAWS_ALLOW_PUSH detected. Proceeding with push."
+  exit 0
+fi
+
+echo ""
+echo "=========================================================================="
+echo " [HAWS GUARDRAIL BLOCKED] Remote push rejected!"
+echo " HAWS Rule: Remote push to GitHub strictly requires explicit human approval."
+echo "=========================================================================="
+echo ""
+echo "To authorize this push, either:"
+echo "  1. Run with authorization flag in your shell:"
+echo "     HAWS_ALLOW_PUSH=1 git push <remote> <branch>"
+echo ""
+echo "  2. Or export the variable for your current shell session:"
+echo "     export HAWS_ALLOW_PUSH=1"
+echo "=========================================================================="
+echo ""
+
+exit 1

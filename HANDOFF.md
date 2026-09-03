@@ -70,14 +70,21 @@ Below is the exhaustive file-by-file record detailing the changes introduced in 
 - **`haws.sh`**:
   - *Before*: 6-axis diagnostic script checking 23 items.
   - *After*: 
-    - Added `setup|bootstrap` command: automatically runs submodule validation, skill sync, and doctor diagnostics in one step.
+    - Added `setup|bootstrap` command: automatically runs submodule validation, skill sync, hook install, and doctor diagnostics in one step.
+    - Added `hook [install|status]` command: sets `git config core.hooksPath .githooks` and manages hook permissions.
     - Added Check 7: Line Endings LF Normalization check across `core/`, `templates/`, and `agents/`.
+    - Added Check 8: Git Hooks Guardrails verification (active pre-commit & pre-push).
     - Expanded Check 2: Verifies all 8 canonical blueprints.
-    - Upgraded to 7 axes / 26 checks (100% passing) and updated `--json` export.
+    - Upgraded to 8 axes / 27 checks (100% passing) and updated `--json` export.
+- **`.githooks/`**:
+  - *Before*: Did not exist.
+  - *After*: Hardware-level Git safety gates:
+    - `pre-commit`: Secret protection (blocks unencrypted `.env*` and plaintext API keys), universal LF audit, and automated `haws.sh doctor` verification.
+    - `pre-push`: Strictly enforces user guardrail "Push github ต้องผ่านผมก่อน" by blocking `git push` unless `HAWS_ALLOW_PUSH=1` is explicitly provided.
 - **`dashboard/index.html`**:
   - *Before*: Did not exist.
   - *After*: Standalone, zero-dependency HTML5 dashboard using Tailwind CSS and Lucide Icons featuring:
-    - Real-time 7-axis diagnostics check viewer.
+    - Real-time 8-axis diagnostics check viewer (27/27 passing).
     - Token economics dual-metric gauges with 75% and 90% threshold indicators.
     - 8-file canonical blueprints explorer.
     - 5 specialist subagents harness matrix.
@@ -88,9 +95,13 @@ Below is the exhaustive file-by-file record detailing the changes introduced in 
 - **`docs/EXTERNAL_KNOWLEDGE.md`**:
   - *Before*: Did not exist.
   - *After*: Technique digest analyzing `DietrichGebert/ponytail` (Lazy Dev Ladder) and `tt-a1i/archify` (Machine-readable architecture graphs).
+- **`docs/REMOTE_NOTIFICATIONS.md`**:
+  - *Before*: Did not exist.
+  - *After*: Comprehensive strategy analyzing Telegram Bot API vs ntfy.sh vs Discord vs Pushover for mobile push notifications and two-way interactive approval buttons during long-running tasks.
 - **`docs/SESSION_ANALYSIS_AND_AUDIT.md`**:
   - *Before*: Did not exist.
   - *After*: Permanent in-depth audit document capturing full execution trajectory, traceability matrix, and lessons learned.
+
 
 ---
 
@@ -130,11 +141,14 @@ Below is the exhaustive file-by-file record detailing the changes introduced in 
 
 | Verification Suite | Target File / Command | Exit Code | Result | Evidence Snippet |
 | :--- | :--- | :---: | :---: | :--- |
-| **HAWS System Doctor** | `bash haws.sh doctor` | 0 | 🟢 PASS | 26/26 Checks Passed across 7 axes (<0.4s) |
+| **HAWS System Doctor** | `bash haws.sh doctor` | 0 | 🟢 PASS | 27/27 Checks Passed across 8 axes (<0.4s) |
 | **Doctor JSON Export** | `bash haws.sh doctor --json` | 0 | 🟢 PASS | Emits valid JSON consumed by Dashboard |
+| **Git Pre-Commit Hook** | `.githooks/pre-commit` | 0 | 🟢 PASS | Secret shield + LF check + doctor suite pass |
+| **Git Pre-Push Hook** | `.githooks/pre-push` | 1 / 0 | 🟢 PASS | Successfully blocks unconfirmed push; passes with `HAWS_ALLOW_PUSH=1` |
 | **Keyboard Fixer Unit Tests** | `node skills/custom/.../test_layout_fixer.mjs` | 0 | 🟢 PASS | 4/4 Suites Passed (enToTh, thToEn, CapsLock, Auto) |
 | **Line Endings LF Audit** | `haws.sh doctor` Check 7 | 0 | 🟢 PASS | Universal LF normalized across all core & template files |
 | **Working Tree Hygiene** | `git status` | 0 | 🟢 CLEAN | All modified and new files committed |
+
 
 ---
 

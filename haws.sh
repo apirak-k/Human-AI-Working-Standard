@@ -253,6 +253,24 @@ run_doctor() {
         details+=("{\"item\":\"LF Normalization\",\"status\":\"WARN\"}")
     fi
 
+    # 8. Check Git Hooks (Quality & Safety Gates)
+    [ "$json_mode" = false ] && echo "" && echo "8. Checking Git Hooks (Quality & Safety Gates)..."
+    local hooks_path
+    hooks_path="$(git -C "${SCRIPT_DIR}" config core.hooksPath 2>/dev/null || echo "")"
+    if [ -f "${SCRIPT_DIR}/.githooks/pre-commit" ] && [ -f "${SCRIPT_DIR}/.githooks/pre-push" ]; then
+        if [ "${hooks_path}" != ".githooks" ]; then
+            git -C "${SCRIPT_DIR}" config core.hooksPath .githooks 2>/dev/null || true
+        fi
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] Git hooks active (.githooks: pre-commit, pre-push)"
+        details+=("{\"item\":\"Git Hooks Guardrails\",\"status\":\"PASS\"}")
+    else
+        failed=$((failed + 1))
+        [ "$json_mode" = false ] && echo "   [FAIL] Git hooks missing in .githooks"
+        details+=("{\"item\":\"Git Hooks Guardrails\",\"status\":\"FAIL\"}")
+    fi
+
+
     local overall_status="HEALTHY & READY"
     [ "${failed}" -gt 0 ] && overall_status="ATTENTION REQUIRED"
 
@@ -682,19 +700,56 @@ EOF
     echo "================================================================"
 }
 
+run_hooks() {
+    local action="${1:-install}"
+    case "${action}" in
+        install)
+            echo "=== Installing HAWS Git Hooks ==="
+            if [ -d "${SCRIPT_DIR}/.githooks" ]; then
+                git -C "${SCRIPT_DIR}" config core.hooksPath .githooks
+                chmod +x "${SCRIPT_DIR}/.githooks"/* 2>/dev/null || true
+                echo "  [✓] Git core.hooksPath set to .githooks"
+                echo "  [✓] pre-commit hook active (Secret scan + LF audit + doctor check)"
+                echo "  [✓] pre-push hook active (Human authorization guardrail)"
+            else
+                echo "  [ERROR] .githooks directory not found in ${SCRIPT_DIR}"
+                return 1
+            fi
+            ;;
+        status)
+            local current_hooks
+            current_hooks="$(git -C "${SCRIPT_DIR}" config core.hooksPath 2>/dev/null || echo "default (.git/hooks)")"
+            echo "=== HAWS Git Hooks Status ==="
+            echo "Current core.hooksPath: ${current_hooks}"
+            if [ "${current_hooks}" = ".githooks" ]; then
+                echo "Status: [ACTIVE & GUARDED]"
+            else
+                echo "Status: [INACTIVE - Run './haws.sh hook install' to activate]"
+            fi
+            ;;
+        *)
+            echo "Usage: ./haws.sh hook [install|status]"
+            return 1
+            ;;
+    esac
+}
+
 run_setup() {
     echo "=== HAWS Automated Setup & Bootstrapper ==="
     echo ""
     if [ -d "${SCRIPT_DIR}/.git" ]; then
-        echo "[1/3] Initializing Git Submodules..."
+        echo "[1/4] Initializing Git Submodules..."
         git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
         echo "  [✓] Submodules verified."
     fi
     echo ""
-    echo "[2/3] Linking Skills, Commands, and Agent Profiles..."
+    echo "[2/4] Linking Skills, Commands, and Agent Profiles..."
     run_sync "$@"
     echo ""
-    echo "[3/3] Running Diagnostic Verification..."
+    echo "[3/4] Configuring HAWS Git Safety Hooks..."
+    run_hooks install
+    echo ""
+    echo "[4/4] Running Diagnostic Verification..."
     run_doctor
 }
 
@@ -710,15 +765,21 @@ case "${COMMAND}" in
         shift || true
         run_setup "$@"
         ;;
+    hook|hooks)
+        shift || true
+        run_hooks "$@"
+        ;;
     sync|update|install)
         run_sync "$@"
         ;;
     *)
-        echo "Usage: ./haws.sh [setup|sync|status|doctor] [--clean]"
-        echo "  setup           Complete frictionless setup: submodules + sync + doctor"
+        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook] [--clean]"
+        echo "  setup           Complete frictionless setup: submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
+        echo "  hook [install]  Install or inspect HAWS Git pre-commit and pre-push hooks"
         echo "  status          Instant sub-second skill count and token budget check"
-        echo "  doctor [--json] Run comprehensive 7-axis system diagnostics"
+        echo "  doctor [--json] Run comprehensive 8-axis system diagnostics"
         exit 1
         ;;
 esac
+

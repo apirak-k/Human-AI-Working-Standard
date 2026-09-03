@@ -139,6 +139,8 @@ Key milestone achievements:
 | `.../scripts/layout_fixer.mjs` | Created | +110 / -0 | **Before**: Did not exist.<br>**After**: ESM Node.js converter for Thai Kedmanee $\leftrightarrow$ English US QWERTY with CapsLock inversion detection. |
 | `.../tests/test_layout_fixer.mjs` | Created | +32 / -0 | **Before**: Did not exist.<br>**After**: Automated unit test suite verifying bidirectional conversion, CapsLock fix, and auto-detect. |
 | `templates/ARCHITECTURE.md` | Modified | +31 / -5 | **Before**: Basic outline.<br>**After**: Added Mermaid topology flowchart and machine-readable Archify JSON IR specification. |
+| `.githooks/` | Created | +70 / -0 | **Before**: Did not exist.<br>**After**: Hardware-level Git quality gates (`pre-commit` for secret scanning, LF audit, doctor checks; `pre-push` to enforce human authorization for remote push). |
+| `docs/REMOTE_NOTIFICATIONS.md` | Created | +130 / -0 | **Before**: Did not exist.<br>**After**: Strategic blueprint analyzing Telegram Bot API vs ntfy.sh vs Discord vs Pushover for mobile push and two-way interactive buttons. |
 
 ---
 
@@ -188,8 +190,11 @@ Key milestone achievements:
 7. Checking Line Endings (LF Normalization)...
    [PASS] All core/templates/agents files normalized to LF
 
+8. Checking Git Hooks (Quality & Safety Gates)...
+   [PASS] Git hooks active (.githooks: pre-commit, pre-push)
+
 --- Diagnostics Summary ---
-Total Checks Passed: 26
+Total Checks Passed: 27
 Total Checks Failed: 0
 System Status: [HEALTHY & READY]
 Execution Time: <0.4s
