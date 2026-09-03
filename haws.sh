@@ -13,11 +13,11 @@ run_status() {
     local claude_dir="${HOME}/.claude/skills"
     local manifest="${HOME}/.haws_manifest"
 
+    local gemini_json="${HOME}/.gemini/config/skills.json"
     local gemini_count=0
     local claude_count=0
     local manifest_count=0
 
-    [ -d "${gemini_dir}" ] && gemini_count=$(find "${gemini_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
     [ -d "${claude_dir}" ] && claude_count=$(find "${claude_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
     [ -f "${manifest}" ] && manifest_count=$(grep -c '^skill:' "${manifest}" || true)
 
@@ -31,11 +31,30 @@ run_status() {
     done
 
     if [ -n "${py_cmd}" ]; then
-        est_tokens=$($py_cmd -c "
-import glob, os, re
+        local stat_res
+        stat_res=$($py_cmd -c "
+import glob, os, re, json
+gemini_json = os.path.expanduser('~/.gemini/config/skills.json')
 gemini_dir = os.path.expanduser('~/.gemini/config/skills')
-raw_files = glob.glob(os.path.join(gemini_dir, '*', 'SKILL.md')) + glob.glob(os.path.join(gemini_dir, '*', 'skill.md'))
-files = list({os.path.normcase(f): f for f in raw_files}.values())
+files = []
+if os.path.isfile(gemini_json):
+    try:
+        with open(gemini_json, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        for entry in cfg.get('entries', []):
+            p = entry.get('path', '')
+            if os.path.isdir(p):
+                for s in os.listdir(p):
+                    for mname in ('SKILL.md', 'skill.md'):
+                        mf = os.path.join(p, s, mname)
+                        if os.path.isfile(mf):
+                            files.append(mf)
+                            break
+    except: pass
+if not files and os.path.isdir(gemini_dir):
+    raw_files = glob.glob(os.path.join(gemini_dir, '*', 'SKILL.md')) + glob.glob(os.path.join(gemini_dir, '*', 'skill.md'))
+    files = list({os.path.normcase(f): f for f in raw_files}.values())
+
 chars = 0
 for f in files:
     try:
@@ -47,8 +66,14 @@ for f in files:
             if dm:
                 chars += len(dm.group(1).strip())
     except: pass
-print(round(chars / 3.8))
-" 2>/dev/null || echo 0)
+print(f'{len(files)}:{round(chars / 3.8)}')
+" 2>/dev/null || echo "0:0")
+        gemini_count="${stat_res%%:*}"
+        est_tokens="${stat_res##*:}"
+    fi
+
+    if [ -z "${gemini_count}" ] || [ "${gemini_count}" -eq 0 ]; then
+        [ -d "${gemini_dir}" ] && gemini_count=$(find "${gemini_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
     fi
 
     local token_limit=20000
@@ -464,16 +489,47 @@ run_sync() {
                     safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${skill_name}" "Claude Skill [${skill_name}]"
                     SKILLS_LINKED=$((SKILLS_LINKED + 1))
                 fi
-                if [ "$DETECTED_GEMINI" = true ]; then
-                    safe_link_dir "${skill_dir}" "${HOME}/.gemini/config/skills/${skill_name}" "Antigravity Skill [${skill_name}]"
-                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
-                fi
             fi
         done < <(find "${base_dir}" -type f \( -name "SKILL.md" -o -name "skill.md" \) -print0 2>/dev/null || true)
     }
 
     [ -d "${SOURCE_DIR}/skills/custom" ] && find_and_link_skills "${SOURCE_DIR}/skills/custom"
     find_and_link_skills "${SOURCE_DIR}/skills"
+
+    if [ "$DETECTED_GEMINI" = true ]; then
+        local target_json="${HOME}/.gemini/config/skills.json"
+        mkdir -p "${HOME}/.gemini/config"
+
+        # Clean legacy broken junctions on Windows so Antigravity doesn't choke
+        if [ "$IS_WINDOWS" = true ] && [ -d "${HOME}/.gemini/config/skills" ]; then
+            for junc in "${HOME}/.gemini/config/skills"/*; do
+                if [ -d "${junc}" ] || [ -L "${junc}" ]; then
+                    rm -rf "${junc}" 2>/dev/null || true
+                fi
+            done
+        fi
+
+        local win_source="${SOURCE_DIR}"
+        command -v cygpath &>/dev/null && win_source="$(cygpath -m "${SOURCE_DIR}")"
+
+        cat <<EOF > "${target_json}"
+{
+  "entries": [
+    { "path": "${win_source}/skills/standalone" },
+    { "path": "${win_source}/skills/packs/agent-skills/skills" },
+    { "path": "${win_source}/skills/packs/anthropics-skills/skills" },
+    { "path": "${win_source}/skills/packs/mattpocock-skills/skills/engineering" },
+    { "path": "${win_source}/skills/packs/mattpocock-skills/skills/in-progress" },
+    { "path": "${win_source}/skills/packs/mattpocock-skills/skills/misc" },
+    { "path": "${win_source}/skills/packs/mattpocock-skills/skills/productivity" },
+    { "path": "${win_source}/skills/packs/superpowers/skills" },
+    { "path": "${win_source}/skills/custom" }
+  ]
+}
+EOF
+        echo "  [CONFIG] Antigravity Native Config: ${target_json}"
+        SKILLS_LINKED=$((SKILLS_LINKED + ${#PROCESSED_SKILLS[@]}))
+    fi
     echo ""
 
     # 6. Link Subagents
