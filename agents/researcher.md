@@ -30,3 +30,12 @@ Capability discovery is dynamic and non-rigid:
 - Proactively match investigation requirements against relevant capabilities in the 5-Drawer Skill Taxonomy (e.g. Code Exploration, Architecture Mapping, and Dependency Verification).
 - Load specialized procedural instructions only on-demand when deep domain guidance is required.
 
+## Agent Harness & Structured Reporting Protocol
+- **Assignment Intake**: Receive research inquiry strictly via `<task_assignment>` containing atomic investigation goal and targeted modules/repos.
+- **Reporting Return**: Always return research outcomes strictly wrapped in `<task_report>`:
+  - **Summary**: Concise bullet points of technical findings and trade-offs.
+  - **Evidence**: Exact file paths and line citations (e.g. `[src/auth.py:L10-L25]`).
+  - **Skills Used**: List of all skills invoked during reconnaissance (e.g. `research`, `graphify`).
+  - **Unverified Items**: Any unexplored dependency depths marked `[Unverified]`.
+
+

@@ -145,9 +145,9 @@ run_doctor() {
         check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
     done
 
-    # 2. Check Project Templates (6 Modular Templates)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates (6 Modular Files)..."
-    local tpl_files=("README.md" "DESIGN.md" "PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md")
+    # 2. Check Project Templates (8 Canonical Blueprints)
+    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates (8 Canonical Blueprints)..."
+    local tpl_files=("README.md" "DESIGN.md" "PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "SOT.md" "AGENTS.md")
     for f in "${tpl_files[@]}"; do
         check_item "${SCRIPT_DIR}/templates/${f}" "templates/${f}"
     done
@@ -229,6 +229,28 @@ run_doctor() {
     else
         [ "$json_mode" = false ] && echo "   [WARN] ${foreign_count} unmanaged skill(s) detected (run './haws.sh sync --clean' to purge)"
         details+=("{\"item\":\"Zero unmanaged foreign skills\",\"status\":\"WARN\"}")
+    fi
+
+    # 7. Check Line Endings (LF Normalization)
+    [ "$json_mode" = false ] && echo "" && echo "7. Checking Line Endings (LF Normalization)..."
+    local crlf_count=0
+    for dir in "${SCRIPT_DIR}/core" "${SCRIPT_DIR}/templates" "${SCRIPT_DIR}/agents"; do
+        if [ -d "${dir}" ]; then
+            for f in "${dir}"/*.md; do
+                [ ! -f "${f}" ] && continue
+                if grep -q $'\r' "${f}" 2>/dev/null; then
+                    crlf_count=$((crlf_count + 1))
+                fi
+            done
+        fi
+    done
+    if [ "${crlf_count}" -eq 0 ]; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] All core/templates/agents files normalized to LF"
+        details+=("{\"item\":\"LF Normalization\",\"status\":\"PASS\"}")
+    else
+        [ "$json_mode" = false ] && echo "   [WARN] ${crlf_count} file(s) contain CRLF line endings (run 'git add --renormalize .' to fix)"
+        details+=("{\"item\":\"LF Normalization\",\"status\":\"WARN\"}")
     fi
 
     local overall_status="HEALTHY & READY"
@@ -660,6 +682,22 @@ EOF
     echo "================================================================"
 }
 
+run_setup() {
+    echo "=== HAWS Automated Setup & Bootstrapper ==="
+    echo ""
+    if [ -d "${SCRIPT_DIR}/.git" ]; then
+        echo "[1/3] Initializing Git Submodules..."
+        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
+        echo "  [✓] Submodules verified."
+    fi
+    echo ""
+    echo "[2/3] Linking Skills, Commands, and Agent Profiles..."
+    run_sync "$@"
+    echo ""
+    echo "[3/3] Running Diagnostic Verification..."
+    run_doctor
+}
+
 case "${COMMAND}" in
     status|health|check)
         run_status
@@ -668,14 +706,19 @@ case "${COMMAND}" in
         shift || true
         run_doctor "$@"
         ;;
+    setup|bootstrap)
+        shift || true
+        run_setup "$@"
+        ;;
     sync|update|install)
         run_sync "$@"
         ;;
     *)
-        echo "Usage: ./haws.sh [sync|status|doctor] [--clean]"
+        echo "Usage: ./haws.sh [setup|sync|status|doctor] [--clean]"
+        echo "  setup           Complete frictionless setup: submodules + sync + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
         echo "  status          Instant sub-second skill count and token budget check"
-        echo "  doctor          Run comprehensive 6-axis system diagnostics"
+        echo "  doctor [--json] Run comprehensive 7-axis system diagnostics"
         exit 1
         ;;
 esac

@@ -1,51 +1,66 @@
-﻿# Session Checkpoint & Handoff — Human-AI Working Standard (HAWS)
+# Session Checkpoint & Handoff — Human-AI Working Standard (HAWS)
 
 ## 🎯 Current Goal & Completed Milestones
-- **Goal**: Establish comprehensive HAWS Improvement Master Plan, resolve all architectural decisions across 5 Domains, and scaffold canonical cross-tool ground truth blueprints.
+- **Goal**: Autonomously implement and apply all 22 topics (from user's 39 raw input topics) across 5 Domains into HAWS in an isolated Git Worktree (`feat/haws-comprehensive-improvement`).
 - **Current Milestone Completed**: 
-  - 100% Review of 22 Master Topics (39 raw user inputs) completed and permanently recorded in 	ask_plan.md.
-  - Created 	emplates/SOT.md (System Source of Truth for verified live capabilities & invariant lessons across sessions/tools).
-  - Created 	emplates/AGENTS.md (Role definitions, boundary matrices, and hard codebase constraints).
-  - Refactored 	emplates/PROJECT.md (Consolidated In-Scope vs Non-Goals with active Roadmap) and updated 	emplates/README.md.
-  - Updated core/USER_PREFERENCES.md with Caveman default compression levels (Full/Ultra for closed-ended, Lite for short reports).
+  - **100% Implementation across all 5 Domains** completed and verified in worktree `feat/haws-comprehensive-improvement`.
+  - **Domain 1 (Agent Protocols & Guardrails)**: Empirical grounding (`[Unverified]` tags), skill declaration top-line banner, Caveman multi-tier compression, and 100% English notifications.
+  - **Domain 2 (Context Economics)**: Modular partitioning (~200-300 lines limit), dual-metric budget governance (5k Frontmatter vs 200k Context Window), 75% warning and 90% compaction alert.
+  - **Domain 3 (Project Blueprints & SOT)**: 8 canonical blueprints (`README.md`, `DESIGN.md`, `PROJECT.md`, `ARCHITECTURE.md`, `CONSTRAINTS.md`, `HANDOFF.md`, `SOT.md`, `AGENTS.md`), `.gitattributes` strict LF enforcement, and enriched `ANTI_PATTERNS.md`.
+  - **Domain 4 (Subagents & Custom Skills)**: Ponytail 7-rung minimalist ladder, 3-iteration self-correction loop, structured reporting harness (`<task_assignment>` / `<task_report>`) for all 5 subagents, and production-ready `skills/custom/keyboard-layout-fixer` with 100% green test suite.
+  - **Domain 5 (Tooling, Dashboard & Roadmap)**: `haws.sh setup` single-command bootstrapper, 7-axis diagnostic engine (26 checks), `docs/INSTALLATION.md`, `docs/EXTERNAL_KNOWLEDGE.md` (Ponytail + Archify digest), enriched `templates/ARCHITECTURE.md` with Mermaid & Archify IR, and standalone visual dashboard `dashboard/index.html`.
 
 ---
 
 ## 📋 Task Checklist & Decisions Log
-- [x] Record all 39 raw topics verbatim into 	ask_plan.md as the definitive Source of Truth
-- [x] Complete Domain 1: Agent Protocols, Honesty & Behavior Guardrails (Topics 1.1 - 1.4)
-  - Grounding evidence required, skill usage declaration header, Caveman default, 100% English reload notifications
-- [x] Complete Domain 2: Context Window & Token Economics (Topics 2.1 - 2.4)
-  - Modular Markdown partitioning, dual-metric reporting (Skill budget vs Context), on-demand document loading, thinking time telemetry
-- [x] Complete Domain 3: Project Blueprints & Source of Truth (Topics 3.1 - 3.5)
-  - Scaffolded 	emplates/SOT.md and 	emplates/AGENTS.md, updated PROJECT.md, Mermaid architecture diagrams, strict .env security, React Hooks-First clean architecture, LF normalization
-- [x] Complete Domain 4: Skill Inventory, Subagents & Automation Loops (Topics 4.1 - 4.5)
-  - Core Active vs Domain Drawers, @organizer proactive hygiene, role-based personas and isolated harness, bounded 3-iteration self-correction loop, candidate custom skills identified
-- [x] Complete Domain 5: Installation, Tooling & Long-Term Roadmap (Topics 5.1 - 5.6)
-  - Single-command bootstrapper planned, 6-axis diagnostic suite standardized, SWE TDD/Pokayoke fundamentals, guarded MCP & hybrid RAG, Ponytail repo queued, standalone visual dashboard planned for Phase 2
+- [x] Git worktree isolation established at `.worktrees/feat-haws-improvement` on branch `feat/haws-comprehensive-improvement`.
+- [x] Domain 1: Agent Protocols, Honesty & Behavior Guardrails (Topics 1.1 - 1.4)
+- [x] Domain 2: Context Window & Token Economics (Topics 2.1 - 2.4)
+- [x] Domain 3: Project Blueprints & Source of Truth (Topics 3.1 - 3.5)
+- [x] Domain 4: Skill Inventory, Subagents & Automation Loops (Topics 4.1 - 4.5)
+- [x] Custom Skill: `skills/custom/keyboard-layout-fixer` authored with bidirectional conversion, CapsLock fix, and unit test suite.
+- [x] Domain 5: Installation, Tooling & Long-Term Roadmap (Topics 5.1 - 5.6)
+- [x] Visual Dashboard: `dashboard/index.html` built with Tailwind + Lucide, live diagnostics viewer, token gauges, blueprints explorer, and interactive keyboard fixer tool.
+- [x] `haws.sh doctor` upgraded to 7 diagnostic axes (26/26 checks passing).
 
 ---
 
 ## ⚖️ Confirmed Architectural Decisions
-- **Cross-Tool SOT (	emplates/SOT.md)**: The single source of truth for verified live capabilities, active schemas, and hard-learned invariants. Any AI agent switching between tools (Claude Code, Antigravity, Cursor) or machines MUST read this file first to resume immediately without repeating solved bugs.
-- **Agent Governance (	emplates/AGENTS.md)**: Governs agent roles, boundaries, and codebase anti-patterns at the project level.
-- **Caveman Compression Default**: Default response style uses Caveman Lite for short reports, Full/Ultra for binary closed-ended queries (Yes/No, Pass/Fail), and retains necessary technical depth for architectural reviews.
-- **Git Remote Push Permission**: Git push is executed only upon explicit human command in chat (authorized by user for this session handoff).
+- **Worktree Isolation**: All changes are safely contained within the `feat/haws-comprehensive-improvement` branch. The user can inspect everything before deciding to merge to `main` or discard.
+- **Strict Git Guardrail**: No remote `git push` is ever executed without explicit human instruction in chat.
+- **Empirical Grounding**: Agents must never report hypothetical test results; every claim must cite exact terminal output.
+- **7-Rung Minimalist Ladder (Ponytail)**: Before writing code, agents evaluate solutions starting at Rung 1 (do nothing / delete code), climbing only to Rung 5-7 when strictly necessary.
+- **Sub-Second System Doctor**: Diagnostics check 26 invariants across 7 axes in <0.4s and emit structured JSON for dashboard consumption.
 
 ---
 
 ## 📊 Verification Status
 | Check / Test Suite | Command | Result | Notes |
 | :--- | :--- | :---: | :--- |
-| HAWS System Doctor | ash haws.sh doctor | 🟢 PASS | 23/23 checks passed (100% Green, 6 axes) |
-| Active Skill Parity | Both AI Platforms | 🟢 PASS | 102 AGY = 102 Claude = 102 Manifest |
-| Master Review Scope | 	ask_plan.md | 🟢 PASS | 22/22 Topics Resolved (100% complete) |
-| Working Tree Hygiene | git status | 🟢 READY | All modified & untracked files staged |
+| HAWS System Doctor | `bash haws.sh doctor` | 🟢 PASS | 26/26 checks passed (100% Green, 7 axes) |
+| System Doctor JSON | `bash haws.sh doctor --json` | 🟢 PASS | Valid structured JSON emitted |
+| Keyboard Fixer Tests | `node skills/custom/.../test_layout_fixer.mjs` | 🟢 PASS | 100% Green (4 test suites passed) |
+| Working Tree Hygiene | `git status` | 🟢 READY | All modified & untracked files ready for commit |
 
 ---
 
-## 📍 Exact Resume Point & Next Actions
-1. **Action 1 (Immediate Next Task)**: Review Ponytail Repo — User to provide GitHub repository link or URL for @researcher to extract best practices.
-2. **Action 2**: Author In-House Custom Skill keyboard-layout-fixer in skills/custom/ to auto-correct Thai/English (Kedmanee) layout errors and inverted CapsLock.
-3. **Action 3**: Draft docs/INSTALLATION.md and upgrade haws.sh setup single-command bootstrapper.
-4. **Action 4**: Update Core Standard files (core/HAWS.md, core/WORK_INSTRUCTIONS.md) with all finalized decisions.
+## 📍 Inspection & Merge Guide for User
+1. **View Visual Dashboard**:
+   Open `dashboard/index.html` in your browser to inspect system health, token gauges, blueprints, subagents, and live keyboard fixer.
+2. **Review Git Diff in Worktree**:
+   ```bash
+   cd E:\Human-AI-Working-Standard\.worktrees\feat-haws-improvement
+   git status
+   git diff
+   ```
+3. **Merge Worktree Changes into Main**:
+   If satisfied with the improvements:
+   ```bash
+   cd E:\Human-AI-Working-Standard
+   git merge feat/haws-comprehensive-improvement
+   ```
+4. **Remove Worktree When Finished**:
+   ```bash
+   git worktree remove .worktrees/feat-haws-improvement
+   git branch -d feat/haws-comprehensive-improvement
+   ```

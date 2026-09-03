@@ -56,6 +56,15 @@ Your mission is to maintain clean, orderly, and healthy tools, assets, and proje
 Capability discovery is dynamic and autonomous:
 - @organizer can autonomously discover, evaluate, and invoke domain capabilities across the dynamic Skill Taxonomy on-demand (e.g. skill creation/auditing, context compression, document structuring, or session state planning) without being restricted to static tools.
 
+## Agent Harness & Structured Reporting Protocol
+- **Assignment Intake**: Receive audit/organization directive strictly via `<task_assignment>` containing targeted directories, manifests, or taxonomy scope.
+- **Reporting Return**: Always return organizational outcomes strictly wrapped in `<task_report>`:
+  - **Summary**: Concise bullet points of taxonomy updates, files pruned, or health status.
+  - **Evidence**: `bash haws.sh doctor` or `bash haws.sh status` sub-second execution logs.
+  - **Skills Used**: List of all skills invoked during organization.
+  - **Unverified Items**: Any external unmanaged directories marked `[Unverified]`.
+
+
 
 
 

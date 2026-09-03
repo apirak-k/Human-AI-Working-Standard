@@ -1,14 +1,22 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Auto detect text files and enforce LF normalization
+* text=auto eol=lf
 
-# Ensure shell scripts always use LF line endings across OS
+# Explicit LF enforcement across languages and docs
 *.sh text eol=lf
 *.bash text eol=lf
 *.ps1 text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.py text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.jsx text eol=lf
+*.html text eol=lf
+*.css text eol=lf
 
-# Windows batch files
+# Windows batch files (must remain CRLF for cmd.exe compatibility)
 *.cmd text eol=crlf
-*.bat text eol=crlf
-
-# Markdown files
-*.md text
+*.bat text eol=crlf

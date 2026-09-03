@@ -34,19 +34,22 @@ conflicting, or historical verification is required.
 Read only the Specific, Handoff, and reusable information relevant to the
 current project and task.
 
-### 1.1 Context window discipline
+### 1.1 Context window discipline and token economics
 
-To prevent context rot and maintain high reasoning precision across long sessions:
+To prevent context rot, maintain high reasoning precision, and control token budgets across long sessions:
 
-- **Lean context principle**: Avoid flooding the active session with entire dumps
-  of large unparsed files, build logs, or repetitive test output. Retrieve and
-  quote only relevant snippets.
-- **File-backed state over memory**: Do not rely on ephemeral chat history to track
-  active plans or critical decisions. Always persist state into structured files
-  (`HANDOFF.md`, task checklists, or implementation plans).
-- **Proactive session compaction**: When a task phase completes or context grows
-  excessively large, summarize progress, update `HANDOFF.md`, and clean temporary
-  inspection artifacts before initiating the next phase.
+- **Lean context principle**: Avoid flooding the active session with entire dumps of large unparsed files, build logs, or repetitive test output. Retrieve and quote only relevant snippets.
+- **Modular Markdown Partitioning**: Keep markdown documentation modular (~200–300 lines limit per file). Use the **Summary + Pointer pattern (Progressive Disclosure)**: parent documents provide a clear structural overview and link to deep implementation details in `references/` or `docs/`.
+- **Dual-Metric Token Governance**: Explicitly distinguish between:
+  1. **Skill Budget**: The character length sum of all active skill `description:` fields divided by 3.8. Must stay strictly within the IDE limit (<20,000 characters) to prevent automatic skill-dropping.
+  2. **Model Context Window**: The actual session prompt tokens consumed vs the active model limit (e.g. 200k or 1M).
+  - **Threshold Alerts**:
+    - **75% Usage (Yellow Warning)**: Notify user, prune unnecessary loaded context, and prepare for checkpointing.
+    - **90% Usage (Red Alert - Critical)**: Mandatory compaction. Summarize findings, write a full checkpoint to `HANDOFF.md`, and suggest starting a fresh continuation session.
+- **On-Demand Loading & Lazy Context**: Load specialized domain specifications, API references, and schemas Just-in-Time only when the active task touches that area. Persist findings to disk and do not retain heavy unparsed text in conversation memory.
+- **Telemetry & Metrics Tracking**: Track and report Thinking Time and Skill Invocation counts in milestone completions and subagent `<task_report>` blocks. `@organizer` monitors these metrics to propose pruning or archiving unused skills.
+- **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`HANDOFF.md`, task checklists, or implementation plans).
+- **Proactive session compaction**: When a task phase completes or context grows excessively large, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
 
 ## 2. Starting and performing work
 
@@ -72,9 +75,11 @@ Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task a
 1. **Dual Invocation Modes**:
    - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/grill-me`, `/brainstorming`, `/tdd`, `/drawio`, `/review`).
    - **Autonomous Agent Execution**: The AI proactively matches task context against installed skill workflows and executes their protocols directly.
-2. **Genuine Protocol Execution (No Performative Tagging)**:
+2. **Genuine Protocol Execution & Top-Line Declaration**:
+   - On the very first line of any response where a skill is applied, declare: `Applying /<skill-name> (<brief rationale>)...`.
    - Do NOT use hollow vanity tags (e.g. `[Auto-Skill: ...]`).
-   - When a skill applies, execute its actual rigorous workflow (e.g. `ask_question` one-by-one for `/grill-me`, Red-Green-Refactor for `/tdd`, 5-axis checks for `/review`) and transparently state the active Slash Command (e.g. "Applying `/grill-me`...").
+   - Execute the actual rigorous workflow of the skill (e.g. `ask_question` one-by-one for `/grill-me`, Red-Green-Refactor for `/tdd`, 5-axis checks for `/review`).
+   - All dispatched subagents must log invoked skills in their returned `<task_report>`.
 3. **Proportionality Rule**:
    - **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without overhead.
    - **Substantial Work & Critical Milestones**: Apply specialized domain skills dynamically as categorized by `@organizer` in `SKILL_TAXONOMY.md`.
@@ -155,6 +160,19 @@ After significant work, report:
 - remaining risks or blockers
 - remaining work
 - next recommended action
+
+### 4.1 Empirical Grounding and Verification Evidence
+- **Execution Proof**: Never claim a function or bug fix works without running test commands and observing exit code 0. Quote command lines and test output snippets.
+- **Source-Cited Citations**: All architectural explanations and file references must include exact line numbers (e.g. `[server.py:L20-L35]`).
+- **Explicit `[Unverified]` Tagging**: Any edge case, platform path, or configuration that was not physically tested must be explicitly tagged `[Unverified]`.
+- **Absolute Failure Transparency**: Fail-fast on build errors. Never enter silent retries or mask underlying errors.
+
+### 4.2 Environment & Window Reload Notifications
+When modifying configuration files, MCP server settings, environment variables, or tool paths that require an IDE/Editor restart to take effect, issue the standardized 100% English notice:
+```text
+[ACTION REQUIRED: RELOAD WINDOW] Please reload window (Ctrl+Shift+P > Developer: Reload Window) to apply configuration changes.
+```
+Do NOT use Thai language in system alert banners or configuration notification tags.
 
 ## 5. Testing and completion
 

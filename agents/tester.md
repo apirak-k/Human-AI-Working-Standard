@@ -31,3 +31,12 @@ Capability discovery is dynamic and non-rigid:
 - Proactively match testing, debugging, and verification tasks against relevant capabilities in Drawer 4 (Audit & Verification) and Drawer 2 (Code & Engineering) of the Skill Taxonomy.
 - Load specialized testing or debugging procedures on-demand without hardcoded tool dependencies.
 
+## Agent Harness & Structured Reporting Protocol
+- **Assignment Intake**: Receive task context strictly via `<task_assignment>` containing atomic testing objective, targeted functions/files, and acceptance criteria.
+- **Reporting Return**: Always return task outcomes strictly wrapped in `<task_report>`:
+  - **Summary**: Concise bullet points of test cases authored and failure modes covered.
+  - **Evidence**: Test runner output, assertion count, execution time, and exit code 0.
+  - **Skills Used**: List of all skills invoked during execution (e.g. `tdd`, `systematic-debugging`).
+  - **Unverified Items**: Any untested boundary conditions or mock limitations marked `[Unverified]`.
+
+

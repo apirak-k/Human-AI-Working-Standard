@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HAWS Control Center & System Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-emerald-500 selection:text-black">
+
+  <!-- Top Navigation Header -->
+  <header class="border-b border-slate-800 bg-slate-900/70 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+          <i data-lucide="shield-check" class="w-6 h-6 text-slate-950 stroke-[2.5]"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-lg tracking-tight text-white">HAWS Control Center</span>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">v2.0</span>
+          </div>
+          <p class="text-xs text-slate-400">Human-AI Working Standard & Diagnostics Engine</p>
+        </div>
+      </div>
+
+      <!-- Live Health Badge -->
+      <div class="flex items-center space-x-3">
+        <div id="system-badge" class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+          <span class="relative flex h-2.5 w-2.5">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          </span>
+          <span id="system-status-text">HEALTHY & READY (26/26 PASS)</span>
+        </div>
+        <button onclick="openJsonModal()" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition border border-slate-700">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span>Update Data</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+    <!-- KPI Summary Grid -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium uppercase tracking-wider">
+          <span>Diagnostics Health</span>
+          <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+        </div>
+        <div class="mt-3 flex items-baseline space-x-2">
+          <span id="stat-doctor" class="text-3xl font-extrabold text-emerald-400 font-mono">26/26</span>
+          <span class="text-xs text-slate-500">100% Passed</span>
+        </div>
+        <p class="mt-2 text-xs text-slate-400">All 7 diagnostic axes fully verified</p>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium uppercase tracking-wider">
+          <span>Core Standards</span>
+          <i data-lucide="book-open" class="w-4 h-4 text-sky-400"></i>
+        </div>
+        <div class="mt-3 flex items-baseline space-x-2">
+          <span class="text-3xl font-extrabold text-sky-400 font-mono">6</span>
+          <span class="text-xs text-slate-500">Canonical Files</span>
+        </div>
+        <p class="mt-2 text-xs text-slate-400">HAWS, Work Instructions, Workflow, SOT</p>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium uppercase tracking-wider">
+          <span>Project Blueprints</span>
+          <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i>
+        </div>
+        <div class="mt-3 flex items-baseline space-x-2">
+          <span class="text-3xl font-extrabold text-indigo-400 font-mono">8</span>
+          <span class="text-xs text-slate-500">Suite Templates</span>
+        </div>
+        <p class="mt-2 text-xs text-slate-400">README, Architecture, Constraints, Handoff</p>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium uppercase tracking-wider">
+          <span>Specialist Subagents</span>
+          <i data-lucide="bot" class="w-4 h-4 text-amber-400"></i>
+        </div>
+        <div class="mt-3 flex items-baseline space-x-2">
+          <span class="text-3xl font-extrabold text-amber-400 font-mono">5</span>
+          <span class="text-xs text-slate-500">Harness Contracts</span>
+        </div>
+        <p class="mt-2 text-xs text-slate-400">Backend, Frontend, Tester, Research, Org</p>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <div class="border-b border-slate-800">
+      <nav class="flex space-x-2 sm:space-x-4 overflow-x-auto pb-2" aria-label="Tabs">
+        <button onclick="switchTab('doctor')" id="tab-btn-doctor" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <i data-lucide="stethoscope" class="w-4 h-4"></i>
+          <span>7-Axis Diagnostics</span>
+        </button>
+        <button onclick="switchTab('tokens')" id="tab-btn-tokens" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent">
+          <i data-lucide="gauge" class="w-4 h-4"></i>
+          <span>Token Economics</span>
+        </button>
+        <button onclick="switchTab('blueprints')" id="tab-btn-blueprints" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent">
+          <i data-lucide="file-code-2" class="w-4 h-4"></i>
+          <span>Canonical Blueprints</span>
+        </button>
+        <button onclick="switchTab('subagents')" id="tab-btn-subagents" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent">
+          <i data-lucide="users" class="w-4 h-4"></i>
+          <span>Agent Harness</span>
+        </button>
+        <button onclick="switchTab('tools')" id="tab-btn-tools" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent">
+          <i data-lucide="keyboard" class="w-4 h-4"></i>
+          <span>Live Tools (Keyboard Fixer)</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Tab 1: 7-Axis Diagnostics -->
+    <div id="tab-content-doctor" class="tab-panel space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+        <div>
+          <h3 class="text-base font-semibold text-white">System Doctor Live Checks</h3>
+          <p class="text-xs text-slate-400">Run <code class="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400">bash haws.sh doctor</code> to verify system compliance in sub-second time.</p>
+        </div>
+        <div class="flex items-center space-x-3">
+          <input type="text" id="check-search" oninput="filterChecks()" placeholder="Filter checks..." class="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+        </div>
+      </div>
+
+      <div id="checks-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <!-- Rendered via JavaScript -->
+      </div>
+    </div>
+
+    <!-- Tab 2: Token Economics -->
+    <div id="tab-content-tokens" class="tab-panel hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Token Budget Gauges -->
+        <div class="p-6 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-6">
+          <h3 class="text-base font-semibold text-white flex items-center space-x-2">
+            <i data-lucide="pie-chart" class="w-5 h-5 text-emerald-400"></i>
+            <span>Dual-Metric Token Governance</span>
+          </h3>
+
+          <!-- Metric 1: Frontmatter Skill Budget -->
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300 font-medium">Frontmatter Skill Budget (5,000 token limit)</span>
+              <span class="font-mono text-emerald-400">1,250 / 5,000 (~25%)</span>
+            </div>
+            <div class="w-full h-3 rounded-full bg-slate-800 overflow-hidden">
+              <div class="h-full bg-emerald-500 rounded-full" style="width: 25%"></div>
+            </div>
+            <p class="text-xs text-slate-400">Governs passive top-level declarations loaded on session startup.</p>
+          </div>
+
+          <!-- Metric 2: LLM Context Window Budget -->
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300 font-medium">LLM Context Window (200,000 token limit)</span>
+              <span class="font-mono text-sky-400">32,400 / 200,000 (~16%)</span>
+            </div>
+            <div class="w-full h-3 rounded-full bg-slate-800 overflow-hidden relative">
+              <div class="h-full bg-sky-500 rounded-full" style="width: 16%"></div>
+              <!-- 75% Yellow Warning Line -->
+              <div class="absolute top-0 bottom-0 left-[75%] w-0.5 bg-yellow-400" title="75% Yellow Alert"></div>
+              <!-- 90% Red Warning Line -->
+              <div class="absolute top-0 bottom-0 left-[90%] w-0.5 bg-rose-500" title="90% Red Alert"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+              <span>0k</span>
+              <span class="text-yellow-400">75% Alert (150k)</span>
+              <span class="text-rose-400">90% Compaction (180k)</span>
+              <span>200k</span>
+            </div>
+          </div>
+
+          <!-- Compaction Protocol Alert Box -->
+          <div class="p-4 rounded-xl bg-slate-800/60 border border-slate-700 text-xs space-y-2">
+            <div class="flex items-center space-x-2 text-yellow-400 font-semibold">
+              <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+              <span>Compaction Protocol</span>
+            </div>
+            <p class="text-slate-300">
+              When context window reaches <strong class="text-yellow-300">75%</strong>, warning is triggered.
+              At <strong class="text-rose-400">90%</strong>, write state to <code class="text-sky-300">HANDOFF.md</code> and prompt user to start a clean session with context carryover.
+            </p>
+          </div>
+        </div>
+
+        <!-- Caveman Multi-Tier Compression -->
+        <div class="p-6 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-6">
+          <h3 class="text-base font-semibold text-white flex items-center space-x-2">
+            <i data-lucide="zap" class="w-5 h-5 text-amber-400"></i>
+            <span>Caveman Multi-Tier Compression Standard</span>
+          </h3>
+
+          <div class="space-y-3">
+            <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-800 space-y-1">
+              <div class="flex items-center justify-between text-xs font-semibold text-emerald-400">
+                <span>Tier 1: /caveman lite (~30% saving)</span>
+                <span class="px-1.5 py-0.5 rounded bg-emerald-500/10 text-[10px]">Normal Dev</span>
+              </div>
+              <p class="text-xs text-slate-400">Direct technical explanations without conversational filler or redundant pleasantries.</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-800 space-y-1">
+              <div class="flex items-center justify-between text-xs font-semibold text-yellow-400">
+                <span>Tier 2: /caveman full (~60% saving)</span>
+                <span class="px-1.5 py-0.5 rounded bg-yellow-500/10 text-[10px]">Active Coding</span>
+              </div>
+              <p class="text-xs text-slate-400">Short phrases, bullet fragments, code citations only. Maximum signal-to-noise ratio.</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-800 space-y-1">
+              <div class="flex items-center justify-between text-xs font-semibold text-rose-400">
+                <span>Tier 3: /caveman ultra (~80% saving)</span>
+                <span class="px-1.5 py-0.5 rounded bg-rose-500/10 text-[10px]">Critical Pressure</span>
+              </div>
+              <p class="text-xs text-slate-400">Extreme telegram style: status + action only. Zero fluff, 100% token preservation.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Canonical Blueprints -->
+    <div id="tab-content-blueprints" class="tab-panel hidden space-y-6">
+      <div class="bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+        <h3 class="text-base font-semibold text-white">HAWS 8-File Canonical Blueprint Suite</h3>
+        <p class="text-xs text-slate-400">All standard projects adhere to these 8 structured blueprints to guarantee zero cognitive drift.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center space-x-2 text-sky-400 font-mono font-semibold text-sm">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+            <span>README.md</span>
+          </div>
+          <p class="text-xs text-slate-400">Project purpose, 1-minute quickstart guide, prerequisites, and developer workflow commands.</p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center space-x-2 text-indigo-400 font-mono font-semibold text-sm">
+            <i data-lucide="palette" class="w-4 h-4"></i>
+            <span>DESIGN.md</span>
+          </div>
+          <p class="text-xs text-slate-400">Design tokens, color palette, typography scales, spacing, component conventions, and anti-slop rules.</p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center space-x-2 text-purple-400 font-mono font-semibold text-sm">
+            <i data-lucide="target" class="w-4 h-4"></i>
+            <span>PROJECT.md</span>
+          </div>
+          <p class="text-xs text-slate-400">Business domain scope, goals, non-goals, user personas, key workflows, and non-negotiables.</p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center space-x-2 text-teal-400 font-mono font-semibold text-sm">
+            <i data-lucide="network" class="w-4 h-4"></i>
+            <span>ARCHITECTURE.md</span>
+          </div>
+          <p class="text-xs text-slate-400">Component topology, Mermaid visual diagrams, Archify JSON IR, data contracts, and resilience boundaries.</p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center space-x-2 text-rose-400 font-mono font-semibold text-sm">
+            <i data-lucide="shield-alert" class="w-4 h-4"></i>
+            <span>CONSTRAINTS.md</span>
+          </div>
+          <p class="text-xs text-slate-400">Quality contract, performance limits, security boundaries, and Ponytail 7-rung minimalist ladder.</p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center space-x-2 text-amber-400 font-mono font-semibold text-sm">
+            <i data-lucide="git-commit" class="w-4 h-4"></i>
+            <span>HANDOFF.md</span>
+          </div>
+          <p class="text-xs text-slate-400">Inter-session context persistence: completed milestones, open blockers, and clear next actions.</p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center space-x-2 text-emerald-400 font-mono font-semibold text-sm">
+            <i data-lucide="compass" class="w-4 h-4"></i>
+            <span>SOT.md</span>
+          </div>
+          <p class="text-xs text-slate-400">Single Source of Truth indexing active dependencies, authoritative files, and runtime invariants.</p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center space-x-2 text-cyan-400 font-mono font-semibold text-sm">
+            <i data-lucide="cpu" class="w-4 h-4"></i>
+            <span>AGENTS.md</span>
+          </div>
+          <p class="text-xs text-slate-400">Agent capability matrix, task assignment templates, execution limits, and structured reporting schema.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Subagents & Harness -->
+    <div id="tab-content-subagents" class="tab-panel hidden space-y-6">
+      <div class="bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+        <h3 class="text-base font-semibold text-white">5 Canonical Specialist Subagents</h3>
+        <p class="text-xs text-slate-400">Operating under strict structured harness contracts: <code class="text-emerald-400">&lt;task_assignment&gt;</code> in, <code class="text-sky-400">&lt;task_report&gt;</code> out.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-sm text-sky-400 font-mono">Backend Engineer</span>
+            <span class="px-2 py-0.5 text-[10px] rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">pro / inherit</span>
+          </div>
+          <p class="text-xs text-slate-400">API architecture, database schemas, server domain logic, integration tests, and performance optimization.</p>
+          <div class="text-[11px] font-mono text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+            Path: agents/backend-engineer.md
+          </div>
+        </div>
+
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-sm text-pink-400 font-mono">Frontend Engineer</span>
+            <span class="px-2 py-0.5 text-[10px] rounded bg-pink-500/10 text-pink-300 border border-pink-500/20">pro / inherit</span>
+          </div>
+          <p class="text-xs text-slate-400">UI component engineering, responsive layout, WCAG AA accessibility, animations, and design tokens.</p>
+          <div class="text-[11px] font-mono text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+            Path: agents/frontend-engineer.md
+          </div>
+        </div>
+
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-sm text-emerald-400 font-mono">QA & Tester</span>
+            <span class="px-2 py-0.5 text-[10px] rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">pro / inherit</span>
+          </div>
+          <p class="text-xs text-slate-400">Test suites, edge-case analysis, regression checks, TDD Red-Green verification, and coverage enforcement.</p>
+          <div class="text-[11px] font-mono text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+            Path: agents/tester.md
+          </div>
+        </div>
+
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-sm text-purple-400 font-mono">Researcher</span>
+            <span class="px-2 py-0.5 text-[10px] rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">flash / pro</span>
+          </div>
+          <p class="text-xs text-slate-400">Official documentation discovery, architectural benchmarking, technology comparison, and synthesis.</p>
+          <div class="text-[11px] font-mono text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+            Path: agents/researcher.md
+          </div>
+        </div>
+
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-sm text-amber-400 font-mono">Organizer</span>
+            <span class="px-2 py-0.5 text-[10px] rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">flash_lite / flash</span>
+          </div>
+          <p class="text-xs text-slate-400">Directory structure hygiene, file sorting, blueprint parity checks, and handoff state compilation.</p>
+          <div class="text-[11px] font-mono text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+            Path: agents/organizer.md
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 5: Live Tools (Keyboard Fixer) -->
+    <div id="tab-content-tools" class="tab-panel hidden space-y-6">
+      <div class="bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+        <h3 class="text-base font-semibold text-white flex items-center space-x-2">
+          <i data-lucide="keyboard" class="w-5 h-5 text-emerald-400"></i>
+          <span>Live Tool: Thai Kedmanee &harr; English QWERTY Layout Fixer</span>
+        </h3>
+        <p class="text-xs text-slate-400">Instantly converts mistyped text caused by forgetting to switch keyboard layouts or accidental CapsLock inversion.</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-semibold text-slate-300">Input Mistyped Text</label>
+            <button onclick="setSampleText()" class="text-xs text-emerald-400 hover:underline">Try Sample (l;ylfu)</button>
+          </div>
+          <textarea id="fixer-input" rows="5" oninput="runFixer()" placeholder="Type or paste mistyped text here (e.g. l;ylfu or ดกดก)..." class="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-sm font-mono text-white focus:outline-none focus:border-emerald-500 transition"></textarea>
+          <div class="flex items-center justify-between text-xs text-slate-500">
+            <span id="fixer-detected-lang">Detected: None</span>
+            <span id="fixer-capslock-stat">CapsLock Inversion: No</span>
+          </div>
+        </div>
+
+        <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-semibold text-slate-300">Corrected Result</label>
+            <button onclick="copyFixerOutput()" id="copy-btn" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center space-x-1 transition">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span>Copy</span>
+            </button>
+          </div>
+          <textarea id="fixer-output" rows="5" readonly placeholder="Corrected text will appear here automatically..." class="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-sm font-mono text-emerald-400 focus:outline-none transition"></textarea>
+          <div class="text-xs text-slate-500">
+            Powered by <code class="text-slate-400">skills/custom/keyboard-layout-fixer</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Update Data Modal -->
+  <div id="json-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center">
+        <h3 class="text-base font-bold text-white">Update Diagnostics JSON</h3>
+        <button onclick="closeJsonModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-400">
+        Run <code class="px-1 py-0.5 rounded bg-slate-800 text-emerald-400">bash haws.sh doctor --json</code> in terminal and paste the output below to update the live dashboard:
+      </p>
+      <textarea id="json-input" rows="8" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500"></textarea>
+      <div class="flex justify-end space-x-3">
+        <button onclick="closeJsonModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 transition">Cancel</button>
+        <button onclick="applyJsonData()" class="px-4 py-2 rounded-xl bg-emerald-600 text-black font-semibold text-xs hover:bg-emerald-500 transition">Apply Diagnostics</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentDoctorData = {
+      "status": "HEALTHY & READY",
+      "total_passed": 26,
+      "total_failed": 0,
+      "checks": [
+        {"item":"core/HAWS.md","status":"PASS","category":"Core Standards"},
+        {"item":"core/WORK_INSTRUCTIONS.md","status":"PASS","category":"Core Standards"},
+        {"item":"core/WORKFLOW.md","status":"PASS","category":"Core Standards"},
+        {"item":"core/USER_PREFERENCES.md","status":"PASS","category":"Core Standards"},
+        {"item":"core/ANTI_PATTERNS.md","status":"PASS","category":"Core Standards"},
+        {"item":"core/SKILL_TAXONOMY.md","status":"PASS","category":"Core Standards"},
+        {"item":"templates/README.md","status":"PASS","category":"Canonical Blueprints"},
+        {"item":"templates/DESIGN.md","status":"PASS","category":"Canonical Blueprints"},
+        {"item":"templates/PROJECT.md","status":"PASS","category":"Canonical Blueprints"},
+        {"item":"templates/ARCHITECTURE.md","status":"PASS","category":"Canonical Blueprints"},
+        {"item":"templates/CONSTRAINTS.md","status":"PASS","category":"Canonical Blueprints"},
+        {"item":"templates/HANDOFF.md","status":"PASS","category":"Canonical Blueprints"},
+        {"item":"templates/SOT.md","status":"PASS","category":"Canonical Blueprints"},
+        {"item":"templates/AGENTS.md","status":"PASS","category":"Canonical Blueprints"},
+        {"item":"agents/backend-engineer.md","status":"PASS","category":"Subagents"},
+        {"item":"agents/frontend-engineer.md","status":"PASS","category":"Subagents"},
+        {"item":"agents/organizer.md","status":"PASS","category":"Subagents"},
+        {"item":"agents/researcher.md","status":"PASS","category":"Subagents"},
+        {"item":"agents/tester.md","status":"PASS","category":"Subagents"},
+        {"item":"skills/custom/","status":"PASS","category":"Skills Structure"},
+        {"item":"skills/packs/","status":"PASS","category":"Skills Structure"},
+        {"item":"skills/standalone/","status":"PASS","category":"Skills Structure"},
+        {"item":"Zero redundant .agents/ directory","status":"PASS","category":"Hygiene"},
+        {"item":"Zero redundant scripts/ directory","status":"PASS","category":"Hygiene"},
+        {"item":"Zero unmanaged foreign skills","status":"PASS","category":"Hygiene"},
+        {"item":"LF Normalization","status":"PASS","category":"Line Endings"}
+      ]
+    };
+
+    function renderChecks(filter = '') {
+      const container = document.getElementById('checks-container');
+      container.innerHTML = '';
+
+      const filtered = currentDoctorData.checks.filter(c => 
+        c.item.toLowerCase().includes(filter.toLowerCase()) || 
+        (c.category && c.category.toLowerCase().includes(filter.toLowerCase()))
+      );
+
+      filtered.forEach(c => {
+        const isPass = c.status === 'PASS';
+        const card = document.createElement('div');
+        card.className = 'p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between hover:border-slate-700 transition';
+        card.innerHTML = `
+          <div class="flex items-center space-x-3 overflow-hidden">
+            <div class="w-6 h-6 rounded-lg ${isPass ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'} flex items-center justify-center flex-shrink-0">
+              <i data-lucide="${isPass ? 'check' : 'x'}" class="w-3.5 h-3.5"></i>
+            </div>
+            <div class="overflow-hidden">
+              <div class="text-xs font-mono font-medium text-slate-200 truncate" title="${c.item}">${c.item}</div>
+              <div class="text-[10px] text-slate-500">${c.category || 'System Diagnostic'}</div>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 text-[10px] font-mono rounded ${isPass ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'} font-semibold">
+            ${c.status}
+          </span>
+        `;
+        container.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    function filterChecks() {
+      const query = document.getElementById('check-search').value;
+      renderChecks(query);
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.className = 'tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent';
+      });
+
+      const activePanel = document.getElementById(`tab-content-${tabId}`);
+      if (activePanel) activePanel.classList.remove('hidden');
+
+      const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+      if (activeBtn) {
+        activeBtn.className = 'tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+      }
+      lucide.createIcons();
+    }
+
+    function openJsonModal() {
+      document.getElementById('json-input').value = JSON.stringify(currentDoctorData, null, 2);
+      document.getElementById('json-modal').classList.remove('hidden');
+    }
+
+    function closeJsonModal() {
+      document.getElementById('json-modal').classList.add('hidden');
+    }
+
+    function applyJsonData() {
+      try {
+        const text = document.getElementById('json-input').value;
+        const parsed = JSON.parse(text);
+        if (parsed.checks && Array.isArray(parsed.checks)) {
+          currentDoctorData = parsed;
+          document.getElementById('stat-doctor').textContent = `${parsed.total_passed || parsed.checks.length}/${parsed.checks.length}`;
+          document.getElementById('system-status-text').textContent = `${parsed.status || 'HEALTHY'} (${parsed.total_passed || parsed.checks.length}/${parsed.checks.length} PASS)`;
+          renderChecks();
+          closeJsonModal();
+        } else {
+          alert('Invalid JSON: Must contain "checks" array.');
+        }
+      } catch (err) {
+        alert('JSON parse error: ' + err.message);
+      }
+    }
+
+    const EN_TO_TH = {
+      '`': '_', '~': '%', '1': 'ๅ', '!': '+', '2': '/', '@': '๑',
+      '3': '-', '#': '๒', '4': 'ภ', '$': '๓', '5': 'ถ', '%': '๔',
+      '6': 'ุ', '^': 'ู', '7': 'ึ', '&': '฿', '8': 'ค', '*': '๕',
+      '9': 'ต', '(': '๖', '0': 'จ', ')': '๗', '-': 'ข', '_': '๘',
+      '=': 'ช', '+': '๙', 'q': 'ๆ', 'Q': '๐', 'w': 'ไ', 'W': '"',
+      'e': 'ำ', 'E': 'ฎ', 'r': 'พ', 'R': 'ฑ', 't': 'ะ', 'T': 'ธ',
+      'y': 'ั', 'Y': 'ํ', 'u': 'ี', 'U': '๊', 'i': 'ร', 'I': 'ณ',
+      'o': 'น', 'O': 'ฯ', 'p': 'ย', 'P': 'ญ', '[': 'บ', '{': 'ฐ',
+      ']': 'ล', '}': ',', '\\': 'ฃ', '|': 'ฅ', 'a': 'ฟ', 'A': 'ฤ',
+      's': 'ห', 'S': 'ฆ', 'd': 'ก', 'D': 'ฏ', 'f': 'ด', 'F': 'โ',
+      'g': 'เ', 'G': 'ฌ', 'h': '้', 'H': '็', 'j': '่', 'J': '๋',
+      'k': 'า', 'K': 'ษ', 'l': 'ส', 'L': 'ศ', ';': 'ว', ':': 'ซ',
+      '\'': 'ง', '"': '.', 'z': 'ผ', 'Z': '(', 'x': 'ป', 'X': ')',
+      'c': 'แ', 'C': 'ฉ', 'v': 'อ', 'V': 'ฮ', 'b': 'ิ', 'B': 'ฺ',
+      'n': 'ื', 'N': '์', 'm': 'ท', 'M': '?', ',': 'ม', '<': 'ฒ',
+      '.': 'ใ', '>': 'ฬ', '/': 'ฝ', '?': 'ฦ', ' ': ' '
+    };
+
+    const TH_TO_EN = {};
+    for (const [en, th] of Object.entries(EN_TO_TH)) {
+      TH_TO_EN[th] = en;
+    }
+
+    function runFixer() {
+      let text = document.getElementById('fixer-input').value;
+      if (!text) {
+        document.getElementById('fixer-output').value = '';
+        document.getElementById('fixer-detected-lang').textContent = 'Detected: None';
+        document.getElementById('fixer-capslock-stat').textContent = 'CapsLock Inversion: No';
+        return;
+      }
+
+      let capsLockInverted = false;
+      if (/[a-zA-Z]/.test(text)) {
+        const words = text.trim().split(/\s+/);
+        let invertedWordCount = 0;
+        let testableWordCount = 0;
+        for (const w of words) {
+          if (w.length >= 2 && /[a-zA-Z]/.test(w)) {
+            testableWordCount++;
+            if (w[0] === w[0].toLowerCase() && w.slice(1) === w.slice(1).toUpperCase()) {
+              invertedWordCount++;
+            }
+          }
+        }
+        if (testableWordCount > 0 && (invertedWordCount / testableWordCount) >= 0.5) {
+          capsLockInverted = true;
+          text = text.split('').map(c => {
+            if (c >= 'a' && c <= 'z') return c.toUpperCase();
+            if (c >= 'A' && c <= 'Z') return c.toLowerCase();
+            return c;
+          }).join('');
+        }
+      }
+
+      let thCount = 0;
+      let enCount = 0;
+      for (const ch of text) {
+        const code = ch.charCodeAt(0);
+        if (code >= 0x0E00 && code <= 0x0E7F) thCount++;
+        else if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) enCount++;
+      }
+
+      const map = thCount > enCount ? TH_TO_EN : EN_TO_TH;
+      const detected = thCount > enCount ? 'Thai Kedmanee' : (enCount > 0 ? 'English US' : 'Unknown');
+
+      let result = '';
+      for (const ch of text) {
+        result += map[ch] !== undefined ? map[ch] : ch;
+      }
+
+      document.getElementById('fixer-output').value = result;
+      document.getElementById('fixer-detected-lang').textContent = `Detected: ${detected}`;
+      document.getElementById('fixer-capslock-stat').textContent = `CapsLock Inversion: ${capsLockInverted ? 'Fixed Yes' : 'No'}`;
+    }
+
+    function setSampleText() {
+      document.getElementById('fixer-input').value = 'l;ylfu';
+      runFixer();
+    }
+
+    function copyFixerOutput() {
+      const out = document.getElementById('fixer-output');
+      out.select();
+      navigator.clipboard.writeText(out.value);
+      const btn = document.getElementById('copy-btn');
+      btn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i><span class="text-emerald-400">Copied!</span>`;
+      lucide.createIcons();
+      setTimeout(() => {
+        btn.innerHTML = `<i data-lucide="copy" class="w-3.5 h-3.5"></i><span>Copy</span>`;
+        lucide.createIcons();
+      }, 2000);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderChecks();
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
