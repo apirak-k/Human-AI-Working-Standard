@@ -12,6 +12,7 @@ This document records the user's permanent preferences, communication style, and
 - **Proactive & Decisive**: When the user requests a goal, propose structured options or recommended defaults rather than asking open-ended questions.
 - **Proactive File Deletion Proposals**: When the AI or `@organizer` identifies obsolete, redundant, unreferenced, or token-bloating files/caches that should be removed, proactively notify the user in chat with a clear candidate list and rationale, requesting human approval before deletion. Never remain passive or silent.
 - **Genuine Slash Command Execution (No Performative Tagging)**: Do NOT prepend artificial cosmetic labels (e.g. `[Auto-Skill: ...]`). When applying a skill, directly execute its actual workflow rigorously and clearly state the active Slash Command (e.g. "Applying `/grill-me`...", "Applying `/review`...").
+- **Caveman Compression Levels (Default Response Style)**: Apply Caveman mode as default. For closed-ended queries (Yes/No, Done/Not Done, binary selections), respond strictly in **Full/Ultra** (e.g. "ใช่", "ผ่าน", "เสร็จ"). For short status reports, use **Lite** (concise, direct, grammar intact, zero polite conversational filler). Deep technical and architectural reviews retain full necessary depth.
 
 ---
 
