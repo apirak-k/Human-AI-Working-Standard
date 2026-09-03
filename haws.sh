@@ -17,8 +17,8 @@ run_status() {
     local claude_count=0
     local manifest_count=0
 
-    [ -d "${gemini_dir}" ] && gemini_count=$(find "${gemini_dir}" -mindepth 1 -maxdepth 1 -type d | wc -l)
-    [ -d "${claude_dir}" ] && claude_count=$(find "${claude_dir}" -mindepth 1 -maxdepth 1 -type d | wc -l)
+    [ -d "${gemini_dir}" ] && gemini_count=$(find "${gemini_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
+    [ -d "${claude_dir}" ] && claude_count=$(find "${claude_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
     [ -f "${manifest}" ] && manifest_count=$(grep -c '^skill:' "${manifest}" || true)
 
     local est_tokens=0
@@ -235,7 +235,10 @@ run_sync() {
     local AGENTS_LINKED=0
     local RULES_LINKED=0
     local SKIPPED_COUNT=0
-    local WARNINGS_COUNT=0
+    local IS_WINDOWS=false
+    if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
+        IS_WINDOWS=true
+    fi
 
     safe_link_file() {
         local src="$1"
@@ -256,9 +259,18 @@ run_sync() {
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
-            cp -f "${src}" "${dest}"
-            echo "  [UPDATED] ${label}: ${dest} -> ${src}"
-            return 0
+            rm -f "${dest}"
+        fi
+
+        if [ "$IS_WINDOWS" = true ]; then
+            local win_src win_dest
+            win_src="$(cygpath -w "${src}")"
+            win_dest="$(cygpath -w "${dest}")"
+            rm -f "${dest}" 2>/dev/null || true
+            if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" >/dev/null 2>&1; then
+                echo "  [HARDLINK] ${label}: ${dest} -> ${src}"
+                return 0
+            fi
         fi
 
         if ln -s "${src}" "${dest}" 2>/dev/null; then
@@ -276,6 +288,29 @@ run_sync() {
         local dest_dir
         dest_dir="$(dirname "${dest}")"
         mkdir -p "${dest_dir}"
+
+        if [ "$IS_WINDOWS" = true ]; then
+            local win_src win_dest
+            win_src="$(cygpath -w "${src}")"
+            win_dest="$(cygpath -w "${dest}")"
+
+            if [ -L "${dest}" ]; then
+                local current_target
+                current_target="$(readlink "${dest}" || true)"
+                if [ "${current_target}" = "${src}" ]; then
+                    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                    return 0
+                fi
+                rm -f "${dest}" 2>/dev/null || true
+            elif [ -d "${dest}" ]; then
+                rm -rf "${dest}" 2>/dev/null || true
+            fi
+
+            if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /J "${win_dest}" "${win_src}" >/dev/null 2>&1; then
+                echo "  [JUNCTION] ${label}: ${dest} -> ${src}"
+                return 0
+            fi
+        fi
 
         if [ -L "${dest}" ]; then
             local current_target
