@@ -866,6 +866,10 @@ run_user() {
             fi
 
             echo "=== Connecting Second Brain Cloud ==="
+            echo "=========================================================================="
+            echo " [PRIVACY NOTICE] Ensure your repository is set to PRIVATE on GitHub!"
+            echo " Second Brain stores personal notes & anti-patterns and must NEVER be Public."
+            echo "=========================================================================="
             if git -C "${brain_dir}" remote get-url origin &>/dev/null; then
                 git -C "${brain_dir}" remote set-url origin "${repo_url}"
             else

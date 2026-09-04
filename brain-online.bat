@@ -48,6 +48,11 @@ for /f "delims=" %%i in ('git -C secondbrain remote get-url origin 2^>nul') do s
 if "%REMOTE_URL%"=="" (
     echo [STATUS] Second Brain is currently in LOCAL-ONLY mode.
     echo.
+    echo ================================================================
+    echo  [PRIVACY NOTICE] Ensure your repository is set to PRIVATE!
+    echo  Never connect Second Brain to a Public GitHub repository.
+    echo ================================================================
+    echo.
     set "REPO_INPUT="
     set "REPO_CLEAN="
     if not "%~1"=="" (

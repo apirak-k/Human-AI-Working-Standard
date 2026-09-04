@@ -54,6 +54,9 @@ HAWS physically decouples the **upstream framework (`core/`)** from your **perso
 - `secondbrain/` is **gitignored** from the upstream HAWS repository, guaranteeing that upstream framework pulls never overwrite, conflict, or wipe your personal data.
 - `secondbrain/` is managed as an independent local Git repository.
 
+> [!IMPORTANT]
+> **Privacy Invariant**: Your Second Brain repository on GitHub **MUST be created as PRIVATE**. Never connect `secondbrain/` to a public repository to ensure that your personal notes, communication preferences, and recorded anti-patterns remain strictly confidential.
+
 ### Connecting to Cloud (1-Click Symmetrical Sync)
 On any computer (machine 1 or machine 2):
 ```bash
