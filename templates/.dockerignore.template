@@ -1,0 +1,58 @@
+# ==============================================================================
+# HAWS Canonical Blueprint: Strict Leak-Proof .dockerignore
+# Standard: Never bake secrets, git history, or host caches into container images
+# ==============================================================================
+
+# Git & Version Control
+.git/
+.gitignore
+.gitattributes
+.githooks/
+.worktrees/
+worktrees/
+
+# Secrets, Credentials & Local Environments (CRITICAL)
+.env*
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+id_rsa*
+*.pub
+credentials.json
+service-account*.json
+
+# HAWS Second Brain & Machine State
+secondbrain/
+.haws_backup/
+.haws_manifest
+
+# Dependency Caches & Local Builds
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+target/
+dist/
+build/
+.next/
+.nuxt/
+.output/
+
+# OS Artifacts & Temporary Files
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+*.swp
+*.bak
+*.log

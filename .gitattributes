@@ -19,4 +19,8 @@
 
 # Windows batch files (must remain CRLF for cmd.exe compatibility)
 *.cmd text eol=crlf
-*.bat text eol=crlf
+*.bat text eol=crlf
+
+# Submodule independence (protect local submodule selection during upstream sync)
+.gitmodules merge=ours
+

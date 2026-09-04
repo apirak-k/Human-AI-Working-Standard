@@ -1,0 +1,36 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+
+// ==============================================================================
+// HAWS Canonical Blueprint: Modern Vite Configuration
+// Standard: Sub-Second HMR, Strict Path Aliases, and Zero-Lint Production Gate
+// ==============================================================================
+export default defineConfig({
+  plugins: [
+    react()
+    // To enable instant in-browser linter overlay during development:
+    // checker({ typescript: true, eslint: { lintCommand: 'eslint "./src/**/*.{ts,tsx}"' } })
+  ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  },
+  server: {
+    port: 5173,
+    strictPort: true,
+    host: true
+  },
+  build: {
+    target: 'esnext',
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom']
+        }
+      }
+    }
+  }
+});

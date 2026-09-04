@@ -78,24 +78,64 @@ export function fixCapsLock(text) {
   }).join('');
 }
 
+const COMMON_TECH_ACRONYMS = new Set([
+  'API', 'SQL', 'HTML', 'CSS', 'JSON', 'XML', 'YAML', 'YML', 'CSV', 'TSV',
+  'URL', 'URI', 'HTTP', 'HTTPS', 'REST', 'CRUD', 'SDK', 'CLI', 'IDE', 'GUI',
+  'AWS', 'GCP', 'S3', 'EC2', 'AI', 'LLM', 'ML', 'DL', 'NLP', 'UI', 'UX',
+  'PR', 'CI', 'CD', 'SOT', 'HAWS', 'LF', 'CRLF', 'README', 'TODO', 'NOTE',
+  'FIXME', 'PASS', 'FAIL', 'WARN', 'INFO', 'DEBUG', 'ERROR', 'GET', 'POST',
+  'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'DB', 'ID', 'UUID', 'IP',
+  'TCP', 'UDP', 'DNS', 'SSH', 'SSL', 'TLS', 'JWT', 'OAUTH', 'OK', 'HELP',
+  'PORT', 'HOST', 'TRUE', 'FALSE', 'NULL', 'GIT', 'NPM', 'PNPM', 'YARN', 'PIP'
+]);
+
+export function isAcronymOrTechTerm(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const words = trimmed.split(/\s+/);
+  return words.length > 0 && words.every(w => {
+    const clean = w.replace(/[^a-zA-Z0-9]/g, '');
+    return COMMON_TECH_ACRONYMS.has(clean.toUpperCase());
+  });
+}
+
 export function autoDetectAndFix(text) {
   if (!text) return text;
 
+  // Safety Check: Never accidentally convert intentional English technical acronyms
+  if (isAcronymOrTechTerm(text)) {
+    return text;
+  }
+
+  // Case 3: Inverted CapsLock English (e.g. "hELLO wORLD" -> "Hello World")
   if (isCapsLockInverted(text)) {
     return fixCapsLock(text);
   }
 
   let thCount = 0;
   let enCount = 0;
+  let upperCount = 0;
   for (const c of text) {
     const code = c.charCodeAt(0);
-    if (code >= 0x0E00 && code <= 0x0E7F) thCount++;
-    else if (/[a-zA-Z]/.test(c)) enCount++;
+    if (code >= 0x0E00 && code <= 0x0E7F) {
+      thCount++;
+    } else if (/[a-zA-Z]/.test(c)) {
+      enCount++;
+      if (/[A-Z]/.test(c)) {
+        upperCount++;
+      }
+    }
   }
 
+  // Case 2: Thai -> English (e.g. "ดกดก" -> "fdfd")
   if (thCount > enCount) {
     return thToEn(text);
   } else if (enCount > 0) {
+    // Case 4: CapsLock on while typing Thai on EN layout (e.g. "FDFD" -> "ดกดก", "GRNHV" -> "เพื้อ")
+    if (upperCount > 0 && upperCount >= enCount * 0.8) {
+      return enToTh(text.toLowerCase());
+    }
+    // Case 1: English -> Thai (e.g. "fdfd" -> "ดกดก")
     return enToTh(text);
   }
   return text;

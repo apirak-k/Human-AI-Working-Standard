@@ -17,3 +17,12 @@ ehthumbs.db
 # Git Worktrees
 .worktrees/
 worktrees/
+
+# Personal Second Brain & Backups
+/secondbrain/
+.haws_backup/
+
+# Scratch & Temporary Testing
+scratch/
+/scratch/
+

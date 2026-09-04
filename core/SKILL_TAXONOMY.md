@@ -16,9 +16,9 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🗄️ Active Tooling Drawers & Complete 102 Skills Mapping
+## 🗄️ Active Tooling Drawers & Complete 104 Skills Mapping
 
-### 🧠 Drawer 1: Thinking & Planning (26 Skills)
+### 🧠 Drawer 1: Thinking & Planning (27 Skills)
 * **Purpose**: Intent extraction, architectural design, requirements engineering, decision stress-testing, and vertical task breakdown.
 * **Primary Subagent**: Leader, @researcher
 * **Catalog**:
@@ -37,6 +37,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `grill-with-docs` — Stress-test designs against official documentation and primary sources.
   - `domain-modeling` — Build domain models, ubiquitous language, and ADRs.
   - `codebase-design` — Evaluate architectural patterns and component boundaries.
+  - `archify` — Interactive HTML/SVG system architecture, workflow, sequence, dataflow, and lifecycle maps from typed JSON IR.
   - `graphify` — Codebase knowledge graph, community detection, and architectural relationship mapping.
   - `prototype` — Fast spike prototypes to validate technical feasibility.
   - `research` — High-trust primary source investigation and Markdown synthesis.

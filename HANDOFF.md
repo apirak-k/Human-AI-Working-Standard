@@ -16,17 +16,17 @@
 | **หมวด 1: พฤติกรรม & กฎ AI (Grounding & Behavior)** | 🟢 ตรวจแล้ว | Anti-hallucination, Empirical evidence, Caveman mode, Skill banner. |
 | **หมวด 2: Context Window & Token** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | ตัดการแสดงผลตัวเลข Token/Context Window ออก แต่คงวินัย Lean Context (Summary + Pointer / Progressive Disclosure). |
 | **หมวด 3: เทมเพลตมาตรฐาน 8 ไฟล์ & `.env`** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | ตัดความซ้ำซ้อนใน `AGENTS.md` ให้ชี้ Pointer ไป `CONSTRAINTS.md`, เติมคำสั่ง Build/Test สากล, เคลียร์เรื่อง `.env`. |
-| **หมวด 4: Subagents & Custom Skill** | 🟡 **ตรวจค้างอยู่ (IN PROGRESS)** | • Agent Harness (`<task_assignment>` / `<task_report>`): คุยแล้ว<br>• `ponytail` (Lazy Dev Ladder): คุยแล้ว<br>• **ยังไม่ได้ตรวจ**: Bounded Loop (การนับลูป 3 ครั้ง) & Custom Skill (`keyboard-layout-fixer`). |
+| **หมวด 4: Subagents & Custom Skill** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | • Agent Harness (`<task_assignment>` / `<task_report>`): คอนเฟิร์ม<br>• `ponytail` (Lazy Dev Ladder): คอนเฟิร์ม<br>• Bounded Loop: คอนเฟิร์ม 3 ครั้ง<br>• Custom Skill (`keyboard-layout-fixer`): คอนเฟิร์มเก็บเป็นสกิลแรก พร้อมเติม Case 4 ในการ implement |
 | **หมวด 5: Tooling & Dashboard** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | สั่งลบแดชบอร์ดถาวร (`dashboard/` ถูกลบแล้วเพื่อความ Minimalist). |
-| **หมวด 6: Git Hooks & Guardrails** | ⚪ **ยังไม่ได้ตรวจ (PENDING)** | ยังไม่ได้คุยเรื่อง Git Hooks รายละเอียด และคำถามว่า "มีอะไรที่ควรเป็น Hook ประจำอีกไหม". |
+| **หมวด 6: Git Hooks & Guardrails** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | คอนเฟิร์มใช้ 2 Hooks หลัก (`pre-commit` ดัก .env/LF และ `pre-push` บล็อก push อัตโนมัติ) ไม่เพิ่ม Hook อื่นให้รก |
 
 ---
 
 ## 🧠 2. Deep Discussions, Thoughts & Ideas (ข้อคิดและไอเดียที่คุยกันล่าสุด)
 
-### A. เรื่อง Auto Prune สกิล
-* **สถานะปัจจุบัน**: `@organizer` **ยังไม่ลบสกิลให้อัตโนมัติ** เนื่องจาก HAWS มีกฎความปลอดภัยห้าม AI ลบไฟล์เองโดยไม่ผ่านความเห็นชอบของมนุษย์ ปัจจุบันทำได้เพียงตรวจจับและแจ้งเตือนในแชท
-* **ไอเดียในอนาคต**: ให้ `@organizer` มอนิเตอร์สกิลที่ไม่ได้ถูกเรียกใช้เป็นเวลานาน แล้วทำเป็น "ข้อเสนอแนะในการ Prune" พร้อมปุ่มหรือคำสั่งให้ผู้ใช้กดยืนยัน
+### A. บทบาทการ Prune: Gitmodule Auto-Prune vs @organizer Watchdog
+* **ฝั่ง Gitmodule (การเก็บกวาด)**: เมื่อคุณตัดสินใจจะลบอะไร ระบบ Auto-Prune จะทำหน้าที่ "เก็บกวาดอันนั้นให้เกลี้ยง 100%" (ปลด Submodule, ลบ `.gitmodules`, ล้าง Cache `.git/modules/`, และลบ Directory จริง ไม่เหลือไฟล์หลอน)
+* **ฝั่ง @organizer (การแจ้งเตือน)**: ตัว `@organizer` ทำหน้าที่สแกนดูว่าสกิลไหนไม่ได้ใช้แล้ว ถ้ามันเห็นว่าควรลบ "ก็แค่มาบอกคุณ และรอให้คุณเป็นคนตัดสินใจ" (ไม่ลบเองโดยพลการ) พอคุณอนุมัติ ระบบ Auto-Prune จึงจะลงมือเก็บกวาดจริง
 
 ### B. นิยามของ "HAWS Starter Kit"
 * **KIT ไม่ใช่โฟลเดอร์แยก**: KIT คือ **"ชุดบันเดิลรวมทั้งหมดของ HAWS"** (The Complete HAWS Kit Manifest)
@@ -39,7 +39,39 @@
   1. **ติดตั้งครั้งแรก**: ลง HAWS พร้อมชุด KIT พื้นฐานครบชุด
   2. **ปรับแต่งในเครื่อง (Adjust)**: ผู้ใช้ปรับแต่ง/ปิดสกิลในเครื่องของตัวเอง
   3. **การอัปเดต HAWS**: ให้อัปเดตเฉพาะตัวระบบแกนของ HAWS และสโคปเฉพาะลิงก์ commit ใน `.gitmodules` **โดยไม่ไป overwrite หรือกระทบสิ่งที่ผู้ใช้ปรับแต่งไว้ในเครื่อง**
-  4. **ระบบ Soft-Disable**: พัฒนาคำสั่ง `./haws.sh disable <skill>` ตัด symlink ออกจาก AI โดยไม่ต้องลบไฟล์ต้นฉบับ บันทึกใน `haws-config.json` เพื่อให้อัปเดตแล้วสกิลที่ปิดไว้ไม่ฟื้นคืนชีพ
+  4. **ระบบ Soft-Disable & Prune จริง**:
+     - `haws.sh kit add --skill <url>` / `haws.sh kit add --tool <url>`
+     - `haws.sh kit prune <name>`: ปลดออกจาก AI ➔ ลบ Submodule ➔ ลบ cache ใน `.git/modules/` ➔ ลบ Directory เกลี้ยง
+     - `.gitattributes`: `.gitmodules merge=ours` ป้องกัน Repo แม่ดึงสกิลที่ prune แล้วกลับมาฟื้นคืนชีพ
+
+### D. การแยกห้องเด็ดขาด: Core Framework vs secondbrain/
+* **`core/` (ของกลางสากล)**: กฎสากล, เทมเพลต, สคริปต์ ดึงอัปเดตจาก Repo แม่ได้ตลอดเวลา
+* **`secondbrain/` (ของส่วนตัว)**: Second Brain, ความชอบส่วนตัว, ข้อห้าม ถูกกั้นด้วย `.gitignore` ไม่มีวันหลุดไปโผล่บน Repo แม่ 100%
+* **Local-First**: คนใช้คอมเครื่องเดียว **ไม่ต้องสร้าง GitHub Repo อะไรทั้งสิ้น** ใช้งานในเครื่องได้ทันที 100% (Zero Setup)
+* **`plugins/`**: โฟลเดอร์สำหรับเก็บ Submodule เครื่องมือเสริมภายนอก (เช่น Ponytail, Archify) แยกจาก `skills/` ไม่กิน Token
+
+### E. 1-Click Symmetrical Cross-Device (สมมาตรทุกเครื่องผ่าน Standalone Private Repo)
+* **ไม่ใช้การ Fork**: เพราะ Fork บน GitHub บังคับเป็น Public และโชว์ชื่อหราบน Repo แม่
+* **ใช้ Standalone Private Repo**: สร้าง Private Repo ลับของตัวเองชื่อ `my-haws-brain`
+* **สมมาตรทุกเครื่อง**: ทั้งเครื่องที่ 1 และเครื่องที่ 2 ทำเหมือนกัน 100% คือแค่วางลิงก์ GitHub ตัวเอง
+  - ถ้าเป็น Repo เปล่า (เครื่องแรก) ➔ Pure Push ยกความจำขึ้นคลาวด์
+  - ถ้าเป็น Repo มีข้อมูล (เครื่องสอง) ➔ รัน Auto-Merge
+
+### F. Forced Auto-Merge & Transaction Ordering (รวมสมอง ไม่ทิ้งข้อมูล)
+* **Forced Auto-Merge (Union)**: ถ้ารีโปมีข้อมูล และในเครื่องก็มีข้อมูล ระบบจะรวมข้อมูลเข้าด้วยกันทันที ไม่ถามจุกจิก
+* **ตัดข้อซ้ำ**: เทียบ Key ตัวหนาใน Preferences และชื่อเรื่องใน Anti-Patterns
+* **Transaction Sorting**: จัดเรียงกฎและข้อห้ามตาม **วันที่/เวลา (`YYYY-MM-DD`)** เสมือนสมุดบันทึกประวัติการเรียนรู้
+* **Lean Checkpoint**: ไม่สร้างโฟลเดอร์ `.haws_backup/` ขยะ แต่ใช้ Git Checkpoint Commit ในเครื่อง ย้อนเวลาได้ใน 0.1 วินาที
+
+### G. Windows File Explorer Launcher (`brain-online.bat`)
+* **`brain-online.bat`**: ดับเบิลคลิกสลับสถานะ
+  - ถ้ายังไม่ต่อ ➔ เด้งหน้าต่างให้วางลิงก์
+  - ถ้าต่อแล้ว ➔ เด้งหน้าต่าง Safety Guard สีเหลืองถามยืนยันก่อนปลด (มีผลเฉพาะเครื่องนั้น ไม่ลบคลาวด์)
+* **ซิงค์ประจำวัน**: รัน `bash haws.sh sync` ใน Terminal คำสั่งเดียวจบ
+
+### H. การเชื่อมต่อ AI ของแต่ละโปรแกรม
+* **Google Antigravity**: เขียน Path ลง `~/.gemini/config/skills.json` 100% (ไม่ใช้ Symlink)
+* **Claude Code**: ทำ Directory Symlink เข้า `~/.claude/skills/`
 
 ---
 
@@ -104,24 +136,38 @@
 | | 3.5 Repository Normalization (LF) | #21 | ✅ ตรวจแล้ว | `.gitattributes`, `haws.sh` |
 | **Domain 4** | 4.1 Skill Taxonomy & Bloat Management | #3, #11 | ✅ ตรวจแล้ว | `core/SKILL_TAXONOMY.md`, `core/HAWS.md` Sec 9 |
 | | 4.2 Organizer Role & Hygiene | #10 | ✅ ตรวจแล้ว | `agents/organizer.md`, `haws.sh doctor` |
-| | 4.3 Subagents, Personas & Harness | #14, #30, #36 | 🟡 ตรวจค้างอยู่ | `agents/*.md` (`<task_assignment>` / `<task_report>`) |
-| | 4.4 Self-Correcting Loops & Engineering | #33, #39 | 🟡 ตรวจค้างอยู่ | `core/HAWS.md` Sec 7.1 (Max 3 iterations) |
-| | 4.5 Candidate Custom Skills | #19, #22 | 🟡 ตรวจค้างอยู่ | `skills/custom/keyboard-layout-fixer/` |
+| | 4.3 Subagents, Personas & Harness | #14, #30, #36 | ✅ ตรวจแล้ว & คอนเฟิร์ม | `agents/*.md` (`<task_assignment>` / `<task_report>`), Ponytail 7-Rung Ladder |
+| | 4.4 Self-Correcting Loops & Engineering | #33, #39 | ✅ ตรวจแล้ว & คอนเฟิร์ม | `core/HAWS.md` Sec 7.1 (Max 3 iterations, no test bypassing) |
+| | 4.5 Candidate Custom Skills | #19, #22 | ✅ ตรวจแล้ว & คอนเฟิร์ม | `skills/custom/keyboard-layout-fixer/` (ล็อค 4 เคส + เช็คคำ/ตัวย่อ ไม่เพิ่มอะไรเกินจำเป็น) |
 | **Domain 5** | 5.1 Ready-to-Use Installation Guide | #5 | ✅ ตรวจแล้ว | `docs/INSTALLATION.md`, `haws.sh setup` |
 | | 5.2 Diagnostic Verification Suite | #6 | ✅ ตรวจแล้ว | `haws.sh doctor` (27/27 checks PASS) |
 | | 5.3 SWE Fundamentals & Testing Discipline | #27, #32 | ✅ ตรวจแล้ว | `core/HAWS.md` Sec 5.1, Sec 7.1 |
 | | 5.4 MCP & RAG Integrations | #25, #29 | ✅ ตรวจแล้ว | `core/WORK_INSTRUCTIONS.md`, `core/HAWS.md` Sec 9 |
-| | 5.5 External Knowledge & Starred Repos | #4, #15 | ✅ ตรวจแล้ว | `docs/EXTERNAL_KNOWLEDGE.md` (Ponytail + Archify) |
+| | 5.5 External Knowledge & Starred Repos | #4, #15 | ✅ ตรวจแล้ว | Direct upstream references in `core/HAWS.md` Sec 5.1 (Ponytail ladder) + `plugins/` (No synthetic doc bloat) |
 | | 5.6 HAWS Visual Dashboard | #26 | 🗑️ สั่งลบแล้ว | โฟลเดอร์ `dashboard/` ถูกลบถาวรตามคำสั่ง |
-| **Guardrail** | Git Remote Push Protection | #37 | 🟡 รอตรวจหมวด 6 | Strict rule: No git push without explicit user command |
+| **Domain 6 / Guardrail** | Git Remote Push Protection & Hooks | #37 | ✅ ตรวจแล้ว & คอนเฟิร์ม | คง 2 Hooks หลัก (`pre-commit`, `pre-push`), ห้าม Git push อัตโนมัติเด็ดขาด |
 
 ---
 
-## 🚀 5. Checklist สิ่งที่ต้องทำต่อเมื่อถึงบ้าน (Resume at Home)
+## 🚀 5. Actionable Roadmap & Checklist — Status: 100% COMPLETED
 
-1. สั่งดึงโค้ดล่าสุด: `git pull origin main`
-2. ตรวจต่อใน **หมวด 4**:
-   - ตรวจเรื่อง **Bounded Loop** (การนับลูปแก้โค้ด 3 ครั้ง)
-   - ตรวจและทดสอบ **Custom Skill** `keyboard-layout-fixer`
-3. ตรวจต่อใน **หมวด 6**:
-   - ตรวจความพร้อมของ **Git Hooks** และตอบคำถามว่า *"มีอะไรที่ต้องเป็นประจำอีกไหมเพื่อจะได้เป็น Hook อีก"*
+ทุกหัวข้อรีวิว การปรับแต่ง และสถาปัตยกรรมระบบใหม่เสร็จสมบูรณ์ 100%:
+1. **การปรับแต่ง `keyboard-layout-fixer`**:
+   - ✅ เคส 1: EN -> TH (`fdfd` -> `ดกดก`)
+   - ✅ เคส 2: TH -> EN (`้ำสสน` -> `hello`)
+   - ✅ เคส 3: Inverted CapsLock อังกฤษ (`hELLO wORLD` -> `Hello World`)
+   - ✅ เคส 4: ลืมปิด CapsLock ขณะพิมพ์ไทย (`FDFD` -> `ดกดก`, `GRNHV` -> `เพื้อ`)
+   - ✅ Safety Check: ตรวจ Acronym ภาษาอังกฤษทั่วไป (`API`, `SQL`, `HTML`, `README`, `JSON`) ไม่ถูกแปลงมั่ว
+   - ✅ Automated Unit Tests: ผ่าน 100% (`node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`)
+
+2. **สถาปัตยกรรมระบบใหม่ (Symmetrical Cross-Device & Decoupled Brain)**:
+   - ✅ ย้ายไฟล์ส่วนตัวไป `secondbrain/` (ใส่ใน `.gitignore` + ทำ Local Git Repo ในตัว)
+   - ✅ สร้างเทมเพลตตั้งต้นใน `templates/` (`USER_PREFERENCES.example.md`, `ANTI_PATTERNS.example.md`)
+   - ✅ เพิ่มคำสั่ง `haws.sh kit add / prune` พร้อม `.gitmodules merge=ours`
+   - ✅ เพิ่มระบบ 1-Click Symmetrical Cross-Device Sync (`haws.sh user connect/disconnect/status`)
+   - ✅ สร้าง Windows Launcher `brain-online.bat` (ตรวจจับ Git Bash อัตโนมัติ)
+   - ✅ เพิ่ม SWE Blueprints (`Dockerfile.template`, `.dockerignore.template`, `docker-compose.yml.template`, `vite.config.ts.template`, `.devcontainer/devcontainer.json`)
+   - ✅ รวมคู่มือลง `README.md` หน้าแรก
+   - ✅ รัน `haws.sh doctor` ตรวจสอบ 37/37 checks ผ่าน 100% (Zero Errors)
+
+

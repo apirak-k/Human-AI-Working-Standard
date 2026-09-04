@@ -31,3 +31,6 @@
 [submodule "skills/mattpocock-skills"]
 	path = skills/packs/mattpocock-skills
 	url = https://github.com/mattpocock/skills.git
+[submodule "plugins/ponytail"]
+	path = plugins/ponytail
+	url = https://github.com/DietrichGebert/ponytail.git

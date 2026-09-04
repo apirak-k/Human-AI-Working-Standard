@@ -36,7 +36,7 @@ echo "3. Checking line endings (LF Normalization)..."
 CRLF_COUNT=0
 for file in $STAGED_FILES; do
   if [[ -f "$file" ]] && [[ "$file" =~ \.(md|sh|mjs|js|ts|json|html|css|txt)$ ]]; then
-    if grep -q $'\r' "$file" 2>/dev/null; then
+    if grep -U -q $'\r' "$file" 2>/dev/null || grep -q $'\r' "$file" 2>/dev/null; then
       echo "  [WARNING] File '$file' contains CRLF line endings."
       CRLF_COUNT=$((CRLF_COUNT + 1))
     fi

@@ -15,7 +15,7 @@ At the beginning of a new thread or work context:
 
 1. read the latest `HAWS.md`
 2. read the latest `WORK_INSTRUCTIONS.md`
-3. read `USER_PREFERENCES.md` and `ANTI_PATTERNS.md` (Personal Second Brain: preferences and forbidden patterns)
+3. read `secondbrain/USER_PREFERENCES.md` and `secondbrain/ANTI_PATTERNS.md` (Personal Second Brain; fallback: `core/` pointer or `templates/*.example.md`)
 4. inspect the current project source
 5. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
 6. read `design.md` if it exists (system architecture & design blueprint)
@@ -42,6 +42,7 @@ To prevent context rot, maintain high reasoning precision, and keep execution fa
 - **Modular Markdown Partitioning**: Keep markdown documentation modular (~200–300 lines limit per file). Use the **Summary + Pointer pattern (Progressive Disclosure)**: parent documents provide a clear structural overview and link to deep implementation details in `references/` or `docs/`.
 - **On-Demand Loading & Lazy Context**: Load specialized domain specifications, API references, and schemas Just-in-Time only when the active task touches that area. Persist findings to disk and do not retain heavy unparsed text in conversation memory.
 - **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`HANDOFF.md`, task checklists, or implementation plans).
+- **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Query or build a dependency graph (`graphify`, `archify`, or `templates/ARCHITECTURE.md`) to isolate the blast radius, target only affected callers, and preserve context budget.
 - **Proactive session compaction**: When a task phase completes, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
 
 ## 2. Starting and performing work
@@ -70,17 +71,27 @@ Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task a
    - **Autonomous Agent Execution**: The AI proactively matches task context against installed skill workflows and executes their protocols directly.
 2. **Genuine Protocol Execution & Top-Line Declaration**:
    - On the very first line of any response where a skill is applied, declare: `Applying /<skill-name> (<brief rationale>)...`.
+   - **Mandatory File-Level Ingestion**: The first tool call when applying any skill MUST be `view_file` (or read tool) on the target `SKILL.md`. Never execute a skill blindly from memory without opening its instructions.
    - Do NOT use hollow vanity tags (e.g. `[Auto-Skill: ...]`).
    - Execute the actual rigorous workflow of the skill (e.g. `ask_question` one-by-one for `/grill-me`, Red-Green-Refactor for `/tdd`, 5-axis checks for `/review`).
-   - All dispatched subagents must log invoked skills in their returned `<task_report>`.
+   - All dispatched subagents must log invoked skills in their returned `<task_report>`, listing ONLY skills that were explicitly opened and executed.
 3. **Proportionality Rule**:
    - **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without overhead.
    - **Substantial Work & Critical Milestones**: Apply specialized domain skills dynamically as categorized by `@organizer` in `SKILL_TAXONOMY.md`.
 4. **Sub-Second Native Inspection**:
    - For skill counts and health auditing, always run the native fast checker (`bash haws.sh status`) to obtain instant results (< 0.5s) without slow shell loops.
 
+### 2.2 Advanced Git Protocols for AI (Worktrees, Bisect & Atomic Staging)
 
-
+AI agents operating under HAWS must utilize the full capabilities of Git to ensure safety, speed, and clean repository history:
+1. **Branch Isolation via `git worktree`**:
+   - For multi-step refactoring, significant architectural changes, or independent feature tracks, create an isolated workspace (`git worktree add .worktrees/<branch> <branch>`) instead of dirtying the main working tree or repeatedly stashing changes.
+2. **Automated Regression Isolation via `git bisect`**:
+   - When encountering a regression where code previously worked but now fails, use `git bisect start`, `git bisect bad`, and `git bisect good <commit>` with an automated test script (`git bisect run <test-command>`) to mathematically pinpoint the offending commit rather than speculating or guessing root causes.
+3. **Atomic Staging & Commit Discipline (`git add -p`)**:
+   - Stage changes intentionally by logical concern. Never blindly execute broad `git add .` when unrelated modifications, scratch files, or transient artifacts exist in the working directory.
+4. **Submodule & Cache Hygiene**:
+   - When removing or pruning submodules, always deinitialize, remove from git index, and purge the submodule cache (`.git/modules/<path>`) to prevent ghost files and dirty working trees.
 
 For substantial Git-based work, inspecting the current state includes verifying
 the actual repository and active branch. Do not rely solely on a Handoff,
@@ -284,13 +295,14 @@ Prompting without curated context causes model failure. Context Engineering ensu
    - If tests fail, diagnose systematically (trace input ➔ state ➔ output).
    - Iterate autonomously until all verification commands pass 100% before requesting user acceptance.
 
-## 10. Persistent Second Brain (Cross-Tool Memory)
+## 10. Persistent Second Brain (Decoupled Cross-Tool Memory)
 
-To ensure the AI remembers user preferences, habits, and past mistakes across sessions, machines, and AI tools:
+To ensure the AI remembers user preferences, habits, and past mistakes across sessions, machines, and AI tools without risking data loss during upstream updates:
 
-- **`USER_PREFERENCES.md`**: Stores stable preferences, preferred frameworks, architectural patterns, and communication style (chat-first, clean responses).
-- **`ANTI_PATTERNS.md`**: Stores hard constraints, forbidden libraries, and past mistakes (via autonomous self-learning or learning skills/tools). When a correction, mistake, or operational constraint occurs, the AI autonomously records the root cause and prohibition here.
-- **Loading Rule**: All tools under HAWS load these files during session initialization, guaranteeing continuity and zero repetition of past errors.
+- **`secondbrain/USER_PREFERENCES.md`**: Stores stable preferences, preferred frameworks, architectural patterns, and communication style (chat-first, clean responses). Managed in an independent local Git repository.
+- **`secondbrain/ANTI_PATTERNS.md`**: Stores hard constraints, forbidden libraries, and past mistakes (via autonomous self-learning or learning skills/tools). When a correction, mistake, or operational constraint occurs, the AI autonomously records the root cause and prohibition here.
+- **Loading Rule**: All tools under HAWS load these files from `secondbrain/` during session initialization, guaranteeing continuity and zero repetition of past errors.
+
 
 ---
 
@@ -314,6 +326,8 @@ Refer to [`core/WORKFLOW.md`](WORKFLOW.md) for exit criteria and detailed proced
 ---
 
 ### Flexible Delegation Model & Direct Intervention
+- **Autonomous Proactive Delegation**: The Main Agent evaluates incoming work and autonomously delegates domain-specific tasks to specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) without waiting for explicit human requests.
+- **Dual-Tier Autonomous Skill Selection**: Both Main Agent and Subagents automatically match task context against skills in `SKILL_TAXONOMY.md` and execute their workflows. The Main Agent announces via `Applying /<skill-name>...`; Subagents declare applied skills in `<task_report>`.
 - **Dynamic Routing Over Rigid Sequences**: Delegation decisions must be driven by standard software engineering judgment rather than rigid, hardcoded multi-agent pipelines.
 - **Direct Intervention Protocol**: The Main Agent may resolve a problem directly without delegating when a subagent is blocked, unavailable, or when a targeted direct fix is significantly faster.
 - **Context Isolation**: When delegating to subagents, the Main Agent sends only the atomic task assignment (via `<task_assignment>`), never dumping the entire conversation history. Subagents return concise summaries (via `<task_report>`), keeping all context windows lean and free from rot.

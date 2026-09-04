@@ -92,7 +92,7 @@ Before relying on information, verify that its source, scope, status, and
 effective version apply to the current work. When sources conflict, identify
 the currently confirmed source instead of combining them silently.
 
-### 3.1 LLM coding discipline and pitfall prevention
+### 3.2 LLM coding discipline and pitfall prevention
 
 To prevent common automated coding errors and preserve context integrity:
 
@@ -111,6 +111,23 @@ To prevent common automated coding errors and preserve context integrity:
   packages, or URLs to catalog or reference, strictly maintain external references or Git submodules.
   Never unilaterally author local mock files or synthetic duplicate implementations unless
   explicitly commanded to create custom local code.
+
+### 3.3 Package Boundaries and Dependency Discipline
+- **Lockfile Invariant**: Lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `poetry.lock`, `Cargo.lock`) must be committed and preserved. Never ignore, delete, or regenerate lockfiles to silently bypass dependency errors.
+- **Dependency Gate (Ponytail Rung 5)**: Never unilaterally install third-party libraries when the language standard library or concise in-house logic can achieve the same result.
+- **Vulnerability Audit Gate**: Run automated vulnerability scanning (`npm audit`, `pip-audit`) to verify zero High or Critical vulnerabilities before claiming milestone completion.
+- **Explicit Version Pinning**: Never use floating `latest` tags or unbounded ranges for production dependencies.
+
+### 3.4 Container Standards & Environment Reproducibility
+- **Non-Root Execution**: Production container configurations must execute as an unprivileged user (`USER apprunner` or non-root UID).
+- **Strict Leak-Proof Hygiene**: Every containerized project must maintain a `.dockerignore` explicitly preventing `.git`, `.env*`, `node_modules`, build caches, and sensitive keys from leaking into images.
+- **Multi-Stage Efficiency**: Container builds should separate compilation from runtime to minimize image attack surface and artifact weight.
+
+### 3.5 Graph Engineering & Architecture Topology
+- **Topological Navigation over Flat Dumps**: In multi-module codebases, agents must navigate via dependency graphs rather than loading flat source files into context. Use AST extractors or graph tools (e.g. `graphify`, `archify`, or Mermaid diagrams in `templates/ARCHITECTURE.md`).
+- **Blast Radius Analysis**: Before modifying public interfaces, shared utilities, or database schemas, calculate the blast radius to identify downstream callers and dependent services before touching code.
+- **God Node Identification**: Map and protect high-degree central nodes (architectural hubs) of the codebase. Changes to God nodes require explicit architectural review and targeted regression verification.
+- **Machine-Readable Graph Persistence**: For complex systems, maintain a structured architecture graph (`graphify-out/` or `archify.json`) so agents can query paths and boundaries with minimal token overhead.
 
 ## 4. Flow and information organization
 
@@ -191,7 +208,7 @@ Before writing any new code, stop at the first rung that holds:
 6. **Can it be one line?**: Make it one line.
 7. **Only then**: Write the minimum code that works.
 
-*Lazy about the solution, never about reading*: Read the problem and the codebase thoroughly first, trace callers end-to-end, then climb the ladder. Bug fix = root cause, not symptom. Grep callers and fix once at the shared boundary.
+*Lazy about the solution, never about reading*: Read the problem and the codebase thoroughly first, trace callers end-to-end, then climb the ladder. Bug fix = root cause, not symptom. Grep callers and fix once at the shared boundary. *(Philosophy and ladder adopted from [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail)).*
 
 ## 6. Review, confirmation, and scope
 
@@ -250,9 +267,8 @@ Use these functional purposes:
 - **Design Spec (`templates/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
 - **Skill Taxonomy (`SKILL_TAXONOMY.md`)** — dynamic tooling catalog, subagent affinities, and semantic routing rules
 - **Engineering Workflow (`WORKFLOW.md`)** — 6-phase engineering lifecycle and deterministic skill mapping
-- **Project Blueprints (`templates/`)** — reusable project scaffolds (`SOT.md`, `AGENTS.md`, `PROJECT.md`, `ARCHITECTURE.md`, `CONSTRAINTS.md`, `HANDOFF.md`, `DESIGN.md`)
-- **User Preferences (`USER_PREFERENCES.md`)** — personal habits, communication style, preferred architectures, and conventions preserved across sessions and tools
-- **Anti-Patterns & Learned Safeguards (`ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors
+- **User Preferences (`secondbrain/USER_PREFERENCES.md`)** — personal habits, communication style, preferred architectures, and conventions preserved across sessions and tools (fallback: `templates/USER_PREFERENCES.example.md`)
+- **Anti-Patterns & Learned Safeguards (`secondbrain/ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors (fallback: `templates/ANTI_PATTERNS.example.md`)
 - **History** — superseded information retained through Git history and version control
 
 
@@ -319,8 +335,16 @@ On each turn, evaluate whether the task situation aligns with the `description` 
 ### 9.2 Proactive and transparent execution
 When a context match occurs for substantial work, the AI must declare the active capability transparently:
 - **Top-Line Declaration**: On the very first line of the response, output: `Applying /<skill-name> (<brief rationale>)...`.
+- **Mandatory File-Level Ingestion**: Before declaring or applying any skill, the agent MUST explicitly invoke its file-reading tool (`view_file` / `read`) to read the target `SKILL.md`. Claiming a skill without an auditable read in the execution transcript is prohibited.
 - **Universal Subagent Transparency**: Every subagent dispatched must record all invoked skills in its returned `<task_report>`.
+- **Zero Vanity Tags**: Agents must only declare or report skills in `<skills_used>` that were physically opened, read, and actively executed during that assignment. Inventing or appending unrelated skills is classified as synthetic hallucination.
 - **Genuine Execution**: Apply the skill's actual methodology (e.g. Red-Green-Refactor for TDD, root-cause isolation for debugging) rather than mere superficial tagging. Simple or trivial tasks (1-2 line edits, basic questions) must proceed directly without unnecessary skill overhead.
+
+### 9.3 Autonomous Subagent Dispatch & Dual-Tier Skill Autonomy
+- **Autonomous Subagent Delegation**: The Main Agent must automatically evaluate task complexity and domain affinity, dispatching specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) autonomously without waiting for explicit user prompting.
+- **Dual-Tier Autonomous Skill Selection**:
+  - **Tier 1 (Main Agent)**: Autonomously invokes planning, architecture, orchestration, and handoff skills (`brainstorming`, `spec-driven-development`, `writing-plans`, `caveman`).
+  - **Tier 2 (Dispatched Subagents)**: Autonomously select and execute specialist skills from their designated taxonomy drawers during implementation, recording all applied skills in their `<task_report>`.
 
 ## 10. Communication style and compression (Caveman standard)
 

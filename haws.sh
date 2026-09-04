@@ -119,12 +119,17 @@ run_doctor() {
         check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
     done
 
-    # 2. Check Project Templates (8 Canonical Blueprints)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates (8 Canonical Blueprints)..."
-    local tpl_files=("README.md" "DESIGN.md" "PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "SOT.md" "AGENTS.md")
+    # 2. Check Project Templates & Blueprints (14 Canonical Blueprints)
+    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (14 Blueprints)..."
+    local tpl_files=(
+        "README.md" "DESIGN.md" "PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "SOT.md" "AGENTS.md"
+        "USER_PREFERENCES.example.md" "ANTI_PATTERNS.example.md"
+        "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template" "vite.config.ts.template"
+    )
     for f in "${tpl_files[@]}"; do
         check_item "${SCRIPT_DIR}/templates/${f}" "templates/${f}"
     done
+    check_item "${SCRIPT_DIR}/templates/.devcontainer/devcontainer.json" "templates/.devcontainer/devcontainer.json"
 
     # 3. Check Subagents (5 Canonical Specialists)
     [ "$json_mode" = false ] && echo "" && echo "3. Checking Subagents (5 Canonical Specialists)..."
@@ -148,8 +153,42 @@ run_doctor() {
         fi
     done
 
-    # 5. Check Root Hygiene
-    [ "$json_mode" = false ] && echo "" && echo "5. Checking Root Hygiene..."
+    # 5. Check Personal Second Brain & Plugins Directory
+    [ "$json_mode" = false ] && echo "" && echo "5. Checking Personal Second Brain & Plugins..."
+    if [ -d "${SCRIPT_DIR}/secondbrain/.git" ] && [ -s "${SCRIPT_DIR}/secondbrain/USER_PREFERENCES.md" ] && [ -s "${SCRIPT_DIR}/secondbrain/ANTI_PATTERNS.md" ]; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ (decoupled local git repository)"
+        details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"PASS\"}")
+    else
+        failed=$((failed + 1))
+        [ "$json_mode" = false ] && echo "   [FAIL] secondbrain/ missing or uninitialized (run './haws.sh user connect' or './haws.sh setup')"
+        details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"FAIL\"}")
+    fi
+
+    if [ -d "${SCRIPT_DIR}/plugins" ]; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] plugins/ directory (non-skill tool submodules)"
+        details+=("{\"item\":\"plugins/ directory\",\"status\":\"PASS\"}")
+    else
+        failed=$((failed + 1))
+        [ "$json_mode" = false ] && echo "   [FAIL] plugins/ directory missing"
+        details+=("{\"item\":\"plugins/ directory\",\"status\":\"FAIL\"}")
+    fi
+
+    # 6. Check Submodule Merge Independence (.gitmodules merge=ours)
+    [ "$json_mode" = false ] && echo "" && echo "6. Checking Submodule Merge Independence..."
+    if [ -f "${SCRIPT_DIR}/.gitattributes" ] && grep -q "\.gitmodules merge=ours" "${SCRIPT_DIR}/.gitattributes" 2>/dev/null; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] Submodule merge independence configured (.gitmodules merge=ours)"
+        details+=("{\"item\":\"Submodule merge=ours\",\"status\":\"PASS\"}")
+    else
+        failed=$((failed + 1))
+        [ "$json_mode" = false ] && echo "   [FAIL] .gitattributes missing .gitmodules merge=ours"
+        details+=("{\"item\":\"Submodule merge=ours\",\"status\":\"FAIL\"}")
+    fi
+
+    # 7. Check Root Hygiene
+    [ "$json_mode" = false ] && echo "" && echo "7. Checking Root Hygiene..."
     if [ ! -d "${SCRIPT_DIR}/.agents" ]; then
         passed=$((passed + 1))
         [ "$json_mode" = false ] && echo "   [PASS] Zero redundant .agents/ directory"
@@ -169,8 +208,8 @@ run_doctor() {
         details+=("{\"item\":\"Zero redundant scripts/ directory\",\"status\":\"WARN\"}")
     fi
 
-    # 6. Check for Unmanaged Foreign Skills
-    [ "$json_mode" = false ] && echo "" && echo "6. Checking for Unmanaged Foreign Skills..."
+    # 8. Check for Unmanaged Foreign Skills
+    [ "$json_mode" = false ] && echo "" && echo "8. Checking for Unmanaged Foreign Skills..."
     local foreign_count=0
     local manifest="${HOME}/.haws_manifest"
     local gemini_skills="${HOME}/.gemini/config/skills"
@@ -205,8 +244,8 @@ run_doctor() {
         details+=("{\"item\":\"Zero unmanaged foreign skills\",\"status\":\"WARN\"}")
     fi
 
-    # 7. Check Line Endings (LF Normalization)
-    [ "$json_mode" = false ] && echo "" && echo "7. Checking Line Endings (LF Normalization)..."
+    # 9. Check Line Endings (LF Normalization)
+    [ "$json_mode" = false ] && echo "" && echo "9. Checking Line Endings (LF Normalization)..."
     local crlf_count=0
     for dir in "${SCRIPT_DIR}/core" "${SCRIPT_DIR}/templates" "${SCRIPT_DIR}/agents"; do
         if [ -d "${dir}" ]; then
@@ -227,8 +266,8 @@ run_doctor() {
         details+=("{\"item\":\"LF Normalization\",\"status\":\"WARN\"}")
     fi
 
-    # 8. Check Git Hooks (Quality & Safety Gates)
-    [ "$json_mode" = false ] && echo "" && echo "8. Checking Git Hooks (Quality & Safety Gates)..."
+    # 10. Check Git Hooks (Quality & Safety Gates)
+    [ "$json_mode" = false ] && echo "" && echo "10. Checking Git Hooks (Quality & Safety Gates)..."
     local hooks_path
     hooks_path="$(git -C "${SCRIPT_DIR}" config core.hooksPath 2>/dev/null || echo "")"
     if [ -f "${SCRIPT_DIR}/.githooks/pre-commit" ] && [ -f "${SCRIPT_DIR}/.githooks/pre-push" ]; then
@@ -247,6 +286,7 @@ run_doctor() {
 
     local overall_status="HEALTHY & READY"
     [ "${failed}" -gt 0 ] && overall_status="ATTENTION REQUIRED"
+
 
     if [ "$json_mode" = true ]; then
         local IFS=","
@@ -281,6 +321,11 @@ run_sync() {
     echo ""
 
     local SOURCE_DIR="${SCRIPT_DIR}"
+
+    # 0. Sync Personal Second Brain if connected
+    echo "--- Step 0: Syncing Personal Second Brain ---"
+    run_user sync
+    echo ""
 
     # 1. Check Git Remote
     if [ -d "${SOURCE_DIR}/.git" ]; then
@@ -674,6 +719,231 @@ EOF
     echo "================================================================"
 }
 
+run_kit() {
+    local action="${1:-status}"
+    shift || true
+
+    case "${action}" in
+        add)
+            local target_type="skill"
+            local url=""
+            local name=""
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --skill) target_type="skill"; shift ;;
+                    --tool) target_type="tool"; shift ;;
+                    *)
+                        if [ -z "${url}" ]; then
+                            url="$1"
+                        elif [ -z "${name}" ]; then
+                            name="$1"
+                        fi
+                        shift
+                        ;;
+                esac
+            done
+
+            if [ -z "${url}" ]; then
+                echo "Usage: ./haws.sh kit add [--skill|--tool] <git-url> [name]"
+                return 1
+            fi
+
+            if [ -z "${name}" ]; then
+                name="$(basename "${url}" .git)"
+            fi
+
+            local dest_path=""
+            if [ "${target_type}" = "skill" ]; then
+                dest_path="skills/packs/${name}"
+            else
+                dest_path="plugins/${name}"
+            fi
+
+            echo "=== Adding ${target_type} to KIT: ${name} ==="
+            git -C "${SCRIPT_DIR}" submodule add "${url}" "${dest_path}"
+            git -C "${SCRIPT_DIR}" submodule update --init --recursive "${dest_path}"
+            echo "  [✓] Submodule added at ${dest_path}"
+            if [ "${target_type}" = "skill" ]; then
+                run_sync
+            fi
+            ;;
+        prune|remove|rm)
+            local name="${1:-}"
+            if [ -z "${name}" ]; then
+                echo "Usage: ./haws.sh kit prune <name>"
+                return 1
+            fi
+
+            echo "=== Pruning from KIT: ${name} ==="
+            local found_path=""
+            for candidate in "skills/packs/${name}" "skills/standalone/${name}" "skills/custom/${name}" "plugins/${name}"; do
+                if [ -d "${SCRIPT_DIR}/${candidate}" ] || grep -q "${candidate}" "${SCRIPT_DIR}/.gitmodules" 2>/dev/null; then
+                    found_path="${candidate}"
+                    break
+                fi
+            done
+
+            if [ -z "${found_path}" ]; then
+                echo "  [ERROR] Submodule or tool '${name}' not found."
+                return 1
+            fi
+
+            echo "  [*] Deinitializing submodule ${found_path}..."
+            git -C "${SCRIPT_DIR}" submodule deinit -f -- "${found_path}" 2>/dev/null || true
+            echo "  [*] Removing from git index and working tree..."
+            git -C "${SCRIPT_DIR}" rm -f "${found_path}" 2>/dev/null || true
+            echo "  [*] Purging internal submodule git cache..."
+            rm -rf "${SCRIPT_DIR}/.git/modules/${found_path}" 2>/dev/null || true
+            rm -rf "${SCRIPT_DIR}/${found_path}" 2>/dev/null || true
+            echo "  [✓] ${name} pruned completely (Zero ghost files)."
+            run_sync --clean
+            ;;
+        list|status)
+            echo "=== HAWS KIT Installed Submodules & Tools ==="
+            if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
+                git -C "${SCRIPT_DIR}" submodule status
+            else
+                echo "  No submodules configured."
+            fi
+            ;;
+        *)
+            echo "Usage: ./haws.sh kit [add|prune|list]"
+            return 1
+            ;;
+    esac
+}
+
+run_user() {
+    local action="${1:-status}"
+    shift || true
+
+    local brain_dir="${SCRIPT_DIR}/secondbrain"
+    mkdir -p "${brain_dir}"
+
+    if [ ! -d "${brain_dir}/.git" ]; then
+        git -C "${brain_dir}" init -b main --quiet 2>/dev/null || git -C "${brain_dir}" init --quiet
+        git -C "${brain_dir}" config user.name "HAWS User" 2>/dev/null || true
+        git -C "${brain_dir}" config user.email "user@haws.local" 2>/dev/null || true
+        if [ ! -f "${brain_dir}/USER_PREFERENCES.md" ] && [ -f "${SCRIPT_DIR}/templates/USER_PREFERENCES.example.md" ]; then
+            cp "${SCRIPT_DIR}/templates/USER_PREFERENCES.example.md" "${brain_dir}/USER_PREFERENCES.md"
+        fi
+        if [ ! -f "${brain_dir}/ANTI_PATTERNS.md" ] && [ -f "${SCRIPT_DIR}/templates/ANTI_PATTERNS.example.md" ]; then
+            cp "${SCRIPT_DIR}/templates/ANTI_PATTERNS.example.md" "${brain_dir}/ANTI_PATTERNS.md"
+        fi
+        git -C "${brain_dir}" add . 2>/dev/null || true
+        git -C "${brain_dir}" commit -m "Initialize second brain" --quiet 2>/dev/null || true
+    fi
+
+    case "${action}" in
+        connect)
+            local repo_url="${1:-}"
+            repo_url="$(echo "${repo_url}" | tr -d '\r\n' | xargs 2>/dev/null || true)"
+            if [ -z "${repo_url}" ]; then
+                read -r -p "Enter Private GitHub Repository URL (e.g. git@github.com:user/my-haws-brain.git): " repo_url
+                repo_url="$(echo "${repo_url}" | tr -d '\r\n' | xargs 2>/dev/null || true)"
+            fi
+            if [ -z "${repo_url}" ] || [[ "${repo_url}" =~ ^[[:space:]]*$ ]]; then
+                echo "  [ERROR] No valid URL provided. Aborted."
+                return 1
+            fi
+            if [[ ! "${repo_url}" =~ (git@|https?://|ssh://|file://|^/|^[A-Za-z]:|^(\.\.?/)) ]]; then
+                echo "  [ERROR] Invalid Git repository URL format: '${repo_url}'"
+                echo "  [INFO] URL must start with git@, https://, ssh://, or be a valid repository path."
+                return 1
+            fi
+
+            echo "=== Connecting Second Brain Cloud ==="
+            if git -C "${brain_dir}" remote get-url origin &>/dev/null; then
+                git -C "${brain_dir}" remote set-url origin "${repo_url}"
+            else
+                git -C "${brain_dir}" remote add origin "${repo_url}"
+            fi
+
+            echo "  [*] Testing remote connection..."
+            if git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
+                echo "  [*] Remote repo has existing history. Performing Symmetrical Merge..."
+                git -C "${brain_dir}" merge origin/main --no-edit -m "Merge remote second brain updates" 2>/dev/null || true
+                if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
+                    echo "  [✓] Second brain synced and connected to ${repo_url}"
+                else
+                    echo "  [ERROR] Failed to push merged updates to ${repo_url}."
+                    return 1
+                fi
+            else
+                echo "  [*] Remote is fresh or initial push. Publishing local brain..."
+                if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
+                    echo "  [✓] Local second brain pushed to cloud ${repo_url}"
+                else
+                    echo "  [ERROR] Failed to connect or push to ${repo_url}."
+                    echo "  [INFO] Please check URL, network, or GitHub SSH/Token authentication."
+                    git -C "${brain_dir}" remote remove origin 2>/dev/null || true
+                    return 1
+                fi
+            fi
+            ;;
+        disconnect)
+            local confirm="${1:-}"
+            local current_remote
+            current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
+            if [ -z "${current_remote}" ]; then
+                echo "  Second Brain is currently in Local-Only mode (not connected)."
+                return 0
+            fi
+
+            if [[ ! "${confirm}" =~ ^(-y|--yes|-f|--force)$ ]]; then
+                echo "================================================================"
+                echo " [GUARD] WARNING: Disconnecting Second Brain Cloud"
+                echo " Current Remote: ${current_remote}"
+                echo " This machine will return to Local-Only mode."
+                echo " (Your cloud repository data will NOT be deleted)."
+                echo "================================================================"
+                read -r -p "Are you sure you want to disconnect? [y/N]: " confirm
+            fi
+            if [[ "${confirm}" =~ ^([Yy]|-y|--yes|-f|--force)$ ]]; then
+                git -C "${brain_dir}" remote remove origin
+                echo "  [✓] Successfully disconnected. Local-Only mode active."
+            else
+                echo "  [Aborted] Cloud connection preserved."
+            fi
+            ;;
+        sync)
+            local current_remote
+            current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
+            if [ -n "${current_remote}" ]; then
+                echo "  [*] Syncing Second Brain with ${current_remote}..."
+                git -C "${brain_dir}" add . 2>/dev/null || true
+                git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet 2>/dev/null || true
+                git -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null || true
+                git -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
+                echo "  [✓] Second Brain in sync."
+            else
+                echo "  [i] Second Brain is Local-Only. (Connect cloud anytime via './haws.sh user connect <url>')"
+            fi
+            ;;
+        status)
+            local current_remote
+            current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
+            echo "=== HAWS Second Brain Status ==="
+            if [ -n "${current_remote}" ]; then
+                echo "Mode          : [ONLINE / CONNECTED]"
+                echo "Remote URL    : ${current_remote}"
+                local commit_count
+                commit_count="$(git -C "${brain_dir}" rev-list --count HEAD 2>/dev/null || echo 0)"
+                echo "Total Commits : ${commit_count}"
+            else
+                echo "Mode          : [LOCAL-ONLY (Zero Cloud Telemetry)]"
+                echo "Path          : ${brain_dir}"
+                echo "Status        : [SAFE & CONFINED TO THIS MACHINE]"
+                echo "Hint          : Run './haws.sh user connect <url>' to enable cross-device cloud sync."
+            fi
+            ;;
+        *)
+            echo "Usage: ./haws.sh user [connect|disconnect|sync|status]"
+            return 1
+            ;;
+    esac
+}
+
 run_hooks() {
     local action="${1:-install}"
     case "${action}" in
@@ -711,19 +981,22 @@ run_hooks() {
 run_setup() {
     echo "=== HAWS Automated Setup & Bootstrapper ==="
     echo ""
+    echo "[1/5] Initializing Personal Second Brain & Submodules Protection..."
+    run_user status
+    echo ""
     if [ -d "${SCRIPT_DIR}/.git" ]; then
-        echo "[1/4] Initializing Git Submodules..."
+        echo "[2/5] Initializing Git Submodules..."
         git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
         echo "  [✓] Submodules verified."
     fi
     echo ""
-    echo "[2/4] Linking Skills, Commands, and Agent Profiles..."
+    echo "[3/5] Linking Skills, Commands, and Agent Profiles..."
     run_sync "$@"
     echo ""
-    echo "[3/4] Configuring HAWS Git Safety Hooks..."
+    echo "[4/5] Configuring HAWS Git Safety Hooks..."
     run_hooks install
     echo ""
-    echo "[4/4] Running Diagnostic Verification..."
+    echo "[5/5] Running Diagnostic Verification..."
     run_doctor
 }
 
@@ -739,6 +1012,14 @@ case "${COMMAND}" in
         shift || true
         run_setup "$@"
         ;;
+    kit)
+        shift || true
+        run_kit "$@"
+        ;;
+    user|brain)
+        shift || true
+        run_user "$@"
+        ;;
     hook|hooks)
         shift || true
         run_hooks "$@"
@@ -747,12 +1028,14 @@ case "${COMMAND}" in
         run_sync "$@"
         ;;
     *)
-        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook] [--clean]"
-        echo "  setup           Complete frictionless setup: submodules + sync + hooks + doctor"
+        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user] [--clean]"
+        echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
+        echo "  kit [add|prune] Manage KIT submodules and external tools with merge protection"
+        echo "  user [connect]  Manage personal Second Brain (symmetrical 1-click cloud sync)"
         echo "  hook [install]  Install or inspect HAWS Git pre-commit and pre-push hooks"
         echo "  status          Instant sub-second skill count and token budget check"
-        echo "  doctor [--json] Run comprehensive 8-axis system diagnostics"
+        echo "  doctor [--json] Run comprehensive 10-axis system diagnostics"
         exit 1
         ;;
 esac

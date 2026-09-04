@@ -1,4 +1,4 @@
-﻿---
+---
 name: keyboard-layout-fixer
 description: Detects and auto-fixes text accidentally typed in the wrong keyboard layout between Thai Kedmanee and English US QWERTY, or with inverted CapsLock (e.g. "g,nv", "ดกดก", "hELLO wORLD"). Use when user prompts appear garbled due to forgotten language switching or stuck CapsLock.
 license: MIT
@@ -9,9 +9,11 @@ license: MIT
 Automatically detects, translates, and normalizes user input that was accidentally typed in the wrong keyboard layout (Thai Kedmanee $\leftrightarrow$ English US QWERTY) or with accidental CapsLock inversion.
 
 ## When to Use
-- **Thai on English Layout**: User typed English letters while meaning Thai (e.g. `fdfd` $\rightarrow$ `ดกดก`, `grnhv` $\rightarrow$ `เพื้อ`).
-- **English on Thai Layout**: User typed Thai characters while meaning English (e.g. `ดกดก` $\rightarrow$ `fdfd`).
-- **Inverted CapsLock**: User accidentally pressed Shift while CapsLock was active (e.g. `hELLO wORLD` $\rightarrow$ `Hello World`, `tESTING` $\rightarrow$ `Testing`).
+- **Case 1 (Thai on English Layout)**: User typed English letters while meaning Thai (e.g. `fdfd` $\rightarrow$ `ดกดก`, `grnhv` $\rightarrow$ `เพื้อ`).
+- **Case 2 (English on Thai Layout)**: User typed Thai characters while meaning English (e.g. `ดกดก` $\rightarrow$ `fdfd`).
+- **Case 3 (Inverted CapsLock)**: User accidentally pressed Shift while CapsLock was active (e.g. `hELLO wORLD` $\rightarrow$ `Hello World`, `tESTING` $\rightarrow$ `Testing`).
+- **Case 4 (CapsLock Active while Typing Thai on EN Layout)**: User typed with CapsLock ON (e.g. `FDFD` $\rightarrow$ `ดกดก`, `GRNHV` $\rightarrow$ `เพื้อ`), cleanly converting without shifted upper vowel / tone mark distortion.
+- **Safety Guard (Acronym & Tech Token Bypass)**: Common English acronyms and technical tokens (e.g. `API`, `SQL`, `HTML`, `README`, `JSON`, `URL`) are automatically detected and preserved without conversion.
 - Trigger automatically whenever user input appears nonsensical or garbled.
 
 ## Core Capabilities & Script

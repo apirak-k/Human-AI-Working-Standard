@@ -1,195 +1,141 @@
-# Human–AI Working Standard (HAWS)
+# Human–AI Working Standard (HAWS) v2.0
 
-A shared working standard, orchestration rules, and specialized subagents for collaboration between humans and AI agents — built for cross-tool portability across **Claude Code**, **Antigravity**, **Cursor**, **ChatGPT**, **Gemini**, and any AI coding assistant.
+A production-grade working standard, autonomous orchestration rules, and specialized subagents for collaboration between humans and AI agents — built for seamless cross-tool and cross-machine portability across **Google Antigravity**, **Claude Code**, **Cursor**, **ChatGPT**, and any AI coding assistant.
 
 ---
 
 ## What is HAWS?
 
-HAWS defines the **principles, responsibilities, safeguards, and expected outcomes** that govern human-AI collaboration. It establishes a consistent engineering bar, dynamic orchestration model, and reliable verification practices across tasks, sessions, and platforms.
+HAWS defines the **principles, responsibilities, safeguards, and expected outcomes** that govern human-AI collaboration. It transitions AI coding from a chaotic, hallucination-prone guessing game into an **empirically grounded, token-disciplined, self-diagnosing, and harness-enforced multi-agent engineering workflow**.
 
 The goal and required outcome are always prioritized over blindly following a rigid procedure.
 
 ---
 
-## Quick Install & Universal Management
+## 🚀 Quick Install & Zero-Friction Setup
 
-Manage HAWS, skills, and subagents globally across detected AI environments (**Google Antigravity** and **Claude Code**) via the unified `haws.sh` command engine:
+Install and sync HAWS globally across your detected AI environments (**Google Antigravity** and **Claude Code**) with a single command:
 
 ```bash
-# Clone the repository
+# 1. Clone HAWS
 git clone https://github.com/apirak-k/Human-AI-Working-Standard.git
 cd Human-AI-Working-Standard
 
-# Run all-in-one setup & sync
-bash haws.sh sync
+# 2. Run All-in-One Setup (Bootstraps Second Brain, submodules, links skills, installs git hooks, runs diagnostics)
+bash haws.sh setup
 ```
 
-Or run directly via remote curl:
-```bash
-curl -fsSL https://raw.githubusercontent.com/apirak-k/Human-AI-Working-Standard/main/haws.sh | bash -s -- sync
-```
+*(On Windows, run within **Git Bash** or double-click `brain-online.bat`)*
 
 ---
 
-## Repository Structure
+## 🧠 Symmetrical Cross-Device Sync (Work $\leftrightarrow$ Home)
+
+HAWS physically decouples the **upstream framework (`core/`)** from your **personal Second Brain (`secondbrain/`)**:
+- `secondbrain/` is **gitignored** from the upstream HAWS repository, guaranteeing that upstream framework pulls never overwrite, conflict, or wipe your personal data.
+- `secondbrain/` is managed as an independent local Git repository.
+
+### Connecting to Cloud (1-Click Symmetrical Sync)
+On any computer (machine 1 or machine 2):
+```bash
+bash haws.sh user connect <your-private-github-repo-url>
+```
+- **Empty Remote (Machine 1)**: Automatically pushes your local second brain to the cloud.
+- **Populated Remote (Machine 2)**: Automatically pulls, merges, and syncs your brain history symmetrically.
+
+### Windows 1-Click Launcher (`brain-online.bat`)
+Double-click `brain-online.bat` in Windows File Explorer:
+- If offline: prompts for your private GitHub URL and connects.
+- If online: displays a safety guard prompt before returning to Local-Only mode.
+
+---
+
+## 🧰 The HAWS CLI Engine (`haws.sh`)
+
+| Command | Purpose |
+| :--- | :--- |
+| `bash haws.sh setup` | Frictionless first-time setup: secondbrain + submodules + sync + hooks + 10-axis doctor |
+| `bash haws.sh sync` | Two-way Second Brain sync + upstream pull + submodules update + fast status |
+| `bash haws.sh status` | Instant sub-second skill count and token budget telemetry (< 0.2s) |
+| `bash haws.sh doctor` | Comprehensive 10-axis system diagnostic suite (37/37 checks) |
+| `bash haws.sh kit add --skill <url>` | Add external skill pack submodule with merge protection |
+| `bash haws.sh kit add --tool <url>` | Add external non-skill tool into `plugins/` |
+| `bash haws.sh kit prune <name>` | Cleanly deinit, purge cache in `.git/modules/`, and delete folder (zero ghost files) |
+| `bash haws.sh user status` | Inspect Second Brain cloud connection and commit count |
+| `bash haws.sh user connect <url>` | Connect Second Brain to private GitHub repository |
+| `bash haws.sh user disconnect` | Switch to Local-Only mode with safety confirmation |
+
+---
+
+## 📁 Repository Structure
 
 ```text
-├── core/                                # Universal Plain Markdown Standards (Copy-pasteable for any AI)
-│   ├── HAWS.md                          # Core principles, priority hierarchy, safety & safeguards
-│   ├── WORK_INSTRUCTIONS.md             # Step-by-step procedures, context loading & SWE disciplines
-│   ├── WORKFLOW.md                      # 6-phase engineering lifecycle & primary/secondary skill mapping
-│   ├── USER_PREFERENCES.md              # Personal Second Brain: User preferences & communication style
-│   ├── ANTI_PATTERNS.md                 # Personal Second Brain: Guardrails, forbidden patterns & learned lessons
-│   └── SKILL_TAXONOMY.md                # Dynamic skill taxonomy & semantic router (@organizer)
-├── agents/                              # Unified Subagent Source (Author Once, Deploy to All AI Tools)
-│   ├── organizer.md                     # Skill inventory health, workspace hygiene & pattern learning ledger
+├── core/                                # Universal Standard Specifications (Copy-pasteable for any AI)
+│   ├── HAWS.md                          # Core principles, empirical grounding, Ponytail ladder & safeguards
+│   ├── WORK_INSTRUCTIONS.md             # Context loading, context discipline, Git protocols & SWE rules
+│   ├── WORKFLOW.md                      # 6-phase engineering lifecycle & deterministic skill mapping
+│   ├── USER_PREFERENCES.md              # Pointer to secondbrain/USER_PREFERENCES.md
+│   ├── ANTI_PATTERNS.md                 # Pointer to secondbrain/ANTI_PATTERNS.md
+│   └── SKILL_TAXONOMY.md                # Dynamic skill catalog & router (@organizer)
+├── secondbrain/                         # Personal Second Brain (Gitignored from upstream HAWS)
+│   ├── USER_PREFERENCES.md              # Personal habits, communication style & architectural preferences
+│   └── ANTI_PATTERNS.md                 # Learned safeguards, forbidden libraries & operational constraints
+├── plugins/                             # External Non-Skill Tools & Starred Repos (Submodules)
+├── agents/                              # Unified Subagent Source (Harness-Enforced)
+│   ├── organizer.md                     # Skill inventory health, workspace hygiene & learning ledger
 │   ├── frontend-engineer.md             # UI components, client state, styling, responsive design & a11y
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
-├── templates/                           # Standalone Project Blueprint & Quality Gate Templates
-│   ├── README.md                        # Blueprint guide and usage instructions
-│   ├── DESIGN.md                        # Official Design System standard (WCAG AA tokens)
-│   ├── PROJECT.md                       # Project-specific scope, stack, and convention template
-│   ├── ARCHITECTURE.md                  # System architecture, topology, and component boundaries
-│   ├── CONSTRAINTS.md                   # Non-negotiable quality gates, linters, and coverage contracts
-│   └── HANDOFF.md                       # Session checkpoint, active task backlog & exact resume point
+├── templates/                           # Standalone Project Blueprints & SWE Quality Gates
+│   ├── SOT.md                           # Single Source of Truth architecture & schema blueprint
+│   ├── AGENTS.md                        # Agent matrix and authorization governance
+│   ├── CONSTRAINTS.md                   # Non-negotiable quality gates, linters, coverage, and dependency contracts
+│   ├── ARCHITECTURE.md                  # System architecture, Mermaid topology & Archify JSON IR
+│   ├── PROJECT.md                       # Project scope and delivery roadmap
+│   ├── DESIGN.md                        # Design tokens & anti-slop guidelines
+│   ├── HANDOFF.md                       # Session checkpoint & resume point
+│   ├── USER_PREFERENCES.example.md      # Scaffolding template for new environments
+│   ├── ANTI_PATTERNS.example.md         # Scaffolding template for new environments
+│   ├── Dockerfile.template              # Multi-stage production build with non-root user
+│   ├── .dockerignore.template           # Strict leak-proof container ignore file
+│   ├── docker-compose.yml.template      # Local microservices stack (PostgreSQL, Redis, App)
+│   ├── vite.config.ts.template          # Vite dev server with linter checker integration
+│   └── .devcontainer/devcontainer.json  # Dev Container for zero-setup cross-device parity
 ├── skills/                              # Curated Skill Repository (3 Clean Categories)
-│   ├── custom/                          # User-defined proprietary skills (empty/extensible)
+│   ├── custom/                          # In-house proprietary skills (highest linking priority)
+│   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, etc.)
-│   └── standalone/                      # Single-purpose standalone skills (taste-skill, ui-ux-pro-max, etc.)
-└── haws.sh                              # Standalone Universal CLI Engine (sync, status, doctor, test)
+│   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
+├── haws.sh                              # Standalone Universal CLI Engine (10-axis diagnostics)
+└── brain-online.bat                     # Windows 1-Click File Explorer Cloud Toggle
 ```
 
 ---
 
-## How to Use HAWS
+## 🛡️ Core Engineering Safeguards
 
-HAWS is designed with a **Portability First** philosophy and supports two operational modes:
-
-### Mode 1: Global Cross-Tool Setup (Google Antigravity & Claude Code)
-
-Run the universal command engine to configure global pointers, install all 5 specialized subagents, and link all skills simultaneously across your machine:
-
-```bash
-# All-in-one smart sync (pull updates, link skills & subagents, auto-prune obsolete items)
-bash haws.sh sync
-
-# Force purge foreign unmanaged skills not in HAWS
-bash haws.sh sync --clean
-
-# Instant sub-second health and token budget check (< 0.2s)
-bash haws.sh status
-
-# Comprehensive 6-axis system diagnostics
-bash haws.sh doctor
-```
-
-*(On Windows, run within **Git Bash**)*
+1. **Empirical Grounding (`core/HAWS.md:Sec 3.1`)**: Claims of code completion require actual execution proof (commands run, exit codes, and test assertions). Never claim a feature works without running it. Unverified items must be explicitly labeled `[Unverified]`.
+2. **Minimalist Engineering (The Ponytail Lazy Dev Ladder)**: Stop at the first rung:
+   1. *Does this need to exist?* -> 2. *Already in this codebase?* -> 3. *Stdlib does it?* -> 4. *Native platform feature?* -> 5. *Installed dependency?* -> 6. *Can it be one line?* -> 7. *Only then write code.*
+3. **Bounded Self-Correction Loop**: Capped at a maximum of **3 autonomous repair iterations**; if still failing, halt immediately, report diagnostic logs, and request human guidance. Never silence linters (`@ts-ignore`) or skip tests to fake green builds.
+4. **Package & Dependency Invariant**: Lockfiles (`package-lock.json`, `poetry.lock`, `Cargo.lock`) must always be committed. Dependency vulnerability audits (`npm audit`, `pip-audit`) must pass with zero High/Critical vulnerabilities.
+5. **Git Remote Push Protection**: AI agents must **NEVER** run `git push` to GitHub or any remote repository autonomously without explicit user confirmation in chat.
+6. **Hardware Git Hooks (`.githooks/`)**:
+   - `pre-commit`: Scans staged diffs for `.env*` secrets, verifies LF normalization, and runs `haws.sh doctor`.
+   - `pre-push`: Hardware-level blocker preventing unauthorized remote pushes.
 
 ---
 
-### Mode 2: Universal Plain Markdown (Any AI Assistant)
+## ⌨️ Built-in Custom Skill: `keyboard-layout-fixer`
 
-For AI tools that read plain markdown files (ChatGPT, Claude Web, Gemini, Cursor):
-
-1. Reference or copy the [`core/`](core/) directory (or specifically [`core/HAWS.md`](core/HAWS.md) and [`core/WORK_INSTRUCTIONS.md`](core/WORK_INSTRUCTIONS.md)) into your project workspace.
-2. At the start of a session, use the project blueprint templates in [`templates/`](templates/) to bootstrap context.
-3. Use [`templates/PROJECT.md`](templates/PROJECT.md) when stable project-level rules exist.
-4. Use [`templates/HANDOFF.md`](templates/HANDOFF.md) to preserve state when pausing and resuming work across sessions.
-
----
-
-## Specialized Subagents
-
-When running, the Main Agent dynamically orchestrates five specialized subagents based on software engineering judgment (no rigid, hardcoded sequencing):
-
-| Subagent | Scoped Tools | Focus Areas |
-|---|---|---|
-| [`organizer`](agents/organizer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob`, `Bash` | Skill inventory health, taxonomy auditing, workspace hygiene, learning ledger |
-| [`frontend-engineer`](agents/frontend-engineer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob` | UI components, client-side state, styling, responsive design, a11y (WCAG), performance |
-| [`backend-engineer`](agents/backend-engineer.md) | `Read`, `Write`, `Edit`, `Grep`, `Glob`, `Bash` | REST/GraphQL APIs, domain logic, DB schemas/queries, auth, security, data integrity |
-| [`tester`](agents/tester.md) | `Read`, `Grep`, `Glob`, `Bash` | Automated test suites, edge cases, regression detection, bug reproduction, boundary checks |
-| [`researcher`](agents/researcher.md) | `Read`, `Grep`, `Glob` | Codebase reconnaissance, technical documentation lookup, dependency verification, architecture mapping |
-
----
-
-## Skills Catalog & Multi-Skill Packs
-
-HAWS bundles curated open-source skills & packs (pointing directly to their upstream GitHub repositories):
-- **Standalone Skills (`skills/standalone/`)**: `drawio-skill`, `planning-with-files`, `ui-ux-pro-max`, `taste-skill`, `humanizer`, `graphify`, `caveman`.
-- **Skill Packs (`skills/packs/`)**: `superpowers`, `agent-skills`, `anthropics-skills`, `mattpocock-skills`.
-- **Custom Skills (`skills/custom/`)**: Reserved for user-defined proprietary skills.
-
----
-
-## Extensibility: Adding New Skills & Subagents
-
-HAWS supports the open **AgentSkills.io** / Anthropic specification across Google Antigravity and Claude Code:
-
-### 1. Adding a Custom In-House Skill
-Proprietary or AI-authored skills reside in `skills/custom/<skill-name>/` and hold highest linking priority over external submodules to prevent upstream collisions (per [`core/USER_PREFERENCES.md`](core/USER_PREFERENCES.md)).
-1. Create `skills/custom/<skill-name>/SKILL.md` following the **Anthropic Skill Standard** (`skill-creator` / `writing-skills`):
-   ```markdown
-   ---
-   name: <skill-name>
-   description: Brief capability summary. Use when [triggers]. Do NOT use when [anti-triggers].
-   origin: ai-generated        # Required: "ai-generated" or "user-authored"
-   author: HAWS Multi-Agent System
-   ---
-   # <Skill Title>
-   ## Overview & Purpose
-   ## Step-by-Step Workflow
-   ## Verification & Quality Bar
-   ```
-2. Run `bash haws.sh sync` to link globally. Custom skills in `skills/custom/` automatically override upstream submodule versions if naming conflicts occur.
-
-### 2. Adding an External Skill Pack (Git Submodule)
-```bash
-git submodule add https://github.com/<owner>/<repo>.git skills/<pack-name>
-bash haws.sh sync
-```
-`haws.sh sync` automatically discovers all nested `SKILL.md` files and links them directly into all AI environments.
-
-### 3. Adding a New Subagent
-Create `agents/<agent-name>.md` with YAML frontmatter (`tools`, `model: inherit`), then run `bash haws.sh sync`. It is automatically deployed to `~/.claude/agents/` and `~/.gemini/config/agents/`.
-
----
-
-## Autonomous Skill Selection (Flexible & Context-Driven)
-
-HAWS empowers AI agents to **autonomously evaluate when to pick the right skill** based on context and each skill's `description`, rather than following rigid, mechanical sequences or forcing the human to memorize slash commands.
-
-- **Proportionality (Keep Simple Work Simple)**: Trivial tasks (typo fixes, quick 1-line edits, direct Q&A) execute directly and immediately without loading skills or announcing tags.
-- **Natural Milestones**:
-  1. **Project & Feature Kickoff**: Automatically evaluates brainstorming capabilities (e.g. `brainstorming`) to explore trade-offs and draft a technical blueprint in `DESIGN.md`.
-  2. **Session Checkpoints**: Automatically evaluates session persistence (e.g. `planning-with-files` / `HANDOFF.md`) to record state and resume points when pausing.
-  3. **Task-Specific Execution**: Proactively matches context with domain skills across the 5 drawers in `SKILL_TAXONOMY.md`.
-
-| Situation / Intent | Auto-Activated Skill | What the AI Does |
-|---|---|---|
-| Brainstorming, ideation, design exploration | `brainstorming` | Refines rough ideas into structured specs with trade-off analysis (creates `DESIGN.md`) |
-| Multi-step execution (>3 steps), handoffs, pausing work | `planning-with-files` / `HANDOFF.md` | Crash-proof file-backed planning and session recovery |
-| Frontend UI/UX, styling, aesthetic polish | `taste-skill` + `ui-ux-pro-max` | Applies anti-slop design bar, typography, and responsive design systems |
-| Backend feature logic & test coverage | `test-driven-development` | Enforces Red-Green-Refactor ("no code without failing test first") |
-| Complex bug, regression, or root cause analysis | `systematic-debugging` / `diagnosing-bugs` | Traces defects systematically from input to output without guesswork |
-| Documentation, copywriting, READMEs | `humanizer` | Removes AI clichés and buzzwords for clean, natural prose |
-| Codebase architecture & dependency exploration | `graphify` / `drawio-skill` | Builds codebase knowledge graphs and generates system diagrams |
-| Brevity or token-saving request | `caveman` | Ultra-concise communication mode |
-
----
-
-## Persistent Second Brain & Context Engineering
-
-HAWS includes persistent memory architecture and high-fidelity context engineering:
-
-- **Personal Second Brain**:
-  - [`core/USER_PREFERENCES.md`](core/USER_PREFERENCES.md): Stores user preferences, communication style (chat-first), and architectural habits.
-  - [`core/ANTI_PATTERNS.md`](core/ANTI_PATTERNS.md): Permanent registry of forbidden patterns and learned lessons (powered by autonomous continuous self-learning across all AI platforms).
-- **Context Engineering & Self-Correction Loop**:
-  - Features are blueprinted via Product Requirements Prompts ([`templates/`](templates/)).
-  - Implementing agents operate under an automated **Self-Correcting Validation Loop**: writing tests (TDD), executing verification commands, diagnosing failures systematically, and iterating autonomously until all checks pass with zero assumptions.
+Located at `skills/custom/keyboard-layout-fixer/`:
+- **Case 1 (Thai on English Layout)**: `fdfd` -> `ดกดก`, `grnhv` -> `เพื้อ`
+- **Case 2 (English on Thai Layout)**: `ดกดก` -> `fdfd`
+- **Case 3 (Inverted CapsLock English)**: `hELLO wORLD` -> `Hello World`
+- **Case 4 (CapsLock Active on EN Layout typing Thai)**: `FDFD` -> `ดกดก`, `GRNHV` -> `เพื้อ` (without shifted vowel/tone mark distortion)
+- **Safety Guard (Acronym Bypass)**: Common English acronyms (`API`, `SQL`, `HTML`, `README`, `JSON`, `URL`, etc.) are detected and preserved without conversion.
+- Automated tests pass 100%: `node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`
 
 ---
 
@@ -199,7 +145,7 @@ When instructions or information conflict, always resolve in this order:
 
 1. **Safety, privacy, legal, authorization, security, and irreversible action constraints**
 2. **The user's latest clear intent and instruction**
-3. **HAWS**
+3. **HAWS (`core/HAWS.md`)**
 4. **Confirmed Project Specific requirements**
-5. **Applicable Work Instructions**
-6. **Handoff** as a description of current work state
+5. **Applicable Work Instructions (`core/WORK_INSTRUCTIONS.md`)**
+6. **Handoff (`HANDOFF.md`)** as a description of current work state

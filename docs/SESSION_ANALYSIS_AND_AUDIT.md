@@ -32,7 +32,7 @@ Key milestone achievements:
 | 1 | React Component | 3.4 | Domain 3 | `core/ANTI_PATTERNS.md`, `templates/DESIGN.md` (Hooks-First Clean Architecture) |
 | 2 | การจัดหมวดหมู่ Markdown เพื่อลด Context window | 2.1 | Domain 2 | `core/WORK_INSTRUCTIONS.md` Sec 1.1 (Modular 200-300 lines limit, Summary + Pointer) |
 | 3 | จัดหมวดหมู่ SKILL ที่ใช้ประจำ | 4.1 | Domain 4 | `core/HAWS.md` Sec 9, `core/SKILL_TAXONOMY.md` (Core Active vs Domain Drawers) |
-| 4 | รีวิวรีโปที่ผม STAR | 5.5 | Domain 5 | `docs/EXTERNAL_KNOWLEDGE.md` (Technique Digest of Starred Repos) |
+| 4 | รีวิวรีโปที่ผม STAR | 5.5 | Domain 5 | Direct upstream integration in `plugins/` and `core/HAWS.md` Sec 5.1 |
 | 5 | คู่มือติดตั้ง HAWS ที่พร้อมจบ | 5.1 | Domain 5 | `docs/INSTALLATION.md`, `haws.sh setup` (1-minute quickstart) |
 | 6 | ติดตั้งหรืออัพเดท 1 ทีเช็คอะไรบ้างรายงานอะไร | 5.2 | Domain 5 | `haws.sh doctor` (7-Axis Diagnostics, 26 checks, PASS/FAIL report) |
 | 7 | Check STANDARD design.md | 3.4 | Domain 3 | `templates/DESIGN.md`, `dashboard/index.html` (Design Tokens & Anti-Slop) |
@@ -43,7 +43,7 @@ Key milestone achievements:
 | 12 | เวลาใช้สกิลบอกด้วยว่าใช้อะไร ในทุก AGENT | 1.2 | Domain 1 | `core/HAWS.md` Sec 9.2, `agents/*.md` (`Applying /<skill-name>...`) |
 | 13 | Best Practice | 1.1, 5.3 | Domains 1, 5 | `core/HAWS.md` Sec 3.1, Sec 5.1 (SWE TDD & Pokayoke fundamentals) |
 | 14 | Sub Agent | 4.3 | Domain 4 | `agents/` (5 specialist subagent files with role boundaries) |
-| 15 | Ponytail repo | 5.5, 4.4 | Domains 4, 5 | `core/HAWS.md` Sec 5.1 (Ponytail 7-Rung Lazy Ladder), `docs/EXTERNAL_KNOWLEDGE.md` |
+| 15 | Ponytail repo | 5.5, 4.4 | Domains 4, 5 | `core/HAWS.md` Sec 5.1 (Ponytail 7-Rung Lazy Ladder), direct upstream integration |
 | 16 | ไฟล์ .md (Project, Agent, SOT, Roadmap, UX) | 3.1 | Domain 3 | `templates/` (8 canonical blueprints suite) |
 | 17 | Graft แผนที่ว่า code ตรงไหนเชื่อมอะไร | 3.2 | Domain 3 | `templates/ARCHITECTURE.md` (Mermaid topology + Archify JSON IR) |
 | 18 | ไฟล์ .env | 3.3 | Domain 3 | `core/ANTI_PATTERNS.md` (Strict .env secrets git-blocking and .env.example) |
@@ -112,7 +112,7 @@ Key milestone achievements:
 - **The Solution**:
   1. *Single-Command Bootstrapper*: Added `bash haws.sh setup` to verify submodules, sync skills, and run diagnostics.
   2. *7-Axis Diagnostics Engine*: Upgraded `haws.sh doctor` to test 26 invariants across 7 axes in <0.4s with `--json` output.
-  3. *External Knowledge Digest*: Created `docs/EXTERNAL_KNOWLEDGE.md` digesting Ponytail and Archify patterns.
+  3. *External Knowledge Integration*: Integrated Ponytail and Archify patterns directly into `core/HAWS.md` Sec 5.1 and `plugins/` without synthetic doc files.
   4. *Visual Dashboard*: Created `dashboard/index.html` offering an interactive control center and live layout fixer tool.
 
 ---
@@ -132,7 +132,7 @@ Key milestone achievements:
 | `core/HAWS.md` | Modified | +42 / -10 | **Before**: Standard rules without empirical grounding, Ponytail ladder, or Caveman spec.<br>**After**: Added Sec 3.1 (Empirical Grounding), Sec 5.1 (Ponytail 7-Rung Ladder), Sec 7.1 (3-Iteration Bounded Loop), Sec 10 (Caveman Standard). |
 | `core/WORK_INSTRUCTIONS.md` | Modified | +41 / -7 | **Before**: General instructions.<br>**After**: Added Sec 1.1 (Modular Partitioning, Dual-Metric Governance, Telemetry), Sec 2.1 (Top-line declaration), Sec 4.1 (Empirical Evidence), Sec 4.2 (Reload Notification). |
 | `dashboard/index.html` | Created | +673 / -0 | **Before**: Did not exist.<br>**After**: Standalone HTML5 dashboard with Tailwind, Lucide, live diagnostics viewer, token gauges, blueprints explorer, and live keyboard fixer. |
-| `docs/EXTERNAL_KNOWLEDGE.md` | Created | +46 / -0 | **Before**: Did not exist.<br>**After**: Architectural technique digest analyzing `DietrichGebert/ponytail` and `tt-a1i/archify`. |
+| `docs/EXTERNAL_KNOWLEDGE.md` | Pruned | - | **Pruned**: Replaced by direct upstream integration in `core/HAWS.md` Sec 5.1 and `plugins/` to eliminate synthetic doc bloat. |
 | `docs/INSTALLATION.md` | Created | +79 / -0 | **Before**: Did not exist.<br>**After**: 1-minute quickstart installation guide for Windows (Git Bash) and macOS/Linux. |
 | `haws.sh` | Modified | +47 / -6 | **Before**: Basic 6-axis doctor.<br>**After**: Added `setup` bootstrap command, Check 7 (LF Normalization), verified 8 blueprints in Check 2, and updated `--json` export. |
 | `skills/custom/keyboard-layout-fixer/SKILL.md` | Created | +35 / -0 | **Before**: Did not exist.<br>**After**: Anthropic Skill Standard document with triggers, schema, and operational instructions. |
