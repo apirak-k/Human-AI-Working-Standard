@@ -39,3 +39,10 @@ For detailed quality thresholds, anti-patterns, and coverage constraints, see [C
 - **Quality Gates**: All PRs and commits must satisfy [CONSTRAINTS.md](CONSTRAINTS.md).
 - **Git Remote Control**: Never run `git push` autonomously without explicit human approval in chat.
 - **Cross-Tool Parity**: When resuming work from another session, inspect git status and verify current state before making edits.
+
+---
+
+## 4. Universal Skill Ingestion Invariant (All Agents & Subagents)
+Every agent operating in this codebase (present and future) must strictly adhere to HAWS Section 9.2:
+- **Mandatory File-Level Ingestion**: The very first tool call when applying any skill MUST be `view_file` (or file-reading tool) on the targeted `SKILL.md`. Executing skills from memory or intuition without an auditable read in the execution transcript is strictly prohibited.
+- **Zero Vanity Tags**: In all completion reports (`<task_report>`), agents must list strictly ONLY skills that were explicitly read and actively executed during that assignment. Including unread or speculative skills is classified as synthetic hallucination.
