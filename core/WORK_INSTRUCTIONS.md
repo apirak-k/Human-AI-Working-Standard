@@ -34,22 +34,15 @@ conflicting, or historical verification is required.
 Read only the Specific, Handoff, and reusable information relevant to the
 current project and task.
 
-### 1.1 Context window discipline and token economics
+### 1.1 Context discipline and lean engineering
 
-To prevent context rot, maintain high reasoning precision, and control token budgets across long sessions:
+To prevent context rot, maintain high reasoning precision, and keep execution fast and economical across long sessions:
 
 - **Lean context principle**: Avoid flooding the active session with entire dumps of large unparsed files, build logs, or repetitive test output. Retrieve and quote only relevant snippets.
 - **Modular Markdown Partitioning**: Keep markdown documentation modular (~200–300 lines limit per file). Use the **Summary + Pointer pattern (Progressive Disclosure)**: parent documents provide a clear structural overview and link to deep implementation details in `references/` or `docs/`.
-- **Dual-Metric Token Governance**: Explicitly distinguish between:
-  1. **Skill Budget**: The character length sum of all active skill `description:` fields divided by 3.8. Must stay strictly within the IDE limit (<20,000 characters) to prevent automatic skill-dropping.
-  2. **Model Context Window**: The actual session prompt tokens consumed vs the active model limit (e.g. 200k or 1M).
-  - **Threshold Alerts**:
-    - **75% Usage (Yellow Warning)**: Notify user, prune unnecessary loaded context, and prepare for checkpointing.
-    - **90% Usage (Red Alert - Critical)**: Mandatory compaction. Summarize findings, write a full checkpoint to `HANDOFF.md`, and suggest starting a fresh continuation session.
 - **On-Demand Loading & Lazy Context**: Load specialized domain specifications, API references, and schemas Just-in-Time only when the active task touches that area. Persist findings to disk and do not retain heavy unparsed text in conversation memory.
-- **Telemetry & Metrics Tracking**: Track and report Thinking Time and Skill Invocation counts in milestone completions and subagent `<task_report>` blocks. `@organizer` monitors these metrics to propose pruning or archiving unused skills.
 - **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`HANDOFF.md`, task checklists, or implementation plans).
-- **Proactive session compaction**: When a task phase completes or context grows excessively large, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
+- **Proactive session compaction**: When a task phase completes, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
 
 ## 2. Starting and performing work
 

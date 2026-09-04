@@ -55,30 +55,14 @@ if not files and os.path.isdir(gemini_dir):
     raw_files = glob.glob(os.path.join(gemini_dir, '*', 'SKILL.md')) + glob.glob(os.path.join(gemini_dir, '*', 'skill.md'))
     files = list({os.path.normcase(f): f for f in raw_files}.values())
 
-chars = 0
-for f in files:
-    try:
-        with open(f, 'r', encoding='utf-8', errors='ignore') as fp:
-            content = fp.read()
-        fm = re.search(r'(?s)^---\r?\n(.*?)\r?\n---', content)
-        if fm:
-            dm = re.search(r'(?s)description:\s*(.*?)(?=\r?\n[a-zA-Z0-9_-]+:|\Z)', fm.group(1))
-            if dm:
-                chars += len(dm.group(1).strip())
-    except: pass
-print(f'{len(files)}:{round(chars / 3.8)}')
-" 2>/dev/null || echo "0:0")
-        gemini_count="${stat_res%%:*}"
-        est_tokens="${stat_res##*:}"
+print(len(files))
+" 2>/dev/null || echo "0")
+        gemini_count="${stat_res}"
     fi
 
     if [ -z "${gemini_count}" ] || [ "${gemini_count}" -eq 0 ]; then
         [ -d "${gemini_dir}" ] && gemini_count=$(find "${gemini_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
     fi
-
-    local token_limit=20000
-    local token_pct=0
-    [ "${est_tokens}" -gt 0 ] && token_pct=$(( (est_tokens * 100) / token_limit ))
 
     local unmanaged_gemini=0
     local unmanaged_claude=0
@@ -86,21 +70,11 @@ print(f'{len(files)}:{round(chars / 3.8)}')
     [ "${manifest_count}" -gt 0 ] && [ "${claude_count}" -gt "${manifest_count}" ] && unmanaged_claude=$((claude_count - manifest_count))
     local total_unmanaged=$((unmanaged_gemini + unmanaged_claude))
 
-    echo "=== HAWS Fast Skill & Token Status ==="
+    echo "=== HAWS Fast Skill Status ==="
     echo "Antigravity Active Skills : ${gemini_count}"
     echo "Claude Code Active Skills : ${claude_count}"
     echo "Manifest Registered Skills: ${manifest_count}"
     [ "${total_unmanaged}" -gt 0 ] && echo "Unmanaged Foreign Skills  : [ALERT: ${total_unmanaged} foreign skill(s) detected - Run './haws.sh sync --clean']"
-
-    if [ "${est_tokens}" -ge 18000 ]; then
-        echo "Token Budget Status       : [CRITICAL DANGER: ~${est_tokens} / ${token_limit} (${token_pct}%)]"
-        echo "  (!) IMMEDIATE ACTION REQUIRED: Customization budget near overflow."
-    elif [ "${est_tokens}" -ge 15000 ]; then
-        echo "Token Budget Status       : [WARNING DANGEROUS: ~${est_tokens} / ${token_limit} (${token_pct}%)]"
-        echo "  (!) ALERT: Skill descriptions exceed 75% budget. Review largest skills."
-    else
-        echo "Token Budget Status       : [SAFE: ~${est_tokens} / ${token_limit} (${token_pct}%)]"
-    fi
 
     if [ "${claude_count}" -eq "${manifest_count}" ] && [ "${gemini_count}" -eq "${manifest_count}" ]; then
         echo "Sync Health Status        : [100% HEALTHY & IN SYNC]"

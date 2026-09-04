@@ -1,4 +1,4 @@
-﻿# Agent Rules & Behavioral Guardrails — [Project Name]
+# Agent Rules & Behavioral Guardrails — [Project Name]
 
 > **Purpose**: Defines agent roles, capabilities, boundaries, and codebase-specific operational constraints.
 
@@ -16,9 +16,26 @@
 
 ---
 
-## 2. Project Hard Constraints & Forbidden Anti-Patterns
-- **No Test or Type Suppressions**: Never add @ts-ignore, eslint-disable, # type: ignore, or comment out broken tests to pass CI.
-- **Preserve Documentation**: Never truncate, delete, or strip existing docstrings, comments, or type annotations.
-- **Targeted Minimal Edits**: Do not perform unprompted refactoring of surrounding working code when fixing a localized bug.
-- **Git Push Control**: Never execute git push autonomously without explicit human approval in chat.
-- **Cross-Tool Parity**: When continuing work from another tool/session, verify actual repository state before modifying files.
+## 2. Core Build & Verification Commands
+*(Universal reference for agents across tools — OpenAI, Cursor, Claude Code, Antigravity)*
+```bash
+# Install dependencies
+npm install  # or: pnpm install / pip install -r requirements.txt
+
+# Run linting & static analysis
+npm run lint
+
+# Run typechecking
+npm run typecheck
+
+# Execute automated tests
+npm test
+```
+
+---
+
+## 3. Project Constraints & Code Quality Standards
+For detailed quality thresholds, anti-patterns, and coverage constraints, see [CONSTRAINTS.md](CONSTRAINTS.md).
+- **Quality Gates**: All PRs and commits must satisfy [CONSTRAINTS.md](CONSTRAINTS.md).
+- **Git Remote Control**: Never run `git push` autonomously without explicit human approval in chat.
+- **Cross-Tool Parity**: When resuming work from another session, inspect git status and verify current state before making edits.
