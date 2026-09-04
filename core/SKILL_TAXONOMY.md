@@ -6,7 +6,7 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🧭 Dynamic Purpose-Driven Taxonomy Principles
+## Dynamic Purpose-Driven Taxonomy Principles
 
 1. **Usage-Driven Categorization**: Taxonomy is NOT dogmatically restricted to an arbitrary fixed number of drawers. `@organizer` continuously structures, merges, splits, or creates new domain drawers (e.g., Cloud & DevOps, AI/ML, Mobile & Native) dynamically according to real-world workflows.
 2. **Autonomous Governance by `@organizer`**: Subagent `@organizer` has full authority to evaluate and assign skills to the best-fitting drawer, always providing a transparent post-action summary in chat.
@@ -16,9 +16,9 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🗄️ Active Tooling Drawers & Complete 104 Skills Mapping
+## Active Tooling Drawers and Complete 104 Skills Mapping
 
-### 🧠 Drawer 1: Thinking & Planning (27 Skills)
+### Drawer 1: Thinking & Planning (26 Skills)
 * **Purpose**: Intent extraction, architectural design, requirements engineering, decision stress-testing, and vertical task breakdown.
 * **Primary Subagent**: Leader, @researcher
 * **Catalog**:
@@ -49,7 +49,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `wizard` — Interactive multi-step setup and wizard workflows.
   - `triage` — Rapid assessment and priority triage of bugs and tasks.
 
-### 💻 Drawer 2: Code & Engineering (25 Skills)
+### Drawer 2: Code & Engineering (24 Skills)
 * **Purpose**: Core implementation, API design, database querying, refactoring, and cloud pipelines.
 * **Primary Subagent**: @backend-engineer
 * **Catalog**:
@@ -78,7 +78,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `shipping-and-launch` — Production launch checklists and deployment strategies.
   - `ci-cd-and-automation` — Automated build pipelines, GitHub Actions, and quality gates.
 
-### 🎨 Drawer 3: UX/UI & Frontend (13 Skills)
+### Drawer 3: UX/UI & Frontend (13 Skills)
 * **Purpose**: Production UI design, design tokens, component architecture, visual polish, and diagrams.
 * **Primary Subagent**: @frontend-engineer
 * **Catalog**:
@@ -96,7 +96,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `slack-gif-creator` — Animated GIF generation and optimization for Slack.
   - `algorithmic-art` — Procedural and algorithmic visual art generation.
 
-### 🔍 Drawer 4: Audit & Verification (13 Skills)
+### Drawer 4: Audit & Verification (14 Skills)
 * **Purpose**: Code verification, root cause debugging, security hardening, performance audits, and QA.
 * **Primary Subagent**: @tester, @organizer
 * **Catalog**:
@@ -115,10 +115,11 @@ This document defines the functional categorization, discovery rules, and subage
   - `retro` — Engineering retrospectives and continuous process improvement.
   - `loop-me` — Autonomous iterative testing and verification loops.
 
-### 📝 Drawer 5: Docs & Communication (25 Skills)
-* **Purpose**: Document processing, token compression, humanizer, meta-tools, and skill authoring.
+### Drawer 5: Docs, Communication & Input Tools (27 Skills)
+* **Purpose**: Document processing, token compression, humanizer, input correction, and skill authoring.
 * **Primary Subagent**: Leader, @organizer
 * **Catalog**:
+  - `keyboard-layout-fixer` — In-house bidirectional Thai Kedmanee / English US QWERTY layout correction and CapsLock inversion repair.
   - `caveman` — Ultra-compressed token-efficient communication mode.
   - `humanizer` — Natural prose rewriting removing AI-sounding filler.
   - `doc-coauthoring` — Structured technical writing and collaborative documentation.
@@ -147,7 +148,7 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🎯 Subagent Affinity Matrix
+## Subagent Affinity Matrix
 
 | Subagent | Primary Drawers | Secondary Drawers |
 | :--- | :--- | :--- |
@@ -159,9 +160,10 @@ This document defines the functional categorization, discovery rules, and subage
 
 ---
 
-## 🔄 Autonomous Maintenance Protocol for @organizer
+## Autonomous Maintenance Protocol for @organizer
 1. **Full Autonomous Authority**: @organizer operates with full autonomous authority to dynamically categorize new skills, adjust drawer mappings, and optimize the taxonomy across `SKILL_TAXONOMY.md` whenever new skills or tooling packages are installed (e.g. via `bash haws.sh sync`, submodule updates, or `skill-creator`).
 2. **Mandatory Post-Action Reporting**: After performing any taxonomy modifications, drawer adjustments, or skill categorizations, @organizer MUST always deliver a structured, transparent change summary directly in chat for human awareness (`[Taxonomy Update] <skills categorized / drawers created>`).
 3. **Anthropic Standard Gatekeeping**: Whenever creating new custom in-house skills, @organizer ensures they strictly follow the **Anthropic Skill Standard** (`skill-creator` / `writing-skills`) before mapping them to their appropriate Drawer.
 4. **Skill Usage & Invocations Telemetry**: @organizer continuously monitors and records the usage metrics and exact invocation counts of every skill used by the Main Agent and Subagents across all tasks. This quantitative telemetry is analyzed to dynamically optimize drawer categorization, retire unused capabilities, or expand new Drawers (e.g., DevOps & Cloud, AI/ML Engineering, Mobile & Native) when high-frequency domain clusters emerge.
+
 

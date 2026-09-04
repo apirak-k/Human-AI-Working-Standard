@@ -1,38 +1,38 @@
 # Human–AI Working Standard (HAWS) v2.0
 
-A production-grade working standard, autonomous orchestration rules, and specialized subagents for collaboration between humans and AI agents — built for seamless cross-tool and cross-machine portability across **Google Antigravity**, **Claude Code**, **Cursor**, **ChatGPT**, and any AI coding assistant.
+A working standard, orchestration rules, and specialized subagents for humans and AI coding assistants. Designed to work across **Google Antigravity**, **Claude Code**, **Cursor**, **ChatGPT**, and other AI tools on Windows, macOS, and Linux.
 
 ---
 
 ## What is HAWS?
 
-HAWS defines the **principles, responsibilities, safeguards, and expected outcomes** that govern human-AI collaboration. It transitions AI coding from a chaotic, hallucination-prone guessing game into an **empirically grounded, token-disciplined, self-diagnosing, and harness-enforced multi-agent engineering workflow**.
+HAWS sets clear **principles, boundaries, and expected results** for human-AI pair programming. Instead of letting AI guess or hallucinate, HAWS enforces verifiable testing, token discipline, and automated diagnostic checks before declaring work done.
 
-The goal and required outcome are always prioritized over blindly following a rigid procedure.
+The actual goal and required outcome always take priority over following rigid procedures.
 
 ---
 
-## 🚀 Quick Install & Zero-Friction Setup
+## Quick Install and Setup
 
-Install and sync HAWS globally across your detected AI environments (**Google Antigravity** and **Claude Code**) with a single command:
+Install and sync HAWS across your detected AI environments (**Google Antigravity** and **Claude Code**) with a single command:
 
 ```bash
 # 1. Clone HAWS
 git clone https://github.com/apirak-k/Human-AI-Working-Standard.git
 cd Human-AI-Working-Standard
 
-# 2. Run All-in-One Setup (Bootstraps Second Brain, submodules, links skills, installs git hooks, runs diagnostics)
+# 2. Run setup (initializes Second Brain, submodules, links skills, installs git hooks, runs diagnostics)
 bash haws.sh setup
 ```
 
-The automated `setup` bootstrapper executes 5 phases in under 60 seconds:
-1. **Bootstraps Second Brain**: Initializes an independent `secondbrain/` Git repository with zero-leak protection.
-2. **Initializes Submodules**: Fetches all external curated skill packs (`superpowers`, `agent-skills`, `anthropics-skills`, `mattpocock-skills`) and plugins (`ponytail`).
-3. **Configures Skill Junctions**: Integrates skills into Google Antigravity (`~/.gemini/config/skills.json`) and Claude Code (`~/.claude/skills/`).
-4. **Installs Hardware Git Hooks**: Sets up `.githooks/pre-commit` and `.githooks/pre-push` to block unverified code and unauthorized remote pushes.
-5. **Runs Diagnostic Verification**: Executes the 10-axis doctor suite (37 verification checks) to confirm 100% green status.
+The automated `setup` script executes 5 steps in under 60 seconds:
+1. **Initializes Second Brain**: Creates an independent `secondbrain/` Git repository to keep personal notes separate from the public framework.
+2. **Initializes Submodules**: Clones external skill packs (`superpowers`, `agent-skills`, `anthropics-skills`, `mattpocock-skills`) and tool submodules (`ponytail`).
+3. **Links Skills**: Connects skills into Google Antigravity (`~/.gemini/config/skills.json`) and Claude Code (`~/.claude/skills/`).
+4. **Installs Hardware Git Hooks**: Sets up `.githooks/pre-commit` and `.githooks/pre-push` to block unverified code, secret leaks, and accidental remote pushes.
+5. **Runs Diagnostics**: Executes the 10-axis doctor suite (37 verification checks) to confirm everything is set up correctly.
 
-### 📋 Prerequisites
+### Prerequisites
 
 | Tool | Minimum Version | Purpose |
 | :--- | :---: | :--- |
@@ -41,26 +41,26 @@ The automated `setup` bootstrapper executes 5 phases in under 60 seconds:
 | **Python** | 3.10+ | Fast regex calculations and AST analysis |
 | **Bash** | Standard / Git Bash | Unified command engine (`haws.sh`) |
 
-### 💻 Cross-Platform Setup Details
+### Cross-Platform Setup Details
 
-- **Windows 10 / 11**: Run all commands inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required (HAWS leverages declarative mapping for Antigravity and NTFS Junctions for Claude Code). Use `brain-online.bat` for 1-click cloud sync in File Explorer.
-- **macOS & Linux**: Run directly in standard terminal (`zsh` or `bash`). Uses native Unix symlinks to link skills into `~/.claude/skills/`.
+- **Windows 10 / 11**: Run all commands inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required (HAWS uses declarative mapping for Antigravity and NTFS Junctions for Claude Code). Use `brain-online.bat` for 1-click cloud sync in File Explorer.
+- **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks to link skills into `~/.claude/skills/`.
 
 ---
 
-## 🧠 Symmetrical Cross-Device Sync (Work $\leftrightarrow$ Home)
+## Cross-Device Sync (Work and Home)
 
 HAWS physically decouples the **upstream framework (`core/`)** from your **personal Second Brain (`secondbrain/`)**:
-- `secondbrain/` is **gitignored** from the upstream HAWS repository, guaranteeing that upstream framework pulls never overwrite, conflict, or wipe your personal data.
+- `secondbrain/` is **gitignored** from the upstream HAWS repository, guaranteeing that upstream framework pulls never overwrite, conflict with, or erase your personal notes.
 - `secondbrain/` is managed as an independent local Git repository.
 
 > [!IMPORTANT]
 > **Privacy Invariant**: Your Second Brain repository on GitHub **MUST be created as PRIVATE**. Never connect `secondbrain/` to a public repository to ensure that your personal notes, communication preferences, and recorded anti-patterns remain strictly confidential.
 
-### Connecting to Cloud (1-Click Symmetrical Sync)
-On any computer (machine 1 or machine 2):
+### Connecting to Cloud (Two-Way Sync)
+On any computer (work machine or home machine):
 ```bash
-bash haws.sh user connect <your-private-github-repo-url>
+bash haws.sh brain connect <your-private-github-repo-url>
 ```
 - **Empty Remote (Machine 1)**: Automatically pushes your local second brain to the cloud.
 - **Populated Remote (Machine 2)**: Automatically pulls, merges, and syncs your brain history symmetrically.
@@ -72,24 +72,26 @@ Double-click `brain-online.bat` in Windows File Explorer:
 
 ---
 
-## 🧰 The HAWS CLI Engine (`haws.sh`)
+## HAWS CLI Reference (`haws.sh`)
 
 | Command | Purpose |
 | :--- | :--- |
-| `bash haws.sh setup` | Frictionless first-time setup: secondbrain + submodules + sync + hooks + 10-axis doctor |
-| `bash haws.sh sync` | Two-way Second Brain sync + upstream pull + submodules update + fast status |
-| `bash haws.sh status` | Instant sub-second skill count and token budget telemetry (< 0.2s) |
-| `bash haws.sh doctor` | Comprehensive 10-axis system diagnostic suite (37/37 checks) |
+| `bash haws.sh setup` | First-time setup: initializes Second Brain, submodules, skill links, git hooks, and doctor check |
+| `bash haws.sh sync` | Two-way Second Brain sync, pulls upstream framework, updates submodules, and verifies links |
+| `bash haws.sh status` | Instant skill count, token budget, and sync health check (< 0.2s) |
+| `bash haws.sh doctor` | Comprehensive 10-axis system diagnostic suite (37 verification checks) |
 | `bash haws.sh kit add --skill <url>` | Add external skill pack submodule with merge protection |
 | `bash haws.sh kit add --tool <url>` | Add external non-skill tool into `plugins/` |
-| `bash haws.sh kit prune <name>` | Cleanly deinit, purge cache in `.git/modules/`, and delete folder (zero ghost files) |
-| `bash haws.sh user status` | Inspect Second Brain cloud connection and commit count |
-| `bash haws.sh user connect <url>` | Connect Second Brain to private GitHub repository |
-| `bash haws.sh user disconnect` | Switch to Local-Only mode with safety confirmation |
+| `bash haws.sh kit prune <name>` | Cleanly remove submodule, clear git cache, and delete directory |
+| `bash haws.sh brain status` | Check Second Brain cloud connection and commit count (alias: `user status`) |
+| `bash haws.sh brain connect <url>` | Connect Second Brain to private GitHub repository (alias: `user connect`) |
+| `bash haws.sh brain disconnect` | Switch Second Brain to local-only mode (alias: `user disconnect`) |
+| `bash haws.sh hook install` | Install hardware git hooks (`pre-commit` and `pre-push`) |
+| `bash haws.sh hook status` | Inspect git hook activation status |
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```text
 ├── core/                                # Universal Standard Specifications (Copy-pasteable for any AI)
@@ -109,7 +111,7 @@ Double-click `brain-online.bat` in Windows File Explorer:
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
-├── templates/                           # Standalone Project Blueprints & SWE Quality Gates
+├── templates/                           # 14 Project blueprints and templates (see templates/README.md for usage guide)
 │   ├── SOT.md                           # Single Source of Truth architecture & schema blueprint
 │   ├── AGENTS.md                        # Agent matrix and authorization governance
 │   ├── CONSTRAINTS.md                   # Non-negotiable quality gates, linters, coverage, and dependency contracts
@@ -135,7 +137,7 @@ Double-click `brain-online.bat` in Windows File Explorer:
 
 ---
 
-## 🛡️ Core Engineering Safeguards
+## Core Engineering Safeguards
 
 1. **Empirical Grounding (`core/HAWS.md:Sec 3.1`)**: Claims of code completion require actual execution proof (commands run, exit codes, and test assertions). Never claim a feature works without running it. Unverified items must be explicitly labeled `[Unverified]`.
 2. **Minimalist Engineering (The Ponytail Lazy Dev Ladder)**: Stop at the first rung:
@@ -149,7 +151,7 @@ Double-click `brain-online.bat` in Windows File Explorer:
 
 ---
 
-## ⌨️ Built-in Custom Skill: `keyboard-layout-fixer`
+## Built-in Custom Skill: keyboard-layout-fixer
 
 Located at `skills/custom/keyboard-layout-fixer/`:
 - **Case 1 (Thai on English Layout)**: `fdfd` -> `ดกดก`, `grnhv` -> `เพื้อ`
@@ -161,15 +163,15 @@ Located at `skills/custom/keyboard-layout-fixer/`:
 
 ---
 
-## 📱 Remote Notifications (AFK & Long-Running Tasks)
+## Remote Notifications for Long-Running Tasks
 
 During long-running autonomous workflows (`/goal`, deep refactoring, comprehensive test suites), developers can receive instant mobile notifications and decision checkpoints via phone:
 
-| Service / Protocol | Setup | Push (iOS/Android) | Interactive (Two-Way) | Recommended Use Case |
-| :--- | :---: | :---: | :---: | :--- |
-| **Telegram Bot API** | 2 mins | 🟢 Instant | 🟢 Inline Buttons | 🏆 **Top Pick (Pair Programming & Checkpoints)** |
-| **ntfy.sh** | 30s | 🟢 Native App | 🟡 Action Links | 🥈 **Top Pick (Zero-Signup / Privacy-First)** |
-| **Discord Webhooks** | 1 min | 🟡 Channel Push | 🔴 One-Way Only | 🥉 **Great for Shared Team Channels** |
+| Service / Protocol | Setup Time | Push (iOS/Android) | Interactive (Two-Way) | Recommended Use Case |
+| :--- | :---: | :--- | :--- | :--- |
+| **Telegram Bot API** | 2 mins | Instant | Inline Buttons | Pair programming and decision checkpoints |
+| **ntfy.sh** | 30s | Native App | Action Links | Lightweight alerts (zero-account / privacy-first) |
+| **Discord Webhooks** | 1 min | Channel Push | One-Way Only | Shared team notification channels |
 
 ### Instant Notification Snippets
 
@@ -177,7 +179,7 @@ During long-running autonomous workflows (`/goal`, deep refactoring, comprehensi
 ```bash
 curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -d "chat_id=${TELEGRAM_CHAT_ID}" \
-  -d "text=🚀 *[HAWS TASK COMPLETE]* All 37 diagnostics passed (100% green)." \
+  -d "text=*[HAWS TASK COMPLETE]* All 37 diagnostics passed (100% green)." \
   -d "parse_mode=Markdown"
 ```
 
@@ -201,4 +203,4 @@ When instructions or information conflict, always resolve in this order:
 3. **HAWS (`core/HAWS.md`)**
 4. **Confirmed Project Specific requirements**
 5. **Applicable Work Instructions (`core/WORK_INSTRUCTIONS.md`)**
-6. **Handoff (`HANDOFF.md`)** as a description of current work state
+6. **[HANDOFF.md](HANDOFF.md)** as a description of current work state

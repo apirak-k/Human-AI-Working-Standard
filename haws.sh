@@ -102,6 +102,7 @@ run_doctor() {
     local passed=0
     local failed=0
     local details=()
+    local manifest="${HOME}/.haws_manifest"
 
     check_item() {
         local path="$1"
@@ -160,6 +161,29 @@ run_doctor() {
             details+=("{\"item\":\"skills/${d}/\",\"status\":\"FAIL\"}")
         fi
     done
+
+    # Verify that SKILL_TAXONOMY.md maps 100% of registered skills
+    local tax_file="${SCRIPT_DIR}/core/SKILL_TAXONOMY.md"
+    if [ -f "${tax_file}" ] && [ -f "${manifest}" ]; then
+        local missing_tax=0
+        while IFS= read -r line || [ -n "$line" ]; do
+            if [[ "$line" =~ ^skill:(.+) ]]; then
+                local sk="${BASH_REMATCH[1]}"
+                if ! grep -F -q "${sk}" "${tax_file}" 2>/dev/null; then
+                    missing_tax=$((missing_tax + 1))
+                fi
+            fi
+        done < "${manifest}"
+        if [ "${missing_tax}" -eq 0 ]; then
+            passed=$((passed + 1))
+            [ "$json_mode" = false ] && echo "   [PASS] 100% Skills mapped in core/SKILL_TAXONOMY.md"
+            details+=("{\"item\":\"SKILL_TAXONOMY.md coverage\",\"status\":\"PASS\"}")
+        else
+            failed=$((failed + 1))
+            [ "$json_mode" = false ] && echo "   [FAIL] ${missing_tax} skill(s) missing from core/SKILL_TAXONOMY.md"
+            details+=("{\"item\":\"SKILL_TAXONOMY.md coverage\",\"status\":\"FAIL\"}")
+        fi
+    fi
 
     # 5. Check Personal Second Brain & Plugins Directory
     [ "$json_mode" = false ] && echo "" && echo "5. Checking Personal Second Brain & Plugins..."

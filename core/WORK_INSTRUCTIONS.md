@@ -50,10 +50,13 @@ To prevent context rot, maintain high reasoning precision, and keep execution fa
 For a new project or major feature:
 
 - do not invent project rules blindly
-- for a new project or repository, scaffold project blueprints from `templates/` (`PROJECT.md`, `ARCHITECTURE.md`, `CONSTRAINTS.md`, `HANDOFF.md`, `DESIGN.md`)
-- during ideation / architectural kickoff, formulate and preserve the technical design in `templates/DESIGN.md`
-- create or update `PROJECT.md` when stable project rules are confirmed
-- create `HANDOFF.md` only when continuity information is needed
+- scaffold necessary blueprints from `templates/` based on project requirements (see the full catalog and usage instructions in `templates/README.md`)
+- during discovery and ideation, define project scope in `PROJECT.md`, system boundaries in `ARCHITECTURE.md`, and visual tokens in `DESIGN.md`
+- before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` and agent permission boundaries in `AGENTS.md`
+- for complex systems, maintain runtime contracts and invariant lessons in `SOT.md`
+- for containerized applications, copy `Dockerfile.template` to `Dockerfile`, `.dockerignore.template` to `.dockerignore`, and `docker-compose.yml.template` to `docker-compose.yml`
+- create or update `HANDOFF.md` when work must pause or transfer across sessions
+
 
 
 Before substantial changes:
