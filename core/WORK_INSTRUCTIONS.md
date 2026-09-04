@@ -93,6 +93,32 @@ AI agents operating under HAWS must utilize the full capabilities of Git to ensu
 4. **Submodule & Cache Hygiene**:
    - When removing or pruning submodules, always deinitialize, remove from git index, and purge the submodule cache (`.git/modules/<path>`) to prevent ghost files and dirty working trees.
 
+### 2.3 Autonomous Subagent Delegation Thresholds (When to Delegate vs Solo)
+
+To avoid both under-delegation (cluttering main context) and over-delegation (wasteful subagent spawning latency):
+1. **Execute Solo (Main Agent Direct Execution)**:
+   - Direct conceptual Q&A, architectural explanations, and guidance.
+   - Minor single-file edits under 30 lines of code.
+   - Initial repository reconnaissance or quick status checks taking under 3 tool calls.
+2. **Autonomous Subagent Delegation (Mandatory Hand-Off)**:
+   - **Backend Implementation / DB Migrations / APIs**: Dispatch `@backend-engineer`.
+   - **Frontend UI / React / Styling / Accessibility**: Dispatch `@frontend-engineer`.
+   - **Testing, Verification Suites & Quality Gates**: Dispatch `@tester`.
+   - **Deep Research, Primary Source Investigations & External Docs**: Dispatch `@researcher`.
+   - **Taxonomy Organization, Directory Hygiene & Blueprint Scaffolding**: Dispatch `@organizer`.
+
+### 2.4 Autonomous Plugin & MCP Tool Utilization Protocol
+
+1. **Passive Read / Inspection Tools (Auto-Execute)**:
+   - Linters, format checkers, read-only MCP servers, Chrome DevTools DOM inspection, and `haws.sh doctor/status`.
+   - **Rule**: Run autonomously without user prompt whenever relevant to diagnosis or verification.
+2. **Non-Destructive Local Transformers (Auto-Execute with Verification)**:
+   - Local code formatters, diagram compilers (`archify`), isolated test runners.
+   - **Rule**: Run autonomously within clean or isolated git worktrees.
+3. **High-Risk / Mutating Operations (Human Gate Required)**:
+   - Production deployments, cloud provisioning, database truncation, and `git push origin`.
+   - **Rule**: Strictly prohibited without explicit human authorization.
+
 For substantial Git-based work, inspecting the current state includes verifying
 the actual repository and active branch. Do not rely solely on a Handoff,
 previous conversation, or expected branch name.

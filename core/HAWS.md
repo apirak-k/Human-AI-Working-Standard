@@ -342,9 +342,24 @@ When a context match occurs for substantial work, the AI must declare the active
 
 ### 9.3 Autonomous Subagent Dispatch & Dual-Tier Skill Autonomy
 - **Autonomous Subagent Delegation**: The Main Agent must automatically evaluate task complexity and domain affinity, dispatching specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) autonomously without waiting for explicit user prompting.
+- **Delegation Thresholds (Solo vs Subagent)**:
+  - **Execute Solo**: Pure conceptual queries, architectural reasoning, single-file trivial tweaks (<30 LOC), and quick diagnostic status checks (<3 tool calls).
+  - **Autonomous Delegation**: Multi-file modifications, domain-specific implementations (UI, backend logic, DB schemas), deep web/doc research, refactoring, and all test/QA execution suites.
 - **Dual-Tier Autonomous Skill Selection**:
   - **Tier 1 (Main Agent)**: Autonomously invokes planning, architecture, orchestration, and handoff skills (`brainstorming`, `spec-driven-development`, `writing-plans`, `caveman`).
   - **Tier 2 (Dispatched Subagents)**: Autonomously select and execute specialist skills from their designated taxonomy drawers during implementation, recording all applied skills in their `<task_report>`.
+
+### 9.4 Autonomous Plugin & External Tool Utilization Standard
+Plugins (`plugins/`, external CLI binaries, and MCP servers) provide operational capabilities distinct from cognitive skills (`skills/`):
+- **Tier 1 — Autonomous Read & Diagnostic Tools (Zero Risk)**:
+  - Linters, static analysis tools, read-only MCP queries, Chrome DevTools DOM inspection, schema validators, and diagnostic scripts (`haws.sh doctor`, `haws.sh status`).
+  - **Policy**: Autonomous execution is **encouraged and expected**. Agents should invoke these tools immediately whenever relevant without waiting for human prompting.
+- **Tier 2 — Autonomous Non-Destructive Transformations (Low Risk)**:
+  - Code formatters (Prettier, Black), SVG/diagram compilers (Archify, Draw.io CLI), test runners in isolated workspaces, and local documentation builds.
+  - **Policy**: Autonomous execution is permitted within the local working tree, provided git status is clean or safely isolated.
+- **Tier 3 — Human-in-the-Loop Safeguard (High Risk / External State)**:
+  - Remote git pushes (`git push`), destructive file/database drops, credential rotations, cloud resource provisioning, or production deployments.
+  - **Policy**: Autonomous execution is **strictly prohibited**. Must obtain explicit human confirmation before executing (HAWS Section 6).
 
 ## 10. Communication style and compression (Caveman standard)
 
