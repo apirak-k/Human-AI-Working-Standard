@@ -76,6 +76,14 @@ print(len(files))
     echo "Manifest Registered Skills: ${manifest_count}"
     [ "${total_unmanaged}" -gt 0 ] && echo "Unmanaged Foreign Skills  : [ALERT: ${total_unmanaged} foreign skill(s) detected - Run './haws.sh sync --clean']"
 
+    local brain_mode="LOCAL-ONLY"
+    local brain_remote
+    brain_remote="$(git -C "${SCRIPT_DIR}/secondbrain" remote get-url origin 2>/dev/null || true)"
+    if [ -n "${brain_remote}" ]; then
+        brain_mode="ONLINE (${brain_remote})"
+    fi
+    echo "Second Brain Mode         : [${brain_mode}]"
+
     if [ "${claude_count}" -eq "${manifest_count}" ] && [ "${gemini_count}" -eq "${manifest_count}" ]; then
         echo "Sync Health Status        : [100% HEALTHY & IN SYNC]"
     elif [ "${total_unmanaged}" -gt 0 ]; then
@@ -159,6 +167,11 @@ run_doctor() {
         passed=$((passed + 1))
         [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ (decoupled local git repository)"
         details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"PASS\"}")
+        local dirty_notes
+        dirty_notes=$(git -C "${SCRIPT_DIR}/secondbrain" status --porcelain 2>/dev/null | wc -l || echo 0)
+        if [ "${dirty_notes}" -gt 0 ]; then
+            [ "$json_mode" = false ] && echo "   [NOTE] secondbrain has ${dirty_notes} uncommitted note(s). Run './haws.sh sync' or './haws.sh user sync'."
+        fi
     else
         failed=$((failed + 1))
         [ "$json_mode" = false ] && echo "   [FAIL] secondbrain/ missing or uninitialized (run './haws.sh user connect' or './haws.sh setup')"
