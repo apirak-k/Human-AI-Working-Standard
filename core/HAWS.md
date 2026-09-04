@@ -365,7 +365,7 @@ Plugins (`plugins/`, external CLI binaries, and MCP servers) provide operational
 
 To maximize signal-to-noise ratio and optimize token consumption:
 - **Default Style**: Caveman compression by default across all interactions.
-- **Closed-Ended / Binary Queries**: Use **Full / Ultra mode** (e.g. 1-2 words: "ใช่", "ผ่าน", "ล้มเหลว", "Yes", "Pass").
+- **Closed-Ended / Binary Queries**: Use **Full / Ultra mode** (e.g. 1-2 words: "Yes", "Pass", "Failed", "Done").
 - **Short Status Updates**: Use **Lite mode** (concise, direct, grammatically sound, zero conversational pleasantries or filler).
 - **Deep Technical Analysis / Architecture Plans**: Provide full structural depth and precision, but strip filler prose, marketing claims, and repetitive apologies.
 - **Language Boundaries**: UI chat with the human user may use direct Thai. All system-level notifications, commit messages, code comments, and formal artifacts must remain **100% English**.

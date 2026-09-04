@@ -1,173 +1,165 @@
-# Session Checkpoint & Comprehensive Cross-Device Handoff — HAWS v2.0
+# Session Checkpoint & Cross-Device Handoff — HAWS v2.0
 
-> **Checkpoint Date**: 2026-09-04 17:10:00 (Local Time)  
+> **Checkpoint Date**: 2026-09-05 01:45:00 (Local Time)  
 > **Active Branch**: `main`  
-> **Status**: In-Progress Review Checkpoint (Cross-Device Ready)  
-> **Permanent Historical Audit**: See [docs/SESSION_ANALYSIS_AND_AUDIT.md](docs/SESSION_ANALYSIS_AND_AUDIT.md)
+> **Status**: Review Complete & Production Ready (Cross-Device Ready)  
+> **Permanent Historical Audit**: Preserved in Git commit history (`1bbb951`, `ed5b095`, `840ca9f`)  
 
 ---
 
-## 🧭 1. User Review Progress Tracker (สถานะการตรวจรีวิวของผู้ใช้)
+## 🧭 1. User Review Progress Tracker
 
-ก่อนเดินทางกลับบ้าน การรีวิวทีละหมวดหมู่คืบหน้าไปดังนี้ เพื่อให้กลับไปเปิดตรวจต่อที่บ้านได้ทันที:
+Prior to handoff, all review domains have been evaluated and finalized:
 
 | Domain / Category | Status | Details & Progress |
 | :--- | :---: | :--- |
-| **หมวด 1: พฤติกรรม & กฎ AI (Grounding & Behavior)** | 🟢 ตรวจแล้ว | Anti-hallucination, Empirical evidence, Caveman mode, Skill banner. |
-| **หมวด 2: Context Window & Token** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | ตัดการแสดงผลตัวเลข Token/Context Window ออก แต่คงวินัย Lean Context (Summary + Pointer / Progressive Disclosure). |
-| **หมวด 3: เทมเพลตมาตรฐาน 8 ไฟล์ & `.env`** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | ตัดความซ้ำซ้อนใน `AGENTS.md` ให้ชี้ Pointer ไป `CONSTRAINTS.md`, เติมคำสั่ง Build/Test สากล, เคลียร์เรื่อง `.env`. |
-| **หมวด 4: Subagents & Custom Skill** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | • Agent Harness (`<task_assignment>` / `<task_report>`): คอนเฟิร์ม<br>• `ponytail` (Lazy Dev Ladder): คอนเฟิร์ม<br>• Bounded Loop: คอนเฟิร์ม 3 ครั้ง<br>• Custom Skill (`keyboard-layout-fixer`): คอนเฟิร์มเก็บเป็นสกิลแรก พร้อมเติม Case 4 ในการ implement |
-| **หมวด 5: Tooling & Dashboard** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | สั่งลบแดชบอร์ดถาวร (`dashboard/` ถูกลบแล้วเพื่อความ Minimalist). |
-| **หมวด 6: Git Hooks & Guardrails** | 🟢 ตรวจแล้ว & คอนเฟิร์ม | คอนเฟิร์มใช้ 2 Hooks หลัก (`pre-commit` ดัก .env/LF และ `pre-push` บล็อก push อัตโนมัติ) ไม่เพิ่ม Hook อื่นให้รก |
+| **Domain 1: Grounding & Behavior** | 🟢 Verified | Anti-hallucination, empirical evidence, Caveman mode, explicit skill usage banner. |
+| **Domain 2: Context Window & Tokens** | 🟢 Verified & Confirmed | Streamlined token display while strictly enforcing Lean Context discipline (Summary + Pointer / Progressive Disclosure). |
+| **Domain 3: Standard Templates & `.env`** | 🟢 Verified & Confirmed | Eliminated redundancy in `AGENTS.md` by pointing to `CONSTRAINTS.md`, added universal build/test commands, strictly guarded `.env*` secrets. |
+| **Domain 4: Subagents & Custom Skills** | 🟢 Verified & Confirmed | • Agent Harness (`<task_assignment>` / `<task_report>`) confirmed.<br>• Ponytail (7-Rung Lazy Dev Ladder) confirmed.<br>• Bounded Loop (max 3 iterations) confirmed.<br>• Custom Skill (`keyboard-layout-fixer`): 4 conversion cases + acronym safety guards implemented and verified. |
+| **Domain 5: Tooling & Documentation** | 🟢 Verified & Confirmed | Consolidated documentation into `README.md`, deleted obsolete `dashboard/` and `docs/` directories for maximum minimalism. |
+| **Domain 6: Git Hooks & Guardrails** | 🟢 Verified & Confirmed | Activated 2 core hardware hooks (`pre-commit` for secrets/LF/doctor, `pre-push` to block unauthorized remote pushes). |
 
 ---
 
-## 🧠 2. Deep Discussions, Thoughts & Ideas (ข้อคิดและไอเดียที่คุยกันล่าสุด)
+## 🧠 2. Deep Architectural Decisions & Protocols
 
-### A. บทบาทการ Prune: Gitmodule Auto-Prune vs @organizer Watchdog
-* **ฝั่ง Gitmodule (การเก็บกวาด)**: เมื่อคุณตัดสินใจจะลบอะไร ระบบ Auto-Prune จะทำหน้าที่ "เก็บกวาดอันนั้นให้เกลี้ยง 100%" (ปลด Submodule, ลบ `.gitmodules`, ล้าง Cache `.git/modules/`, และลบ Directory จริง ไม่เหลือไฟล์หลอน)
-* **ฝั่ง @organizer (การแจ้งเตือน)**: ตัว `@organizer` ทำหน้าที่สแกนดูว่าสกิลไหนไม่ได้ใช้แล้ว ถ้ามันเห็นว่าควรลบ "ก็แค่มาบอกคุณ และรอให้คุณเป็นคนตัดสินใจ" (ไม่ลบเองโดยพลการ) พอคุณอนุมัติ ระบบ Auto-Prune จึงจะลงมือเก็บกวาดจริง
+### A. Pruning Roles: Gitmodule Auto-Prune vs @organizer Watchdog
+* **Gitmodule Engine (Pruning Execution)**: When the user decides to remove an external tool or skill, `haws.sh kit prune` completely unregisters the submodule, cleans `.gitmodules`, wipes cache from `.git/modules/`, and removes the physical directory with zero ghost files remaining.
+* **@organizer Role (Proactive Monitoring)**: The `@organizer` specialist identifies unused or bloated skills, alerts the human architect in chat, and proposes removal without taking unilateral destructive actions. Once approved, the pruning engine executes.
 
-### B. นิยามของ "HAWS Starter Kit"
-* **KIT ไม่ใช่โฟลเดอร์แยก**: KIT คือ **"ชุดบันเดิลรวมทั้งหมดของ HAWS"** (The Complete HAWS Kit Manifest)
-* รวมทั้งรีโปที่เป็น **Agent Skills** (อยู่ใน `skills/`) และรีโปที่ **ไม่ใช่สกิล** (เช่น รีโปที่คุณ Starred ไว้: Ponytail, Archify ฯลฯ)
-* **Out-of-the-box**: คนติดตั้งครั้งแรกได้ของครบพร้อมใช้ทันที แต่เปิดให้ปรับแต่ง (Customize) ถอดหรือเพิ่มได้อิสระในภายหลัง
+### B. HAWS Starter Kit Architecture
+* **Kit is Not a Directory**: KIT represents the entire curated HAWS manifest (skills in `skills/` and external tools in `plugins/`).
+* **Out-of-the-Box**: First-time installation provides a complete, working toolset with full autonomy to customize, disable, or prune afterwards.
 
-### C. สถาปัตยกรรมการอัปเดต HAWS vs Git Submodule (ไอเดียที่คุณเสนอ)
-* **ปัญหาเดิมของ Submodule**: ถ้าผู้ใช้ลบสกิลใน Kit ทิ้งในเครื่อง พอสั่งอัปเดต Git จะดึงกลับมาฟื้นคืนชีพ ทำให้รำคาญ
-* **แนวทางที่ถูกต้องตามที่คุณเสนอ**:
-  1. **ติดตั้งครั้งแรก**: ลง HAWS พร้อมชุด KIT พื้นฐานครบชุด
-  2. **ปรับแต่งในเครื่อง (Adjust)**: ผู้ใช้ปรับแต่ง/ปิดสกิลในเครื่องของตัวเอง
-  3. **การอัปเดต HAWS**: ให้อัปเดตเฉพาะตัวระบบแกนของ HAWS และสโคปเฉพาะลิงก์ commit ใน `.gitmodules` **โดยไม่ไป overwrite หรือกระทบสิ่งที่ผู้ใช้ปรับแต่งไว้ในเครื่อง**
-  4. **ระบบ Soft-Disable & Prune จริง**:
-     - `haws.sh kit add --skill <url>` / `haws.sh kit add --tool <url>`
-     - `haws.sh kit prune <name>`: ปลดออกจาก AI ➔ ลบ Submodule ➔ ลบ cache ใน `.git/modules/` ➔ ลบ Directory เกลี้ยง
-     - `.gitattributes`: `.gitmodules merge=ours` ป้องกัน Repo แม่ดึงสกิลที่ prune แล้วกลับมาฟื้นคืนชีพ
+### C. Upstream Updating vs Submodule Independence
+* **Problem**: Standard submodules revive deleted items during upstream updates.
+* **Solution**:
+  1. First install brings the complete initial kit.
+  2. The user customizes and prunes local skills as desired.
+  3. Upstream updates only pull framework core files and commit pointers without overwriting local custom pruning (`.gitattributes` sets `.gitmodules merge=ours`).
+  4. Explicit kit management: `haws.sh kit add --skill <url>`, `haws.sh kit add --tool <url>`, and `haws.sh kit prune <name>`.
 
-### D. การแยกห้องเด็ดขาด: Core Framework vs secondbrain/
-* **`core/` (ของกลางสากล)**: กฎสากล, เทมเพลต, สคริปต์ ดึงอัปเดตจาก Repo แม่ได้ตลอดเวลา
-* **`secondbrain/` (ของส่วนตัว)**: Second Brain, ความชอบส่วนตัว, ข้อห้าม ถูกกั้นด้วย `.gitignore` ไม่มีวันหลุดไปโผล่บน Repo แม่ 100%
-* **Local-First**: คนใช้คอมเครื่องเดียว **ไม่ต้องสร้าง GitHub Repo อะไรทั้งสิ้น** ใช้งานในเครื่องได้ทันที 100% (Zero Setup)
-* **`plugins/`**: โฟลเดอร์สำหรับเก็บ Submodule เครื่องมือเสริมภายนอก (เช่น Ponytail, Archify) แยกจาก `skills/` ไม่กิน Token
+### D. Separation of Concerns: Core Framework vs `secondbrain/`
+* **`core/` (Universal Standard)**: Universal specifications, blueprints, and scripts pulling updates from upstream.
+* **`secondbrain/` (Personal Data)**: Personal preferences and anti-patterns protected by `.gitignore` with zero data leakage to public repositories.
+* **Local-First Default**: Single-device users require no remote configuration; the local Second Brain works immediately out of the box.
+* **`plugins/`**: External non-skill tools (e.g. Ponytail) separated from `skills/` to prevent token consumption.
 
-### E. 1-Click Symmetrical Cross-Device (สมมาตรทุกเครื่องผ่าน Standalone Private Repo)
-* **ไม่ใช้การ Fork**: เพราะ Fork บน GitHub บังคับเป็น Public และโชว์ชื่อหราบน Repo แม่
-* **ใช้ Standalone Private Repo**: สร้าง Private Repo ลับของตัวเองชื่อ `my-haws-brain`
-* **สมมาตรทุกเครื่อง**: ทั้งเครื่องที่ 1 และเครื่องที่ 2 ทำเหมือนกัน 100% คือแค่วางลิงก์ GitHub ตัวเอง
-  - ถ้าเป็น Repo เปล่า (เครื่องแรก) ➔ Pure Push ยกความจำขึ้นคลาวด์
-  - ถ้าเป็น Repo มีข้อมูล (เครื่องสอง) ➔ รัน Auto-Merge
+### E. 1-Click Symmetrical Cross-Device Sync
+* **No Public Forks**: Avoids exposing personal developer preferences publicly.
+* **Standalone Private Repository**: Connects to a private repository (`my-haws-brain`) on any machine.
+* **Symmetrical Sync**:
+  - Machine 1 (empty remote): Pushes local second brain history to cloud.
+  - Machine 2 (populated remote): Performs automatic symmetrical merge and pull.
 
-### F. Forced Auto-Merge & Transaction Ordering (รวมสมอง ไม่ทิ้งข้อมูล)
-* **Forced Auto-Merge (Union)**: ถ้ารีโปมีข้อมูล และในเครื่องก็มีข้อมูล ระบบจะรวมข้อมูลเข้าด้วยกันทันที ไม่ถามจุกจิก
-* **ตัดข้อซ้ำ**: เทียบ Key ตัวหนาใน Preferences และชื่อเรื่องใน Anti-Patterns
-* **Transaction Sorting**: จัดเรียงกฎและข้อห้ามตาม **วันที่/เวลา (`YYYY-MM-DD`)** เสมือนสมุดบันทึกประวัติการเรียนรู้
-* **Lean Checkpoint**: ไม่สร้างโฟลเดอร์ `.haws_backup/` ขยะ แต่ใช้ Git Checkpoint Commit ในเครื่อง ย้อนเวลาได้ใน 0.1 วินาที
+### F. Forced Auto-Merge & Transaction Ordering
+* **Forced Auto-Merge**: Reconciles local and cloud notes without interrupting the user.
+* **Deduplication**: Compares bold key headers in Preferences and topic names in Anti-Patterns.
+* **Transaction Sorting**: Orders lessons by chronological date (`YYYY-MM-DD`).
+* **Lean Checkpoints**: Employs instant local Git checkpoints instead of creating temporary backup folders.
 
-### G. Windows File Explorer Launcher (`brain-online.bat`)
-* **`brain-online.bat`**: ดับเบิลคลิกสลับสถานะ
-  - ถ้ายังไม่ต่อ ➔ เด้งหน้าต่างให้วางลิงก์
-  - ถ้าต่อแล้ว ➔ เด้งหน้าต่าง Safety Guard สีเหลืองถามยืนยันก่อนปลด (มีผลเฉพาะเครื่องนั้น ไม่ลบคลาวด์)
-* **ซิงค์ประจำวัน**: รัน `bash haws.sh sync` ใน Terminal คำสั่งเดียวจบ
+### G. Windows 1-Click Launcher (`brain-online.bat`)
+* Double-clicking `brain-online.bat` in Windows File Explorer toggles cloud sync status:
+  - Offline: Prompts for private GitHub URL to connect.
+  - Online: Displays safety prompt before returning to Local-Only mode.
+* Daily routine synchronization runs via `bash haws.sh sync`.
 
-### H. การเชื่อมต่อ AI ของแต่ละโปรแกรม
-* **Google Antigravity**: เขียน Path ลง `~/.gemini/config/skills.json` 100% (ไม่ใช้ Symlink)
-* **Claude Code**: ทำ Directory Symlink เข้า `~/.claude/skills/`
+### H. Platform Integration
+* **Google Antigravity**: Declaratively mapped via `~/.gemini/config/skills.json`.
+* **Claude Code**: Directory junctions/symlinks mapped via `~/.claude/skills/`.
 
 ---
 
-## 🔄 3. Detailed Change Ledger (Before vs After รายไฟล์ของระบบ)
-
-เก็บข้อมูลเดิมไว้ครบถ้วน 100% เพื่อให้คุณตรวจย้อนหลังได้ทุกจุด:
+## 🔄 3. Change Ledger (Before vs After)
 
 ### 1. Root & Core Governance
-* **`.gitattributes`**:
-  * *Before*: Minimal configuration.
-  * *After*: บังคับ universal LF line endings (`* text=auto eol=lf`) ทั่วทั้งโปรเจกต์ กำจัดปัญหา Windows CRLF diff ผีหลอก
+* **`.gitattributes`**: Enforces universal LF line endings (`* text=auto eol=lf`) to eliminate Windows CRLF phantom diffs.
 * **`core/HAWS.md`**:
-  * *Before*: กฎทั่วไป ขาดการบังคับหลักฐานเชิงประจักษ์
-  * *After*: 
-    - Sec 3.1: Anti-Hallucination Defense (ต้องแสดงผล Terminal จริง, ติดป้าย `[Unverified]` ถ้ายังไม่ได้รัน)
-    - Sec 5.1: Minimalist Engineering (Ponytail Lazy Senior Dev Ladder 7 ขั้น)
-    - Sec 7.1: Bounded Self-Correction Loop (จำกัดแก้ไม่เกิน 3 ครั้ง ห้าม bypass test หรือใส่ `@ts-ignore`)
-    - Sec 10: Caveman Standard (Lite สำหรับรายงาน, Full/Ultra สำหรับคำถามปิด)
+  - Sec 3.1: Anti-hallucination mandates actual command outputs or explicit `[Unverified]` flags.
+  - Sec 5.1: Minimalist engineering enforces the Ponytail 7-Rung Lazy Dev Ladder.
+  - Sec 7.1: Bounded self-correction loop capped at 3 attempts; bans test silencing or `@ts-ignore`.
+  - Sec 9.2: Mandatory skill ingestion (`view_file` on `SKILL.md`) and zero vanity tags.
+  - Sec 9.3: Clear decision threshold for Main Agent Solo vs Autonomous Subagent delegation.
+  - Sec 10: Caveman communication standard (Lite for reports, Full/Ultra for binary closed-ended queries).
 * **`core/WORK_INSTRUCTIONS.md`**:
-  * *Before*: ขาดการจัดระเบียบบริบท
-  * *After*: 
-    - Sec 1.1: Context Discipline (ซอยไฟล์ ~200-300 บรรทัดด้วย Summary + Pointer, Progressive Disclosure, On-demand loading, ตัดตัวเลข token display ออกตามคำสั่งผู้ใช้)
-    - Sec 2.1: Top-line Skill Declaration (ประกาศชื่อสกิลบรรทัดแรกเสมอ)
-    - Sec 4.2: English Reload Window alert (`[ACTION REQUIRED: RELOAD WINDOW]`)
-* **`core/ANTI_PATTERNS.md`**:
-  * *Before*: 8 ข้อพื้นฐาน
-  * *After*: เพิ่ม 5 ข้อปฏิบัติสำคัญ (แบน `.env` บน git, แบน CRLF, แบน bypass test, แบน loop เกิน 3 ครั้ง, แบนการใช้สกิลเงียบๆ)
+  - Sec 1.1: Context discipline (modular 200–300 lines limit, Summary + Pointer, progressive disclosure).
+  - Sec 2.1: Mandatory tool call on `SKILL.md` before execution.
+  - Sec 2.3: Subagent delegation matrix.
+  - Sec 4.2: English Reload Window notification alert.
+* **`core/ANTI_PATTERNS.md`**: Pointer to decoupled `secondbrain/ANTI_PATTERNS.md` containing 25+ recorded anti-patterns.
+* **`core/USER_PREFERENCES.md`**: Pointer to decoupled `secondbrain/USER_PREFERENCES.md`.
 
 ### 2. Specialist Subagents (`agents/*.md`)
-* ครอบสัญญา **Agent Harness**: รับงานผ่าน `<task_assignment>` และส่งงานผ่าน `<task_report>` (Summary, Evidence, Skills used, Unverified)
+* Enforces Agent Harness across all 5 canonical specialists (`tester`, `backend-engineer`, `frontend-engineer`, `organizer`, `researcher`): inputs via `<task_assignment>` and outputs via `<task_report>`.
 
 ### 3. Canonical Blueprints & Templates (`templates/`)
-* **`templates/ARCHITECTURE.md`**: ใส่ Mermaid Topology Diagram + Archify JSON IR structure
-* **`templates/AGENTS.md`**: ใส่คำสั่ง Build & Test สากล และตัดความซ้ำซ้อนโดยชี้ Pointer ไปที่ `CONSTRAINTS.md`
-* **`templates/CONSTRAINTS.md`**: ศูนย์รวมเกณฑ์คุณภาพและ Anti-patterns
+* **`templates/ARCHITECTURE.md`**: Embedded Mermaid Topology Diagram + Archify JSON IR structure.
+* **`templates/AGENTS.md`**: Universal build & test commands, pointing to `CONSTRAINTS.md`.
+* **`templates/CONSTRAINTS.md`**: Single source of non-negotiable engineering constraints.
+* **`templates/SOT.md`**: Single source of truth architecture and runtime contracts.
+* Production Docker, docker-compose, Vite, and Devcontainer templates.
 
 ### 4. Custom Skill (`skills/custom/keyboard-layout-fixer/`)
-* สร้างสกิลแปลงภาษาไทย Kedmanee <-> อังกฤษ QWERTY พร้อมแก้ CapsLock สลับ ตรงตามมาตรฐาน Anthropic Skill Standard พร้อม Automated Tests 100%
+* Bidirectional Thai Kedmanee $\leftrightarrow$ English US QWERTY converter with CapsLock inversion repair.
+* Automated unit tests pass 100% (`node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`).
 
-### 5. Git Security & Hooks (`.githooks/`)
-* **`pre-commit`**: ตรวจจับ secret ป้องกัน `.env*` หลุด, บังคับ LF, รัน `haws.sh doctor`
-* **`pre-push`**: บล็อกการ push อัตโนมัติ ("Push github ต้องผ่านผมก่อน") เว้นแต่มี `HAWS_ALLOW_PUSH=1`
+### 5. Git Security & Hardware Hooks (`.githooks/`)
+* **`pre-commit`**: Scans staged diff for `.env*` secrets, validates LF line endings, runs 10-axis `haws.sh doctor`.
+* **`pre-push`**: Hardware blocker preventing unauthorized remote pushes without `HAWS_ALLOW_PUSH=1`.
 
 ---
 
-## 📋 4. Traceability: 39 ข้อความต้องการเดิม สู่ 22 หัวข้อหลัก
+## 📋 4. Traceability: 39 Requirements $\rightarrow$ 22 Master Topics
 
-| Domain | Master Topic | Raw User Inputs (#) | Status | Key Artifact / File |
+| Domain | Master Topic | Raw User Inputs (#) | Status | Key Artifact / Target |
 | :--- | :--- | :---: | :---: | :--- |
-| **Domain 1** | 1.1 Grounding & Anti-Hallucination | #9, #13 | ✅ ตรวจแล้ว | `core/HAWS.md` Sec 3.1, `core/WORK_INSTRUCTIONS.md` Sec 4.1 |
-| | 1.2 Skill Usage Transparency | #8, #12 | ✅ ตรวจแล้ว | `core/HAWS.md` Sec 9.2, `agents/*.md` |
-| | 1.3 Caveman Compression Standard | #28, #38 | ✅ ตรวจแล้ว | `core/HAWS.md` Sec 10, `core/USER_PREFERENCES.md` |
-| | 1.4 Window Reload Notifications | #20 | ✅ ตรวจแล้ว | `core/WORK_INSTRUCTIONS.md` Sec 4.2 |
-| **Domain 2** | 2.1 Markdown Partitioning & Context | #2, #24 | ✅ ตรวจแล้ว | `core/WORK_INSTRUCTIONS.md` Sec 1.1 |
-| | 2.2 Token Budget vs Context Window | #23, #34 | ✅ ตรวจแล้ว | `core/WORK_INSTRUCTIONS.md` Sec 1.1 (Streamlined) |
-| | 2.3 On-Demand Loading & Lazy Context | #35 | ✅ ตรวจแล้ว | `core/WORK_INSTRUCTIONS.md` Sec 1.1 |
-| | 2.4 Telemetry & Metrics Tracking | #31 | ✅ ตรวจแล้ว | `core/WORK_INSTRUCTIONS.md` Sec 1.1 |
-| **Domain 3** | 3.1 Canonical Project Files (8 Blueprints) | #16 | ✅ ตรวจแล้ว | `templates/` (8 canonical files) |
-| | 3.2 Architecture Graph ("Graft") | #17 | ✅ ตรวจแล้ว | `templates/ARCHITECTURE.md` (Mermaid + Archify) |
-| | 3.3 Configuration & Secrets Management | #18 | ✅ ตรวจแล้ว | `core/ANTI_PATTERNS.md` |
-| | 3.4 Design Standards & React Components | #1, #7 | ✅ ตรวจแล้ว | `templates/DESIGN.md`, `core/ANTI_PATTERNS.md` |
-| | 3.5 Repository Normalization (LF) | #21 | ✅ ตรวจแล้ว | `.gitattributes`, `haws.sh` |
-| **Domain 4** | 4.1 Skill Taxonomy & Bloat Management | #3, #11 | ✅ ตรวจแล้ว | `core/SKILL_TAXONOMY.md`, `core/HAWS.md` Sec 9 |
-| | 4.2 Organizer Role & Hygiene | #10 | ✅ ตรวจแล้ว | `agents/organizer.md`, `haws.sh doctor` |
-| | 4.3 Subagents, Personas & Harness | #14, #30, #36 | ✅ ตรวจแล้ว & คอนเฟิร์ม | `agents/*.md` (`<task_assignment>` / `<task_report>`), Ponytail 7-Rung Ladder |
-| | 4.4 Self-Correcting Loops & Engineering | #33, #39 | ✅ ตรวจแล้ว & คอนเฟิร์ม | `core/HAWS.md` Sec 7.1 (Max 3 iterations, no test bypassing) |
-| | 4.5 Candidate Custom Skills | #19, #22 | ✅ ตรวจแล้ว & คอนเฟิร์ม | `skills/custom/keyboard-layout-fixer/` (ล็อค 4 เคส + เช็คคำ/ตัวย่อ ไม่เพิ่มอะไรเกินจำเป็น) |
-| **Domain 5** | 5.1 Ready-to-Use Installation Guide | #5 | ✅ ตรวจแล้ว | `docs/INSTALLATION.md`, `haws.sh setup` |
-| | 5.2 Diagnostic Verification Suite | #6 | ✅ ตรวจแล้ว | `haws.sh doctor` (27/27 checks PASS) |
-| | 5.3 SWE Fundamentals & Testing Discipline | #27, #32 | ✅ ตรวจแล้ว | `core/HAWS.md` Sec 5.1, Sec 7.1 |
-| | 5.4 MCP & RAG Integrations | #25, #29 | ✅ ตรวจแล้ว | `core/WORK_INSTRUCTIONS.md`, `core/HAWS.md` Sec 9 |
-| | 5.5 External Knowledge & Starred Repos | #4, #15 | ✅ ตรวจแล้ว | Direct upstream references in `core/HAWS.md` Sec 5.1 (Ponytail ladder) + `plugins/` (No synthetic doc bloat) |
-| | 5.6 HAWS Visual Dashboard | #26 | 🗑️ สั่งลบแล้ว | โฟลเดอร์ `dashboard/` ถูกลบถาวรตามคำสั่ง |
-| **Domain 6 / Guardrail** | Git Remote Push Protection & Hooks | #37 | ✅ ตรวจแล้ว & คอนเฟิร์ม | คง 2 Hooks หลัก (`pre-commit`, `pre-push`), ห้าม Git push อัตโนมัติเด็ดขาด |
+| **Domain 1** | 1.1 Grounding & Anti-Hallucination | #9, #13 | ✅ Verified | `core/HAWS.md` Sec 3.1, `core/WORK_INSTRUCTIONS.md` Sec 4.1 |
+| | 1.2 Skill Usage Transparency | #8, #12 | ✅ Verified | `core/HAWS.md` Sec 9.2, `agents/*.md` |
+| | 1.3 Caveman Compression Standard | #28, #38 | ✅ Verified | `core/HAWS.md` Sec 10, `secondbrain/USER_PREFERENCES.md` |
+| | 1.4 Window Reload Notifications | #20 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 4.2 |
+| **Domain 2** | 2.1 Markdown Partitioning & Context | #2, #24 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 1.1 |
+| | 2.2 Token Budget vs Context Window | #23, #34 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 1.1 |
+| | 2.3 On-Demand Loading & Lazy Context | #35 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 1.1 |
+| | 2.4 Telemetry & Metrics Tracking | #31 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 1.1 |
+| **Domain 3** | 3.1 Canonical Project Files (8 Blueprints) | #16 | ✅ Verified | `templates/` (14 canonical files & SWE blueprints) |
+| | 3.2 Architecture Graph ("Graft") | #17 | ✅ Verified | `templates/ARCHITECTURE.md` (Mermaid + Archify) |
+| | 3.3 Configuration & Secrets Management | #18 | ✅ Verified | `secondbrain/ANTI_PATTERNS.md`, `.githooks/pre-commit` |
+| | 3.4 Design Standards & React Components | #1, #7 | ✅ Verified | `templates/DESIGN.md`, `secondbrain/ANTI_PATTERNS.md` |
+| | 3.5 Repository Normalization (LF) | #21 | ✅ Verified | `.gitattributes`, `haws.sh doctor` |
+| **Domain 4** | 4.1 Skill Taxonomy & Bloat Management | #3, #11 | ✅ Verified | `core/SKILL_TAXONOMY.md`, `core/HAWS.md` Sec 9 |
+| | 4.2 Organizer Role & Hygiene | #10 | ✅ Verified | `agents/organizer.md`, `haws.sh doctor` |
+| | 4.3 Subagents, Personas & Harness | #14, #30, #36 | ✅ Verified | `agents/*.md` (`<task_assignment>` / `<task_report>`), Ponytail Ladder |
+| | 4.4 Self-Correcting Loops & Engineering | #33, #39 | ✅ Verified | `core/HAWS.md` Sec 7.1 (Max 3 iterations, no test bypassing) |
+| | 4.5 Candidate Custom Skills | #19, #22 | ✅ Verified | `skills/custom/keyboard-layout-fixer/` (4 cases + acronym protection) |
+| **Domain 5** | 5.1 Ready-to-Use Installation Guide | #5 | ✅ Verified | `README.md` (Consolidated single source of documentation) |
+| | 5.2 Diagnostic Verification Suite | #6 | ✅ Verified | `haws.sh doctor` (37/37 checks pass green) |
+| | 5.3 SWE Fundamentals & Testing Discipline | #27, #32 | ✅ Verified | `core/HAWS.md` Sec 5.1, Sec 7.1 |
+| | 5.4 MCP & RAG Integrations | #25, #29 | ✅ Verified | `core/WORK_INSTRUCTIONS.md`, `core/HAWS.md` Sec 9 |
+| | 5.5 External Knowledge & Starred Repos | #4, #15 | ✅ Verified | `plugins/ponytail`, `core/HAWS.md` Sec 5.1 |
+| | 5.6 Visual Dashboard Pruning | #26 | 🗑️ Pruned | Removed obsolete `dashboard/` directory per minimalist mandate |
+| **Domain 6 / Guardrail** | Git Remote Push Protection & Hooks | #37 | ✅ Verified | Dual hooks (`pre-commit`, `pre-push`), strict `HAWS_ALLOW_PUSH=1` gate |
 
 ---
 
 ## 🚀 5. Actionable Roadmap & Checklist — Status: 100% COMPLETED
 
-ทุกหัวข้อรีวิว การปรับแต่ง และสถาปัตยกรรมระบบใหม่เสร็จสมบูรณ์ 100%:
-1. **การปรับแต่ง `keyboard-layout-fixer`**:
-   - ✅ เคส 1: EN -> TH (`fdfd` -> `ดกดก`)
-   - ✅ เคส 2: TH -> EN (`้ำสสน` -> `hello`)
-   - ✅ เคส 3: Inverted CapsLock อังกฤษ (`hELLO wORLD` -> `Hello World`)
-   - ✅ เคส 4: ลืมปิด CapsLock ขณะพิมพ์ไทย (`FDFD` -> `ดกดก`, `GRNHV` -> `เพื้อ`)
-   - ✅ Safety Check: ตรวจ Acronym ภาษาอังกฤษทั่วไป (`API`, `SQL`, `HTML`, `README`, `JSON`) ไม่ถูกแปลงมั่ว
-   - ✅ Automated Unit Tests: ผ่าน 100% (`node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`)
+1. **Custom Skill (`keyboard-layout-fixer`)**:
+   - Case 1: EN $\rightarrow$ TH (`fdfd` $\rightarrow$ `ดกดก`)
+   - Case 2: TH $\rightarrow$ EN (`ดกดก` $\rightarrow$ `fdfd`)
+   - Case 3: Inverted CapsLock English (`hELLO wORLD` $\rightarrow$ `Hello World`)
+   - Case 4: CapsLock active while typing Thai (`FDFD` $\rightarrow$ `ดกดก`, `GRNHV` $\rightarrow$ `เพื้อ`)
+   - Safety Check: Acronym bypass (`API`, `SQL`, `HTML`, `README`, `JSON`) preserved.
+   - Automated Unit Tests: 100% passing (`node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`).
 
-2. **สถาปัตยกรรมระบบใหม่ (Symmetrical Cross-Device & Decoupled Brain)**:
-   - ✅ ย้ายไฟล์ส่วนตัวไป `secondbrain/` (ใส่ใน `.gitignore` + ทำ Local Git Repo ในตัว)
-   - ✅ สร้างเทมเพลตตั้งต้นใน `templates/` (`USER_PREFERENCES.example.md`, `ANTI_PATTERNS.example.md`)
-   - ✅ เพิ่มคำสั่ง `haws.sh kit add / prune` พร้อม `.gitmodules merge=ours`
-   - ✅ เพิ่มระบบ 1-Click Symmetrical Cross-Device Sync (`haws.sh user connect/disconnect/status`)
-   - ✅ สร้าง Windows Launcher `brain-online.bat` (ตรวจจับ Git Bash อัตโนมัติ)
-   - ✅ เพิ่ม SWE Blueprints (`Dockerfile.template`, `.dockerignore.template`, `docker-compose.yml.template`, `vite.config.ts.template`, `.devcontainer/devcontainer.json`)
-   - ✅ รวมคู่มือลง `README.md` หน้าแรก
-   - ✅ รัน `haws.sh doctor` ตรวจสอบ 37/37 checks ผ่าน 100% (Zero Errors)
+2. **System Architecture (Symmetrical Cross-Device & Decoupled Brain)**:
+   - Personal files relocated to `secondbrain/` (in `.gitignore` + local Git repository).
+   - Scaffolding templates in `templates/` (`USER_PREFERENCES.example.md`, `ANTI_PATTERNS.example.md`).
+   - Added CLI commands `haws.sh kit add / prune` with `.gitmodules merge=ours`.
+   - 1-Click Symmetrical Cross-Device Sync (`haws.sh user connect/disconnect/status`).
+   - Windows Launcher `brain-online.bat` (automated Git Bash discovery).
+   - SWE Blueprints (`Dockerfile.template`, `.dockerignore.template`, `docker-compose.yml.template`, `vite.config.ts.template`, `.devcontainer/devcontainer.json`).
+   - Consolidated documentation into `README.md`.
+   - Diagnostic suite `haws.sh doctor` passes 37/37 checks (100% green).
 
 

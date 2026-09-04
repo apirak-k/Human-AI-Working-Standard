@@ -2,7 +2,7 @@
 # ==============================================================================
 # HAWS Git Pre-Push Hook (Human Safeguard & Push Blocker)
 # Directly enforces HAWS Human-in-the-loop Guardrail:
-# "Push github ต้องผ่านผมก่อน" (Remote push requires explicit human authorization)
+# Remote push strictly requires explicit human authorization (HAWS_ALLOW_PUSH=1)
 # ==============================================================================
 set -e
 

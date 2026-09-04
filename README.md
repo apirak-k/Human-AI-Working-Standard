@@ -25,7 +25,26 @@ cd Human-AI-Working-Standard
 bash haws.sh setup
 ```
 
-*(On Windows, run within **Git Bash** or double-click `brain-online.bat`)*
+The automated `setup` bootstrapper executes 5 phases in under 60 seconds:
+1. **Bootstraps Second Brain**: Initializes an independent `secondbrain/` Git repository with zero-leak protection.
+2. **Initializes Submodules**: Fetches all external curated skill packs (`superpowers`, `agent-skills`, `anthropics-skills`, `mattpocock-skills`) and plugins (`ponytail`).
+3. **Configures Skill Junctions**: Integrates skills into Google Antigravity (`~/.gemini/config/skills.json`) and Claude Code (`~/.claude/skills/`).
+4. **Installs Hardware Git Hooks**: Sets up `.githooks/pre-commit` and `.githooks/pre-push` to block unverified code and unauthorized remote pushes.
+5. **Runs Diagnostic Verification**: Executes the 10-axis doctor suite (37 verification checks) to confirm 100% green status.
+
+### 📋 Prerequisites
+
+| Tool | Minimum Version | Purpose |
+| :--- | :---: | :--- |
+| **Git** | 2.30+ | Repository versioning, submodules, worktrees |
+| **Node.js** | 20+ | Runtime for custom skills and CLI tools |
+| **Python** | 3.10+ | Fast regex calculations and AST analysis |
+| **Bash** | Standard / Git Bash | Unified command engine (`haws.sh`) |
+
+### 💻 Cross-Platform Setup Details
+
+- **Windows 10 / 11**: Run all commands inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required (HAWS leverages declarative mapping for Antigravity and NTFS Junctions for Claude Code). Use `brain-online.bat` for 1-click cloud sync in File Explorer.
+- **macOS & Linux**: Run directly in standard terminal (`zsh` or `bash`). Uses native Unix symlinks to link skills into `~/.claude/skills/`.
 
 ---
 
@@ -136,6 +155,37 @@ Located at `skills/custom/keyboard-layout-fixer/`:
 - **Case 4 (CapsLock Active on EN Layout typing Thai)**: `FDFD` -> `ดกดก`, `GRNHV` -> `เพื้อ` (without shifted vowel/tone mark distortion)
 - **Safety Guard (Acronym Bypass)**: Common English acronyms (`API`, `SQL`, `HTML`, `README`, `JSON`, `URL`, etc.) are detected and preserved without conversion.
 - Automated tests pass 100%: `node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`
+
+---
+
+## 📱 Remote Notifications (AFK & Long-Running Tasks)
+
+During long-running autonomous workflows (`/goal`, deep refactoring, comprehensive test suites), developers can receive instant mobile notifications and decision checkpoints via phone:
+
+| Service / Protocol | Setup | Push (iOS/Android) | Interactive (Two-Way) | Recommended Use Case |
+| :--- | :---: | :---: | :---: | :--- |
+| **Telegram Bot API** | 2 mins | 🟢 Instant | 🟢 Inline Buttons | 🏆 **Top Pick (Pair Programming & Checkpoints)** |
+| **ntfy.sh** | 30s | 🟢 Native App | 🟡 Action Links | 🥈 **Top Pick (Zero-Signup / Privacy-First)** |
+| **Discord Webhooks** | 1 min | 🟡 Channel Push | 🔴 One-Way Only | 🥉 **Great for Shared Team Channels** |
+
+### Instant Notification Snippets
+
+**Telegram Bot**:
+```bash
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+  -d "chat_id=${TELEGRAM_CHAT_ID}" \
+  -d "text=🚀 *[HAWS TASK COMPLETE]* All 37 diagnostics passed (100% green)." \
+  -d "parse_mode=Markdown"
+```
+
+**ntfy.sh (Zero-Account / One-Liner)**:
+```bash
+curl -H "Title: HAWS Task Complete" \
+     -H "Priority: high" \
+     -H "Tags: white_check_mark,rocket" \
+     -d "Diagnostics passed 100%. Ready for your review." \
+     https://ntfy.sh/<your-secret-topic>
+```
 
 ---
 
