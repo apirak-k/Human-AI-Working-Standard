@@ -14,6 +14,14 @@ The actual goal and required outcome always take priority over following rigid p
 
 ## Quick Install and Setup
 
+### 🪟 Windows 1-Click Launchers (Zero Terminal Needed)
+If you are on Windows, you don't even need to open a terminal or type any commands:
+* **`1-CLICK-SYNC.bat`** (or **`haws.bat`**) : **Double-click in Windows File Explorer** to pull latest HAWS updates, sync all 104 skills into Antigravity & Claude Code, auto-sync your Second Brain with GitHub, and run system diagnostics in 1 click!
+* **`brain-online.bat`** : **Double-click in Windows File Explorer** to connect or toggle your Second Brain cloud sync between Local-Only and Cloud mode.
+
+---
+
+### Command Line Setup (All Platforms)
 Install and sync HAWS across your detected AI environments (**Google Antigravity** and **Claude Code**) with a single command:
 
 ```bash
@@ -30,7 +38,7 @@ The automated `setup` script executes 5 steps in under 60 seconds:
 2. **Initializes Submodules**: Clones external skill packs (`superpowers`, `agent-skills`, `anthropics-skills`, `mattpocock-skills`) and tool submodules (`ponytail`).
 3. **Links Skills**: Connects skills into Google Antigravity (`~/.gemini/config/skills.json`) and Claude Code (`~/.claude/skills/`).
 4. **Installs Hardware Git Hooks**: Sets up `.githooks/pre-commit` and `.githooks/pre-push` to block unverified code, secret leaks, and accidental remote pushes.
-5. **Runs Diagnostics**: Executes the 10-axis doctor suite (37 verification checks) to confirm everything is set up correctly.
+5. **Runs Diagnostics**: Executes the 10-axis doctor suite (38 verification checks) to confirm everything is set up correctly.
 
 ### Prerequisites
 
@@ -43,7 +51,7 @@ The automated `setup` script executes 5 steps in under 60 seconds:
 
 ### Cross-Platform Setup Details
 
-- **Windows 10 / 11**: Run all commands inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required (HAWS uses declarative mapping for Antigravity and NTFS Junctions for Claude Code). Use `brain-online.bat` for 1-click cloud sync in File Explorer.
+- **Windows 10 / 11**: Double-click `1-CLICK-SYNC.bat` or run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required (HAWS uses declarative mapping for Antigravity and NTFS Junctions for Claude Code). Use `brain-online.bat` for 1-click cloud sync in File Explorer.
 - **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks to link skills into `~/.claude/skills/`.
 
 ---
