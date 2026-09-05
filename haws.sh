@@ -850,6 +850,188 @@ run_kit() {
     esac
 }
 
+symmetrical_merge_secondbrain() {
+    local brain_dir="$1"
+    local py_bin=""
+    for candidate in python3 python3.11 python3.12 py python; do
+        if command -v "${candidate}" &>/dev/null && "${candidate}" -c "import sys" &>/dev/null; then
+            py_bin="${candidate}"
+            break
+        fi
+    done
+
+    # 1. Commit any local working changes first
+    git -C "${brain_dir}" add . 2>/dev/null || true
+    git -C "${brain_dir}" commit -m "chore(brain): pre-merge local snapshot" --quiet 2>/dev/null || true
+
+    # 2. Reconcile Git commit graphs with -s ours to establish common ancestor
+    git -C "${brain_dir}" merge origin/main --allow-unrelated-histories -s ours --no-edit -m "chore(brain): symmetrical merge and deduplication" 2>/dev/null || true
+
+    # 3. If python is available, run content deduplication & transaction sorting
+    if [ -n "${py_bin}" ]; then
+        ${py_bin} -c '
+import os, sys, re, subprocess
+
+def run_merge(brain_dir):
+    def get_git_file(ref, filepath):
+        try:
+            cmd = ["git", "-C", brain_dir, "show", ref + ":" + filepath]
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, _ = p.communicate()
+            if p.returncode == 0:
+                try: return out.decode("utf-8")
+                except: return out
+            return ""
+        except: return ""
+
+    def read_local(filepath):
+        p = os.path.join(brain_dir, filepath)
+        if os.path.isfile(p):
+            with open(p, "rb") as f:
+                c = f.read()
+                try: return c.decode("utf-8")
+                except: return c
+        return ""
+
+    def merge_anti(local_txt, remote_txt):
+        def extract_items(txt):
+            items = {}
+            curr_key = None
+            curr_lines = []
+            curr_date = "2026-01-01"
+            for line in txt.splitlines():
+                m = re.match(r"^\s*-\s*\*\*\[Learned\s+(\d{4}-\d{2}-\d{2})\]\*\*:\s*(`[^`]+`)(.*)", line)
+                if m:
+                    if curr_key: items[curr_key] = (curr_date, "\n".join(curr_lines).strip())
+                    curr_date = m.group(1)
+                    curr_key = m.group(2).strip()
+                    curr_lines = [line]
+                elif curr_key and (line.startswith("  ") or line.startswith("\t")):
+                    curr_lines.append(line)
+                elif curr_key and not line.strip(): pass
+                else:
+                    if curr_key:
+                        items[curr_key] = (curr_date, "\n".join(curr_lines).strip())
+                        curr_key = None
+                        curr_lines = []
+            if curr_key: items[curr_key] = (curr_date, "\n".join(curr_lines).strip())
+            return items
+
+        l_items = extract_items(local_txt)
+        r_items = extract_items(remote_txt)
+        all_keys = set(l_items.keys()) | set(r_items.keys())
+        merged = []
+        for k in all_keys:
+            if k in l_items and k in r_items:
+                ld, lc = l_items[k]
+                rd, rc = r_items[k]
+                chosen = lc if len(lc) >= len(rc) else rc
+                merged.append((max(ld, rd), chosen))
+            elif k in l_items: merged.append(l_items[k])
+            else: merged.append(r_items[k])
+
+        merged.sort(key=lambda x: x[0], reverse=True)
+        hdr = (
+            "# Anti-Patterns & Failure Modes (Second Brain)\n\n"
+            "This document records operational anti-patterns and concrete failure modes observed in agent sessions. All AI agents must actively avoid these behaviors across all sessions, projects, and tools.\n\n"
+            "---\n\n"
+            "## Operational Anti-Patterns\n"
+        )
+        return hdr + "\n" + "\n".join([item[1] for item in merged]) + "\n"
+
+    def merge_pref(local_txt, remote_txt):
+        def parse_secs(txt):
+            secs = {}
+            curr = "Introduction"
+            secs[curr] = []
+            for line in txt.splitlines():
+                m = re.match(r"^(##\s+.*)", line)
+                if m:
+                    curr = m.group(1).strip()
+                    secs.setdefault(curr, [])
+                else: secs[curr].append(line)
+            return secs
+
+        l_secs = parse_secs(local_txt)
+        r_secs = parse_secs(remote_txt)
+        ordered = ["Introduction", "## 1. Interaction & Communication Style", "## 2. Engineering & Architectural Conventions", "## 3. Tool & Command Conventions"]
+        for s in list(l_secs.keys()) + list(r_secs.keys()):
+            if s not in ordered: ordered.append(s)
+
+        out = []
+        for s in ordered:
+            if s != "Introduction": out.append("\n---\n\n" + s)
+            l_lines = l_secs.get(s, [])
+            r_lines = r_secs.get(s, [])
+
+            def get_bullets(lines):
+                bul = {}
+                hdr = []
+                cur_k = None
+                cur_lines = []
+                for l in lines:
+                    m = re.match(r"^\s*-\s*\*\*([^*]+)\*\*:\s*(.*)", l)
+                    if m:
+                        if cur_k: bul[cur_k] = "\n".join(cur_lines).strip()
+                        cur_k = m.group(1).strip()
+                        cur_lines = [l]
+                    elif cur_k and (l.startswith("  ") or l.startswith("\t")): cur_lines.append(l)
+                    elif cur_k and not l.strip(): pass
+                    else:
+                        if cur_k:
+                            bul[cur_k] = "\n".join(cur_lines).strip()
+                            cur_k = None
+                            cur_lines = []
+                        if l.strip() and not l.startswith("---") and not l.startswith("#"): hdr.append(l)
+                if cur_k: bul[cur_k] = "\n".join(cur_lines).strip()
+                return hdr, bul
+
+            l_h, l_b = get_bullets(l_lines)
+            r_h, r_b = get_bullets(r_lines)
+            h = r_h if len(r_h) >= len(l_h) else l_h
+            for line in h:
+                if line.strip(): out.append(line)
+
+            all_keys = []
+            for k in list(r_b.keys()) + list(l_b.keys()):
+                if k not in all_keys: all_keys.append(k)
+
+            for k in all_keys:
+                if k in l_b and k in r_b:
+                    chosen = l_b[k] if len(l_b[k]) > len(r_b[k]) else r_b[k]
+                    out.append(chosen)
+                elif k in l_b: out.append(l_b[k])
+                else: out.append(r_b[k])
+
+        hdr = (
+            "# User Preferences & Style Guide (Second Brain)\n\n"
+            "This document records the user'\''s permanent preferences, communication style, and architectural conventions. All AI agents must adhere to these preferences across all sessions, projects, and tools.\n"
+        )
+        return hdr + "\n" + "\n".join(out).strip() + "\n"
+
+    l_anti = read_local("ANTI_PATTERNS.md")
+    r_anti = get_git_file("origin/main", "ANTI_PATTERNS.md")
+    if l_anti or r_anti:
+        m_anti = merge_anti(l_anti, r_anti)
+        with open(os.path.join(brain_dir, "ANTI_PATTERNS.md"), "wb") as f:
+            f.write(m_anti.encode("utf-8"))
+
+    l_pref = read_local("USER_PREFERENCES.md")
+    r_pref = get_git_file("origin/main", "USER_PREFERENCES.md")
+    if l_pref or r_pref:
+        m_pref = merge_pref(l_pref, r_pref)
+        with open(os.path.join(brain_dir, "USER_PREFERENCES.md"), "wb") as f:
+            f.write(m_pref.encode("utf-8"))
+
+run_merge("'"${brain_dir}"'")
+' 2>/dev/null || true
+    fi
+
+    # 4. Stage and commit the clean merged files
+    git -C "${brain_dir}" add . 2>/dev/null || true
+    git -C "${brain_dir}" commit --amend --no-edit 2>/dev/null || git -C "${brain_dir}" commit -m "chore(brain): symmetrical merge and deduplication" --quiet 2>/dev/null || true
+}
+
 run_user() {
     local action="${1:-status}"
     shift || true
@@ -903,7 +1085,7 @@ run_user() {
             echo "  [*] Testing remote connection..."
             if git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
                 echo "  [*] Remote repo has existing history. Performing Symmetrical Merge..."
-                git -C "${brain_dir}" merge origin/main --no-edit -m "Merge remote second brain updates" 2>/dev/null || true
+                symmetrical_merge_secondbrain "${brain_dir}"
                 if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
                     echo "  [✓] Second brain synced and connected to ${repo_url}"
                 else
@@ -954,7 +1136,12 @@ run_user() {
                 echo "  [*] Syncing Second Brain with ${current_remote}..."
                 git -C "${brain_dir}" add . 2>/dev/null || true
                 git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet 2>/dev/null || true
-                git -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null || true
+                if ! git -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
+                    echo "  [*] Symmetrical reconciliation required..."
+                    git -C "${brain_dir}" rebase --abort 2>/dev/null || true
+                    git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null || true
+                    symmetrical_merge_secondbrain "${brain_dir}"
+                fi
                 git -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
                 echo "  [✓] Second Brain in sync."
             else
