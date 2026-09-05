@@ -1,9 +1,9 @@
 # Session Checkpoint & Cross-Device Handoff — HAWS v2.0
 
-> **Checkpoint Date**: 2026-09-05 01:45:00 (Local Time)  
+> **Checkpoint Date**: 2026-09-05 13:15:00 (Local Time)  
 > **Active Branch**: `main`  
 > **Status**: Review Complete & Production Ready (Cross-Device Ready)  
-> **Permanent Historical Audit**: Preserved in Git commit history (`1bbb951`, `ed5b095`, `840ca9f`)  
+> **Permanent Historical Audit**: Preserved in Git commit history (`1bbb951`, `ed5b095`, `840ca9f`, `10f5f0d`)  
 
 ---
 
@@ -14,9 +14,9 @@ Prior to handoff, all review domains have been evaluated and finalized:
 | Domain / Category | Status | Details & Progress |
 | :--- | :---: | :--- |
 | **Domain 1: Grounding & Behavior** | 🟢 Verified | Anti-hallucination, empirical evidence, Caveman mode, explicit skill usage banner. |
-| **Domain 2: Context Window & Tokens** | 🟢 Verified & Confirmed | Streamlined token display while strictly enforcing Lean Context discipline (Summary + Pointer / Progressive Disclosure). |
+| **Domain 2: Context Window & Tokens** | 🟢 Verified & Confirmed | Streamlined token display. Resolved IDE token budget overflow (reduced to 13,703 / 20,000 tokens, 68.5% green) by pruning Google default bloatware plugins. |
 | **Domain 3: Standard Templates & `.env`** | 🟢 Verified & Confirmed | Eliminated redundancy in `AGENTS.md` by pointing to `CONSTRAINTS.md`, added universal build/test commands, strictly guarded `.env*` secrets. |
-| **Domain 4: Subagents & Custom Skills** | 🟢 Verified & Confirmed | • Agent Harness (`<task_assignment>` / `<task_report>`) confirmed.<br>• Ponytail (7-Rung Lazy Dev Ladder) confirmed.<br>• Bounded Loop (max 3 iterations) confirmed.<br>• Custom Skill (`keyboard-layout-fixer`): 4 conversion cases + acronym safety guards implemented and verified. |
+| **Domain 4: Subagents & Custom Skills** | 🟢 Verified & Confirmed | • Agent Harness (`<task_assignment>` / `<task_report>`) confirmed.<br>• Ponytail (7-Rung Lazy Dev Ladder) confirmed.<br>• Bounded Loop (max 3 iterations) confirmed.<br>• Custom Skill (`keyboard-layout-fixer`): 4 conversion cases + acronym safety guards implemented and verified.<br>• Second Brain Symmetrical Merge & Deduplication Engine implemented and connected to GitHub. |
 | **Domain 5: Tooling & Documentation** | 🟢 Verified & Confirmed | Consolidated documentation into `README.md`, deleted obsolete `dashboard/` and `docs/` directories for maximum minimalism. |
 | **Domain 6: Git Hooks & Guardrails** | 🟢 Verified & Confirmed | Activated 2 core hardware hooks (`pre-commit` for secrets/LF/doctor, `pre-push` to block unauthorized remote pushes). |
 
@@ -156,10 +156,12 @@ Prior to handoff, all review domains have been evaluated and finalized:
    - Personal files relocated to `secondbrain/` (in `.gitignore` + local Git repository).
    - Scaffolding templates in `templates/` (`USER_PREFERENCES.example.md`, `ANTI_PATTERNS.example.md`).
    - Added CLI commands `haws.sh kit add / prune` with `.gitmodules merge=ours`.
-   - 1-Click Symmetrical Cross-Device Sync (`haws.sh user connect/disconnect/status`).
+   - 1-Click Symmetrical Cross-Device Sync (`haws.sh user connect/disconnect/status`) with automated Python deduplication engine (`symmetrical_merge_secondbrain`).
    - Windows Launcher `brain-online.bat` (automated Git Bash discovery).
    - SWE Blueprints (`Dockerfile.template`, `.dockerignore.template`, `docker-compose.yml.template`, `vite.config.ts.template`, `.devcontainer/devcontainer.json`).
    - Consolidated documentation into `README.md`.
-   - Diagnostic suite `haws.sh doctor` passes 37/37 checks (100% green).
+   - Antigravity customization token budget permanently optimized to 13,703 / 20,000 tokens (68.5% green).
+   - Diagnostic suite `haws.sh doctor` passes 38/38 checks (100% green).
+
 
 
