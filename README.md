@@ -16,7 +16,7 @@ The actual goal and required outcome always take priority over following rigid p
 
 ### 🪟 Windows 1-Click Launchers (Zero Terminal Needed)
 If you are on Windows, you don't even need to open a terminal or type any commands:
-* **`1-CLICK-SYNC.bat`** (or **`haws.bat`**) : **Double-click in Windows File Explorer** to pull latest HAWS updates, sync all 104 skills into Antigravity & Claude Code, auto-sync your Second Brain with GitHub, and run system diagnostics in 1 click!
+* **`1-CLICK-SYNC.bat`** : **Double-click in Windows File Explorer** to pull latest HAWS updates, sync all 104 skills into Antigravity & Claude Code, auto-sync your Second Brain with GitHub, and run system diagnostics in 1 click!
 * **`2nd-BRAIN-TOGGLE.bat`** : **Double-click in Windows File Explorer** to connect or toggle your Second Brain cloud sync between Local-Only and Cloud mode.
 
 ---
