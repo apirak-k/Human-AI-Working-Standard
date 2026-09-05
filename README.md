@@ -17,7 +17,7 @@ The actual goal and required outcome always take priority over following rigid p
 ### 🪟 Windows 1-Click Launchers (Zero Terminal Needed)
 If you are on Windows, you don't even need to open a terminal or type any commands:
 * **`1-CLICK-SYNC.bat`** (or **`haws.bat`**) : **Double-click in Windows File Explorer** to pull latest HAWS updates, sync all 104 skills into Antigravity & Claude Code, auto-sync your Second Brain with GitHub, and run system diagnostics in 1 click!
-* **`brain-online.bat`** : **Double-click in Windows File Explorer** to connect or toggle your Second Brain cloud sync between Local-Only and Cloud mode.
+* **`2nd-BRAIN-TOGGLE.bat`** : **Double-click in Windows File Explorer** to connect or toggle your Second Brain cloud sync between Local-Only and Cloud mode.
 
 ---
 
@@ -51,7 +51,7 @@ The automated `setup` script executes 5 steps in under 60 seconds:
 
 ### Cross-Platform Setup Details
 
-- **Windows 10 / 11**: Double-click `1-CLICK-SYNC.bat` or run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required (HAWS uses declarative mapping for Antigravity and NTFS Junctions for Claude Code). Use `brain-online.bat` for 1-click cloud sync in File Explorer.
+- **Windows 10 / 11**: Double-click `1-CLICK-SYNC.bat` or run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required (HAWS uses declarative mapping for Antigravity and NTFS Junctions for Claude Code). Use `2nd-BRAIN-TOGGLE.bat` for 1-click cloud sync in File Explorer.
 - **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks to link skills into `~/.claude/skills/`.
 
 ---
@@ -73,8 +73,8 @@ bash haws.sh brain connect <your-private-github-repo-url>
 - **Empty Remote (Machine 1)**: Automatically pushes your local second brain to the cloud.
 - **Populated Remote (Machine 2)**: Automatically pulls, merges, and syncs your brain history symmetrically.
 
-### Windows 1-Click Launcher (`brain-online.bat`)
-Double-click `brain-online.bat` in Windows File Explorer:
+### Windows 1-Click Cloud Toggle (`2nd-BRAIN-TOGGLE.bat`)
+Double-click `2nd-BRAIN-TOGGLE.bat` in Windows File Explorer:
 - If offline: prompts for your private GitHub URL and connects.
 - If online: displays a safety guard prompt before returning to Local-Only mode.
 
@@ -140,7 +140,8 @@ Double-click `brain-online.bat` in Windows File Explorer:
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
 ├── haws.sh                              # Standalone Universal CLI Engine (10-axis diagnostics)
-└── brain-online.bat                     # Windows 1-Click File Explorer Cloud Toggle
+├── 1-CLICK-SYNC.bat                     # Windows 1-Click Complete System Sync & Health Check
+└── 2nd-BRAIN-TOGGLE.bat                 # Windows 1-Click File Explorer Cloud Toggle
 ```
 
 ---

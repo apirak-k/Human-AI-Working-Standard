@@ -59,8 +59,8 @@ Prior to handoff, all review domains have been evaluated and finalized:
 * **Transaction Sorting**: Orders lessons by chronological date (`YYYY-MM-DD`).
 * **Lean Checkpoints**: Employs instant local Git checkpoints instead of creating temporary backup folders.
 
-### G. Windows 1-Click Launcher (`brain-online.bat`)
-* Double-clicking `brain-online.bat` in Windows File Explorer toggles cloud sync status:
+### G. Windows 1-Click Cloud Toggle (`2nd-BRAIN-TOGGLE.bat`)
+* Double-clicking `2nd-BRAIN-TOGGLE.bat` in Windows File Explorer toggles cloud sync status:
   - Offline: Prompts for private GitHub URL to connect.
   - Online: Displays safety prompt before returning to Local-Only mode.
 * Daily routine synchronization runs via `bash haws.sh sync`.
@@ -157,11 +157,8 @@ Prior to handoff, all review domains have been evaluated and finalized:
    - Scaffolding templates in `templates/` (`USER_PREFERENCES.example.md`, `ANTI_PATTERNS.example.md`).
    - Added CLI commands `haws.sh kit add / prune` with `.gitmodules merge=ours`.
    - 1-Click Symmetrical Cross-Device Sync (`haws.sh user connect/disconnect/status`) with automated Python deduplication engine (`symmetrical_merge_secondbrain`).
-   - Windows Launcher `brain-online.bat` (automated Git Bash discovery).
+   - Windows Launcher `2nd-BRAIN-TOGGLE.bat` (automated Git Bash discovery).
    - SWE Blueprints (`Dockerfile.template`, `.dockerignore.template`, `docker-compose.yml.template`, `vite.config.ts.template`, `.devcontainer/devcontainer.json`).
    - Consolidated documentation into `README.md`.
    - Antigravity customization token budget permanently optimized to 13,703 / 20,000 tokens (68.5% green).
    - Diagnostic suite `haws.sh doctor` passes 38/38 checks (100% green).
-
-
-
