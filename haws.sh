@@ -8,6 +8,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMAND="${1:-sync}"
 
+# Native Codex agent installation is also available without a global sync.
+run_codex_agents() {
+    if ! command -v node >/dev/null 2>&1; then
+        echo "[ERROR] Node.js is required for native Codex agent profiles." >&2
+        return 1
+    fi
+    node "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$@"
+}
+
 run_status() {
     local gemini_dir="${HOME}/.gemini/config/skills"
     local claude_dir="${HOME}/.claude/skills"
@@ -740,6 +749,7 @@ run_sync() {
         pointer_content+="- Core Standard: ${SOURCE_DIR}/core/HAWS.md\n"
         pointer_content+="- Work Instructions: ${SOURCE_DIR}/core/WORK_INSTRUCTIONS.md\n"
         pointer_content+="- User Preferences & Second Brain: ${SOURCE_DIR}/secondbrain/USER_PREFERENCES.md and ${SOURCE_DIR}/secondbrain/ANTI_PATTERNS.md\n"
+        pointer_content+="- Subagent roles: ${SOURCE_DIR}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.\n"
         pointer_content+="${marker_end}\n"
 
         if [ -f "${target_file}" ]; then
@@ -789,7 +799,9 @@ run_sync() {
         fi
     fi
     if [ "$DETECTED_CODEX" = true ]; then
-        if [ -f "${HOME}/.codex/AGENTS.md" ]; then
+        if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
+            safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+        elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
             safe_append_pointer "${HOME}/.codex/AGENTS.md"
         elif [ -d "${HOME}/.codex" ]; then
             safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
@@ -962,6 +974,10 @@ run_sync() {
 
     # 6. Link Subagents
     echo "--- Step 6: Linking Subagents ---"
+    if [ "$DETECTED_CODEX" = true ]; then
+        run_codex_agents install --source "${SOURCE_DIR}"
+        AGENTS_LINKED=$((AGENTS_LINKED + 5))
+    fi
     if [ -d "${SOURCE_DIR}/agents" ]; then
         for agent_file in "${SOURCE_DIR}/agents"/*.md; do
             if [ -f "${agent_file}" ]; then
@@ -2263,6 +2279,15 @@ run_uninstall() {
         echo ""
     fi
 
+    # Preflight native profiles before detaching other environments. Conflicting
+    # user files are preserved, including edited HAWS-generated profiles.
+    if [ -f "${CODEX_HOME:-${HOME}/.codex}/haws-agents.json" ]; then
+        run_codex_agents uninstall --dry-run
+        if [ "$dry_run" = false ]; then
+            run_codex_agents uninstall
+        fi
+    fi
+
     local removed_pointers=0
     local removed_skills=0
     local removed_agents=0
@@ -2513,6 +2538,10 @@ run_setup() {
 }
 
 case "${COMMAND}" in
+    codex-agents)
+        shift || true
+        run_codex_agents "$@"
+        ;;
     status|health|check)
         run_status
         ;;
@@ -2557,7 +2586,8 @@ case "${COMMAND}" in
         fi
         ;;
     *)
-        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user|uninstall|notify] [--clean]"
+        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents] [--clean]"
+        echo "  codex-agents [install|check|uninstall] [--dry-run] Native Codex roles only (no network sync)"
         echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
         echo "  kit [add|prune|update] Manage KIT submodules and external tools with merge protection"
@@ -2570,4 +2600,3 @@ case "${COMMAND}" in
         exit 1
         ;;
 esac
-
