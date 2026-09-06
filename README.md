@@ -14,7 +14,7 @@ The actual goal and required outcome always take priority over following rigid p
 
 ## Quick Install and Setup
 
-### 🪟 Windows 1-Click Launchers (Zero Terminal Needed)
+### Windows 1-Click Launchers (Zero Terminal Needed)
 If you are on Windows, you don't even need to open a terminal or type any commands:
 * **`1-CLICK-SYNC.bat`** : **Double-click in Windows File Explorer** to pull latest HAWS updates, sync all 104 skills into Antigravity & Claude Code, auto-sync your Second Brain with GitHub, and run system diagnostics in 1 click!
 * **`2nd-BRAIN-TOGGLE.bat`** : **Double-click in Windows File Explorer** to connect or toggle your Second Brain cloud sync between Local-Only and Cloud mode.
@@ -22,7 +22,8 @@ If you are on Windows, you don't even need to open a terminal or type any comman
 ---
 
 ### Command Line Setup (All Platforms)
-Install and sync HAWS across your detected AI environments (**Google Antigravity** and **Claude Code**) with a single command:
+Install and sync HAWS across your detected AI environments (**Google Antigravity**, **Claude Code**, **Cursor**, and **Codex / Copilot**) with a single command:
+
 
 ```bash
 # 1. Clone HAWS
@@ -51,10 +52,11 @@ The automated `setup` script executes 5 steps in under 60 seconds:
 
 ### Cross-Platform Setup Details
 
-- **Windows 10 / 11**: Double-click `1-CLICK-SYNC.bat` or run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required (HAWS uses declarative mapping for Antigravity and NTFS Junctions for Claude Code). Use `2nd-BRAIN-TOGGLE.bat` for 1-click cloud sync in File Explorer.
-- **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks to link skills into `~/.claude/skills/`.
+- **Windows 10 / 11**: Double-click `1-CLICK-SYNC.bat` or run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required. Antigravity uses declarative JSON mapping (`skills.json`) to prevent NTFS junction issues; Claude Code uses safe junctions; Cursor and Codex/Copilot use dedicated configuration adapters.
+- **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
 
 ---
+
 
 ## Cross-Device Sync (Work and Home)
 

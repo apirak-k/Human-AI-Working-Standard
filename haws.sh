@@ -128,17 +128,21 @@ run_doctor() {
         check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
     done
 
-    # 2. Check Project Templates & Blueprints (14 Canonical Blueprints)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (14 Blueprints)..."
+    # 2. Check Project Templates & Blueprints (19 Canonical Blueprints)
+    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (19 Blueprints)..."
     local tpl_files=(
         "README.md" "DESIGN.md" "PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "SOT.md" "AGENTS.md"
         "USER_PREFERENCES.example.md" "ANTI_PATTERNS.example.md"
         "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template" "vite.config.ts.template"
+        ".cursorrules.template" "CLAUDE.md.template"
     )
     for f in "${tpl_files[@]}"; do
         check_item "${SCRIPT_DIR}/templates/${f}" "templates/${f}"
     done
     check_item "${SCRIPT_DIR}/templates/.devcontainer/devcontainer.json" "templates/.devcontainer/devcontainer.json"
+    check_item "${SCRIPT_DIR}/templates/.github/copilot-instructions.md.template" "templates/.github/copilot-instructions.md.template"
+    check_item "${SCRIPT_DIR}/templates/.cursor/rules/haws.mdc.template" "templates/.cursor/rules/haws.mdc.template"
+    check_item "${SCRIPT_DIR}/templates/.gemini/GEMINI.md.template" "templates/.gemini/GEMINI.md.template"
 
     # 3. Check Subagents (5 Canonical Specialists)
     [ "$json_mode" = false ] && echo "" && echo "3. Checking Subagents (5 Canonical Specialists)..."
@@ -286,12 +290,11 @@ run_doctor() {
     local crlf_count=0
     for dir in "${SCRIPT_DIR}/core" "${SCRIPT_DIR}/templates" "${SCRIPT_DIR}/agents"; do
         if [ -d "${dir}" ]; then
-            for f in "${dir}"/*.md; do
-                [ ! -f "${f}" ] && continue
+            while IFS= read -r -d '' f; do
                 if grep -q $'\r' "${f}" 2>/dev/null; then
                     crlf_count=$((crlf_count + 1))
                 fi
-            done
+            done < <(find "${dir}" -type f \( -name "*.md" -o -name "*.template" -o -name "*.json" \) -print0 2>/dev/null || true)
         fi
     done
     if [ "${crlf_count}" -eq 0 ]; then
@@ -319,6 +322,32 @@ run_doctor() {
         [ "$json_mode" = false ] && echo "   [FAIL] Git hooks missing in .githooks"
         details+=("{\"item\":\"Git Hooks Guardrails\",\"status\":\"FAIL\"}")
     fi
+
+    # 11. Check Cross-OS & Multi-AI Environment Detection
+    [ "$json_mode" = false ] && echo "" && echo "11. Checking Cross-OS & Multi-AI Support..."
+    local os_type="POSIX"
+    if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
+        os_type="Windows (NTFS / MSYS2)"
+    elif [[ "$(uname -s)" = "Darwin" ]]; then
+        os_type="macOS (Darwin)"
+    else
+        os_type="Linux ($(uname -s))"
+    fi
+    passed=$((passed + 1))
+    [ "$json_mode" = false ] && echo "   [PASS] OS Platform: ${os_type}"
+    details+=("{\"item\":\"OS Platform: ${os_type}\",\"status\":\"PASS\"}")
+
+    local detected_ais=()
+    [ -d "${HOME}/.gemini" ] && detected_ais+=("Antigravity")
+    [ -d "${HOME}/.claude" ] && detected_ais+=("Claude Code")
+    { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && detected_ais+=("Cursor")
+    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && detected_ais+=("Codex/Copilot")
+
+    local ai_summary="None detected"
+    [ "${#detected_ais[@]}" -gt 0 ] && ai_summary="${detected_ais[*]}"
+    passed=$((passed + 1))
+    [ "$json_mode" = false ] && echo "   [PASS] Active AI Environments: ${ai_summary}"
+    details+=("{\"item\":\"Active AIs: ${ai_summary}\",\"status\":\"PASS\"}")
 
 
     local overall_status="HEALTHY & READY"
@@ -392,12 +421,18 @@ run_sync() {
     echo "--- Step 3: Detecting AI Environments ---"
     local DETECTED_CLAUDE=false
     local DETECTED_GEMINI=false
+    local DETECTED_CURSOR=false
+    local DETECTED_CODEX=false
 
     [ -d "${HOME}/.claude" ] && DETECTED_CLAUDE=true
     [ -d "${HOME}/.gemini" ] && DETECTED_GEMINI=true
+    { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && DETECTED_CURSOR=true
+    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && DETECTED_CODEX=true
 
     [ "$DETECTED_CLAUDE" = true ] && echo "  [✓] Claude Code detected (${HOME}/.claude)"
     [ "$DETECTED_GEMINI" = true ] && echo "  [✓] Google Antigravity detected (${HOME}/.gemini)"
+    [ "$DETECTED_CURSOR" = true ] && echo "  [✓] Cursor IDE detected"
+    [ "$DETECTED_CODEX" = true ] && echo "  [✓] GitHub Copilot / Codex detected"
     echo ""
 
     # Helper Linking Functions
@@ -443,7 +478,7 @@ run_sync() {
             fi
         fi
 
-        if ln -s "${src}" "${dest}" 2>/dev/null; then
+        if ln -sf "${src}" "${dest}" 2>/dev/null || ln -s "${src}" "${dest}" 2>/dev/null; then
             echo "  [LINKED] ${label}: ${dest} -> ${src}"
         else
             cp -f "${src}" "${dest}"
@@ -506,7 +541,7 @@ run_sync() {
             fi
         fi
 
-        if ln -s "${src}" "${dest}" 2>/dev/null; then
+        if ln -sfn "${src}" "${dest}" 2>/dev/null || ln -s "${src}" "${dest}" 2>/dev/null; then
             echo "  [LINKED] ${label}: ${dest} -> ${src}"
         else
             cp -rf "${src}" "${dest}"
@@ -548,6 +583,21 @@ run_sync() {
     echo "--- Step 4: Setting Up Global Environment Pointers ---"
     [ "$DETECTED_CLAUDE" = true ] && safe_append_pointer "${HOME}/.claude/CLAUDE.md"
     [ "$DETECTED_GEMINI" = true ] && safe_append_pointer "${HOME}/.gemini/GEMINI.md"
+    if [ "$DETECTED_CURSOR" = true ]; then
+        if [ -d "${HOME}/.cursor" ]; then
+            mkdir -p "${HOME}/.cursor/rules"
+            safe_append_pointer "${HOME}/.cursor/rules/haws.mdc"
+        else
+            safe_append_pointer "${HOME}/.cursorrules"
+        fi
+    fi
+    if [ "$DETECTED_CODEX" = true ]; then
+        if [ -d "${HOME}/.copilot" ]; then
+            safe_append_pointer "${HOME}/.copilot/copilot-instructions.md"
+        elif [ -d "${HOME}/.config/github-copilot" ]; then
+            safe_append_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
+        fi
+    fi
     echo ""
 
     # 5. Link Skills

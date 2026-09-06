@@ -1,0 +1,22 @@
+<!-- HAWS_CURSORRULES_START -->
+# HAWS — Human-AI Working Standard (.cursorrules)
+
+This repository operates under the Human-AI Working Standard (HAWS).
+
+## Core Standards
+- **Core Standard**: core/HAWS.md
+- **Work Instructions**: core/WORK_INSTRUCTIONS.md
+- **Second Brain**: secondbrain/ (or core/USER_PREFERENCES.md and core/ANTI_PATTERNS.md)
+
+## Repository Contracts
+- **Quality Gates**: CONSTRAINTS.md
+- **Agent Boundaries**: AGENTS.md
+- **Architecture**: ARCHITECTURE.md
+- **Handoff State**: HANDOFF.md
+
+## Critical Invariants
+1. Verify before completion: Execute commands and verify exit codes before asserting completion.
+2. Preserve existing comments, docstrings, and types.
+3. Enforce strict LF line endings across all files.
+4. Zero secret leaks.
+<!-- HAWS_CURSORRULES_END -->

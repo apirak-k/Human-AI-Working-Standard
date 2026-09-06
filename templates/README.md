@@ -1,6 +1,6 @@
 # HAWS Project Blueprints and Templates
 
-This directory contains 14 reusable blueprints and configuration templates for starting and maintaining software projects under the Human-AI Working Standard (HAWS).
+This directory contains 19 reusable blueprints and configuration templates for starting and maintaining software projects under the Human-AI Working Standard (HAWS).
 
 ---
 
@@ -49,14 +49,24 @@ This directory contains 14 reusable blueprints and configuration templates for s
 | `USER_PREFERENCES.example.md` | `secondbrain/USER_PREFERENCES.md` | Initial Setup (`haws.sh setup`) | Scaffolding for developer habits, communication style, and preferred architectural patterns. |
 | `ANTI_PATTERNS.example.md` | `secondbrain/ANTI_PATTERNS.md` | Initial Setup (`haws.sh setup`) | Scaffolding for recording learned mistakes, forbidden libraries, and operational constraints. |
 
+### 5. Multi-AI Environment Adapters
+
+| Template | Target Path | When to Use | Purpose |
+| :--- | :--- | :--- | :--- |
+| `.github/copilot-instructions.md.template` | `.github/copilot-instructions.md` | Phase 1 (Setup) | Hooks GitHub Copilot and OpenAI Codex into HAWS core rules and project contracts. |
+| `.cursor/rules/haws.mdc.template` | `.cursor/rules/haws.mdc` | Phase 1 (Setup) | Modern Cursor IDE rule configuration using MDC schema (`alwaysApply: true`, `globs: *`). |
+| `.cursorrules.template` | `.cursorrules` | Phase 1 (Setup) | Universal root `.cursorrules` fallback for legacy or alternative Cursor configurations. |
+| `CLAUDE.md.template` | `CLAUDE.md` | Phase 1 (Setup) | Workspace instructions blueprint for Claude Code CLI and web sessions. |
+| `.gemini/GEMINI.md.template` | `.gemini/GEMINI.md` | Phase 1 (Setup) | Workspace instructions blueprint for Google Antigravity (AGY) sessions. |
+
 ---
 
 ## Workflow Phase Mapping
 
-- **Phase 1 (Discovery & Clarification)**: Start with `PROJECT.md` to lock in scope and boundaries.
+- **Phase 1 (Discovery & Setup)**: Start with `PROJECT.md` for scope, and copy the relevant AI adapter (`.github/copilot-instructions.md`, `.cursor/rules/haws.mdc`, `CLAUDE.md`, or `.gemini/GEMINI.md`).
 - **Phase 2 (Ideation & Architecture)**: Use `ARCHITECTURE.md` for system diagrams and `DESIGN.md` for UI tokens.
 - **Phase 3 (Specification & Contracts)**: Establish `CONSTRAINTS.md` and `AGENTS.md` before writing code.
 - **Phase 4 (Implementation & Build)**: Scaffold `Dockerfile`, `.dockerignore`, `docker-compose.yml`, or `vite.config.ts`.
-- **Phase 5 (Verification & Quality)**: Validate your changes against the quality bar set in `CONSTRAINTS.md`.
+- **Phase 5 (Verification & Quality)**: Validate changes against the quality bar set in `CONSTRAINTS.md`.
 - **Phase 6 (Delivery & Handoff)**: Update `HANDOFF.md` to summarize progress and record resume points.
 

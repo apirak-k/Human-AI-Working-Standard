@@ -51,11 +51,13 @@ For a new project or major feature:
 
 - do not invent project rules blindly
 - scaffold necessary blueprints from `templates/` based on project requirements (see the full catalog and usage instructions in `templates/README.md`)
+- connect your active AI assistant by scaffolding the corresponding environment adapter: `.gemini/GEMINI.md` for Google Antigravity, `CLAUDE.md` for Claude Code, `.cursor/rules/haws.mdc` or `.cursorrules` for Cursor, or `.github/copilot-instructions.md` for GitHub Copilot / OpenAI Codex
 - during discovery and ideation, define project scope in `PROJECT.md`, system boundaries in `ARCHITECTURE.md`, and visual tokens in `DESIGN.md`
 - before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` and agent permission boundaries in `AGENTS.md`
 - for complex systems, maintain runtime contracts and invariant lessons in `SOT.md`
 - for containerized applications, copy `Dockerfile.template` to `Dockerfile`, `.dockerignore.template` to `.dockerignore`, and `docker-compose.yml.template` to `docker-compose.yml`
 - create or update `HANDOFF.md` when work must pause or transfer across sessions
+
 
 
 
