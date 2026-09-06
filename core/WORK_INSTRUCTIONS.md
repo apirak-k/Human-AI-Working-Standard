@@ -50,10 +50,10 @@ To prevent context rot, maintain high reasoning precision, and keep execution fa
 For a new project or major feature:
 
 - do not invent project rules blindly
-- scaffold necessary blueprints from `templates/docs/` based on project requirements
+- scaffold necessary blueprints from `templates/` based on project requirements
 - connect your active AI assistant by scaffolding the corresponding environment adapter from `ai-configs/`: `gemini/GEMINI.md.template` for Google Antigravity, `claude/CLAUDE.md.template` for Claude Code, `cursor/haws.mdc.template` for Cursor, or `copilot/copilot-instructions.md.template` for GitHub Copilot / OpenAI Codex
-- during discovery and ideation, define project scope, roadmap, and live system state in `PROJECT.md` (from `templates/docs/PROJECT.md`), system boundaries in `ARCHITECTURE.md` (from `templates/docs/ARCHITECTURE.md`), and visual tokens in `DESIGN.md` (from `templates/docs/DESIGN.md`)
-- before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` (from `templates/docs/CONSTRAINTS.md`) and agent permission boundaries in `AGENTS.md` (from `templates/docs/AGENTS.md`)
+- during discovery and ideation, define project scope, roadmap, and live system state in `PROJECT.md` (from `templates/PROJECT.md`), system boundaries in `ARCHITECTURE.md` (from `templates/ARCHITECTURE.md`), and visual tokens in `DESIGN.md` (from `templates/DESIGN.md`)
+- before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` (from `templates/CONSTRAINTS.md`) and agent permission boundaries in `AGENTS.md` (from `templates/AGENTS.md`)
 - for containerized applications, scaffold from `containers/`: `Dockerfile.template` to `Dockerfile`, `.dockerignore.template` to `.dockerignore`, and `docker-compose.yml.template` to `docker-compose.yml`
 - create or update `HANDOFF.md` when work must pause or transfer across sessions
 

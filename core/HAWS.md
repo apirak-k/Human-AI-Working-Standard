@@ -261,10 +261,10 @@ the work correctly. The method may vary.
 
 Use these functional purposes:
 
-- **Project Scope, Roadmap & Source of Truth (`templates/docs/PROJECT.md`)** — boundaries defining what is in-scope vs explicit non-goals, combined with the delivery roadmap and verified live system ground truth
-- **Agent Governance (`templates/docs/AGENTS.md`)** — matrix of agent roles, authorized scopes, forbidden actions, and project anti-patterns
-- **Architecture Blueprint (`templates/docs/ARCHITECTURE.md`)** — system boundaries, component diagrams, and technical specifications
-- **Design Spec (`templates/docs/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
+- **Project Scope, Roadmap & Source of Truth (`templates/PROJECT.md`)** — boundaries defining what is in-scope vs explicit non-goals, combined with the delivery roadmap and verified live system ground truth
+- **Agent Governance (`templates/AGENTS.md`)** — matrix of agent roles, authorized scopes, forbidden actions, and project anti-patterns
+- **Architecture Blueprint (`templates/ARCHITECTURE.md`)** — system boundaries, component diagrams, and technical specifications
+- **Design Spec (`templates/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
 - **Engineering Workflow (`WORKFLOW.md`)** — 6-phase engineering lifecycle and deterministic skill mapping
 - **User Preferences (`secondbrain/USER_PREFERENCES.md`)** — personal habits, communication style, preferred architectures, and conventions preserved across sessions and tools
 - **Anti-Patterns & Learned Safeguards (`secondbrain/ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors

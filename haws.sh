@@ -155,7 +155,11 @@ run_doctor() {
     [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (15 Blueprints)..."
     local doc_tpls=("PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "AGENTS.md" "DESIGN.md")
     for f in "${doc_tpls[@]}"; do
-        check_item "${SCRIPT_DIR}/templates/docs/${f}" "templates/docs/${f}"
+        if [ -f "${SCRIPT_DIR}/templates/${f}" ]; then
+            check_item "${SCRIPT_DIR}/templates/${f}" "templates/${f}"
+        else
+            check_item "${SCRIPT_DIR}/templates/docs/${f}" "templates/docs/${f}"
+        fi
     done
     check_item "${SCRIPT_DIR}/ai-configs/claude/CLAUDE.md.template" "ai-configs/claude/CLAUDE.md.template"
     check_item "${SCRIPT_DIR}/ai-configs/cursor/haws.mdc.template" "ai-configs/cursor/haws.mdc.template"
