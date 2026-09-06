@@ -39,6 +39,16 @@ if not defined BASH_CMD (
 
 REM Run HAWS Setup
 "%BASH_CMD%" haws.sh setup %*
+if errorlevel 1 (
+    echo.
+    echo ================================================================
+    echo   [FAIL] HAWS Setup encountered an error!
+    echo   Please inspect the error output above.
+    echo ================================================================
+    echo.
+    if "%HAWS_NO_PAUSE%"=="" pause
+    exit /b 1
+)
 echo.
 
 echo ================================================================
@@ -46,3 +56,4 @@ echo   [PASS] 100%% Green - HAWS Setup Completed!
 echo ================================================================
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause
+exit /b 0

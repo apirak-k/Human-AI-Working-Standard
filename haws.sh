@@ -11,14 +11,17 @@ COMMAND="${1:-sync}"
 run_status() {
     local gemini_dir="${HOME}/.gemini/config/skills"
     local claude_dir="${HOME}/.claude/skills"
+    local codex_dir="${HOME}/.agents/skills"
     local manifest="${HOME}/.haws_manifest"
 
     local gemini_json="${HOME}/.gemini/config/skills.json"
     local gemini_count=0
     local claude_count=0
+    local codex_count=0
     local manifest_count=0
 
     [ -d "${claude_dir}" ] && claude_count=$(find "${claude_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
+    [ -d "${codex_dir}" ] && codex_count=$(find "${codex_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
     [ -f "${manifest}" ] && manifest_count=$(grep -c '^skill:' "${manifest}" || true)
 
     local est_tokens=0
@@ -90,6 +93,9 @@ print(len(unique_skills))
     echo "=== HAWS Fast Skill Status ==="
     echo "Antigravity Active Skills : ${gemini_count}"
     echo "Claude Code Active Skills : ${claude_count}"
+    if [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; then
+        echo "OpenAI Codex Active Skills: ${codex_count}"
+    fi
     echo "Manifest Registered Skills: ${manifest_count}"
     [ "${total_unmanaged}" -gt 0 ] && echo "Unmanaged Foreign Skills  : [ALERT: ${total_unmanaged} foreign skill(s) detected - Run './haws.sh sync --clean']"
 
@@ -146,7 +152,7 @@ run_doctor() {
     done
 
     # 2. Check Project Templates & Blueprints (15 Canonical Blueprints)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (15 Blueprints)..."
+    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (16 Blueprints)..."
     check_item "${SCRIPT_DIR}/templates/README.md" "templates/README.md"
     local doc_tpls=("PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "AGENTS.md" "DESIGN.md")
     for f in "${doc_tpls[@]}"; do
@@ -156,6 +162,7 @@ run_doctor() {
     check_item "${SCRIPT_DIR}/templates/ai-configs/cursor/haws.mdc.template" "templates/ai-configs/cursor/haws.mdc.template"
     check_item "${SCRIPT_DIR}/templates/ai-configs/gemini/GEMINI.md.template" "templates/ai-configs/gemini/GEMINI.md.template"
     check_item "${SCRIPT_DIR}/templates/ai-configs/copilot/copilot-instructions.md.template" "templates/ai-configs/copilot/copilot-instructions.md.template"
+    check_item "${SCRIPT_DIR}/templates/ai-configs/codex/AGENTS.override.md.template" "templates/ai-configs/codex/AGENTS.override.md.template"
     local container_tpls=("devcontainer.json" "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
     for f in "${container_tpls[@]}"; do
         check_item "${SCRIPT_DIR}/templates/containers/${f}" "templates/containers/${f}"
@@ -568,17 +575,20 @@ run_sync() {
     local DETECTED_CLAUDE=false
     local DETECTED_GEMINI=false
     local DETECTED_CURSOR=false
+    local DETECTED_COPILOT=false
     local DETECTED_CODEX=false
 
     [ -d "${HOME}/.claude" ] && DETECTED_CLAUDE=true
     [ -d "${HOME}/.gemini" ] && DETECTED_GEMINI=true
     { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && DETECTED_CURSOR=true
-    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && DETECTED_CODEX=true
+    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && DETECTED_COPILOT=true
+    { [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; } && DETECTED_CODEX=true
 
     [ "$DETECTED_CLAUDE" = true ] && echo "  [✓] Claude Code detected (${HOME}/.claude)"
     [ "$DETECTED_GEMINI" = true ] && echo "  [✓] Google Antigravity detected (${HOME}/.gemini)"
     [ "$DETECTED_CURSOR" = true ] && echo "  [✓] Cursor IDE detected"
-    [ "$DETECTED_CODEX" = true ] && echo "  [✓] GitHub Copilot / Codex detected"
+    [ "$DETECTED_COPILOT" = true ] && echo "  [✓] GitHub Copilot detected"
+    [ "$DETECTED_CODEX" = true ] && echo "  [✓] OpenAI Codex detected (${HOME}/.codex)"
     echo ""
 
     # Helper Linking Functions
@@ -753,11 +763,18 @@ run_sync() {
             safe_append_pointer "${HOME}/.cursorrules"
         fi
     fi
-    if [ "$DETECTED_CODEX" = true ]; then
+    if [ "$DETECTED_COPILOT" = true ]; then
         if [ -d "${HOME}/.copilot" ]; then
             safe_append_pointer "${HOME}/.copilot/copilot-instructions.md"
         elif [ -d "${HOME}/.config/github-copilot" ]; then
             safe_append_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
+        fi
+    fi
+    if [ "$DETECTED_CODEX" = true ]; then
+        if [ -f "${HOME}/.codex/AGENTS.md" ]; then
+            safe_append_pointer "${HOME}/.codex/AGENTS.md"
+        elif [ -d "${HOME}/.codex" ]; then
+            safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
         fi
     fi
     echo ""
@@ -818,6 +835,10 @@ run_sync() {
 
                 if [ "$DETECTED_CLAUDE" = true ]; then
                     safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${skill_name}" "Claude Skill [${skill_name}]"
+                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
+                fi
+                if [ "$DETECTED_CODEX" = true ]; then
+                    safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${skill_name}" "Codex Skill [${skill_name}]"
                     SKILLS_LINKED=$((SKILLS_LINKED + 1))
                 fi
             fi
@@ -1946,9 +1967,15 @@ def run_merge(brain_dir):
 
             l_h, l_b = get_bullets(l_lines)
             r_h, r_b = get_bullets(r_lines)
-            h = r_h if len(r_h) >= len(l_h) else l_h
+            seen_h = set()
             for line in h:
-                if line.strip(): out.append(line)
+                sline = line.strip()
+                if sline:
+                    if "This document records the user" in sline:
+                        continue
+                    if sline not in seen_h:
+                        seen_h.add(sline)
+                        out.append(line)
 
             all_keys = []
             for k in list(r_b.keys()) + list(l_b.keys()):
@@ -2232,6 +2259,8 @@ run_uninstall() {
         "${HOME}/.cursorrules"
         "${HOME}/.copilot/copilot-instructions.md"
         "${HOME}/.config/github-copilot/copilot-instructions.md"
+        "${HOME}/.codex/AGENTS.md"
+        "${HOME}/.codex/AGENTS.override.md"
     )
 
     strip_pointer_from_file() {
@@ -2309,6 +2338,14 @@ run_uninstall() {
                     else
                         rm -rf "${HOME}/.gemini/config/skills/${name}"
                     fi
+                fi
+                if [ -e "${HOME}/.agents/skills/${name}" ] || [ -L "${HOME}/.agents/skills/${name}" ]; then
+                    if [ "$dry_run" = true ]; then
+                        echo "  [DRY-RUN] Would remove Codex skill: ~/.agents/skills/${name}"
+                    else
+                        rm -rf "${HOME}/.agents/skills/${name}"
+                    fi
+                    removed_skills=$((removed_skills + 1))
                 fi
             elif [ "$type" = "agent" ]; then
                 if [ -f "${HOME}/.claude/agents/${name}.md" ]; then

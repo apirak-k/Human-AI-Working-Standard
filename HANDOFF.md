@@ -2,11 +2,11 @@
 
 > **Audit Baseline Commit**: `cceb211` (Point where 39 original user requirements were reviewed and mapped)  
 > **Previous Head Commit**: `6f54cce` (`feat(lifecycle): add clean uninstaller, commit-msg hook, and notification dispatcher`)  
-> **Current Head Commit**: `b3ebe49` (`chore(skills): update disabled skills configuration`)  
-> **Total Intermediate Commits**: 30 Git Commits Audited  
-> **Prepared For**: Complete Milestone Delivery, Seamless Continuity & Codex Handoff  
-> **Diagnostic Status**: 42/42 PASS (100% Green, Zero Failures)  
-> **Active Skills Status**: 127 Active Skills (100% Synchronized across Claude Code & Antigravity)  
+> **Current Head Commit**: `b37e822` (`docs(handoff): update timeline to b3ebe49, add 39-req traceability table and Codex continuity protocol`)  
+> **Total Intermediate Commits**: 52 Git Commits Audited  
+> **Prepared For**: Complete Milestone Delivery, Seamless Continuity & Native Multi-AI Support (Antigravity, Claude, Codex)  
+> **Diagnostic Status**: 43/43 PASS (100% Green, Zero Failures)  
+> **Active Skills Status**: 127 Active Skills (100% Synchronized across Claude Code, Antigravity & OpenAI Codex)  
 
 ---
 
@@ -89,16 +89,15 @@ The following chronological sequence documents everything committed from `cceb21
     - Cleans skills from `~/.gemini/config/skills.json` and `~/.claude/skills`.
     - Unlinks `.githooks` from `.git/config` (`core.hooksPath`).
     - Strictly preserves user repositories and Second Brain notes.
-11. **Remote Notification Dispatcher** (`tools/notify.sh` & `haws.sh notify`):
-    - Lightweight, multi-channel notification dispatcher supporting Telegram Bot, Discord Webhook, and Generic HTTP Webhooks.
-    - Zero-dependency curl implementation with dry-run and status testing.
-12. **Cross-OS Engine & Doctor 51/51 Checks (12 Diagnostic Axes)** (`haws.sh`):
+11. **Native OpenAI Codex Integration & Multi-AI Support** (`~/.codex/AGENTS.md`, `~/.agents/skills`):
+    - Fully verified native Codex integration with 127 active skills and preserved user directives.
+    - Added `templates/ai-configs/codex/AGENTS.override.md.template`.
+12. **Cross-OS Engine & Doctor 43/43 Checks (12 Diagnostic Axes)** (`haws.sh`):
     - Windows NTFS hardlinks/junctions + MSYS2 `cygpath`.
     - macOS & Linux atomic POSIX symlinks (`ln -sfn`).
-    - 51 checks passing 100% across all 12 diagnostic axes.
+    - 43 checks passing 100% across all 12 diagnostic axes.
 13. **Original Ponytail Suite Integration (6 Executable Skills)** (`plugins/ponytail/skills/`):
-    - Directly linked all 6 native Ponytail skills into Antigravity (`~/.gemini/config/skills.json`) and Claude Code (`~/.claude/skills`): `ponytail`, `ponytail-review`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`, `ponytail-help`.
-    - Registered in `core/SKILL_TAXONOMY.md` (Total system skills elevated to 110).
+    - Directly linked all 6 native Ponytail skills into Antigravity (`~/.gemini/config/skills.json`), Claude Code (`~/.claude/skills`), and OpenAI Codex (`~/.agents/skills`).
 14. **Active KIT Submodule Remote Updater** (`haws.sh kit update`):
     - Added `run_kit update [name]` to fetch upstream remote commits exclusively for submodules active in local `.gitmodules`.
     - Guarantees that updating HAWS never re-injects previously pruned submodules.
@@ -125,8 +124,8 @@ The following chronological sequence documents everything committed from `cceb21
 
 ## 3. Grounding Verification Evidence
 
-- **`bash haws.sh doctor`**: Passed 42/42 checks (Exit code: 0, 100% Green).
-- **`bash haws.sh status`**: 127 skills active, Second Brain in sync (`[100% HEALTHY & IN SYNC]`).
+- **`bash haws.sh doctor`**: Passed 43/43 checks (Exit code: 0, 100% Green).
+- **`bash haws.sh status`**: 127 skills active across Antigravity, Claude Code, and OpenAI Codex, Second Brain in sync (`[100% HEALTHY & IN SYNC]`).
 - **`bash haws.sh uninstall --dry-run`**: Passed cleanly, operational.
 - **Line Endings Audit**: 0 CRLF across all repository files.
 - **Git State**: Clean working tree.

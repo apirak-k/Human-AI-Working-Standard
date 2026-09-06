@@ -50,18 +50,33 @@ if defined IS_FIRST_RUN (
     echo [*] First-time setup detected. Starting HAWS Interactive Setup...
     echo.
     "%BASH_CMD%" haws.sh setup %*
+    if errorlevel 1 goto :FAIL
 ) else (
     echo [*] Running HAWS Universal Sync (Second Brain + Skills + Environments)...
     echo.
     "%BASH_CMD%" haws.sh sync %*
+    if errorlevel 1 goto :FAIL
     echo.
     echo [*] Verifying System Health (10-Axis Diagnostics)...
     echo.
     "%BASH_CMD%" haws.sh doctor
+    if errorlevel 1 goto :FAIL
 )
 
+echo.
 echo ================================================================
 echo   [PASS] 100%% Green - HAWS is fully updated, synced, and ready!
 echo ================================================================
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause
+exit /b 0
+
+:FAIL
+echo.
+echo ================================================================
+echo   [FAIL] HAWS process encountered an error!
+echo   Please review the diagnostic logs or output above.
+echo ================================================================
+echo.
+if "%HAWS_NO_PAUSE%"=="" pause
+exit /b 1
