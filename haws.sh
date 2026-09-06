@@ -436,6 +436,69 @@ extract_skill_name() {
     echo "$sname"
 }
 
+extract_skill_desc() {
+    local sfile="$1"
+    local sdesc=""
+    if [ -f "$sfile" ]; then
+        local in_fm=0
+        local capturing_multiline=0
+        while IFS= read -r line || [ -n "$line" ]; do
+            local line_trim
+            line_trim="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            if [ "$line_trim" = "---" ]; then
+                if [ "$in_fm" -eq 0 ]; then
+                    in_fm=1
+                    continue
+                else
+                    break
+                fi
+            fi
+            [ "$in_fm" -eq 0 ] && continue
+
+            if [ "$capturing_multiline" -eq 1 ]; then
+                if [[ "$line" =~ ^[[:space:]]+([^#].*) ]]; then
+                    sdesc="${BASH_REMATCH[1]}"
+                    break
+                else
+                    capturing_multiline=0
+                fi
+            fi
+
+            if [[ "$line" =~ ^[[:space:]]*description:[[:space:]]*(.*) ]]; then
+                local val="${BASH_REMATCH[1]}"
+                val="$(echo "$val" | sed -E 's/^["'"'"']|["'"'"']$//g' | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                if [ "$val" = ">" ] || [ "$val" = "|" ] || [ -z "$val" ]; then
+                    capturing_multiline=1
+                else
+                    sdesc="$val"
+                    break
+                fi
+            fi
+        done < "$sfile"
+
+        # Fallback to first non-header markdown line
+        if [ -z "$sdesc" ]; then
+            local fm_count=0
+            while IFS= read -r line || [ -n "$line" ]; do
+                local lt
+                lt="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                if [ "$lt" = "---" ]; then
+                    fm_count=$((fm_count + 1))
+                    continue
+                fi
+                [ "$fm_count" -eq 1 ] && continue
+                [[ "$lt" =~ ^# ]] && continue
+                if [ -n "$lt" ]; then
+                    sdesc="$lt"
+                    break
+                fi
+            done < "$sfile"
+        fi
+    fi
+    [ ${#sdesc} -gt 60 ] && sdesc="${sdesc:0:57}..."
+    echo "$sdesc"
+}
+
 load_disabled_skills() {
     DISABLED_SKILLS=()
     local dfile="${SCRIPT_DIR}/config/skills.disabled"
@@ -1364,9 +1427,8 @@ get_repo_skills() {
         seen["$sn"]=1
 
         local sdesc=""
-        sdesc=$(grep -E '^[[:space:]]*description:[[:space:]]*' "$sf" | head -n 1 | sed -E 's/^[[:space:]]*description:[[:space:]]*["'"'"']?([^"'"'"'#\r\n]+)["'"'"']?.*$/\1/' | tr -d '\r\n' | xargs 2>/dev/null || true)
+        sdesc="$(extract_skill_desc "$sf")"
         [ -z "$sdesc" ] && sdesc="${sn}"
-        [ ${#sdesc} -gt 50 ] && sdesc="${sdesc:0:47}..."
 
         echo "${sn}|${sdesc}|${sf}"
     done < <(find "$rdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
