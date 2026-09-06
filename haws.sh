@@ -668,6 +668,7 @@ run_sync() {
 
     [ -d "${SOURCE_DIR}/skills/custom" ] && find_and_link_skills "${SOURCE_DIR}/skills/custom"
     find_and_link_skills "${SOURCE_DIR}/skills"
+    [ -d "${SOURCE_DIR}/plugins/ponytail/skills" ] && find_and_link_skills "${SOURCE_DIR}/plugins/ponytail/skills"
 
     if [ "$DETECTED_GEMINI" = true ]; then
         local target_json="${HOME}/.gemini/config/skills.json"
@@ -696,7 +697,8 @@ run_sync() {
     { "path": "${win_source}/skills/packs/mattpocock-skills/skills/misc" },
     { "path": "${win_source}/skills/packs/mattpocock-skills/skills/productivity" },
     { "path": "${win_source}/skills/packs/superpowers/skills" },
-    { "path": "${win_source}/skills/custom" }
+    { "path": "${win_source}/skills/custom" },
+    { "path": "${win_source}/plugins/ponytail/skills" }
   ]
 }
 EOF
@@ -912,6 +914,51 @@ run_kit() {
             echo "  [✓] ${name} pruned completely (Zero ghost files)."
             run_sync --clean
             ;;
+        update)
+            local target="${1:-}"
+            echo "=== HAWS KIT Submodule Remote Updater ==="
+            echo "Preserving local configuration: only updating submodules present in local .gitmodules."
+            echo "Local 'skills/custom/' remains 100% protected and untouched."
+            echo ""
+
+            if [ ! -f "${SCRIPT_DIR}/.gitmodules" ]; then
+                echo "  [INFO] No .gitmodules file found. Nothing to update."
+                return 0
+            fi
+
+            if [ -n "${target}" ]; then
+                local found_path=""
+                for candidate in "skills/packs/${target}" "skills/standalone/${target}" "plugins/${target}"; do
+                    if grep -q "${candidate}" "${SCRIPT_DIR}/.gitmodules" 2>/dev/null; then
+                        found_path="${candidate}"
+                        break
+                    fi
+                done
+                if [ -z "${found_path}" ]; then
+                    echo "  [ERROR] Submodule '${target}' not found in local .gitmodules."
+                    return 1
+                fi
+                echo "  [*] Updating submodule [${target}] (${found_path}) from remote link..."
+                git -C "${SCRIPT_DIR}" submodule update --remote --merge "${found_path}" 2>/dev/null || \
+                git -C "${SCRIPT_DIR}" submodule update --remote "${found_path}" 2>/dev/null || true
+                echo "  [✓] Submodule ${target} updated successfully."
+            else
+                echo "  [*] Scanning active submodules in local .gitmodules..."
+                local updated_count=0
+                while IFS= read -r sub_path; do
+                    [ -z "${sub_path}" ] && continue
+                    if [ -d "${SCRIPT_DIR}/${sub_path}" ]; then
+                        echo "  --> Updating [${sub_path}] from remote link..."
+                        git -C "${SCRIPT_DIR}" submodule update --remote --merge "${sub_path}" 2>/dev/null || \
+                        git -C "${SCRIPT_DIR}" submodule update --remote "${sub_path}" 2>/dev/null || true
+                        updated_count=$((updated_count + 1))
+                    fi
+                done < <(git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print $2}')
+                echo "  [✓] Updated ${updated_count} active submodule(s) from remote links."
+            fi
+            echo ""
+            run_sync
+            ;;
         list|status)
             echo "=== HAWS KIT Installed Submodules & Tools ==="
             if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
@@ -921,7 +968,7 @@ run_kit() {
             fi
             ;;
         *)
-            echo "Usage: ./haws.sh kit [add|prune|list]"
+            echo "Usage: ./haws.sh kit [add|prune|update|list]"
             return 1
             ;;
     esac
@@ -1553,7 +1600,7 @@ case "${COMMAND}" in
         echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user|uninstall|notify] [--clean]"
         echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
-        echo "  kit [add|prune] Manage KIT submodules and external tools with merge protection"
+        echo "  kit [add|prune|update] Manage KIT submodules and external tools with merge protection"
         echo "  user [connect]  Manage personal Second Brain (symmetrical 1-click cloud sync)"
         echo "  hook [install]  Install or inspect HAWS Git pre-commit and pre-push hooks"
         echo "  status          Instant sub-second skill count and token budget check"

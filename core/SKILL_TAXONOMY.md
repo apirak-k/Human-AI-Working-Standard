@@ -49,7 +49,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `wizard` — Interactive multi-step setup and wizard workflows.
   - `triage` — Rapid assessment and priority triage of bugs and tasks.
 
-### Drawer 2: Code & Engineering (24 Skills)
+### Drawer 2: Code & Engineering (25 Skills)
 * **Purpose**: Core implementation, API design, database querying, refactoring, and cloud pipelines.
 * **Primary Subagent**: @backend-engineer
 * **Catalog**:
@@ -62,6 +62,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `source-driven-development` — Documentation-grounded implementation with official sources.
   - `incremental-implementation` — Delivering complex features in small, verifiable steps.
   - `constraint-driven-development` — Building software within explicit system constraints.
+  - `ponytail` — Minimalist Senior Dev coding ladder enforcing YAGNI, native platforms, and 1-line solutions.
   - `mcp-builder` — FastMCP and TypeScript Model Context Protocol server development.
   - `claude-api` — Direct SDK integration with Anthropic Claude API.
   - `migrate-to-shoehorn` — Type-safe test fixture migrations without `as` casting.
@@ -96,7 +97,7 @@ This document defines the functional categorization, discovery rules, and subage
   - `slack-gif-creator` — Animated GIF generation and optimization for Slack.
   - `algorithmic-art` — Procedural and algorithmic visual art generation.
 
-### Drawer 4: Audit & Verification (14 Skills)
+### Drawer 4: Audit & Verification (17 Skills)
 * **Purpose**: Code verification, root cause debugging, security hardening, performance audits, and QA.
 * **Primary Subagent**: @tester, @organizer
 * **Catalog**:
@@ -109,19 +110,24 @@ This document defines the functional categorization, discovery rules, and subage
   - `doubt-driven-development` — Adversarial decision verification before standing.
   - `code-review` — Two-axis review against local standards and originating specs.
   - `code-review-and-quality` — Multi-axis code review across correctness, security, and style.
+  - `ponytail-review` — Code review exclusively hunting over-engineering and bloat in Git diffs.
+  - `ponytail-audit` — Whole-repository audit for over-engineering, unused abstractions, and redundant code.
+  - `ponytail-debt` — Technical debt ledger harvesting deferred shortcuts and temporary workarounds.
   - `security-and-hardening` — Security auditing, input sanitization, and vulnerability checks.
   - `performance-optimization` — Profiling, latency optimization, and memory tuning.
   - `observability-and-instrumentation` — Metrics, structured logging, and tracing.
   - `retro` — Engineering retrospectives and continuous process improvement.
   - `loop-me` — Autonomous iterative testing and verification loops.
 
-### Drawer 5: Docs, Communication & Input Tools (27 Skills)
+### Drawer 5: Docs, Communication & Input Tools (29 Skills)
 * **Purpose**: Document processing, token compression, humanizer, input correction, and skill authoring.
 * **Primary Subagent**: Leader, @organizer
 * **Catalog**:
   - `keyboard-layout-fixer` — In-house bidirectional Thai Kedmanee / English US QWERTY layout correction and CapsLock inversion repair.
   - `caveman` — Ultra-compressed token-efficient communication mode.
   - `humanizer` — Natural prose rewriting removing AI-sounding filler.
+  - `ponytail-gain` — Scoreboard of lines of code, cost, and latency saved via minimalist SWE.
+  - `ponytail-help` — Quick-reference guide and cheat-sheet for all Ponytail commands.
   - `doc-coauthoring` — Structured technical writing and collaborative documentation.
   - `documentation-and-adrs` — Architecture Decision Records and public API documentation.
   - `internal-comms` — Team announcements, status updates, and release notes.

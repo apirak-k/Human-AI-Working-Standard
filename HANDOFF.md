@@ -89,12 +89,23 @@ The following chronological sequence documents everything committed from `cceb21
     - Windows NTFS hardlinks/junctions + MSYS2 `cygpath`.
     - macOS & Linux atomic POSIX symlinks (`ln -sfn`).
     - 51 checks passing 100% across all 12 diagnostic axes.
+13. **Original Ponytail Suite Integration (6 Executable Skills)** (`plugins/ponytail/skills/`):
+    - Directly linked all 6 native Ponytail skills into Antigravity (`~/.gemini/config/skills.json`) and Claude Code (`~/.claude/skills`): `ponytail`, `ponytail-review`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`, `ponytail-help`.
+    - Registered in `core/SKILL_TAXONOMY.md` (Total system skills elevated to 110).
+14. **Active KIT Submodule Remote Updater** (`haws.sh kit update`):
+    - Added `run_kit update [name]` to fetch upstream remote commits exclusively for submodules active in local `.gitmodules`.
+    - Guarantees that updating HAWS never re-injects previously pruned submodules.
+    - `skills/custom/` remains 100% protected and isolated.
+15. **Graph Engineering Invariant**:
+    - Grounded architectural modeling in executable tools (`skills/standalone/graphify/`) capable of AST parsing, JSON dependency extraction, and interactive visualizers, rather than static text drawings.
+16. **Templates Architecture Invariant**:
+    - Flat directory structure in `templates/` maintained for rapid discoverability, operating as an opt-in buffet based on project technology stack rather than mandatory wholesale scaffolding.
 
 ---
 
 ### Category B: [DOING] In-Progress / Active Working Tree
 
-*None* — All 6 roadmap items are fully implemented, verified, and committed into Git. Ready for deployment and review.
+*None* — All tasks fully implemented, empirically verified, and synced.
 
 ---
 
@@ -108,8 +119,8 @@ The following chronological sequence documents everything committed from `cceb21
 ## 3. Grounding Verification Evidence
 
 - **`bash haws.sh doctor`**: Passed 51/51 checks (Exit code: 0).
-- **`bash haws.sh status`**: 104 skills active, Second Brain in sync.
-- **`bash haws.sh uninstall --dry-run`**: Passed cleanly, identified 3 pointers, 104 skills, 10 subagents, 1 command.
+- **`bash haws.sh status`**: 110 skills active, Second Brain in sync.
+- **`bash haws.sh uninstall --dry-run`**: Passed cleanly, identified 3 pointers, 110 skills, 10 subagents, 1 command.
 - **`tools/notify.sh --status`**: Passed cleanly, exit code 0.
 - **Line Endings Audit**: 0 CRLF across all repository files.
 - **Git State**: Ready for atomic commit.
