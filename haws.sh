@@ -387,6 +387,7 @@ run_doctor() {
     # 12. Check Launchers & Automation Tools
     [ "$json_mode" = false ] && echo "" && echo "12. Checking Launchers & Automation Tools..."
     check_item "${SCRIPT_DIR}/1-CLICK-SYNC.bat" "1-CLICK-SYNC.bat"
+    check_item "${SCRIPT_DIR}/SETUP.bat" "SETUP.bat"
     check_item "${SCRIPT_DIR}/2nd-BRAIN-TOGGLE.bat" "2nd-BRAIN-TOGGLE.bat"
     check_item "${SCRIPT_DIR}/UNINSTALL.bat" "UNINSTALL.bat"
 
@@ -2429,84 +2430,72 @@ run_uninstall() {
 }
 
 run_setup() {
-    echo "=== HAWS Automated Setup & Bootstrapper ==="
+    echo "================================================================"
+    echo "           HAWS Automated Setup & First-Time Installation"
+    echo "================================================================"
     echo ""
-    echo "[1/5] Initializing Personal Second Brain & Submodules Protection..."
-    run_user status
+
+    # Question 1: Skills First
+    echo "[Question 1/2] Skills Configuration:"
+    echo "  Do you want to install standard KIT skills or configure them manually?"
+    echo "  1) Standard HAWS Kit  (Recommended — 127 curated skills & packs) [Default]"
+    echo "  2) Customize Skills   (Select specific packs or toggle skills)"
     echo ""
-    if [ -d "${SCRIPT_DIR}/.git" ]; then
-        echo "[2/5] Configuring Skill Kit & Git Submodules..."
-        local is_modified=false
+    local skill_choice="1"
+    if [ -t 0 ]; then
+        read -r -p "Select [1-2] (Default: 1): " skill_choice || skill_choice="1"
+        skill_choice="$(echo "${skill_choice}" | tr -d ' \r\n')"
+        [ -z "${skill_choice}" ] && skill_choice="1"
+    fi
 
-        if [ -t 0 ]; then
-            while true; do
-                local default_choice="1"
-                [ "$is_modified" = true ] && default_choice="0"
-
-                echo ""
-                echo "============================================================="
-                echo "             HAWS Automated Setup & Skill Kit"
-                echo "============================================================="
-                echo "Choose setup mode:"
-                echo "  1) Standard HAWS Kit      (Default — install standard curated skills & sync)"
-                echo "  2) Add Git Repository     (Add Git repo URLs until 'done')"
-                echo "  3) Remove Git Repository  (Select repos to remove with confirmation)"
-                echo "  4) Configure Active Skills (Single skills directly, Packs choose repo first)"
-                echo "  5) Edit .gitmodules       (Edit Git Repository Links directly in editor)"
-                if [ "$is_modified" = true ]; then
-                    echo "  0) Save & Finish          (Sync your changes to AI & complete setup)"
-                else
-                    echo "  0) Save & Finish          (Sync configuration to AI & complete setup)"
-                fi
-                echo ""
-                local kit_choice=""
-                read -r -p "Select [0-5] (Default: ${default_choice}): " kit_choice || kit_choice="${default_choice}"
-                kit_choice="$(echo "${kit_choice}" | tr -d ' \r\n')"
-                [ -z "${kit_choice}" ] && kit_choice="${default_choice}"
-
-                case "${kit_choice}" in
-                    1)
-                        echo ""
-                        echo "  [*] Initializing Standard HAWS Kit submodules, please wait..."
-                        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-                        echo "  [✓] Standard HAWS Kit submodules verified & ready."
-                        break
-                        ;;
-                    2)
-                        run_add_git_repo && is_modified=true
-                        ;;
-                    3)
-                        run_remove_git_repo && is_modified=true
-                        ;;
-                    4)
-                        run_configure_skills && is_modified=true
-                        ;;
-                    5)
-                        run_edit_gitmodules && is_modified=true
-                        ;;
-                    0)
-                        break
-                        ;;
-                    *)
-                        echo "  [ERROR] Invalid option '${kit_choice}'. Please enter 0-5."
-                        sleep 1
-                        ;;
-                esac
-            done
-        else
-            echo "  [*] Initializing Standard HAWS Kit submodules (Non-interactive)..."
-            git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-            echo "  [✓] Standard HAWS Kit submodules verified."
-        fi
+    if [ "${skill_choice}" = "2" ]; then
+        echo ""
+        echo "  [*] Launching Interactive Skill Configurator..."
+        run_configure_skills
+    else
+        echo ""
+        echo "  [*] Initializing Standard HAWS Kit submodules, please wait..."
+        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
+        echo "  [✓] Standard HAWS Kit submodules verified & ready."
     fi
     echo ""
-    echo "[3/5] Linking Skills, Commands, and Agent Profiles..."
+
+    # Question 2: Second Brain Second
+    echo "[Question 2/2] Second Brain (Personal Knowledge & Preferences):"
+    echo "  Do you want to connect Second Brain to a Private GitHub repository?"
+    echo "  y) Yes — Connect Private GitHub Cloud (e.g. git@github.com:username/my-brain.git)"
+    echo "  n) No  — Use Local-Only mode on this machine [Default]"
+    echo ""
+    local brain_choice="n"
+    if [ -t 0 ]; then
+        read -r -p "Connect to Private GitHub? (y/N): " brain_choice || brain_choice="n"
+        brain_choice="$(echo "${brain_choice}" | tr -d ' \r\n')"
+    fi
+
+    if [ "${brain_choice}" = "y" ] || [ "${brain_choice}" = "Y" ]; then
+        echo ""
+        local repo_url=""
+        read -r -p "Enter Private GitHub Repo URL: " repo_url || repo_url=""
+        repo_url="$(echo "${repo_url}" | tr -d ' \r\n')"
+        if [ -n "${repo_url}" ]; then
+            run_user connect "${repo_url}"
+        else
+            echo "  [INFO] No URL entered. Second Brain remains in Local-Only mode."
+            run_user status
+        fi
+    else
+        echo "  [*] Setting up Second Brain in Local-Only mode..."
+        run_user status
+    fi
+    echo ""
+
+    echo "[Step 3/5] Linking Skills, Commands, and Agent Profiles..."
     run_sync "$@"
     echo ""
-    echo "[4/5] Configuring HAWS Git Safety Hooks..."
+    echo "[Step 4/5] Configuring HAWS Git Safety Hooks..."
     run_hooks install
     echo ""
-    echo "[5/5] Running Diagnostic Verification..."
+    echo "[Step 5/5] Running Diagnostic Verification..."
     run_doctor
 }
 
@@ -2521,6 +2510,10 @@ case "${COMMAND}" in
     setup|bootstrap)
         shift || true
         run_setup "$@"
+        ;;
+    skills|skill)
+        shift || true
+        run_configure_skills "$@"
         ;;
     kit)
         shift || true

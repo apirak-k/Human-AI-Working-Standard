@@ -1,9 +1,9 @@
 @echo off
 setlocal EnableDelayedExpansion
-title HAWS Interactive Setup & Skill Kit Configuration
+title HAWS Skill Manager & Configuration
 
 echo ================================================================
-echo         HAWS Interactive Setup & Skill Kit Configuration
+echo             HAWS Skill Manager & Configuration
 echo ================================================================
 echo.
 
@@ -37,12 +37,12 @@ if not defined BASH_CMD (
     exit /b 1
 )
 
-REM Run HAWS Setup
-"%BASH_CMD%" haws.sh setup %*
+REM Run HAWS Skill Manager
+"%BASH_CMD%" haws.sh skills %*
 if errorlevel 1 (
     echo.
     echo ================================================================
-    echo   [FAIL] HAWS Setup encountered an error!
+    echo   [FAIL] Skill Manager encountered an error!
     echo   Please inspect the error output above.
     echo ================================================================
     echo.
@@ -52,7 +52,7 @@ if errorlevel 1 (
 echo.
 
 echo ================================================================
-echo   [PASS] 100%% Green - HAWS Setup Completed!
+echo   [PASS] 100%% Green - Skill Configuration Completed!
 echo ================================================================
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause
