@@ -1348,24 +1348,41 @@ run_remove_git_repo() {
     return 0
 }
 
-configure_repo_skills() {
+get_repo_skills() {
     local rdir="$1"
-    local rname="${2:-$(basename "$rdir")}"
-
-    local chk_items=()
+    declare -A seen=()
     while IFS= read -r sf; do
         [ -z "$sf" ] && continue
+        [[ "$sf" =~ \.openclaw/ ]] && continue
+        [[ "$sf" =~ planning-with-files ]] && [[ ! "$sf" =~ \.agents/skills ]] && [[ ! "$sf" =~ skills/i18n ]] && continue
+        [[ "$sf" =~ ui-ux-pro-max ]] && [[ ! "$sf" =~ \.claude/skills ]] && continue
+
         local sn
         sn="$(extract_skill_name "$sf")"
+        [ -z "$sn" ] && continue
+        [ -n "${seen[$sn]:-}" ] && continue
+        seen["$sn"]=1
+
         local sdesc=""
         sdesc=$(grep -E '^[[:space:]]*description:[[:space:]]*' "$sf" | head -n 1 | sed -E 's/^[[:space:]]*description:[[:space:]]*["'"'"']?([^"'"'"'#\r\n]+)["'"'"']?.*$/\1/' | tr -d '\r\n' | xargs 2>/dev/null || true)
         [ -z "$sdesc" ] && sdesc="${sn}"
         [ ${#sdesc} -gt 50 ] && sdesc="${sdesc:0:47}..."
 
+        echo "${sn}|${sdesc}|${sf}"
+    done < <(find "$rdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
+}
+
+configure_repo_skills() {
+    local rdir="$1"
+    local rname="${2:-$(basename "$rdir")}"
+
+    local chk_items=()
+    while IFS='|' read -r sn sdesc sf; do
+        [ -z "$sn" ] && continue
         local is_on=1
         [ -n "${DISABLED_SKILLS[$sn]:-}" ] && is_on=0
         chk_items+=("${sn}|${sdesc}|${is_on}")
-    done < <(find "$rdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
+    done < <(get_repo_skills "$rdir")
 
     if [ ${#chk_items[@]} -eq 0 ]; then
         echo "  [INFO] No skills found in ${rname}."
@@ -1383,6 +1400,8 @@ configure_repo_skills() {
         done
         save_disabled_skills
         echo "  [✓] Updated active skills for ${rname}."
+    else
+        echo "  [INFO] Configuration cancelled. No changes saved."
     fi
 }
 
@@ -1393,60 +1412,38 @@ run_configure_skills() {
         local single_active=0
         local single_repos=()
 
-        # Standalone 1-skill
-        if [ -d "${SCRIPT_DIR}/skills/standalone" ]; then
-            for sdir in "${SCRIPT_DIR}/skills/standalone"/*; do
-                [ ! -d "$sdir" ] && continue
-                local sk_count
-                sk_count=$(find "$sdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | wc -l || echo "0")
-                if [ "$sk_count" -eq 1 ]; then
-                    single_repos+=("$sdir")
-                    single_total=$((single_total + 1))
-                    local sf
-                    sf=$(find "$sdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | head -n 1)
-                    local sn
-                    sn="$(extract_skill_name "$sf")"
-                    [ -z "${DISABLED_SKILLS[$sn]:-}" ] && single_active=$((single_active + 1))
-                fi
-            done
-        fi
-        # Custom skills
-        if [ -d "${SCRIPT_DIR}/skills/custom" ]; then
-            for cdir in "${SCRIPT_DIR}/skills/custom"/*; do
-                [ ! -d "$cdir" ] && continue
-                single_repos+=("$cdir")
-                single_total=$((single_total + 1))
-                local sf
-                sf=$(find "$cdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | head -n 1)
-                local sn
-                sn="$(extract_skill_name "$sf")"
-                [ -z "${DISABLED_SKILLS[$sn]:-}" ] && single_active=$((single_active + 1))
-            done
-        fi
-
         # Multi-skill packs
         local pack_repos=()
         local pack_names=()
         local pack_totals=()
         local pack_actives=()
 
-        for ppath in "${SCRIPT_DIR}/skills/packs"/* "${SCRIPT_DIR}/skills/standalone"/*; do
-            [ ! -d "$ppath" ] && continue
-            local pname="$(basename "$ppath")"
-            local sk_count
-            sk_count=$(find "$ppath" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | wc -l || echo "0")
-            if [ "$sk_count" -gt 1 ]; then
-                pack_repos+=("$ppath")
-                pack_names+=("$pname")
-                pack_totals+=("$sk_count")
-                local act_count=0
-                while IFS= read -r sf; do
-                    [ -z "$sf" ] && continue
-                    local sn
-                    sn="$(extract_skill_name "$sf")"
-                    [ -z "${DISABLED_SKILLS[$sn]:-}" ] && act_count=$((act_count + 1))
-                done < <(find "$ppath" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
-                pack_actives+=("$act_count")
+        for rpath in "${SCRIPT_DIR}/skills/packs"/* "${SCRIPT_DIR}/skills/standalone"/* "${SCRIPT_DIR}/skills/custom"/*; do
+            [ ! -d "$rpath" ] && continue
+            local rname="$(basename "$rpath")"
+            local repo_skills=()
+            while IFS= read -r line; do
+                [ -n "$line" ] && repo_skills+=("$line")
+            done < <(get_repo_skills "$rpath")
+
+            local total_in_repo=${#repo_skills[@]}
+            [ "$total_in_repo" -eq 0 ] && continue
+
+            local active_in_repo=0
+            for item in "${repo_skills[@]}"; do
+                local sn="${item%%|*}"
+                [ -z "${DISABLED_SKILLS[$sn]:-}" ] && active_in_repo=$((active_in_repo + 1))
+            done
+
+            if [ "$total_in_repo" -eq 1 ]; then
+                single_repos+=("${repo_skills[0]}")
+                single_total=$((single_total + 1))
+                single_active=$((single_active + active_in_repo))
+            else
+                pack_repos+=("$rpath")
+                pack_names+=("$rname")
+                pack_totals+=("$total_in_repo")
+                pack_actives+=("$active_in_repo")
             fi
         done
 
@@ -1471,15 +1468,13 @@ run_configure_skills() {
 
         if [ "${sub_choice}" = "1" ]; then
             local chk_items=()
-            for sdir in "${single_repos[@]}"; do
-                local sf
-                sf=$(find "$sdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | head -n 1)
-                local sn
-                sn="$(extract_skill_name "$sf")"
+            for sitem in "${single_repos[@]}"; do
+                local sn="${sitem%%|*}"
+                local srest="${sitem#*|}"
+                local sdesc="${srest%%|*}"
                 local is_on=1
                 [ -n "${DISABLED_SKILLS[$sn]:-}" ] && is_on=0
-                local rel_path="${sdir#${SCRIPT_DIR}/}"
-                chk_items+=("${sn}|${rel_path}|${is_on}")
+                chk_items+=("${sn}|${sdesc}|${is_on}")
             done
 
             declare -A CHECKLIST_RESULTS
@@ -1493,6 +1488,8 @@ run_configure_skills() {
                 done
                 save_disabled_skills
                 echo "  [✓] Updated single skills configuration."
+            else
+                echo "  [INFO] Configuration cancelled. No changes saved."
             fi
 
         elif [ "${sub_choice}" = "2" ]; then
