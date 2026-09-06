@@ -144,18 +144,18 @@ HAWS organizes skills into two main tiers:
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
-├── templates/                           # Documentation & governance blueprints
-│   └── docs/                            # SOT blueprints (PROJECT, ARCHITECTURE, CONSTRAINTS, etc.)
+├── templates/                           # Documentation & governance blueprints (pure Markdown)
 ├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot, Codex)
 ├── containers/                          # Container & DevContainer blueprints (Dockerfile, compose, devcontainer)
-├── skills.disabled                      # Disabled skills configuration (root level)
 ├── skills/                              # Curated Skill Repository (3 Clean Categories)
+│   ├── skills.disabled                  # Disabled skills blacklist (filter gate)
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
 ├── haws.sh                              # Standalone Universal CLI Engine (12-axis diagnostics)
 ├── 1-CLICK-SYNC.bat                     # Windows 1-Click Complete System Sync & Health Check
+├── SETUP.bat                            # Windows 1-Click Interactive Skill Manager & Setup
 ├── 2nd-BRAIN-TOGGLE.bat                 # Windows 1-Click File Explorer Cloud Toggle
 └── UNINSTALL.bat                        # Windows 1-Click Reversible Clean Uninstaller
 ```

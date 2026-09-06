@@ -524,7 +524,8 @@ extract_skill_desc() {
 
 load_disabled_skills() {
     DISABLED_SKILLS=()
-    local dfile="${SCRIPT_DIR}/skills.disabled"
+    local dfile="${SCRIPT_DIR}/skills/skills.disabled"
+    [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/skills.disabled" ] && dfile="${SCRIPT_DIR}/skills.disabled"
     [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/config/skills.disabled" ] && dfile="${SCRIPT_DIR}/config/skills.disabled"
     if [ -f "${dfile}" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
@@ -535,7 +536,7 @@ load_disabled_skills() {
 }
 
 save_disabled_skills() {
-    local dfile="${SCRIPT_DIR}/skills.disabled"
+    local dfile="${SCRIPT_DIR}/skills/skills.disabled"
     mkdir -p "$(dirname "${dfile}")"
     {
         echo "# HAWS Disabled Skills"
