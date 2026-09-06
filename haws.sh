@@ -966,7 +966,7 @@ run_kit() {
             echo "=== HAWS Skill Kit Setup & Adjustment ==="
             echo "Choose your skill kit setup mode:"
             echo "  1) Standard HAWS Kit (Default: 5 curated packs - superpowers, agent-skills, anthropics, mattpocock, ponytail)"
-            echo "  2) Setup (Customize Git submodule packs - add or prune specific packs)"
+            echo "  2) Setup (Open .gitmodules to add, edit, or remove Git links yourself)"
             local mode_choice="1"
             if [ -t 0 ]; then
                 read -r -p "Enter selection [1-2] (default: 1): " mode_choice || mode_choice="1"
@@ -975,11 +975,45 @@ run_kit() {
             fi
             if [ "${mode_choice}" = "2" ]; then
                 echo ""
-                echo "--- Skill Kit Setup & Submodule Pack Management ---"
-                echo "Use './haws.sh kit add <git-url> [name]' to add packs."
-                echo "Use './haws.sh kit prune <name>' to remove packs."
-                echo "Use './haws.sh kit list' to see installed packs."
-                echo "Note: Local custom skills in 'skills/custom/' remain 100% separate and unaffected."
+                echo "--- Skill Kit Setup: Direct .gitmodules Management ---"
+                echo "Repository links are stored in: ${SCRIPT_DIR}/.gitmodules"
+                echo ""
+                echo "Current Submodule Packs in .gitmodules:"
+                git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print "  - " $2}' || true
+                echo ""
+                local open_choice="Y"
+                if [ -t 0 ]; then
+                    read -r -p "Open .gitmodules to edit links now? [Y/n]: " open_choice || open_choice="Y"
+                    open_choice="$(echo "${open_choice}" | tr -d ' \r\n')"
+                    [ -z "${open_choice}" ] && open_choice="Y"
+                fi
+                if [[ ! "${open_choice}" =~ ^[Nn] ]]; then
+                    echo "  [*] Opening .gitmodules in editor..."
+                    if command -v code >/dev/null 2>&1; then
+                        code "${SCRIPT_DIR}/.gitmodules"
+                    elif [ -n "${EDITOR:-}" ] && command -v "${EDITOR}" >/dev/null 2>&1; then
+                        "${EDITOR}" "${SCRIPT_DIR}/.gitmodules"
+                    elif command -v notepad.exe >/dev/null 2>&1; then
+                        notepad.exe "${SCRIPT_DIR}/.gitmodules" &
+                    elif command -v nano >/dev/null 2>&1; then
+                        nano "${SCRIPT_DIR}/.gitmodules"
+                    elif command -v vi >/dev/null 2>&1; then
+                        vi "${SCRIPT_DIR}/.gitmodules"
+                    fi
+                    echo ""
+                    if [ -t 0 ]; then
+                        read -r -p "Press [Enter] when done editing to sync submodules (or 's' to skip): " sync_confirm || sync_confirm=""
+                        if [[ "${sync_confirm}" =~ ^[Ss] ]]; then
+                            echo "  [INFO] Skipping submodule sync for now. Run './haws.sh sync' later."
+                            return 0
+                        fi
+                    fi
+                fi
+                echo "  [*] Synchronizing and updating configured submodules..."
+                git -C "${SCRIPT_DIR}" submodule sync 2>/dev/null || true
+                git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
+                echo "  [✓] Submodule configuration synchronized."
+                run_sync
             else
                 echo ""
                 echo "Applying Standard HAWS Kit configuration..."
@@ -1593,7 +1627,7 @@ run_setup() {
         if [ -t 0 ]; then
             echo "Select Skill Kit Configuration:"
             echo "  1) Standard HAWS Kit (Default - 5 curated packs: superpowers, agent-skills, anthropics, mattpocock, ponytail)"
-            echo "  2) Setup (Customize which packs to clone, or add/omit specific Git links)"
+            echo "  2) Setup (Open .gitmodules to add, edit, or remove Git links yourself)"
             read -r -p "Enter selection [1-2] (default: 1): " kit_choice || kit_choice="1"
             kit_choice="$(echo "${kit_choice}" | tr -d ' \r\n')"
             [ -z "${kit_choice}" ] && kit_choice="1"
@@ -1601,21 +1635,44 @@ run_setup() {
 
         if [ "${kit_choice}" = "2" ]; then
             echo ""
-            echo "--- Skill Kit Setup & Submodule Pack Management ---"
-            echo "Installed Packs in .gitmodules:"
+            echo "--- Skill Kit Setup: Direct .gitmodules Management ---"
+            echo "Repository links are stored in: ${SCRIPT_DIR}/.gitmodules"
+            echo ""
+            echo "Current Submodule Packs in .gitmodules:"
             git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print "  - " $2}' || true
             echo ""
-            echo "Commands for setting up packs:"
-            echo "  • To add a pack   : ./haws.sh kit add <git-url> [name]"
-            echo "  • To prune a pack : ./haws.sh kit prune <name>"
-            echo "  • To list status  : ./haws.sh kit list"
-            echo "Note: Local custom skills in 'skills/custom/' remain 100% separate and untouched."
-            echo ""
-            read -r -p "Proceed with current submodules? [Y/n]: " proceed_choice || proceed_choice="Y"
-            if [[ "${proceed_choice}" =~ ^[Nn] ]]; then
-                echo "Setup paused for manual pack setup. Run './haws.sh sync' when ready."
-                return 0
+            local open_choice="Y"
+            if [ -t 0 ]; then
+                read -r -p "Open .gitmodules to edit links now? [Y/n]: " open_choice || open_choice="Y"
+                open_choice="$(echo "${open_choice}" | tr -d ' \r\n')"
+                [ -z "${open_choice}" ] && open_choice="Y"
             fi
+            if [[ ! "${open_choice}" =~ ^[Nn] ]]; then
+                echo "  [*] Opening .gitmodules in editor..."
+                if command -v code >/dev/null 2>&1; then
+                    code "${SCRIPT_DIR}/.gitmodules"
+                elif [ -n "${EDITOR:-}" ] && command -v "${EDITOR}" >/dev/null 2>&1; then
+                    "${EDITOR}" "${SCRIPT_DIR}/.gitmodules"
+                elif command -v notepad.exe >/dev/null 2>&1; then
+                    notepad.exe "${SCRIPT_DIR}/.gitmodules" &
+                elif command -v nano >/dev/null 2>&1; then
+                    nano "${SCRIPT_DIR}/.gitmodules"
+                elif command -v vi >/dev/null 2>&1; then
+                    vi "${SCRIPT_DIR}/.gitmodules"
+                fi
+                echo ""
+                if [ -t 0 ]; then
+                    read -r -p "Press [Enter] when done editing to sync submodules (or 's' to skip): " sync_confirm || sync_confirm=""
+                    if [[ "${sync_confirm}" =~ ^[Ss] ]]; then
+                        echo "  [INFO] Skipping submodule sync for now. Run './haws.sh sync' later."
+                        return 0
+                    fi
+                fi
+            fi
+            echo "  [*] Synchronizing and updating configured submodules..."
+            git -C "${SCRIPT_DIR}" submodule sync 2>/dev/null || true
+            git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
+            echo "  [✓] Submodule configuration synchronized."
         else
             echo "  [*] Initializing Standard HAWS Kit submodules..."
             git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
