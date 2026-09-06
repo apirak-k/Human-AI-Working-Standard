@@ -690,6 +690,14 @@ run_sync() {
             fi
             [ -z "${skill_name}" ] && skill_name="$(basename "${skill_dir}")"
 
+            # Filter rules per user specification:
+            # 1. planning-with-files: keep only primary 'planning-with-files'
+            [[ "${skill_name}" == "pi-planning-with-files" ]] && continue
+            [[ "${skill_name}" =~ ^planning-with-files- ]] && continue
+
+            # 2. taste-skill: exclude v1, keep only v2
+            [[ "${skill_name}" == "design-taste-frontend-v1" ]] && continue
+
             if [ -n "${skill_name}" ] && [ -z "${PROCESSED_SKILLS[${skill_name}]:-}" ]; then
                 PROCESSED_SKILLS[${skill_name}]=1
                 echo "skill:${skill_name}" >> "${TMP_MANIFEST}"
@@ -742,9 +750,11 @@ run_sync() {
                     continue
                 fi
             fi
+            [[ "${sdir}" =~ taste-skill/skills ]] && target_dir="${sdir}"
             [[ "${target_dir}" =~ \.openclaw ]] && continue
-            [[ "${target_dir}" =~ planning-with-files ]] && [[ ! "${target_dir}" =~ \.agents/skills ]] && [[ ! "${target_dir}" =~ \.pi/skills ]] && [[ ! "${target_dir}" =~ skills/i18n ]] && continue
+            [[ "${target_dir}" =~ planning-with-files ]] && [[ ! "${target_dir}" =~ \.agents/skills ]] && continue
             [[ "${target_dir}" =~ ui-ux-pro-max ]] && [[ ! "${target_dir}" =~ \.claude/skills ]] && continue
+            [[ "${target_dir}" =~ taste-skill-v1 ]] && continue
             local win_target="${target_dir}"
             command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
             if [ -z "${seen_dirs[${win_target}]:-}" ]; then
