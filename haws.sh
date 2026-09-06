@@ -915,9 +915,11 @@ run_sync() {
             echo "}"
         } > "${target_json}"
         echo "  [CONFIG] Antigravity Native Config (Dynamic): ${target_json}"
-        SKILLS_LINKED=$((SKILLS_LINKED + ${#PROCESSED_SKILLS[@]}))
+        local active_count=${#PROCESSED_SKILLS[@]}
+        SKILLS_LINKED=$((SKILLS_LINKED + active_count))
     fi
-    echo "  [✓] Skills linking complete (${#PROCESSED_SKILLS[@]} active skills linked)."
+    local active_count=${#PROCESSED_SKILLS[@]}
+    echo "  [✓] Skills linking complete (${active_count} active skills linked)."
     echo ""
 
     # 6. Link Subagents
@@ -1421,6 +1423,7 @@ run_remove_git_repo() {
 
 get_repo_skills() {
     local rdir="$1"
+    local with_desc="${2:-1}"
     declare -A seen=()
     while IFS= read -r sf; do
         [ -z "$sf" ] && continue
@@ -1429,15 +1432,16 @@ get_repo_skills() {
         [[ "$sf" =~ ui-ux-pro-max ]] && [[ ! "$sf" =~ \.claude/skills ]] && continue
         [[ "$sf" =~ caveman/plugins/ ]] && continue
 
-        local sn
-        sn="$(extract_skill_name "$sf")"
+        local sn="$(extract_skill_name "$sf")"
         [ -z "$sn" ] && continue
         [ -n "${seen[$sn]:-}" ] && continue
         seen["$sn"]=1
 
         local sdesc=""
-        sdesc="$(extract_skill_desc "$sf")"
-        [ -z "$sdesc" ] && sdesc="${sn}"
+        if [ "$with_desc" -eq 1 ]; then
+            sdesc="$(extract_skill_desc "$sf")"
+            [ -z "$sdesc" ] && sdesc="${sn}"
+        fi
 
         echo "${sn}|${sdesc}|${sf}"
     done < <(find "$rdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
@@ -1453,7 +1457,7 @@ configure_repo_skills() {
         local is_on=1
         [ -n "${DISABLED_SKILLS[$sn]:-}" ] && is_on=0
         chk_items+=("${sn}|${sdesc}|${is_on}")
-    done < <(get_repo_skills "$rdir")
+    done < <(get_repo_skills "$rdir" 1)
 
     if [ ${#chk_items[@]} -eq 0 ]; then
         echo "  [INFO] No skills found in ${rname}."
@@ -1479,46 +1483,77 @@ configure_repo_skills() {
 run_configure_skills() {
     load_disabled_skills
     while true; do
-        echo ""
-        echo "  [*] Scanning skills catalog, please wait..."
+        printf "  [*] Scanning skills catalog, please wait...\r"
         local single_total=0
         local single_active=0
-        local single_repos=()
+        local single_names=()
+        local single_files=()
 
-        # Multi-skill packs
+        local -A repo_total=()
+        local -A repo_active=()
+        local -A repo_first_sn=()
+        local -A repo_first_sf=()
+        local -A seen_combo=()
+        local -A repo_registered=()
+        local repo_order=()
+
+        while IFS= read -r sf; do
+            [ -z "$sf" ] && continue
+            [[ "$sf" =~ \.openclaw/ ]] && continue
+            [[ "$sf" =~ planning-with-files ]] && [[ ! "$sf" =~ \.agents/skills ]] && [[ ! "$sf" =~ skills/i18n ]] && continue
+            [[ "$sf" =~ ui-ux-pro-max ]] && [[ ! "$sf" =~ \.claude/skills ]] && continue
+            [[ "$sf" =~ caveman/plugins/ ]] && continue
+
+            local rel="${sf#${SCRIPT_DIR}/skills/}"
+            local category="${rel%%/*}"
+            local rest="${rel#*/}"
+            local rname="${rest%%/*}"
+            local rpath="${SCRIPT_DIR}/skills/${category}/${rname}"
+
+            local sn="$(extract_skill_name "$sf")"
+            [ -z "$sn" ] && continue
+
+            local combo="${rpath}|${sn}"
+            [ -n "${seen_combo[$combo]:-}" ] && continue
+            seen_combo["$combo"]=1
+
+            if [ -z "${repo_registered[$rpath]:-}" ]; then
+                repo_registered["$rpath"]=1
+                repo_order+=("$rpath")
+                repo_total["$rpath"]=0
+                repo_active["$rpath"]=0
+            fi
+
+            repo_total["$rpath"]=$(( ${repo_total["$rpath"]} + 1 ))
+            repo_first_sn["$rpath"]="$sn"
+            repo_first_sf["$rpath"]="$sf"
+            [ -z "${DISABLED_SKILLS[$sn]:-}" ] && repo_active["$rpath"]=$(( ${repo_active["$rpath"]} + 1 ))
+        done < <(find "${SCRIPT_DIR}/skills" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
+
         local pack_repos=()
         local pack_names=()
         local pack_totals=()
         local pack_actives=()
 
-        for rpath in "${SCRIPT_DIR}/skills/packs"/* "${SCRIPT_DIR}/skills/standalone"/* "${SCRIPT_DIR}/skills/custom"/*; do
-            [ ! -d "$rpath" ] && continue
+        for rpath in "${repo_order[@]}"; do
             local rname="$(basename "$rpath")"
-            local repo_skills=()
-            while IFS= read -r line; do
-                [ -n "$line" ] && repo_skills+=("$line")
-            done < <(get_repo_skills "$rpath")
+            local tot="${repo_total[$rpath]}"
+            local act="${repo_active[$rpath]}"
 
-            local total_in_repo=${#repo_skills[@]}
-            [ "$total_in_repo" -eq 0 ] && continue
-
-            local active_in_repo=0
-            for item in "${repo_skills[@]}"; do
-                local sn="${item%%|*}"
-                [ -z "${DISABLED_SKILLS[$sn]:-}" ] && active_in_repo=$((active_in_repo + 1))
-            done
-
-            if [ "$total_in_repo" -eq 1 ]; then
-                single_repos+=("${repo_skills[0]}")
+            if [ "$tot" -eq 1 ]; then
                 single_total=$((single_total + 1))
-                single_active=$((single_active + active_in_repo))
+                single_active=$((single_active + act))
+                single_names+=("${repo_first_sn[$rpath]}")
+                single_files+=("${repo_first_sf[$rpath]}")
             else
                 pack_repos+=("$rpath")
                 pack_names+=("$rname")
-                pack_totals+=("$total_in_repo")
-                pack_actives+=("$active_in_repo")
+                pack_totals+=("$tot")
+                pack_actives+=("$act")
             fi
         done
+
+        printf "\033[2K"
         echo "  [✓] Skills catalog ready."
 
         echo ""
@@ -1544,10 +1579,11 @@ run_configure_skills() {
             echo ""
             echo "  [*] Loading Single Skills checklist..."
             local chk_items=()
-            for sitem in "${single_repos[@]}"; do
-                local sn="${sitem%%|*}"
-                local srest="${sitem#*|}"
-                local sdesc="${srest%%|*}"
+            for ((i=0; i<${#single_names[@]}; i++)); do
+                local sn="${single_names[$i]}"
+                local sf="${single_files[$i]}"
+                local sdesc="$(extract_skill_desc "$sf")"
+                [ -z "$sdesc" ] && sdesc="${sn}"
                 local is_on=1
                 [ -n "${DISABLED_SKILLS[$sn]:-}" ] && is_on=0
                 chk_items+=("${sn}|${sdesc}|${is_on}")
