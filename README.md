@@ -80,6 +80,12 @@ Double-click `2nd-BRAIN-TOGGLE.bat` in Windows File Explorer:
 - If offline: prompts for your private GitHub URL and connects.
 - If online: displays a safety guard prompt before returning to Local-Only mode.
 
+### Windows 1-Click Clean Uninstaller (`UNINSTALL.bat`)
+Double-click `UNINSTALL.bat` in Windows File Explorer:
+- Generates an instant dry-run inspection preview of all active pointers and skills.
+- Detaches global AI configuration pointers, linked skills, and Git hooks on confirmation.
+- Strictly preserves local project files and Second Brain data.
+
 ---
 
 ## HAWS CLI Reference (`haws.sh`)
@@ -89,14 +95,16 @@ Double-click `2nd-BRAIN-TOGGLE.bat` in Windows File Explorer:
 | `bash haws.sh setup` | First-time setup: initializes Second Brain, submodules, skill links, git hooks, and doctor check |
 | `bash haws.sh sync` | Two-way Second Brain sync, pulls upstream framework, updates submodules, and verifies links |
 | `bash haws.sh status` | Instant skill count, token budget, and sync health check (< 0.2s) |
-| `bash haws.sh doctor` | Comprehensive 10-axis system diagnostic suite (37 verification checks) |
+| `bash haws.sh doctor` | Comprehensive 12-axis system diagnostic suite (51 verification checks) |
+| `bash haws.sh uninstall` | Safely detach HAWS pointers, skills, and hooks without deleting user data (`--dry-run` supported) |
+| `bash haws.sh notify <msg>` | Dispatch task completion alert via Telegram, Discord, or generic Webhook |
 | `bash haws.sh kit add --skill <url>` | Add external skill pack submodule with merge protection |
 | `bash haws.sh kit add --tool <url>` | Add external non-skill tool into `plugins/` |
 | `bash haws.sh kit prune <name>` | Cleanly remove submodule, clear git cache, and delete directory |
 | `bash haws.sh brain status` | Check Second Brain cloud connection and commit count (alias: `user status`) |
 | `bash haws.sh brain connect <url>` | Connect Second Brain to private GitHub repository (alias: `user connect`) |
 | `bash haws.sh brain disconnect` | Switch Second Brain to local-only mode (alias: `user disconnect`) |
-| `bash haws.sh hook install` | Install hardware git hooks (`pre-commit` and `pre-push`) |
+| `bash haws.sh hook install` | Install hardware git hooks (`pre-commit`, `commit-msg`, and `pre-push`) |
 | `bash haws.sh hook status` | Inspect git hook activation status |
 
 ---
@@ -115,35 +123,24 @@ Double-click `2nd-BRAIN-TOGGLE.bat` in Windows File Explorer:
 │   ├── USER_PREFERENCES.md              # Personal habits, communication style & architectural preferences
 │   └── ANTI_PATTERNS.md                 # Learned safeguards, forbidden libraries & operational constraints
 ├── plugins/                             # External Non-Skill Tools & Starred Repos (Submodules)
+├── tools/                               # Automation & Mobile Notification Dispatcher
+│   └── notify.sh                        # Multi-channel notification dispatcher (Telegram, Discord, Webhook)
 ├── agents/                              # Unified Subagent Source (Harness-Enforced)
 │   ├── organizer.md                     # Skill inventory health, workspace hygiene & learning ledger
 │   ├── frontend-engineer.md             # UI components, client state, styling, responsive design & a11y
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
-├── templates/                           # 14 Project blueprints and templates (see templates/README.md for usage guide)
-│   ├── SOT.md                           # Single Source of Truth architecture & schema blueprint
-│   ├── AGENTS.md                        # Agent matrix and authorization governance
-│   ├── CONSTRAINTS.md                   # Non-negotiable quality gates, linters, coverage, and dependency contracts
-│   ├── ARCHITECTURE.md                  # System architecture, Mermaid topology & Archify JSON IR
-│   ├── PROJECT.md                       # Project scope and delivery roadmap
-│   ├── DESIGN.md                        # Design tokens & anti-slop guidelines
-│   ├── HANDOFF.md                       # Session checkpoint & resume point
-│   ├── USER_PREFERENCES.example.md      # Scaffolding template for new environments
-│   ├── ANTI_PATTERNS.example.md         # Scaffolding template for new environments
-│   ├── Dockerfile.template              # Multi-stage production build with non-root user
-│   ├── .dockerignore.template           # Strict leak-proof container ignore file
-│   ├── docker-compose.yml.template      # Local microservices stack (PostgreSQL, Redis, App)
-│   ├── vite.config.ts.template          # Vite dev server with linter checker integration
-│   └── .devcontainer/devcontainer.json  # Dev Container for zero-setup cross-device parity
+├── templates/                           # 19 Project blueprints and templates (see templates/README.md)
 ├── skills/                              # Curated Skill Repository (3 Clean Categories)
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
-├── haws.sh                              # Standalone Universal CLI Engine (10-axis diagnostics)
+├── haws.sh                              # Standalone Universal CLI Engine (12-axis diagnostics)
 ├── 1-CLICK-SYNC.bat                     # Windows 1-Click Complete System Sync & Health Check
-└── 2nd-BRAIN-TOGGLE.bat                 # Windows 1-Click File Explorer Cloud Toggle
+├── 2nd-BRAIN-TOGGLE.bat                 # Windows 1-Click File Explorer Cloud Toggle
+└── UNINSTALL.bat                        # Windows 1-Click Reversible Clean Uninstaller
 ```
 
 ---

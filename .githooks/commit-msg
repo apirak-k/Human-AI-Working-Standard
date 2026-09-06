@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# HAWS Git Commit-Msg Hook (Conventional Commits & 100% English Invariant)
+# Enforces:
+# 1. Conventional Commit prefix (feat, fix, docs, refactor, test, chore, perf, build, ci, revert)
+# 2. Minimum length (at least 5 characters after prefix)
+# 3. 100% English / ASCII invariant (HAWS Section 10 & USER_PREFERENCES.md)
+# ==============================================================================
+set -e
+
+MSG_FILE="$1"
+if [ ! -f "$MSG_FILE" ]; then
+    exit 0
+fi
+
+FIRST_LINE=$(head -n 1 "$MSG_FILE" | tr -d '\r\n')
+
+# Allow merge commits
+if [[ "$FIRST_LINE" =~ ^Merge ]]; then
+    exit 0
+fi
+
+# 1. Check for non-ASCII characters (HAWS 100% English Invariant)
+if [[ "$FIRST_LINE" =~ [^[:print:][:space:]] ]]; then
+    echo ""
+    echo "=========================================================================="
+    echo " [HAWS COMMIT-MSG BLOCKED] Non-ASCII / Non-English text detected!"
+    echo " HAWS Rule 10 & Second Brain: All commit messages must be 100% English."
+    echo " Detected: $FIRST_LINE"
+    echo "=========================================================================="
+    echo ""
+    exit 1
+fi
+
+# 2. Check Conventional Commit Format
+CONVENTIONAL_REGEX="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_-]+\))?: .{5,}$"
+if ! [[ "$FIRST_LINE" =~ $CONVENTIONAL_REGEX ]]; then
+    echo ""
+    echo "=========================================================================="
+    echo " [HAWS COMMIT-MSG BLOCKED] Invalid commit message format!"
+    echo " Format required: <type>(<scope>): <description> (min 5 chars description)"
+    echo " Allowed types  : feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+    echo " Example        : feat(uninstaller): add 1-click clean uninstall launcher"
+    echo " Received       : $FIRST_LINE"
+    echo "=========================================================================="
+    echo ""
+    exit 1
+fi
+
+exit 0

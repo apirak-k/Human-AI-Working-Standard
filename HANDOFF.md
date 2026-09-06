@@ -1,9 +1,10 @@
 # HAWS Master Timeline & Comprehensive Audit Dossier (From `cceb211` to Present)
 
 > **Audit Baseline Commit**: `cceb211` (Point where 39 requirements were reviewed)  
-> **Current Head Commit**: `5f5e8f1` (+ Active Working Tree)  
-> **Total Intermediate Commits**: 23 Git Commits Audited  
-> **Prepared For**: Seamless Handover to New Clean Session  
+> **Previous Head Commit**: `82a1cdb` (`feat(adapters): add multi-ai blueprints and doctor axis 11 detection`)  
+> **Current Head Commit**: `82a1cdb` (+ Working Tree for Lifecycle & Uninstaller)  
+> **Total Intermediate Commits**: 24 Git Commits Audited  
+> **Prepared For**: Complete Milestone Delivery & Seamless Continuity  
 
 ---
 
@@ -36,7 +37,8 @@ The following chronological sequence documents everything committed from `cceb21
 | `a05c33d` | `docs` | Updated all launcher references to `2nd-BRAIN-TOGGLE.bat`. |
 | `9dda4d0` | `refactor(launcher)` | Consolidated and deleted redundant `haws.bat`. |
 | `5f5e8f1` | `feat(launcher)` | Updated `1-CLICK-SYNC.bat` with standalone launcher logic and clean README. |
-| **Working Tree** | `feat(multi-ai)` | Added 5 Multi-AI adapters in `templates/`, POSIX symlink engine, and doctor Axis 11 (45 checks). |
+| `82a1cdb` | `feat(adapters)` | Added 5 Multi-AI adapters in `templates/`, POSIX symlink engine, and doctor Axis 11 (45 checks). |
+| **Working Tree** | `feat(lifecycle)` | Added 1-Click Clean Uninstaller (`UNINSTALL.bat`), `commit-msg` hook, `tools/notify.sh`, and Doctor Axis 12 (51 checks). |
 
 ---
 
@@ -59,65 +61,58 @@ The following chronological sequence documents everything committed from `cceb21
    - Separated from upstream repo via `.gitignore`.
    - Connected to private GitHub remote (`apirak-k/secondbrain.git`).
    - Python-powered Symmetrical Merge and Deduplication engine in `haws.sh`.
-6. **Windows 1-Click Launchers**:
+6. **Windows 1-Click Launchers Suite**:
    - `1-CLICK-SYNC.bat`: Pulls repo, syncs Second Brain, links skills, runs doctor in 1 double-click.
    - `2nd-BRAIN-TOGGLE.bat`: Toggles Second Brain between Local-Only and Private Cloud.
-   - Redundant `haws.bat` removed.
+   - `UNINSTALL.bat`: 1-Click clean uninstallation with dry-run preview and safety prompts.
 7. **Custom Skill `keyboard-layout-fixer`** (`skills/custom/keyboard-layout-fixer/`):
    - Auto-detects and converts Thai Kedmanee $\leftrightarrow$ English US QWERTY and inverted CapsLock.
    - 4 test suites passing 100%.
 8. **Git Safety Guardrails** (`.githooks/`):
    - `pre-commit`: Scans staged diff for `.env*` secrets, validates LF line endings, runs doctor.
+   - `commit-msg`: Enforces Conventional Commits syntax and HAWS 100% English invariant.
    - `pre-push`: Hardware blocker preventing unauthorized remote pushes without `HAWS_ALLOW_PUSH=1`.
-9. **Universal 4-AI Adapters** (`templates/`):
+9. **Universal Multi-AI Blueprints (19 Templates)** (`templates/`):
    - Google Antigravity (`templates/.gemini/GEMINI.md.template`)
    - Claude Code (`templates/CLAUDE.md.template`)
    - Cursor IDE (`templates/.cursor/rules/haws.mdc.template` and `templates/.cursorrules.template`)
    - OpenAI Codex & GitHub Copilot (`templates/.github/copilot-instructions.md.template`)
-10. **Cross-OS Engine & Doctor 45/45 Checks** (`haws.sh`):
+10. **Clean Uninstallation Engine** (`haws.sh uninstall` & `UNINSTALL.bat`):
+    - Strips HAWS pointer blocks from `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.cursor/rules/haws.mdc`, `~/.cursorrules`, `~/.copilot/copilot-instructions.md`.
+    - Cleans skills from `~/.gemini/config/skills.json` and `~/.claude/skills`.
+    - Unlinks `.githooks` from `.git/config` (`core.hooksPath`).
+    - Strictly preserves user repositories and Second Brain notes.
+11. **Remote Notification Dispatcher** (`tools/notify.sh` & `haws.sh notify`):
+    - Lightweight, multi-channel notification dispatcher supporting Telegram Bot, Discord Webhook, and Generic HTTP Webhooks.
+    - Zero-dependency curl implementation with dry-run and status testing.
+12. **Cross-OS Engine & Doctor 51/51 Checks (12 Diagnostic Axes)** (`haws.sh`):
     - Windows NTFS hardlinks/junctions + MSYS2 `cygpath`.
     - macOS & Linux atomic POSIX symlinks (`ln -sfn`).
-    - 45 checks passing 100% across 11 diagnostic axes.
+    - 51 checks passing 100% across all 12 diagnostic axes.
 
 ---
 
-### Category B: [DOING] In-Progress / Awaiting User Review & Commit
+### Category B: [DOING] In-Progress / Active Working Tree
 
-1. **Review and Commit Working Tree Changes**:
-   - Files modified: `README.md`, `core/WORK_INSTRUCTIONS.md`, `haws.sh`, `templates/README.md`, `HANDOFF.md`.
-   - Untracked adapter files in `templates/.cursor/`, `templates/.gemini/`, `templates/.github/`, `templates/.cursorrules.template`, `templates/CLAUDE.md.template`.
-   - Action: User to review diffs and authorize commit in the new chat.
-2. **User Walkthrough of Past Commits**:
-   - Walk through the changes from commit `59747fb` through `5f5e8f1` that occurred while the user was occupied with other tasks.
+1. **Commit Working Tree Changes for Lifecycle & Uninstaller**:
+   - Files modified: `.gitignore`, `README.md`, `haws.sh`, `HANDOFF.md`.
+   - Files created: `UNINSTALL.bat`, `.githooks/commit-msg`, `tools/notify.sh`.
+   - Action: Commit locally and verify all pre-commit gates pass.
 
 ---
 
-### Category C: [TODO] Queued Roadmap Items (Next Actions in New Chat)
+### Category C: [TODO] Optional Future Roadmap
 
-1. **1-Click Clean Uninstaller** (`UNINSTALL.bat` & `haws.sh uninstall`):
-   - Implement clean uninstallation script to remove pointers from `~/.gemini`, `~/.claude`, `~/.cursor`, `~/.copilot` and restore machine to pre-HAWS state on demand.
-2. **Review Recurring Commands for Additional Git Hooks**:
-   - Audit daily developer habits to identify if any other recurring commands should be automated as Git hooks.
-3. **Remote Mobile Notifications Setup**:
-   - Set up Telegram Bot webhook for long-running autonomous tasks (`/goal`) when requested.
-4. **Deep Review of All 22 Master Topics**:
-   - Systematically walk through each of the 6 Domains at the user's preferred pace.
+1. **Deep Walkthrough of 22 Master Topics**:
+   - Ready for human review and exploration at the user's preferred pace.
 
 ---
 
 ## 3. Grounding Verification Evidence
 
-- **`bash haws.sh doctor`**: Passed 45/45 checks (Exit code: 0).
+- **`bash haws.sh doctor`**: Passed 51/51 checks (Exit code: 0).
 - **`bash haws.sh status`**: 104 skills active, Second Brain in sync.
+- **`bash haws.sh uninstall --dry-run`**: Passed cleanly, identified 3 pointers, 104 skills, 10 subagents, 1 command.
+- **`tools/notify.sh --status`**: Passed cleanly, exit code 0.
 - **Line Endings Audit**: 0 CRLF across all repository files.
-- **Git State**: Clean working tree ready for commit command.
-
----
-
-## 4. Prompt to Trigger in the New Chat
-
-Open a new conversation and input:
-```text
-รายงานสถานะ timeline DONE, DOING, TODO จาก HANDOFF.md ให้ครบทุกเรื่องตามที่ตกลงไว้ครับ
-```
-The new agent will read this dossier and immediately present the structured report without loss of continuity.
+- **Git State**: Ready for atomic commit.

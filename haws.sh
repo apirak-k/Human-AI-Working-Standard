@@ -349,6 +349,33 @@ run_doctor() {
     [ "$json_mode" = false ] && echo "   [PASS] Active AI Environments: ${ai_summary}"
     details+=("{\"item\":\"Active AIs: ${ai_summary}\",\"status\":\"PASS\"}")
 
+    # 12. Check Launchers & Automation Tools
+    [ "$json_mode" = false ] && echo "" && echo "12. Checking Launchers & Automation Tools..."
+    check_item "${SCRIPT_DIR}/1-CLICK-SYNC.bat" "1-CLICK-SYNC.bat"
+    check_item "${SCRIPT_DIR}/2nd-BRAIN-TOGGLE.bat" "2nd-BRAIN-TOGGLE.bat"
+    check_item "${SCRIPT_DIR}/UNINSTALL.bat" "UNINSTALL.bat"
+    check_item "${SCRIPT_DIR}/tools/notify.sh" "tools/notify.sh"
+
+    if "${SCRIPT_DIR}/haws.sh" uninstall --dry-run >/dev/null 2>&1; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] haws.sh uninstall --dry-run (operational)"
+        details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"PASS\"}")
+    else
+        failed=$((failed + 1))
+        [ "$json_mode" = false ] && echo "   [FAIL] haws.sh uninstall --dry-run failed"
+        details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"FAIL\"}")
+    fi
+
+    if "${SCRIPT_DIR}/tools/notify.sh" --status >/dev/null 2>&1; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] tools/notify.sh --status (operational)"
+        details+=("{\"item\":\"Notification Dispatcher Test\",\"status\":\"PASS\"}")
+    else
+        failed=$((failed + 1))
+        [ "$json_mode" = false ] && echo "   [FAIL] tools/notify.sh --status failed"
+        details+=("{\"item\":\"Notification Dispatcher Test\",\"status\":\"FAIL\"}")
+    fi
+
 
     local overall_status="HEALTHY & READY"
     [ "${failed}" -gt 0 ] && overall_status="ATTENTION REQUIRED"
@@ -1232,6 +1259,7 @@ run_hooks() {
                 chmod +x "${SCRIPT_DIR}/.githooks"/* 2>/dev/null || true
                 echo "  [✓] Git core.hooksPath set to .githooks"
                 echo "  [✓] pre-commit hook active (Secret scan + LF audit + doctor check)"
+                echo "  [✓] commit-msg hook active (Conventional Commits & English invariant)"
                 echo "  [✓] pre-push hook active (Human authorization guardrail)"
             else
                 echo "  [ERROR] .githooks directory not found in ${SCRIPT_DIR}"
@@ -1254,6 +1282,209 @@ run_hooks() {
             return 1
             ;;
     esac
+}
+
+run_uninstall() {
+    local dry_run=false
+    local force_yes=false
+
+    for arg in "$@"; do
+        case "$arg" in
+            --dry-run)
+                dry_run=true
+                ;;
+            --yes|-y)
+                force_yes=true
+                ;;
+        esac
+    done
+
+    echo "=== HAWS Clean Uninstaller & Environment Restore ==="
+    if [ "$dry_run" = true ]; then
+        echo "[MODE] DRY-RUN (Previewing actions - no files will be modified or removed)"
+    fi
+    echo ""
+
+    if [ "$dry_run" = false ] && [ "$force_yes" = false ]; then
+        echo "WARNING: This will detach HAWS pointers from all AI tools (Claude, Antigravity, Cursor, Copilot),"
+        echo "remove linked skills, subagents, and slash commands, and restore your environment to pre-HAWS state."
+        echo "Your project code and Second Brain will NOT be deleted."
+        echo ""
+        read -r -p "Are you sure you want to proceed with uninstallation? (y/N): " confirm_uninstall
+        if [[ ! "${confirm_uninstall:-}" =~ ^[Yy]$ ]]; then
+            echo "[ABORTED] Uninstallation cancelled by user."
+            return 0
+        fi
+        echo ""
+    fi
+
+    local removed_pointers=0
+    local removed_skills=0
+    local removed_agents=0
+    local removed_commands=0
+
+    # 1. Strip Global Environment Pointers
+    echo "--- Step 1: Detaching Global Environment Pointers ---"
+    local pointer_files=(
+        "${HOME}/.claude/CLAUDE.md"
+        "${HOME}/.gemini/GEMINI.md"
+        "${HOME}/.cursor/rules/haws.mdc"
+        "${HOME}/.cursorrules"
+        "${HOME}/.copilot/copilot-instructions.md"
+        "${HOME}/.config/github-copilot/copilot-instructions.md"
+    )
+
+    strip_pointer_from_file() {
+        local target="$1"
+        [ ! -f "${target}" ] && return 0
+
+        if grep -q "<!-- HAWS_.*_START -->" "${target}" 2>/dev/null; then
+            if [ "$dry_run" = true ]; then
+                echo "  [DRY-RUN] Would remove HAWS pointer block from: ${target}"
+                removed_pointers=$((removed_pointers + 1))
+                return 0
+            fi
+
+            local tmp_cleaned="${target}.haws_clean_tmp"
+            sed '/<!-- HAWS_.*_START -->/,/<!-- HAWS_.*_END -->/d' "${target}" > "${tmp_cleaned}"
+            local non_whitespace
+            non_whitespace="$(tr -d '[:space:]' < "${tmp_cleaned}" || true)"
+            if [ -z "${non_whitespace}" ]; then
+                rm -f "${tmp_cleaned}" "${target}"
+                echo "  [REMOVED] ${target} (contained only HAWS pointer)"
+            else
+                mv -f "${tmp_cleaned}" "${target}"
+                echo "  [STRIPPED] ${target} (removed HAWS pointer, preserved user configuration)"
+            fi
+            removed_pointers=$((removed_pointers + 1))
+        fi
+    }
+
+    for pfile in "${pointer_files[@]}"; do
+        strip_pointer_from_file "${pfile}"
+    done
+    echo ""
+
+    # 2. Detach Antigravity Native Config & Legacy Links
+    echo "--- Step 2: Detaching Antigravity (AGY) Skills & Agents ---"
+    local gemini_json="${HOME}/.gemini/config/skills.json"
+    if [ -f "${gemini_json}" ]; then
+        if [ "$dry_run" = true ]; then
+            echo "  [DRY-RUN] Would clean HAWS paths from: ${gemini_json}"
+        else
+            local remaining_entries
+            remaining_entries="$(grep -v 'Human-AI-Working-Standard' "${gemini_json}" | grep '"path"' || true)"
+            if [ -z "${remaining_entries}" ]; then
+                rm -f "${gemini_json}"
+                echo "  [REMOVED] ${gemini_json}"
+            else
+                local tmp_json="${gemini_json}.tmp"
+                grep -v 'Human-AI-Working-Standard' "${gemini_json}" > "${tmp_json}"
+                mv -f "${tmp_json}" "${gemini_json}"
+                echo "  [UPDATED] Removed HAWS skill paths from ${gemini_json}"
+            fi
+        fi
+    fi
+
+    # 3. Clean Skills and Agents via Manifest
+    echo "--- Step 3: Cleaning Linked Skills, Agents, and Slash Commands ---"
+    local manifest_file="${HOME}/.haws_manifest"
+    if [ -f "${manifest_file}" ]; then
+        while IFS= read -r entry || [ -n "$entry" ]; do
+            [ -z "$entry" ] && continue
+            local type="${entry%%:*}"
+            local name="${entry#*:}"
+            if [ "$type" = "skill" ]; then
+                if [ -e "${HOME}/.claude/skills/${name}" ] || [ -L "${HOME}/.claude/skills/${name}" ]; then
+                    if [ "$dry_run" = true ]; then
+                        echo "  [DRY-RUN] Would remove Claude skill: ~/.claude/skills/${name}"
+                    else
+                        rm -rf "${HOME}/.claude/skills/${name}"
+                    fi
+                    removed_skills=$((removed_skills + 1))
+                fi
+                if [ -e "${HOME}/.gemini/config/skills/${name}" ] || [ -L "${HOME}/.gemini/config/skills/${name}" ]; then
+                    if [ "$dry_run" = true ]; then
+                        echo "  [DRY-RUN] Would remove Antigravity skill: ~/.gemini/config/skills/${name}"
+                    else
+                        rm -rf "${HOME}/.gemini/config/skills/${name}"
+                    fi
+                fi
+            elif [ "$type" = "agent" ]; then
+                if [ -f "${HOME}/.claude/agents/${name}.md" ]; then
+                    if [ "$dry_run" = true ]; then
+                        echo "  [DRY-RUN] Would remove Claude agent: ~/.claude/agents/${name}.md"
+                    else
+                        rm -f "${HOME}/.claude/agents/${name}.md"
+                    fi
+                    removed_agents=$((removed_agents + 1))
+                fi
+                if [ -d "${HOME}/.gemini/config/agents/${name}" ]; then
+                    if [ "$dry_run" = true ]; then
+                        echo "  [DRY-RUN] Would remove Antigravity agent: ~/.gemini/config/agents/${name}"
+                    else
+                        rm -rf "${HOME}/.gemini/config/agents/${name}"
+                    fi
+                    removed_agents=$((removed_agents + 1))
+                fi
+            fi
+        done < "${manifest_file}"
+    fi
+
+    # Custom Slash Commands for Claude
+    if [ -d "${HOME}/.claude/commands" ] && [ -d "${SCRIPT_DIR}/skills/custom" ]; then
+        for cdir in "${SCRIPT_DIR}/skills/custom"/*; do
+            if [ -d "${cdir}" ]; then
+                local cname="$(basename "${cdir}")"
+                local cmd_file="${HOME}/.claude/commands/${cname}.md"
+                if [ -f "${cmd_file}" ]; then
+                    if [ "$dry_run" = true ]; then
+                        echo "  [DRY-RUN] Would remove Claude custom slash command: ~/.claude/commands/${cname}.md"
+                    else
+                        rm -f "${cmd_file}"
+                        echo "  [REMOVED] ~/.claude/commands/${cname}.md"
+                    fi
+                    removed_commands=$((removed_commands + 1))
+                fi
+            fi
+        done
+    fi
+
+    # Remove manifest files
+    if [ "$dry_run" = true ]; then
+        [ -f "${HOME}/.haws_manifest" ] && echo "  [DRY-RUN] Would remove ~/.haws_manifest"
+    else
+        rm -f "${HOME}/.haws_manifest" "${HOME}/.haws_manifest.prev" 2>/dev/null || true
+    fi
+    echo ""
+
+    # 4. Detach Git Hooks
+    echo "--- Step 4: Detaching Git Safety Hooks ---"
+    if [ -d "${SCRIPT_DIR}/.git" ]; then
+        if [ "$dry_run" = true ]; then
+            echo "  [DRY-RUN] Would unset Git core.hooksPath (.githooks)"
+        else
+            git -C "${SCRIPT_DIR}" config --unset core.hooksPath 2>/dev/null || true
+            echo "  [DETACHED] Git core.hooksPath unset."
+        fi
+    fi
+    echo ""
+
+    echo "================================================================"
+    if [ "$dry_run" = true ]; then
+        echo "  [DRY-RUN COMPLETE] Summary of items eligible for removal:"
+        echo "  - Pointer Blocks : ${removed_pointers}"
+        echo "  - Active Skills  : ${removed_skills}"
+        echo "  - Subagents      : ${removed_agents}"
+        echo "  - Slash Commands : ${removed_commands}"
+        echo "  To execute actual uninstallation, run: ./haws.sh uninstall"
+    else
+        echo "  [PASS] Uninstallation Complete!"
+        echo "  - All HAWS pointers, skills, and hooks have been safely removed."
+        echo "  - Local repository (${SCRIPT_DIR}) and Second Brain preserved."
+        echo "  - To re-enable HAWS at any time, run: ./haws.sh sync"
+    fi
+    echo "================================================================"
 }
 
 run_setup() {
@@ -1305,8 +1536,21 @@ case "${COMMAND}" in
     sync|update|install)
         run_sync "$@"
         ;;
+    uninstall|remove)
+        shift || true
+        run_uninstall "$@"
+        ;;
+    notify)
+        shift || true
+        if [ -f "${SCRIPT_DIR}/tools/notify.sh" ]; then
+            "${SCRIPT_DIR}/tools/notify.sh" "$@"
+        else
+            echo "[ERROR] tools/notify.sh not found."
+            exit 1
+        fi
+        ;;
     *)
-        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user] [--clean]"
+        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user|uninstall|notify] [--clean]"
         echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
         echo "  kit [add|prune] Manage KIT submodules and external tools with merge protection"
@@ -1314,6 +1558,8 @@ case "${COMMAND}" in
         echo "  hook [install]  Install or inspect HAWS Git pre-commit and pre-push hooks"
         echo "  status          Instant sub-second skill count and token budget check"
         echo "  doctor [--json] Run comprehensive 10-axis system diagnostics"
+        echo "  uninstall       Safely detach HAWS pointers, skills, and hooks without deleting user data"
+        echo "  notify          Dispatch task completion alert via Telegram/Discord/Webhook"
         exit 1
         ;;
 esac

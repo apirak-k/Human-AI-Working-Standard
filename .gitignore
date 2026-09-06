@@ -25,4 +25,10 @@ worktrees/
 # Scratch & Temporary Testing
 scratch/
 /scratch/
+.scratch/
+/.scratch/
+
+# Local Notification Config & Secrets
+.notify.conf
+*.conf.local
 
