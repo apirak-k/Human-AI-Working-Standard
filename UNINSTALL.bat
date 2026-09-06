@@ -68,6 +68,15 @@ if /i "!CONFIRM_CLEAN!"=="y" (
     echo [*] Executing Clean Uninstallation...
     echo.
     "%BASH_CMD%" haws.sh uninstall --yes
+    if errorlevel 1 (
+        echo.
+        echo ================================================================
+        echo  [ERROR] Uninstallation failed or encountered errors.
+        echo ================================================================
+        echo.
+        if "%HAWS_NO_PAUSE%"=="" pause
+        exit /b 1
+    )
     echo.
     echo ================================================================
     echo   Uninstallation complete. Machine restored to pre-HAWS state.
@@ -80,3 +89,4 @@ if /i "!CONFIRM_CLEAN!"=="y" (
 
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause
+exit /b 0

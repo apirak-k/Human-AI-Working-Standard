@@ -343,7 +343,7 @@ When a context match occurs, the AI must execute the capability rigorously and s
 - **Genuine Execution**: Apply the skill's actual methodology (e.g. Red-Green-Refactor for TDD, root-cause isolation for debugging) rather than superficial chat responses.
 
 ### 9.3 Autonomous Subagent Dispatch & Dual-Tier Skill Autonomy
-- **Autonomous Subagent Delegation**: The Main Agent must automatically evaluate task complexity and domain affinity, dispatching specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) autonomously without waiting for explicit user prompting.
+- **Autonomous Subagent Delegation & Action Bias**: The Main Agent must automatically evaluate task complexity and domain affinity, dispatching specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) autonomously without waiting for explicit user prompting. Just like skill selection, if there is a plausible opportunity or rationale to delegate to a subagent, dispatch immediately. If uncertain whether the user prefers a rapid solo response or a delegated subagent workflow, proactively ask or recommend delegating in chat.
 - **Delegation Thresholds (Solo vs Subagent)**:
   - **Execute Solo**: Pure conceptual queries, architectural reasoning, single-file trivial tweaks (<30 LOC), and quick diagnostic status checks (<3 tool calls).
   - **Autonomous Delegation**: Multi-file modifications, domain-specific implementations (UI, backend logic, DB schemas), deep web/doc research, refactoring, and all test/QA execution suites.

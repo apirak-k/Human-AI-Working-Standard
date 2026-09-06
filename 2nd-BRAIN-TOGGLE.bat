@@ -70,6 +70,7 @@ if "%REMOTE_URL%"=="" (
         echo.
         echo Connecting to !REPO_CLEAN!...
         "%BASH_CMD%" haws.sh user connect "!REPO_CLEAN!"
+        if errorlevel 1 goto :FAIL
     ) else (
         echo [INFO] No URL entered. Second Brain remains in Local-Only mode.
     )
@@ -90,6 +91,7 @@ if "%REMOTE_URL%"=="" (
     if /i "!CONFIRM!"=="y" (
         echo.
         "%BASH_CMD%" haws.sh user disconnect --yes
+        if errorlevel 1 goto :FAIL
     ) else (
         echo [INFO] Connection preserved.
     )
@@ -97,3 +99,13 @@ if "%REMOTE_URL%"=="" (
 
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause
+exit /b 0
+
+:FAIL
+echo.
+echo ================================================================
+echo  [ERROR] Second Brain operation failed!
+echo ================================================================
+echo.
+if "%HAWS_NO_PAUSE%"=="" pause
+exit /b 1

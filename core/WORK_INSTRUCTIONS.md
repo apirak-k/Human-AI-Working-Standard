@@ -101,11 +101,14 @@ AI agents operating under HAWS must utilize the full capabilities of Git to ensu
 ### 2.3 Autonomous Subagent Delegation Thresholds (When to Delegate vs Solo)
 
 To avoid both under-delegation (cluttering main context) and over-delegation (wasteful subagent spawning latency):
-1. **Execute Solo (Main Agent Direct Execution)**:
+1. **Action Bias & Uncertainty Prompting Rule**:
+   - **Action Bias**: Just like skill selection, if there is a plausible opportunity or rationale to delegate to a subagent, dispatch autonomously and immediately.
+   - **Uncertainty Rule**: If uncertain whether the user wants a quick solo answer or a full delegated subagent workflow, proactively ask or recommend delegating in chat.
+2. **Execute Solo (Main Agent Direct Execution)**:
    - Direct conceptual Q&A, architectural explanations, and guidance.
    - Minor single-file edits under 30 lines of code.
    - Initial repository reconnaissance or quick status checks taking under 3 tool calls.
-2. **Autonomous Subagent Delegation (Mandatory Hand-Off)**:
+3. **Autonomous Subagent Delegation (Mandatory Hand-Off)**:
    - **Backend Implementation / DB Migrations / APIs**: Dispatch `@backend-engineer`.
    - **Frontend UI / React / Styling / Accessibility**: Dispatch `@frontend-engineer`.
    - **Testing, Verification Suites & Quality Gates**: Dispatch `@tester`.
