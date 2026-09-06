@@ -73,15 +73,16 @@ Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task a
 1. **Dual Invocation Modes**:
    - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/grill-me`, `/brainstorming`, `/tdd`, `/drawio`, `/review`).
    - **Autonomous Agent Execution**: The AI proactively matches task context against installed skill workflows and executes their protocols directly.
-2. **Genuine Protocol Execution & Top-Line Declaration**:
-   - On the very first line of any response where a skill is applied, declare: `Applying /<skill-name> (<brief rationale>)...`.
+2. **Genuine Protocol Execution & Seamless Transparency**:
+   - **Seamless Execution**: Execute the skill's actual methodology directly and cleanly without artificial announcement banners (e.g. avoid `Applying /...` or `[Auto-Skill: ...]`) in user chat.
    - **Mandatory File-Level Ingestion**: The first tool call when applying any skill MUST be `view_file` (or read tool) on the target `SKILL.md`. Never execute a skill blindly from memory without opening its instructions.
-   - Do NOT use hollow vanity tags (e.g. `[Auto-Skill: ...]`).
+   - Do NOT use hollow vanity tags.
    - Execute the actual rigorous workflow of the skill (e.g. `ask_question` one-by-one for `/grill-me`, Red-Green-Refactor for `/tdd`, 5-axis checks for `/review`).
    - All dispatched subagents must log invoked skills in their returned `<task_report>`, listing ONLY skills that were explicitly opened and executed.
-3. **Proportionality Rule**:
-   - **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without overhead.
-   - **Substantial Work & Critical Milestones**: Apply specialized domain skills dynamically from active skill packs (`skills/packs/`, `skills/standalone/`, `skills/custom/`).
+3. **Proportionality & Recommendation Rule**:
+   - **Direct Skill Match**: (e.g. feature implementation, UI creation, bug fixing, code review, diagramming) ➔ Execute the matching domain skill automatically and seamlessly.
+   - **Ambiguous / Borderline Tasks**: If uncertain whether the user wants a quick conceptual answer or a full skill execution, provide a concise direct answer and proactively recommend the matching skill.
+   - **Simple / Trivial Tasks**: (e.g. direct single-value lookup, 1-2 line typo fix) ➔ Execute directly and immediately without overhead.
 4. **Sub-Second Native Inspection**:
    - For skill counts and health auditing, always run the native fast checker (`bash haws.sh status`) to obtain instant results (< 0.5s) without slow shell loops.
 

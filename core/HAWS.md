@@ -321,23 +321,26 @@ producing misleading results.
 
 ## 9. Autonomous skill selection and capability discovery
 
-Skill invocation in HAWS is **dynamic, flexible, and non-rigid** — never an arbitrary forced routine. AI assistants and agents operating under HAWS must proactively discover and match available skills with the current task context rather than relying exclusively on manual user invocation.
+Skill-grounded reasoning and execution is the **foundational operating baseline** of HAWS — never an optional afterthought or isolated specialty trick. AI assistants and agents operating under HAWS must proactively discover and match available skills with the current task context as their natural default, rather than falling back to unstructured conversational guessing.
 
-### 9.1 Context-to-description matching
+### 9.1 Context-to-description matching & invocation rule
 On each turn, evaluate whether the task situation aligns with the `description` and purpose of installed skills:
-- **Trivial / Simple Work**: Execute directly without loading heavy skills or announcing tags.
+- **Direct Skill Match**: Execute the skill's actual methodology directly and seamlessly whenever a task aligns with its purpose.
+- **Ambiguous / Borderline Inquiries**: If uncertain whether the user intends a quick casual answer or a structured skill workflow, provide a concise direct answer and proactively recommend the matching skill.
+- **Trivial / Simple Work**: Direct single-value answers execute immediately without overhead.
+- **Workflow, Audit, or Review Queries**: Automatically anchor in audit and review skills (`code-review`, `verification-before-completion`, `diagnosing-bugs`).
 - **Substantial / Milestone Work**:
   1. **Project / Feature Kickoff**: Naturally invoke brainstorming and planning capabilities to formulate `design.md`.
   2. **Session Checkpoint / Pause**: Naturally invoke session persistence capabilities and update `HANDOFF.md`.
   3. **Domain Implementation**: Match context with domain skills (e.g. `taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD / debugging, `humanizer` for copy, `graphify` / `drawio-skill` for architecture).
 
-### 9.2 Proactive and transparent execution
-When a context match occurs for substantial work, the AI must declare the active capability transparently:
-- **Top-Line Declaration**: On the very first line of the response, output: `Applying /<skill-name> (<brief rationale>)...`.
-- **Mandatory File-Level Ingestion**: Before declaring or applying any skill, the agent MUST explicitly invoke its file-reading tool (`view_file` / `read`) to read the target `SKILL.md`. Claiming a skill without an auditable read in the execution transcript is prohibited.
+### 9.2 Proactive and seamless execution
+When a context match occurs, the AI must execute the capability rigorously and seamlessly:
+- **Seamless Execution**: Execute the skill's actual methodology directly and cleanly without artificial or performative announcement banners in user chat.
+- **Mandatory File-Level Ingestion**: Before executing any skill protocol, the agent MUST explicitly invoke its file-reading tool (`view_file` / `read`) to read the target `SKILL.md`. Claiming a skill without an auditable read in the execution transcript is prohibited.
 - **Universal Subagent Transparency**: Every subagent dispatched must record all invoked skills in its returned `<task_report>`.
 - **Zero Vanity Tags**: Agents must only declare or report skills in `<skills_used>` that were physically opened, read, and actively executed during that assignment. Inventing or appending unrelated skills is classified as synthetic hallucination.
-- **Genuine Execution**: Apply the skill's actual methodology (e.g. Red-Green-Refactor for TDD, root-cause isolation for debugging) rather than mere superficial tagging. Simple or trivial tasks (1-2 line edits, basic questions) must proceed directly without unnecessary skill overhead.
+- **Genuine Execution**: Apply the skill's actual methodology (e.g. Red-Green-Refactor for TDD, root-cause isolation for debugging) rather than superficial chat responses.
 
 ### 9.3 Autonomous Subagent Dispatch & Dual-Tier Skill Autonomy
 - **Autonomous Subagent Delegation**: The Main Agent must automatically evaluate task complexity and domain affinity, dispatching specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) autonomously without waiting for explicit user prompting.
