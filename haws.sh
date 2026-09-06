@@ -1065,14 +1065,23 @@ run_interactive_kit_setup() {
         tmp_inspect="$(mktemp -d 2>/dev/null || mktemp -d -t 'haws_inspect_XXXXXX')"
         git clone --depth 1 -q "${new_url}" "${tmp_inspect}" 2>/dev/null || true
 
+        local total_skills=0
+        if [ -d "${tmp_inspect}" ]; then
+            total_skills=$(find "${tmp_inspect}" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | wc -l || echo "0")
+        fi
+
         local target_dir="skills/packs/${new_name}"
         local target_type="PACK"
-        if [ -f "${tmp_inspect}/SKILL.md" ] || [ -f "${tmp_inspect}/skill.md" ]; then
+        if [ -f "${tmp_inspect}/SKILL.md" ] || [ -f "${tmp_inspect}/skill.md" ] || [ "${total_skills}" -eq 1 ]; then
             target_dir="skills/standalone/${new_name}"
             target_type="SINGLE"
-            echo "  [✓] Auto-detected: Single Skill (SKILL.md found at root)"
+            echo "  [✓] Auto-detected: Single Skill (1 skill found)"
+        elif [ "${total_skills}" -gt 1 ]; then
+            target_dir="skills/packs/${new_name}"
+            target_type="PACK"
+            echo "  [✓] Auto-detected: Multi-Skill Pack (${total_skills} skills found)"
         else
-            echo "  [✓] Auto-detected: Multi-Skill Pack (multiple skills in subdirectories)"
+            echo "  [WARNING] No SKILL.md found in repository. Defaulting to pack structure."
         fi
         rm -rf "${tmp_inspect}" 2>/dev/null || true
 
