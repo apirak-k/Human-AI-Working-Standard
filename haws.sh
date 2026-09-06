@@ -1248,8 +1248,8 @@ run_kit() {
         setup|interactive)
             echo "=== HAWS Skill Kit Setup & Adjustment ==="
             echo "Choose your skill kit setup mode:"
-            echo "  1) Standard HAWS Kit (Default: 5 curated packs - superpowers, agent-skills, anthropics, mattpocock, ponytail)"
-            echo "  2) Setup (Interactive pack/skill selector - remove existing or add new Git links)"
+            echo "  1) Standard HAWS Kit (Default)"
+            echo "  2) Custom Setup (Select, remove, or add skills)"
             local mode_choice="1"
             if [ -t 0 ]; then
                 read -r -p "Enter selection [1-2] (default: 1): " mode_choice || mode_choice="1"
@@ -1870,8 +1870,8 @@ run_setup() {
         local kit_choice="1"
         if [ -t 0 ]; then
             echo "Select Skill Kit Configuration:"
-            echo "  1) Standard HAWS Kit (Default - 5 curated packs: superpowers, agent-skills, anthropics, mattpocock, ponytail)"
-            echo "  2) Setup (Interactive pack/skill selector - remove existing or add new Git links)"
+            echo "  1) Standard HAWS Kit (Default)"
+            echo "  2) Custom Setup (Select, remove, or add skills)"
             read -r -p "Enter selection [1-2] (default: 1): " kit_choice || kit_choice="1"
             kit_choice="$(echo "${kit_choice}" | tr -d ' \r\n')"
             [ -z "${kit_choice}" ] && kit_choice="1"
