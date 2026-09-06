@@ -45,58 +45,63 @@ REM Read git remote origin of secondbrain
 set "REMOTE_URL="
 for /f "delims=" %%i in ('git -C secondbrain remote get-url origin 2^>nul') do set "REMOTE_URL=%%i"
 
-if "%REMOTE_URL%"=="" (
-    echo [STATUS] Second Brain is currently in LOCAL-ONLY mode.
-    echo.
-    echo ================================================================
-    echo  [PRIVACY NOTICE] Ensure your repository is set to PRIVATE!
-    echo  Never connect Second Brain to a Public GitHub repository.
-    echo ================================================================
-    echo.
-    set "REPO_INPUT="
-    set "REPO_CLEAN="
-    if not "%~1"=="" (
-        set "REPO_INPUT=%~1"
-    ) else (
-        echo To connect to your private cloud repository:
-        set /p "REPO_INPUT=Enter your Private GitHub Repo URL (e.g. git@github.com:username/my-haws-brain.git): "
-    )
-    if defined REPO_INPUT (
-        for /f "tokens=* delims= " %%a in ("!REPO_INPUT!") do set "REPO_CLEAN=%%a"
-    )
-    if /i "!REPO_CLEAN!"=="ECHO is on." set "REPO_CLEAN="
-    if /i "!REPO_CLEAN!"=="ECHO is off." set "REPO_CLEAN="
-    if defined REPO_CLEAN (
-        echo.
-        echo Connecting to !REPO_CLEAN!...
-        "%BASH_CMD%" haws.sh user connect "!REPO_CLEAN!"
-        if errorlevel 1 goto :FAIL
-    ) else (
-        echo [INFO] No URL entered. Second Brain remains in Local-Only mode.
-    )
-) else (
-    echo ================================================================
-    echo  [GUARD] WARNING: Second Brain is currently CONNECTED to:
-    echo  !REMOTE_URL!
-    echo ================================================================
-    echo Disconnecting will return this machine to Local-Only mode.
-    echo Your remote GitHub repository will NOT be deleted.
-    echo.
-    set "CONFIRM="
-    if not "%~1"=="" (
-        set "CONFIRM=%~1"
-    ) else (
-        set /p "CONFIRM=Do you want to disconnect? (y/N): "
-    )
-    if /i "!CONFIRM!"=="y" (
-        echo.
-        "%BASH_CMD%" haws.sh user disconnect --yes
-        if errorlevel 1 goto :FAIL
-    ) else (
-        echo [INFO] Connection preserved.
-    )
-)
+if not "%REMOTE_URL%"=="" goto :CONNECTED_FLOW
 
+:LOCAL_FLOW
+echo [STATUS] Second Brain is currently in LOCAL-ONLY mode.
+echo.
+echo ================================================================
+echo  [PRIVACY NOTICE] Ensure your repository is set to PRIVATE!
+echo  Never connect Second Brain to a Public GitHub repository.
+echo ================================================================
+echo.
+set "REPO_INPUT="
+set "REPO_CLEAN="
+if not "%~1"=="" (
+    set "REPO_INPUT=%~1"
+) else (
+    echo To connect to your private cloud repository:
+    set /p "REPO_INPUT=Enter your Private GitHub Repo URL (e.g. git@github.com:username/my-haws-brain.git): "
+)
+if defined REPO_INPUT (
+    for /f "tokens=* delims= " %%a in ("!REPO_INPUT!") do set "REPO_CLEAN=%%a"
+)
+if /i "!REPO_CLEAN!"=="ECHO is on." set "REPO_CLEAN="
+if /i "!REPO_CLEAN!"=="ECHO is off." set "REPO_CLEAN="
+if defined REPO_CLEAN (
+    echo.
+    echo Connecting to !REPO_CLEAN!...
+    "%BASH_CMD%" haws.sh user connect "!REPO_CLEAN!"
+    if errorlevel 1 goto :FAIL
+) else (
+    echo [INFO] No URL entered. Second Brain remains in Local-Only mode.
+)
+goto :SUCCESS
+
+:CONNECTED_FLOW
+echo ================================================================
+echo  [GUARD] WARNING: Second Brain is currently CONNECTED to:
+echo  !REMOTE_URL!
+echo ================================================================
+echo Disconnecting will return this machine to Local-Only mode.
+echo Your remote GitHub repository will NOT be deleted.
+echo.
+set "CONFIRM="
+if not "%~1"=="" (
+    set "CONFIRM=%~1"
+) else (
+    set /p "CONFIRM=Do you want to disconnect? (y/N): "
+)
+if /i "!CONFIRM!"=="y" (
+    echo.
+    "%BASH_CMD%" haws.sh user disconnect --yes
+    if errorlevel 1 goto :FAIL
+) else (
+    echo [INFO] Connection preserved.
+)
+goto :SUCCESS
+
+:SUCCESS
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause
 exit /b 0

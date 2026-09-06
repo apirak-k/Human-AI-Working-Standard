@@ -46,22 +46,27 @@ if not errorlevel 1 (
     if errorlevel 1 set "IS_FIRST_RUN=1"
 )
 
-if defined IS_FIRST_RUN (
-    echo [*] First-time setup detected. Starting HAWS Interactive Setup...
-    echo.
-    "%BASH_CMD%" haws.sh setup %*
-    if errorlevel 1 goto :FAIL
-) else (
-    echo [*] Running HAWS Universal Sync (Second Brain + Skills + Environments)...
-    echo.
-    "%BASH_CMD%" haws.sh sync %*
-    if errorlevel 1 goto :FAIL
-    echo.
-    echo [*] Verifying System Health (10-Axis Diagnostics)...
-    echo.
-    "%BASH_CMD%" haws.sh doctor
-    if errorlevel 1 goto :FAIL
-)
+if defined IS_FIRST_RUN goto :DO_SETUP
+
+echo [*] Running HAWS Universal Sync: Second Brain, Skills, Environments...
+echo.
+"%BASH_CMD%" haws.sh sync %*
+if errorlevel 1 goto :FAIL
+
+echo.
+echo [*] Verifying System Health: 10-Axis Diagnostics...
+echo.
+"%BASH_CMD%" haws.sh doctor
+if errorlevel 1 goto :FAIL
+goto :SUCCESS
+
+:DO_SETUP
+echo [*] First-time setup detected. Starting HAWS Interactive Setup...
+echo.
+"%BASH_CMD%" haws.sh setup %*
+if errorlevel 1 goto :FAIL
+
+:SUCCESS
 
 echo.
 echo ================================================================
