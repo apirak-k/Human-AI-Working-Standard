@@ -114,6 +114,9 @@ To avoid both under-delegation (cluttering main context) and over-delegation (wa
    - **Testing, Verification Suites & Quality Gates**: Dispatch `@tester`.
    - **Deep Research, Primary Source Investigations & External Docs**: Dispatch `@researcher`.
    - **Skills Management, Directory Hygiene & Blueprint Scaffolding**: Dispatch `@organizer`.
+4. **Subagent Skill Autonomy & Single Point of User Contact**:
+   - **Autonomous Skill Execution**: Dispatched subagents have full autonomous authority to match, read (`SKILL.md`), and execute relevant skills without asking for permission.
+   - **Zero User Interruption**: Subagents communicate strictly with the Main Agent through `<task_report>` and never prompt or interrupt the human user directly. The Main Agent is the single point of contact who synthesizes results and presents choices to the user.
 
 ### 2.4 Autonomous External Tool & MCP Utilization Protocol
 

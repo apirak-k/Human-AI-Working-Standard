@@ -46,3 +46,10 @@ For detailed quality thresholds, anti-patterns, and coverage constraints, see [C
 Every agent operating in this codebase (present and future) must strictly adhere to HAWS Section 9.2:
 - **Mandatory File-Level Ingestion**: The very first tool call when applying any skill MUST be `view_file` (or file-reading tool) on the targeted `SKILL.md`. Executing skills from memory or intuition without an auditable read in the execution transcript is strictly prohibited.
 - **Zero Vanity Tags**: In all completion reports (`<task_report>`), agents must list strictly ONLY skills that were explicitly read and actively executed during that assignment. Including unread or speculative skills is classified as synthetic hallucination.
+
+---
+
+## 5. Single Point of User Contact & Subagent Autonomy
+- **Exclusive User Interface**: The human user converses strictly with the Orchestrator (Main Agent). Subagents must NEVER interrupt or prompt the user directly.
+- **Full Autonomous Skill Execution**: Dispatched subagents autonomously discover, read, and execute any relevant skills required for their assignment without waiting for human approval.
+- **Reporting & Escalation**: When subagents encounter trade-offs, ambiguities, or completion milestones, they return structured evidence in `<task_report>` to the Main Agent. The Main Agent synthesizes and presents decisions to the user.
