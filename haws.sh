@@ -151,21 +151,21 @@ run_doctor() {
         check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
     done
 
-    # 2. Check Project Templates & Blueprints (15 Canonical Blueprints)
+    # 2. Check Project Templates & Blueprints (16 Blueprints)
     [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (16 Blueprints)..."
     check_item "${SCRIPT_DIR}/templates/README.md" "templates/README.md"
     local doc_tpls=("PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "AGENTS.md" "DESIGN.md")
     for f in "${doc_tpls[@]}"; do
         check_item "${SCRIPT_DIR}/templates/docs/${f}" "templates/docs/${f}"
     done
-    check_item "${SCRIPT_DIR}/templates/ai-configs/claude/CLAUDE.md.template" "templates/ai-configs/claude/CLAUDE.md.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/cursor/haws.mdc.template" "templates/ai-configs/cursor/haws.mdc.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/gemini/GEMINI.md.template" "templates/ai-configs/gemini/GEMINI.md.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/copilot/copilot-instructions.md.template" "templates/ai-configs/copilot/copilot-instructions.md.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/codex/AGENTS.override.md.template" "templates/ai-configs/codex/AGENTS.override.md.template"
+    check_item "${SCRIPT_DIR}/ai-configs/claude/CLAUDE.md.template" "ai-configs/claude/CLAUDE.md.template"
+    check_item "${SCRIPT_DIR}/ai-configs/cursor/haws.mdc.template" "ai-configs/cursor/haws.mdc.template"
+    check_item "${SCRIPT_DIR}/ai-configs/gemini/GEMINI.md.template" "ai-configs/gemini/GEMINI.md.template"
+    check_item "${SCRIPT_DIR}/ai-configs/copilot/copilot-instructions.md.template" "ai-configs/copilot/copilot-instructions.md.template"
+    check_item "${SCRIPT_DIR}/ai-configs/codex/AGENTS.override.md.template" "ai-configs/codex/AGENTS.override.md.template"
     local container_tpls=("devcontainer.json" "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
     for f in "${container_tpls[@]}"; do
-        check_item "${SCRIPT_DIR}/templates/containers/${f}" "templates/containers/${f}"
+        check_item "${SCRIPT_DIR}/containers/${f}" "containers/${f}"
     done
 
     # 3. Check Subagents (5 Canonical Specialists)
@@ -508,7 +508,8 @@ extract_skill_desc() {
 
 load_disabled_skills() {
     DISABLED_SKILLS=()
-    local dfile="${SCRIPT_DIR}/config/skills.disabled"
+    local dfile="${SCRIPT_DIR}/skills.disabled"
+    [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/config/skills.disabled" ] && dfile="${SCRIPT_DIR}/config/skills.disabled"
     if [ -f "${dfile}" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
             line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
@@ -518,7 +519,7 @@ load_disabled_skills() {
 }
 
 save_disabled_skills() {
-    local dfile="${SCRIPT_DIR}/config/skills.disabled"
+    local dfile="${SCRIPT_DIR}/skills.disabled"
     mkdir -p "$(dirname "${dfile}")"
     {
         echo "# HAWS Disabled Skills"

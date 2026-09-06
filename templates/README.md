@@ -19,14 +19,14 @@ This directory contains 14 reusable blueprints and configuration templates for s
 
 | Template | Target Path | When to Use | Purpose |
 | :--- | :--- | :--- | :--- |
-| `docs/PROJECT.md` | `PROJECT.md` | Phase 1-2 (Discovery) | Defines project scope, tech stack, roadmap, and verified live system ground truth (Source of Truth). |
-| `docs/ARCHITECTURE.md` | `ARCHITECTURE.md` | Phase 2 (Ideation) | System topology, component boundaries, Mermaid diagrams, and machine-readable Archify JSON IR. |
-| `docs/DESIGN.md` | `DESIGN.md` | Phase 2 (UI/UX) | Design tokens, color palette, typography hierarchy, responsive breakpoints, and WCAG AA accessibility rules. |
-| `docs/CONSTRAINTS.md` | `CONSTRAINTS.md` | Phase 3 (Spec) | Non-negotiable quality contracts: coverage floors, linter rules, forbidden libraries, and verification runners. |
-| `docs/AGENTS.md` | `AGENTS.md` | Phase 1-3 (Setup) | Establishes the agent role matrix, authorized scopes, forbidden actions, and universal build/test commands. |
-| `docs/HANDOFF.md` | `HANDOFF.md` | Phase 6 (Handoff) | Preserves session continuity: active checklists, decisions made, unverified items, and exact resume points. |
+| `templates/docs/PROJECT.md` | `PROJECT.md` | Phase 1-2 (Discovery) | Defines project scope, tech stack, roadmap, and verified live system ground truth (Source of Truth). |
+| `templates/docs/ARCHITECTURE.md` | `ARCHITECTURE.md` | Phase 2 (Ideation) | System topology, component boundaries, Mermaid diagrams, and machine-readable Archify JSON IR. |
+| `templates/docs/DESIGN.md` | `DESIGN.md` | Phase 2 (UI/UX) | Design tokens, color palette, typography hierarchy, responsive breakpoints, and WCAG AA accessibility rules. |
+| `templates/docs/CONSTRAINTS.md` | `CONSTRAINTS.md` | Phase 3 (Spec) | Non-negotiable quality contracts: coverage floors, linter rules, forbidden libraries, and verification runners. |
+| `templates/docs/AGENTS.md` | `AGENTS.md` | Phase 1-3 (Setup) | Establishes the agent role matrix, authorized scopes, forbidden actions, and universal build/test commands. |
+| `templates/docs/HANDOFF.md` | `HANDOFF.md` | Phase 6 (Handoff) | Preserves session continuity: active checklists, decisions made, unverified items, and exact resume points. |
 
-### 2. Multi-AI Environment Adapters (`templates/ai-configs/`)
+### 2. Multi-AI Environment Adapters (`ai-configs/`)
 
 | Template | Target Path | When to Use | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -35,7 +35,7 @@ This directory contains 14 reusable blueprints and configuration templates for s
 | `ai-configs/cursor/haws.mdc.template` | `.cursor/rules/haws.mdc` | Phase 1 (Setup) | Modern Cursor IDE rule configuration using MDC schema (`alwaysApply: true`, `globs: *`). |
 | `ai-configs/copilot/copilot-instructions.md.template` | `.github/copilot-instructions.md` | Phase 1 (Setup) | Hooks GitHub Copilot and OpenAI Codex into HAWS core rules and project contracts. |
 
-### 3. Container & Development Environment Blueprints (`templates/containers/`)
+### 3. Container & Development Environment Blueprints (`containers/`)
 
 | Template | Target Path | When to Use | Purpose |
 | :--- | :--- | :--- | :--- |
