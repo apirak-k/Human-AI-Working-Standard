@@ -523,16 +523,19 @@ run_sync() {
             win_src="$(cygpath -w "${src}")"
             win_dest="$(cygpath -w "${dest}")"
 
-            if [ -L "${dest}" ]; then
-                local current_target
-                current_target="$(readlink "${dest}" || true)"
-                if [ "${current_target}" = "${src}" ]; then
-                    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-                    return 0
-                fi
-                rm -f "${dest}" 2>/dev/null || true
-            elif [ -d "${dest}" ]; then
-                rm -rf "${dest}" 2>/dev/null || true
+            # Check if skill marker already exists and matches to avoid redundant process spawning
+            local src_marker="${src}/SKILL.md"
+            [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
+            local dest_marker="${dest}/SKILL.md"
+            [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
+
+            if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] && diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
+                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                return 0
+            fi
+
+            if [ -d "${dest}" ] || [ -L "${dest}" ]; then
+                MSYS2_ARG_CONV_EXCL="*" cmd.exe /c rmdir "${win_dest}" >/dev/null 2>&1 || rm -rf "${dest}" 2>/dev/null || true
             fi
 
             if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /J "${win_dest}" "${win_src}" >/dev/null 2>&1; then
@@ -660,7 +663,13 @@ run_sync() {
 
             local skill_name=""
             if [ -f "${skill_file}" ]; then
-                skill_name="$(grep -E '^[[:space:]]*name:[[:space:]]*' "${skill_file}" | head -n 1 | sed -E 's/^[[:space:]]*name:[[:space:]]*["'"'"']?([^"'"'"'#\r\n]+)["'"'"']?.*$/\1/' | tr -d '\r\n' | xargs 2>/dev/null || true)"
+                while IFS= read -r line; do
+                    if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
+                        skill_name="${BASH_REMATCH[1]}"
+                        skill_name="${skill_name%"${skill_name##*[![:space:]]}"}"
+                        break
+                    fi
+                done < "${skill_file}"
             fi
             [ -z "${skill_name}" ] && skill_name="$(basename "${skill_dir}")"
 
@@ -696,23 +705,39 @@ run_sync() {
         local win_source="${SOURCE_DIR}"
         command -v cygpath &>/dev/null && win_source="$(cygpath -m "${SOURCE_DIR}")"
 
-        cat <<EOF > "${target_json}"
-{
-  "entries": [
-    { "path": "${win_source}/skills/standalone" },
-    { "path": "${win_source}/skills/packs/agent-skills/skills" },
-    { "path": "${win_source}/skills/packs/anthropics-skills/skills" },
-    { "path": "${win_source}/skills/packs/mattpocock-skills/skills/engineering" },
-    { "path": "${win_source}/skills/packs/mattpocock-skills/skills/in-progress" },
-    { "path": "${win_source}/skills/packs/mattpocock-skills/skills/misc" },
-    { "path": "${win_source}/skills/packs/mattpocock-skills/skills/productivity" },
-    { "path": "${win_source}/skills/packs/superpowers/skills" },
-    { "path": "${win_source}/skills/custom" },
-    { "path": "${win_source}/skills/packs/ponytail/skills" }
-  ]
-}
-EOF
-        echo "  [CONFIG] Antigravity Native Config: ${target_json}"
+        local json_entries=()
+        json_entries+=("    { \"path\": \"${win_source}/skills/standalone\" }")
+        json_entries+=("    { \"path\": \"${win_source}/skills/custom\" }")
+
+        declare -A seen_dirs
+        seen_dirs["${win_source}/skills/standalone"]=1
+        seen_dirs["${win_source}/skills/custom"]=1
+
+        while IFS= read -r f; do
+            [ -z "${f}" ] && continue
+            local sdir="$(dirname "${f}")"
+            local pdir="$(dirname "${sdir}")"
+            local win_pdir="${pdir}"
+            command -v cygpath &>/dev/null && win_pdir="$(cygpath -m "${pdir}")"
+            if [ -z "${seen_dirs[${win_pdir}]:-}" ]; then
+                seen_dirs["${win_pdir}"]=1
+                json_entries+=("    { \"path\": \"${win_pdir}\" }")
+            fi
+        done < <(find "${SOURCE_DIR}/skills/packs" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
+
+        {
+            echo "{"
+            echo '  "entries": ['
+            local total_entries=${#json_entries[@]}
+            for ((i=0; i<total_entries; i++)); do
+                local comma=","
+                [ "$i" -eq $((total_entries - 1)) ] && comma=""
+                echo "${json_entries[$i]}${comma}"
+            done
+            echo '  ]'
+            echo "}"
+        } > "${target_json}"
+        echo "  [CONFIG] Antigravity Native Config (Dynamic): ${target_json}"
         SKILLS_LINKED=$((SKILLS_LINKED + ${#PROCESSED_SKILLS[@]}))
     fi
     echo ""
@@ -1032,23 +1057,26 @@ run_interactive_kit_setup() {
             continue
         fi
 
-        local is_pack="y"
-        if [ -t 0 ]; then
-            read -r -p "Is this a multi-skill pack? [Y/n] (yes=skills/packs/, no=skills/standalone/): " is_pack || is_pack="y"
-            is_pack="$(echo "${is_pack}" | tr -d ' \r\n')"
-            [ -z "${is_pack}" ] && is_pack="y"
-        fi
-
         local new_name
         new_name="$(basename "${new_url}" .git)"
+
+        echo "  [*] Inspecting repository structure for ${new_name}..."
+        local tmp_inspect
+        tmp_inspect="$(mktemp -d 2>/dev/null || mktemp -d -t 'haws_inspect_XXXXXX')"
+        git clone --depth 1 -q "${new_url}" "${tmp_inspect}" 2>/dev/null || true
+
         local target_dir="skills/packs/${new_name}"
         local target_type="PACK"
-        if [[ "${is_pack}" =~ ^[Nn] ]]; then
+        if [ -f "${tmp_inspect}/SKILL.md" ] || [ -f "${tmp_inspect}/skill.md" ]; then
             target_dir="skills/standalone/${new_name}"
             target_type="SINGLE"
+            echo "  [✓] Auto-detected: Single Skill (SKILL.md found at root)"
+        else
+            echo "  [✓] Auto-detected: Multi-Skill Pack (multiple skills in subdirectories)"
         fi
+        rm -rf "${tmp_inspect}" 2>/dev/null || true
 
-        echo "  [*] Adding ${target_type}: ${new_name} -> ${target_dir}..."
+        echo "  [*] Registering ${target_type}: ${new_name} -> ${target_dir}..."
         git -C "${SCRIPT_DIR}" submodule add "${new_url}" "${target_dir}" 2>/dev/null || {
             echo "  [WARNING] Git submodule add failed. Attempting direct clone..."
             git -C "${SCRIPT_DIR}" clone "${new_url}" "${target_dir}" 2>/dev/null || true
