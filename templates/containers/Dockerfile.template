@@ -1,0 +1,50 @@
+# ==============================================================================
+# HAWS Canonical Blueprint: Multi-Stage Production Dockerfile
+# Standard: Lean, Minimalist, Non-Root, Layer-Cached, Zero Secret Leaks
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Stage 1: Build & Compilation Stage
+# ------------------------------------------------------------------------------
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+# Install dependencies with lockfile immutability
+COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
+RUN npm ci --prefer-offline --no-audit
+
+# Copy source code and compile
+COPY . .
+RUN npm run build --if-present
+
+# ------------------------------------------------------------------------------
+# Stage 2: Minimalist Runtime Stage
+# ------------------------------------------------------------------------------
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+# Enforce Non-Root Security Governance
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Create dedicated unprivileged system group and user
+RUN addgroup -S -g 1001 nodejs && \
+    adduser -S -u 1001 -G nodejs apprunner
+
+# Copy build artifacts and production dependencies only
+COPY --from=builder --chown=apprunner:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=apprunner:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=apprunner:nodejs /app/dist ./dist
+
+# Drop root privileges permanently
+USER apprunner
+
+# Expose service port
+EXPOSE 3000
+
+# Health check probe
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+
+# Execute application
+CMD ["node", "dist/index.js"]
