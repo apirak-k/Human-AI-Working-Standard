@@ -717,13 +717,14 @@ run_sync() {
             [ -z "${f}" ] && continue
             local sdir="$(dirname "${f}")"
             local pdir="$(dirname "${sdir}")"
+            [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ] && continue
             local win_pdir="${pdir}"
             command -v cygpath &>/dev/null && win_pdir="$(cygpath -m "${pdir}")"
             if [ -z "${seen_dirs[${win_pdir}]:-}" ]; then
                 seen_dirs["${win_pdir}"]=1
                 json_entries+=("    { \"path\": \"${win_pdir}\" }")
             fi
-        done < <(find "${SOURCE_DIR}/skills/packs" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
+        done < <(find "${SOURCE_DIR}/skills/packs" -not -path "*/.*/*" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
 
         {
             echo "{"
