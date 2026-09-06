@@ -151,21 +151,12 @@ run_doctor() {
         check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
     done
 
-    # 2. Check Project Templates & Blueprints (15 Canonical Blueprints)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (16 Blueprints)..."
+    # 2. Check Project Templates & Blueprints (7 Canonical Blueprints)
+    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (7 Blueprints)..."
     check_item "${SCRIPT_DIR}/templates/README.md" "templates/README.md"
     local doc_tpls=("PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "AGENTS.md" "DESIGN.md")
     for f in "${doc_tpls[@]}"; do
         check_item "${SCRIPT_DIR}/templates/docs/${f}" "templates/docs/${f}"
-    done
-    check_item "${SCRIPT_DIR}/templates/ai-configs/claude/CLAUDE.md.template" "templates/ai-configs/claude/CLAUDE.md.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/cursor/haws.mdc.template" "templates/ai-configs/cursor/haws.mdc.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/gemini/GEMINI.md.template" "templates/ai-configs/gemini/GEMINI.md.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/copilot/copilot-instructions.md.template" "templates/ai-configs/copilot/copilot-instructions.md.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/codex/AGENTS.override.md.template" "templates/ai-configs/codex/AGENTS.override.md.template"
-    local container_tpls=("devcontainer.json" "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
-    for f in "${container_tpls[@]}"; do
-        check_item "${SCRIPT_DIR}/templates/containers/${f}" "templates/containers/${f}"
     done
 
     # 3. Check Subagents (5 Canonical Specialists)
@@ -217,6 +208,15 @@ run_doctor() {
         passed=$((passed + 1))
         [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ (decoupled local git repository)"
         details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"PASS\"}")
+        if [ -d "${SCRIPT_DIR}/secondbrain/notes" ]; then
+            passed=$((passed + 1))
+            [ "$json_mode" = false ] && echo "   [PASS] secondbrain/notes/ (knowledge base directory)"
+            details+=("{\"item\":\"secondbrain/notes/ directory\",\"status\":\"PASS\"}")
+        else
+            failed=$((failed + 1))
+            [ "$json_mode" = false ] && echo "   [FAIL] secondbrain/notes/ directory missing"
+            details+=("{\"item\":\"secondbrain/notes/ directory\",\"status\":\"FAIL\"}")
+        fi
         local dirty_notes
         dirty_notes=$(git -C "${SCRIPT_DIR}/secondbrain" status --porcelain 2>/dev/null | wc -l || echo 0)
         if [ "${dirty_notes}" -gt 0 ]; then

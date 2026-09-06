@@ -268,6 +268,7 @@ Use these functional purposes:
 - **Engineering Workflow (`WORKFLOW.md`)** — 6-phase engineering lifecycle and deterministic skill mapping
 - **User Preferences (`secondbrain/USER_PREFERENCES.md`)** — personal habits, communication style, preferred architectures, and conventions preserved across sessions and tools
 - **Anti-Patterns & Learned Safeguards (`secondbrain/ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors
+- **Personal Knowledge & Notes (`secondbrain/notes/`)** — domain knowledge, technical cheat sheets, references, and personal notes preserved across sessions
 - **History** — superseded information retained through Git history and version control
 
 
