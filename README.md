@@ -59,6 +59,41 @@ The automated `setup` script executes 5 steps in under 60 seconds:
 ---
 
 
+## Codex skills and subagents
+
+HAWS sync links skills into `~/.agents/skills` and adds a HAWS pointer to the
+effective global Codex instruction file (`AGENTS.override.md` when nonempty,
+otherwise an existing `AGENTS.md`). The five canonical roles in `agents/`
+are exposed as native TOML profiles under `~/.codex/agents/` (or
+`$CODEX_HOME/agents/`). Their instructions refer back to the canonical Markdown
+roles and inherit the parent's model and reasoning settings.
+
+For an existing HAWS setup with skills already linked, install just the missing
+Codex profiles without running a framework or Second Brain network sync:
+
+```bash
+bash haws.sh codex-agents install --dry-run
+bash haws.sh codex-agents install
+bash haws.sh codex-agents check
+```
+
+Start a fresh Codex session after installation so its agent catalog can refresh.
+Ask the main agent to delegate a bounded investigation to `researcher` and a
+verification task to `tester`, having each read the applicable installed skill
+and return evidence. On interfaces that expose generic subagent dispatch, the
+main agent supplies the canonical role path in the assignment.
+
+The profile command preserves conflicting files, including manually edited
+generated profiles, and exits with a path-specific error before writing.
+An ownership record (`~/.codex/haws-agents.json`) stores the last installed hashes
+so unchanged generated profiles can upgrade when their canonical descriptions change.
+`codex-agents uninstall --dry-run` previews removal; only exact generated files
+or files matching their recorded installed hashes are removable. Skill counts alone do not establish successful skill execution.
+
+Native format reference: [OpenAI custom subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+
+Focused regression checks: `node --test ai-configs/codex/agents.test.mjs`.
+
 ## Cross-Device Sync (Work and Home)
 
 HAWS physically decouples the **upstream framework (`core/`)** from your **personal Second Brain (`secondbrain/`)**:
