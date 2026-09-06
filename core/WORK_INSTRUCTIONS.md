@@ -15,7 +15,7 @@ At the beginning of a new thread or work context:
 
 1. read the latest `HAWS.md`
 2. read the latest `WORK_INSTRUCTIONS.md`
-3. read `secondbrain/USER_PREFERENCES.md` and `secondbrain/ANTI_PATTERNS.md` (Personal Second Brain; fallback: `core/` pointer or `templates/*.example.md`)
+3. read `secondbrain/USER_PREFERENCES.md` and `secondbrain/ANTI_PATTERNS.md` (Personal Second Brain)
 4. inspect the current project source
 5. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
 6. read `design.md` if it exists (system architecture & design blueprint)
@@ -42,7 +42,7 @@ To prevent context rot, maintain high reasoning precision, and keep execution fa
 - **Modular Markdown Partitioning**: Keep markdown documentation modular (~200–300 lines limit per file). Use the **Summary + Pointer pattern (Progressive Disclosure)**: parent documents provide a clear structural overview and link to deep implementation details in `references/` or `docs/`.
 - **On-Demand Loading & Lazy Context**: Load specialized domain specifications, API references, and schemas Just-in-Time only when the active task touches that area. Persist findings to disk and do not retain heavy unparsed text in conversation memory.
 - **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`HANDOFF.md`, task checklists, or implementation plans).
-- **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Query or build a dependency graph (`graphify`, `archify`, or `templates/ARCHITECTURE.md`) to isolate the blast radius, target only affected callers, and preserve context budget.
+- **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Query or build a dependency graph (`graphify`, `archify`, or `templates/docs/ARCHITECTURE.md`) to isolate the blast radius, target only affected callers, and preserve context budget.
 - **Proactive session compaction**: When a task phase completes, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
 
 ## 2. Starting and performing work
@@ -51,11 +51,10 @@ For a new project or major feature:
 
 - do not invent project rules blindly
 - scaffold necessary blueprints from `templates/` based on project requirements (see the full catalog and usage instructions in `templates/README.md`)
-- connect your active AI assistant by scaffolding the corresponding environment adapter: `.gemini/GEMINI.md` for Google Antigravity, `CLAUDE.md` for Claude Code, `.cursor/rules/haws.mdc` or `.cursorrules` for Cursor, or `.github/copilot-instructions.md` for GitHub Copilot / OpenAI Codex
-- during discovery and ideation, define project scope in `PROJECT.md`, system boundaries in `ARCHITECTURE.md`, and visual tokens in `DESIGN.md`
-- before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` and agent permission boundaries in `AGENTS.md`
-- for complex systems, maintain runtime contracts and invariant lessons in `SOT.md`
-- for containerized applications, copy `Dockerfile.template` to `Dockerfile`, `.dockerignore.template` to `.dockerignore`, and `docker-compose.yml.template` to `docker-compose.yml`
+- connect your active AI assistant by scaffolding the corresponding environment adapter from `templates/ai-configs/`: `gemini/GEMINI.md.template` for Google Antigravity, `claude/CLAUDE.md.template` for Claude Code, `cursor/haws.mdc.template` for Cursor, or `copilot/copilot-instructions.md.template` for GitHub Copilot / OpenAI Codex
+- during discovery and ideation, define project scope, roadmap, and live system state in `PROJECT.md` (from `templates/docs/PROJECT.md`), system boundaries in `ARCHITECTURE.md` (from `templates/docs/ARCHITECTURE.md`), and visual tokens in `DESIGN.md` (from `templates/docs/DESIGN.md`)
+- before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` (from `templates/docs/CONSTRAINTS.md`) and agent permission boundaries in `AGENTS.md` (from `templates/docs/AGENTS.md`)
+- for containerized applications, scaffold from `templates/containers/`: `Dockerfile.template` to `Dockerfile`, `.dockerignore.template` to `.dockerignore`, and `docker-compose.yml.template` to `docker-compose.yml`
 - create or update `HANDOFF.md` when work must pause or transfer across sessions
 
 
@@ -68,9 +67,9 @@ Before substantial changes:
 3. identify dependencies, risks, and appropriate checks
 4. follow confirmed instructions and methods
 
-### 2.1 Autonomous skill selection and invocation (Dynamic Taxonomy & Genuine Execution)
+### 2.1 Autonomous skill selection and invocation (Dynamic Discovery & Genuine Execution)
 
-Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against the active categories in `SKILL_TAXONOMY.md`:
+Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against available skills in `skills/`:
 1. **Dual Invocation Modes**:
    - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/grill-me`, `/brainstorming`, `/tdd`, `/drawio`, `/review`).
    - **Autonomous Agent Execution**: The AI proactively matches task context against installed skill workflows and executes their protocols directly.
@@ -82,7 +81,7 @@ Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task a
    - All dispatched subagents must log invoked skills in their returned `<task_report>`, listing ONLY skills that were explicitly opened and executed.
 3. **Proportionality Rule**:
    - **Simple / Trivial Tasks**: (e.g. quick typo fix, 1-2 line edits, direct Q&A, minor style tweaks) ➔ Execute directly and immediately without overhead.
-   - **Substantial Work & Critical Milestones**: Apply specialized domain skills dynamically as categorized by `@organizer` in `SKILL_TAXONOMY.md`.
+   - **Substantial Work & Critical Milestones**: Apply specialized domain skills dynamically from active skill packs (`skills/packs/`, `skills/standalone/`, `skills/custom/`).
 4. **Sub-Second Native Inspection**:
    - For skill counts and health auditing, always run the native fast checker (`bash haws.sh status`) to obtain instant results (< 0.5s) without slow shell loops.
 
@@ -110,9 +109,9 @@ To avoid both under-delegation (cluttering main context) and over-delegation (wa
    - **Frontend UI / React / Styling / Accessibility**: Dispatch `@frontend-engineer`.
    - **Testing, Verification Suites & Quality Gates**: Dispatch `@tester`.
    - **Deep Research, Primary Source Investigations & External Docs**: Dispatch `@researcher`.
-   - **Taxonomy Organization, Directory Hygiene & Blueprint Scaffolding**: Dispatch `@organizer`.
+   - **Skills Management, Directory Hygiene & Blueprint Scaffolding**: Dispatch `@organizer`.
 
-### 2.4 Autonomous Plugin & MCP Tool Utilization Protocol
+### 2.4 Autonomous External Tool & MCP Utilization Protocol
 
 1. **Passive Read / Inspection Tools (Auto-Execute)**:
    - Linters, format checkers, read-only MCP servers, Chrome DevTools DOM inspection, and `haws.sh doctor/status`.
@@ -320,7 +319,7 @@ the user's local repository or remote (e.g. a sandboxed AI session).
 Prompting without curated context causes model failure. Context Engineering ensures high-fidelity execution through a 3-step lifecycle:
 
 1. **Ideation (`INITIAL.md`)**: The user provides high-level intent, feature ideas, or business requirements.
-2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using `templates/ARCHITECTURE.md` and `templates/PROJECT.md` as reference blueprints). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
+2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using `templates/docs/ARCHITECTURE.md` and `templates/docs/PROJECT.md` as reference blueprints). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
 3. **Execution Loop (`/execute-prp`)**: The implementing agent or subagent executes the tasks under a self-correcting validation loop:
    - Run tests / build checks.
    - If tests fail, diagnose systematically (trace input ➔ state ➔ output).
@@ -358,7 +357,7 @@ Refer to [`core/WORKFLOW.md`](WORKFLOW.md) for exit criteria and detailed proced
 
 ### Flexible Delegation Model & Direct Intervention
 - **Autonomous Proactive Delegation**: The Main Agent evaluates incoming work and autonomously delegates domain-specific tasks to specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) without waiting for explicit human requests.
-- **Dual-Tier Autonomous Skill Selection**: Both Main Agent and Subagents automatically match task context against skills in `SKILL_TAXONOMY.md` and execute their workflows. The Main Agent announces via `Applying /<skill-name>...`; Subagents declare applied skills in `<task_report>`.
+- **Dual-Tier Autonomous Skill Selection**: Both Main Agent and Subagents automatically match task context against installed skills in `skills/` and execute their workflows. The Main Agent announces via `Applying /<skill-name>...`; Subagents declare applied skills in `<task_report>`.
 - **Dynamic Routing Over Rigid Sequences**: Delegation decisions must be driven by standard software engineering judgment rather than rigid, hardcoded multi-agent pipelines.
 - **Direct Intervention Protocol**: The Main Agent may resolve a problem directly without delegating when a subagent is blocked, unavailable, or when a targeted direct fix is significantly faster.
 - **Context Isolation**: When delegating to subagents, the Main Agent sends only the atomic task assignment (via `<task_assignment>`), never dumping the entire conversation history. Subagents return concise summaries (via `<task_report>`), keeping all context windows lean and free from rot.

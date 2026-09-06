@@ -1,36 +1,15 @@
-[submodule "skills/drawio-skill"]
-	path = skills/drawio-skill
-	url = https://github.com/Agents365-ai/drawio-skill.git
-[submodule "skills/planning-with-files"]
-	path = skills/planning-with-files
-	url = https://github.com/OthmanAdi/planning-with-files.git
-[submodule "skills/ui-ux-pro-max-skill"]
-	path = skills/ui-ux-pro-max
-	url = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
-[submodule "skills/taste-skill"]
-	path = skills/taste-skill
-	url = https://github.com/Leonxlnx/taste-skill.git
-[submodule "skills/humanizer"]
-	path = skills/humanizer
-	url = https://github.com/blader/humanizer.git
-[submodule "skills/graphify"]
-	path = skills/graphify
-	url = https://github.com/Graphify-Labs/graphify.git
-[submodule "skills/caveman"]
-	path = skills/caveman
-	url = https://github.com/JuliusBrussee/caveman.git
-[submodule "skills/superpowers"]
+[submodule "skills/packs/superpowers"]
 	path = skills/packs/superpowers
 	url = https://github.com/obra/superpowers.git
-[submodule "skills/agent-skills"]
+[submodule "skills/packs/agent-skills"]
 	path = skills/packs/agent-skills
 	url = https://github.com/addyosmani/agent-skills.git
-[submodule "skills/anthropics-skills"]
+[submodule "skills/packs/anthropics-skills"]
 	path = skills/packs/anthropics-skills
 	url = https://github.com/anthropics/skills.git
-[submodule "skills/mattpocock-skills"]
+[submodule "skills/packs/mattpocock-skills"]
 	path = skills/packs/mattpocock-skills
 	url = https://github.com/mattpocock/skills.git
-[submodule "plugins/ponytail"]
-	path = plugins/ponytail
+[submodule "skills/packs/ponytail"]
+	path = skills/packs/ponytail
 	url = https://github.com/DietrichGebert/ponytail.git

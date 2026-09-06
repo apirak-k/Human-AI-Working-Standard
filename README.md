@@ -95,16 +95,17 @@ Double-click `UNINSTALL.bat` in Windows File Explorer:
 | `bash haws.sh setup` | First-time setup: initializes Second Brain, submodules, skill links, git hooks, and doctor check |
 | `bash haws.sh sync` | Two-way Second Brain sync, pulls upstream framework, updates submodules, and verifies links |
 | `bash haws.sh status` | Instant skill count, token budget, and sync health check (< 0.2s) |
-| `bash haws.sh doctor` | Comprehensive 12-axis system diagnostic suite (51 verification checks) |
+| `bash haws.sh doctor` | Comprehensive 12-axis system diagnostic suite |
 | `bash haws.sh uninstall` | Safely detach HAWS pointers, skills, and hooks without deleting user data (`--dry-run` supported) |
-| `bash haws.sh notify <msg>` | Dispatch task completion alert via Telegram, Discord, or generic Webhook |
-| `bash haws.sh kit add --skill <url>` | Add external skill pack submodule with merge protection |
-| `bash haws.sh kit add --tool <url>` | Add external non-skill tool into `plugins/` |
+| `bash haws.sh kit setup` | Interactive skill kit setup (Default Kit vs Custom Kit) |
+| `bash haws.sh kit add <url> [name]` | Add external skill pack submodule with merge protection |
 | `bash haws.sh kit prune <name>` | Cleanly remove submodule, clear git cache, and delete directory |
+| `bash haws.sh kit update [name]` | Update active submodules from upstream remote links |
+| `bash haws.sh kit list` | List installed skill submodules and statuses |
 | `bash haws.sh brain status` | Check Second Brain cloud connection and commit count (alias: `user status`) |
 | `bash haws.sh brain connect <url>` | Connect Second Brain to private GitHub repository (alias: `user connect`) |
 | `bash haws.sh brain disconnect` | Switch Second Brain to local-only mode (alias: `user disconnect`) |
-| `bash haws.sh hook install` | Install hardware git hooks (`pre-commit`, `commit-msg`, and `pre-push`) |
+| `bash haws.sh hook install` | Install hardware git hooks (`pre-commit` and `pre-push`) |
 | `bash haws.sh hook status` | Inspect git hook activation status |
 
 ---
@@ -115,27 +116,24 @@ Double-click `UNINSTALL.bat` in Windows File Explorer:
 ├── core/                                # Universal Standard Specifications (Copy-pasteable for any AI)
 │   ├── HAWS.md                          # Core principles, empirical grounding, Ponytail ladder & safeguards
 │   ├── WORK_INSTRUCTIONS.md             # Context loading, context discipline, Git protocols & SWE rules
-│   ├── WORKFLOW.md                      # 6-phase engineering lifecycle & deterministic skill mapping
-│   ├── USER_PREFERENCES.md              # Pointer to secondbrain/USER_PREFERENCES.md
-│   ├── ANTI_PATTERNS.md                 # Pointer to secondbrain/ANTI_PATTERNS.md
-│   └── SKILL_TAXONOMY.md                # Dynamic skill catalog & router (@organizer)
-├── secondbrain/                         # Personal Second Brain (Gitignored from upstream HAWS)
+│   └── WORKFLOW.md                      # 6-phase engineering lifecycle & deterministic skill mapping
+├── secondbrain/                         # Personal Second Brain (Decoupled local Git repository)
 │   ├── USER_PREFERENCES.md              # Personal habits, communication style & architectural preferences
 │   └── ANTI_PATTERNS.md                 # Learned safeguards, forbidden libraries & operational constraints
-├── plugins/                             # External Non-Skill Tools & Starred Repos (Submodules)
-├── tools/                               # Automation & Mobile Notification Dispatcher
-│   └── notify.sh                        # Multi-channel notification dispatcher (Telegram, Discord, Webhook)
 ├── agents/                              # Unified Subagent Source (Harness-Enforced)
 │   ├── organizer.md                     # Skill inventory health, workspace hygiene & learning ledger
 │   ├── frontend-engineer.md             # UI components, client state, styling, responsive design & a11y
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
-├── templates/                           # 19 Project blueprints and templates (see templates/README.md)
+├── templates/                           # 14 Project blueprints and templates (see templates/README.md)
+│   ├── docs/                            # Documentation & SOT blueprints (PROJECT, ARCHITECTURE, etc.)
+│   ├── ai-configs/                      # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot)
+│   └── containers/                      # Leak-proof container blueprints (Dockerfile, compose, ignore)
 ├── skills/                              # Curated Skill Repository (3 Clean Categories)
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
-│   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, etc.)
+│   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
 ├── haws.sh                              # Standalone Universal CLI Engine (12-axis diagnostics)
 ├── 1-CLICK-SYNC.bat                     # Windows 1-Click Complete System Sync & Health Check

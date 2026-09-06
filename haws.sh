@@ -121,28 +121,29 @@ run_doctor() {
 
     [ "$json_mode" = false ] && echo "=== HAWS System Doctor & Environment Diagnostics ===" && echo ""
 
-    # 1. Check Core Standard Files (6 Canonical Files)
-    [ "$json_mode" = false ] && echo "1. Checking Core Standards (6 Canonical Files)..."
-    local core_files=("HAWS.md" "WORK_INSTRUCTIONS.md" "WORKFLOW.md" "USER_PREFERENCES.md" "ANTI_PATTERNS.md" "SKILL_TAXONOMY.md")
+    # 1. Check Core Standard Files (3 Canonical Files)
+    [ "$json_mode" = false ] && echo "1. Checking Core Standards (3 Canonical Files)..."
+    local core_files=("HAWS.md" "WORK_INSTRUCTIONS.md" "WORKFLOW.md")
     for f in "${core_files[@]}"; do
         check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
     done
 
-    # 2. Check Project Templates & Blueprints (19 Canonical Blueprints)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (19 Blueprints)..."
-    local tpl_files=(
-        "README.md" "DESIGN.md" "PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "SOT.md" "AGENTS.md"
-        "USER_PREFERENCES.example.md" "ANTI_PATTERNS.example.md"
-        "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template" "vite.config.ts.template"
-        ".cursorrules.template" "CLAUDE.md.template"
-    )
-    for f in "${tpl_files[@]}"; do
-        check_item "${SCRIPT_DIR}/templates/${f}" "templates/${f}"
+    # 2. Check Project Templates & Blueprints (15 Canonical Blueprints)
+    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (15 Blueprints)..."
+    check_item "${SCRIPT_DIR}/templates/README.md" "templates/README.md"
+    local doc_tpls=("PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "AGENTS.md" "DESIGN.md")
+    for f in "${doc_tpls[@]}"; do
+        check_item "${SCRIPT_DIR}/templates/docs/${f}" "templates/docs/${f}"
     done
-    check_item "${SCRIPT_DIR}/templates/.devcontainer/devcontainer.json" "templates/.devcontainer/devcontainer.json"
-    check_item "${SCRIPT_DIR}/templates/.github/copilot-instructions.md.template" "templates/.github/copilot-instructions.md.template"
-    check_item "${SCRIPT_DIR}/templates/.cursor/rules/haws.mdc.template" "templates/.cursor/rules/haws.mdc.template"
-    check_item "${SCRIPT_DIR}/templates/.gemini/GEMINI.md.template" "templates/.gemini/GEMINI.md.template"
+    check_item "${SCRIPT_DIR}/templates/ai-configs/claude/CLAUDE.md.template" "templates/ai-configs/claude/CLAUDE.md.template"
+    check_item "${SCRIPT_DIR}/templates/ai-configs/cursor/haws.mdc.template" "templates/ai-configs/cursor/haws.mdc.template"
+    check_item "${SCRIPT_DIR}/templates/ai-configs/gemini/GEMINI.md.template" "templates/ai-configs/gemini/GEMINI.md.template"
+    check_item "${SCRIPT_DIR}/templates/ai-configs/copilot/copilot-instructions.md.template" "templates/ai-configs/copilot/copilot-instructions.md.template"
+    check_item "${SCRIPT_DIR}/templates/ai-configs/devcontainer/devcontainer.json" "templates/ai-configs/devcontainer/devcontainer.json"
+    local container_tpls=("Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
+    for f in "${container_tpls[@]}"; do
+        check_item "${SCRIPT_DIR}/templates/containers/${f}" "templates/containers/${f}"
+    done
 
     # 3. Check Subagents (5 Canonical Specialists)
     [ "$json_mode" = false ] && echo "" && echo "3. Checking Subagents (5 Canonical Specialists)..."
@@ -166,30 +167,28 @@ run_doctor() {
         fi
     done
 
-    # Verify that SKILL_TAXONOMY.md maps 100% of registered skills
-    local tax_file="${SCRIPT_DIR}/core/SKILL_TAXONOMY.md"
-    if [ -f "${tax_file}" ] && [ -f "${manifest}" ]; then
-        local missing_tax=0
-        while IFS= read -r line || [ -n "$line" ]; do
-            if [[ "$line" =~ ^skill:(.+) ]]; then
-                local sk="${BASH_REMATCH[1]}"
-                if ! grep -F -q "${sk}" "${tax_file}" 2>/dev/null; then
-                    missing_tax=$((missing_tax + 1))
-                fi
-            fi
-        done < "${manifest}"
-        if [ "${missing_tax}" -eq 0 ]; then
-            passed=$((passed + 1))
-            [ "$json_mode" = false ] && echo "   [PASS] 100% Skills mapped in core/SKILL_TAXONOMY.md"
-            details+=("{\"item\":\"SKILL_TAXONOMY.md coverage\",\"status\":\"PASS\"}")
+    # Verify that all installed skills have valid SKILL.md
+    local valid_skills=0
+    local invalid_skills=0
+    while IFS= read -r -d '' sf; do
+        if [ -s "${sf}" ]; then
+            valid_skills=$((valid_skills + 1))
         else
-            failed=$((failed + 1))
-            [ "$json_mode" = false ] && echo "   [FAIL] ${missing_tax} skill(s) missing from core/SKILL_TAXONOMY.md"
-            details+=("{\"item\":\"SKILL_TAXONOMY.md coverage\",\"status\":\"FAIL\"}")
+            invalid_skills=$((invalid_skills + 1))
         fi
+    done < <(find "${SCRIPT_DIR}/skills" -type f \( -name "SKILL.md" -o -name "skill.md" \) -print0 2>/dev/null || true)
+
+    if [ "${invalid_skills}" -eq 0 ] && [ "${valid_skills}" -gt 0 ]; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] 100% Skills validated (${valid_skills} active skills)"
+        details+=("{\"item\":\"Skills inventory validity\",\"status\":\"PASS\"}")
+    else
+        failed=$((failed + 1))
+        [ "$json_mode" = false ] && echo "   [FAIL] Invalid or empty SKILL.md detected (${invalid_skills} invalid)"
+        details+=("{\"item\":\"Skills inventory validity\",\"status\":\"FAIL\"}")
     fi
 
-    # 5. Check Personal Second Brain & Plugins Directory
+    # 5. Check Personal Second Brain & Plugins
     [ "$json_mode" = false ] && echo "" && echo "5. Checking Personal Second Brain & Plugins..."
     if [ -d "${SCRIPT_DIR}/secondbrain/.git" ] && [ -s "${SCRIPT_DIR}/secondbrain/USER_PREFERENCES.md" ] && [ -s "${SCRIPT_DIR}/secondbrain/ANTI_PATTERNS.md" ]; then
         passed=$((passed + 1))
@@ -206,13 +205,13 @@ run_doctor() {
         details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"FAIL\"}")
     fi
 
-    if [ -d "${SCRIPT_DIR}/plugins" ]; then
+    if [ ! -d "${SCRIPT_DIR}/plugins" ]; then
         passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] plugins/ directory (non-skill tool submodules)"
+        [ "$json_mode" = false ] && echo "   [PASS] plugins/ consolidated into skills/packs/ (zero bloat)"
         details+=("{\"item\":\"plugins/ directory\",\"status\":\"PASS\"}")
     else
         failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] plugins/ directory missing"
+        [ "$json_mode" = false ] && echo "   [FAIL] Redundant plugins/ directory still present"
         details+=("{\"item\":\"plugins/ directory\",\"status\":\"FAIL\"}")
     fi
 
@@ -247,6 +246,16 @@ run_doctor() {
     else
         [ "$json_mode" = false ] && echo "   [WARN] Legacy scripts/ directory present"
         details+=("{\"item\":\"Zero redundant scripts/ directory\",\"status\":\"WARN\"}")
+    fi
+
+    if [ ! -d "${SCRIPT_DIR}/tools" ]; then
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] Zero redundant tools/ directory"
+        details+=("{\"item\":\"Zero redundant tools/ directory\",\"status\":\"PASS\"}")
+    else
+        failed=$((failed + 1))
+        [ "$json_mode" = false ] && echo "   [FAIL] Redundant tools/ directory exists"
+        details+=("{\"item\":\"Zero redundant tools/ directory\",\"status\":\"FAIL\"}")
     fi
 
     # 8. Check for Unmanaged Foreign Skills
@@ -354,7 +363,6 @@ run_doctor() {
     check_item "${SCRIPT_DIR}/1-CLICK-SYNC.bat" "1-CLICK-SYNC.bat"
     check_item "${SCRIPT_DIR}/2nd-BRAIN-TOGGLE.bat" "2nd-BRAIN-TOGGLE.bat"
     check_item "${SCRIPT_DIR}/UNINSTALL.bat" "UNINSTALL.bat"
-    check_item "${SCRIPT_DIR}/tools/notify.sh" "tools/notify.sh"
 
     if "${SCRIPT_DIR}/haws.sh" uninstall --dry-run >/dev/null 2>&1; then
         passed=$((passed + 1))
@@ -364,16 +372,6 @@ run_doctor() {
         failed=$((failed + 1))
         [ "$json_mode" = false ] && echo "   [FAIL] haws.sh uninstall --dry-run failed"
         details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"FAIL\"}")
-    fi
-
-    if "${SCRIPT_DIR}/tools/notify.sh" --status >/dev/null 2>&1; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] tools/notify.sh --status (operational)"
-        details+=("{\"item\":\"Notification Dispatcher Test\",\"status\":\"PASS\"}")
-    else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] tools/notify.sh --status failed"
-        details+=("{\"item\":\"Notification Dispatcher Test\",\"status\":\"FAIL\"}")
     fi
 
 
@@ -582,10 +580,6 @@ run_sync() {
         local marker_end="<!-- HAWS_GLOBAL_POINTER_END -->"
 
         mkdir -p "$(dirname "${target_file}")"
-        if [ -f "${target_file}" ] && grep -q "${marker_start}" "${target_file}" 2>/dev/null; then
-            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-            return 0
-        fi
 
         local pointer_content=""
         pointer_content+="${marker_start}\n"
@@ -593,17 +587,34 @@ run_sync() {
         pointer_content+="This environment operates under HAWS. Read and adhere to:\n"
         pointer_content+="- Core Standard: ${SOURCE_DIR}/core/HAWS.md\n"
         pointer_content+="- Work Instructions: ${SOURCE_DIR}/core/WORK_INSTRUCTIONS.md\n"
-        pointer_content+="- User Preferences & Second Brain: ${SOURCE_DIR}/core/USER_PREFERENCES.md and ${SOURCE_DIR}/core/ANTI_PATTERNS.md\n"
+        pointer_content+="- User Preferences & Second Brain: ${SOURCE_DIR}/secondbrain/USER_PREFERENCES.md and ${SOURCE_DIR}/secondbrain/ANTI_PATTERNS.md\n"
         pointer_content+="${marker_end}\n"
 
         if [ -f "${target_file}" ]; then
-            printf "\n%b" "${pointer_content}" >> "${target_file}"
-            echo "  [UPDATED] Appended HAWS Global Pointer to ${target_file}"
+            if grep -q "${marker_start}" "${target_file}" 2>/dev/null; then
+                local tmp_file="${target_file}.tmp.$$"
+                awk -v start="${marker_start}" -v end="${marker_end}" '
+                    $0 ~ start { skip=1; next }
+                    $0 ~ end { skip=0; next }
+                    !skip { print }
+                ' "${target_file}" > "${tmp_file}"
+                printf "%b" "${pointer_content}" >> "${tmp_file}"
+                mv -f "${tmp_file}" "${target_file}"
+                echo "  [UPDATED] Refreshed HAWS Global Pointer in ${target_file}"
+                RULES_LINKED=$((RULES_LINKED + 1))
+                return 0
+            else
+                printf "\n%b" "${pointer_content}" >> "${target_file}"
+                echo "  [UPDATED] Appended HAWS Global Pointer to ${target_file}"
+                RULES_LINKED=$((RULES_LINKED + 1))
+                return 0
+            fi
         else
             printf "%b" "${pointer_content}" > "${target_file}"
             echo "  [CREATED] Created HAWS Global Pointer at ${target_file}"
+            RULES_LINKED=$((RULES_LINKED + 1))
+            return 0
         fi
-        RULES_LINKED=$((RULES_LINKED + 1))
     }
 
     # 4. Setup Global Pointers
@@ -668,7 +679,7 @@ run_sync() {
 
     [ -d "${SOURCE_DIR}/skills/custom" ] && find_and_link_skills "${SOURCE_DIR}/skills/custom"
     find_and_link_skills "${SOURCE_DIR}/skills"
-    [ -d "${SOURCE_DIR}/plugins/ponytail/skills" ] && find_and_link_skills "${SOURCE_DIR}/plugins/ponytail/skills"
+    [ -d "${SOURCE_DIR}/skills/packs/ponytail/skills" ] && find_and_link_skills "${SOURCE_DIR}/skills/packs/ponytail/skills"
 
     if [ "$DETECTED_GEMINI" = true ]; then
         local target_json="${HOME}/.gemini/config/skills.json"
@@ -698,7 +709,7 @@ run_sync() {
     { "path": "${win_source}/skills/packs/mattpocock-skills/skills/productivity" },
     { "path": "${win_source}/skills/packs/superpowers/skills" },
     { "path": "${win_source}/skills/custom" },
-    { "path": "${win_source}/plugins/ponytail/skills" }
+    { "path": "${win_source}/skills/packs/ponytail/skills" }
   ]
 }
 EOF
@@ -860,7 +871,7 @@ run_kit() {
             done
 
             if [ -z "${url}" ]; then
-                echo "Usage: ./haws.sh kit add [--skill|--tool] <git-url> [name]"
+                echo "Usage: ./haws.sh kit add <git-url> [name]"
                 return 1
             fi
 
@@ -868,20 +879,13 @@ run_kit() {
                 name="$(basename "${url}" .git)"
             fi
 
-            local dest_path=""
-            if [ "${target_type}" = "skill" ]; then
-                dest_path="skills/packs/${name}"
-            else
-                dest_path="plugins/${name}"
-            fi
+            local dest_path="skills/packs/${name}"
 
             echo "=== Adding ${target_type} to KIT: ${name} ==="
             git -C "${SCRIPT_DIR}" submodule add "${url}" "${dest_path}"
             git -C "${SCRIPT_DIR}" submodule update --init --recursive "${dest_path}"
             echo "  [✓] Submodule added at ${dest_path}"
-            if [ "${target_type}" = "skill" ]; then
-                run_sync
-            fi
+            run_sync
             ;;
         prune|remove|rm)
             local name="${1:-}"
@@ -892,7 +896,7 @@ run_kit() {
 
             echo "=== Pruning from KIT: ${name} ==="
             local found_path=""
-            for candidate in "skills/packs/${name}" "skills/standalone/${name}" "skills/custom/${name}" "plugins/${name}"; do
+            for candidate in "skills/packs/${name}" "skills/standalone/${name}" "skills/custom/${name}"; do
                 if [ -d "${SCRIPT_DIR}/${candidate}" ] || grep -q "${candidate}" "${SCRIPT_DIR}/.gitmodules" 2>/dev/null; then
                     found_path="${candidate}"
                     break
@@ -928,7 +932,7 @@ run_kit() {
 
             if [ -n "${target}" ]; then
                 local found_path=""
-                for candidate in "skills/packs/${target}" "skills/standalone/${target}" "plugins/${target}"; do
+                for candidate in "skills/packs/${target}" "skills/standalone/${target}"; do
                     if grep -q "${candidate}" "${SCRIPT_DIR}/.gitmodules" 2>/dev/null; then
                         found_path="${candidate}"
                         break
@@ -959,6 +963,29 @@ run_kit() {
             echo ""
             run_sync
             ;;
+        setup|interactive)
+            echo "=== HAWS Skill Kit Setup & Adjustment ==="
+            echo "Choose your skill kit setup mode:"
+            echo "  1) Standard Kit (Recommended: superpowers, agent-skills, anthropics, mattpocock, ponytail)"
+            echo "  2) Custom Kit (Add / prune Git links)"
+            local mode_choice="1"
+            if [ -t 0 ]; then
+                read -r -p "Enter selection [1-2] (default: 1): " mode_choice || mode_choice="1"
+                mode_choice="$(echo "${mode_choice}" | tr -d ' \r\n')"
+            fi
+            if [ "${mode_choice}" = "2" ]; then
+                echo ""
+                echo "Custom Kit Mode:"
+                echo "Use './haws.sh kit add <git-url> [name]' to add skills."
+                echo "Use './haws.sh kit prune <name>' to remove skills."
+                echo "Use './haws.sh kit list' to see installed skills."
+            else
+                echo ""
+                echo "Applying Standard Kit configuration..."
+                git -C "${SCRIPT_DIR}" submodule update --init --recursive
+                run_sync
+            fi
+            ;;
         list|status)
             echo "=== HAWS KIT Installed Submodules & Tools ==="
             if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
@@ -968,7 +995,7 @@ run_kit() {
             fi
             ;;
         *)
-            echo "Usage: ./haws.sh kit [add|prune|update|list]"
+            echo "Usage: ./haws.sh kit [setup|add|prune|update|list]"
             return 1
             ;;
     esac
@@ -1167,11 +1194,30 @@ run_user() {
         git -C "${brain_dir}" init -b main --quiet 2>/dev/null || git -C "${brain_dir}" init --quiet
         git -C "${brain_dir}" config user.name "HAWS User" 2>/dev/null || true
         git -C "${brain_dir}" config user.email "user@haws.local" 2>/dev/null || true
-        if [ ! -f "${brain_dir}/USER_PREFERENCES.md" ] && [ -f "${SCRIPT_DIR}/templates/USER_PREFERENCES.example.md" ]; then
-            cp "${SCRIPT_DIR}/templates/USER_PREFERENCES.example.md" "${brain_dir}/USER_PREFERENCES.md"
+        if [ ! -f "${brain_dir}/USER_PREFERENCES.md" ]; then
+            cat << 'EOF' > "${brain_dir}/USER_PREFERENCES.md"
+# Personal User Preferences
+
+> **Purpose**: Preserves personal developer preferences, habits, architectural styles, and communication rules across all AI tools and sessions.
+
+## Communication Style
+- Concise, clear, direct.
+- Explain reasoning and trade-offs.
+
+## Technology Preferences
+- Coding Conventions: Clean modular architecture, standard libraries first.
+EOF
         fi
-        if [ ! -f "${brain_dir}/ANTI_PATTERNS.md" ] && [ -f "${SCRIPT_DIR}/templates/ANTI_PATTERNS.example.md" ]; then
-            cp "${SCRIPT_DIR}/templates/ANTI_PATTERNS.example.md" "${brain_dir}/ANTI_PATTERNS.md"
+        if [ ! -f "${brain_dir}/ANTI_PATTERNS.md" ]; then
+            cat << 'EOF' > "${brain_dir}/ANTI_PATTERNS.md"
+# Permanent Anti-Patterns & Operational Safeguards
+
+> **Purpose**: Records learned mistakes, forbidden patterns, and operational constraints to prevent regressions across sessions.
+
+## Operational Safeguards
+- No destructive git operations without human confirmation.
+- Evidence before assertions: run verification tests before claiming success.
+EOF
         fi
         git -C "${brain_dir}" add . 2>/dev/null || true
         git -C "${brain_dir}" commit -m "Initialize second brain" --quiet 2>/dev/null || true

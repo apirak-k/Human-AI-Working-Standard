@@ -124,7 +124,7 @@ To prevent common automated coding errors and preserve context integrity:
 - **Multi-Stage Efficiency**: Container builds should separate compilation from runtime to minimize image attack surface and artifact weight.
 
 ### 3.5 Graph Engineering & Architecture Topology
-- **Topological Navigation over Flat Dumps**: In multi-module codebases, agents must navigate via dependency graphs rather than loading flat source files into context. Use AST extractors or graph tools (e.g. `graphify`, `archify`, or Mermaid diagrams in `templates/ARCHITECTURE.md`).
+- **Topological Navigation over Flat Dumps**: In multi-module codebases, agents must navigate via dependency graphs rather than loading flat source files into context. Use AST extractors or graph tools (e.g. `graphify`, `archify`, or Mermaid diagrams in `templates/docs/ARCHITECTURE.md`).
 - **Blast Radius Analysis**: Before modifying public interfaces, shared utilities, or database schemas, calculate the blast radius to identify downstream callers and dependent services before touching code.
 - **God Node Identification**: Map and protect high-degree central nodes (architectural hubs) of the codebase. Changes to God nodes require explicit architectural review and targeted regression verification.
 - **Machine-Readable Graph Persistence**: For complex systems, maintain a structured architecture graph (`graphify-out/` or `archify.json`) so agents can query paths and boundaries with minimal token overhead.
@@ -261,14 +261,13 @@ the work correctly. The method may vary.
 
 Use these functional purposes:
 
-- **Source of Truth (`templates/SOT.md`)** — the single authoritative ground truth of live architecture, data schemas, and invariant lessons for seamless cross-tool and cross-session continuity
-- **Agent Governance (`templates/AGENTS.md`)** — matrix of agent roles, authorized scopes, forbidden actions, and project anti-patterns
-- **Project Scope & Roadmap (`templates/PROJECT.md`)** — boundaries defining what is in-scope vs explicit non-goals, combined with the delivery roadmap
-- **Design Spec (`templates/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
-- **Skill Taxonomy (`SKILL_TAXONOMY.md`)** — dynamic tooling catalog, subagent affinities, and semantic routing rules
+- **Project Scope, Roadmap & Source of Truth (`templates/docs/PROJECT.md`)** — boundaries defining what is in-scope vs explicit non-goals, combined with the delivery roadmap and verified live system ground truth
+- **Agent Governance (`templates/docs/AGENTS.md`)** — matrix of agent roles, authorized scopes, forbidden actions, and project anti-patterns
+- **Architecture Blueprint (`templates/docs/ARCHITECTURE.md`)** — system boundaries, component diagrams, and technical specifications
+- **Design Spec (`templates/docs/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
 - **Engineering Workflow (`WORKFLOW.md`)** — 6-phase engineering lifecycle and deterministic skill mapping
-- **User Preferences (`secondbrain/USER_PREFERENCES.md`)** — personal habits, communication style, preferred architectures, and conventions preserved across sessions and tools (fallback: `templates/USER_PREFERENCES.example.md`)
-- **Anti-Patterns & Learned Safeguards (`secondbrain/ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors (fallback: `templates/ANTI_PATTERNS.example.md`)
+- **User Preferences (`secondbrain/USER_PREFERENCES.md`)** — personal habits, communication style, preferred architectures, and conventions preserved across sessions and tools
+- **Anti-Patterns & Learned Safeguards (`secondbrain/ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors
 - **History** — superseded information retained through Git history and version control
 
 
@@ -347,10 +346,10 @@ When a context match occurs for substantial work, the AI must declare the active
   - **Autonomous Delegation**: Multi-file modifications, domain-specific implementations (UI, backend logic, DB schemas), deep web/doc research, refactoring, and all test/QA execution suites.
 - **Dual-Tier Autonomous Skill Selection**:
   - **Tier 1 (Main Agent)**: Autonomously invokes planning, architecture, orchestration, and handoff skills (`brainstorming`, `spec-driven-development`, `writing-plans`, `caveman`).
-  - **Tier 2 (Dispatched Subagents)**: Autonomously select and execute specialist skills from their designated taxonomy drawers during implementation, recording all applied skills in their `<task_report>`.
+  - **Tier 2 (Dispatched Subagents)**: Autonomously select and execute specialist skills from installed skill packs during implementation, recording all applied skills in their `<task_report>`.
 
-### 9.4 Autonomous Plugin & External Tool Utilization Standard
-Plugins (`plugins/`, external CLI binaries, and MCP servers) provide operational capabilities distinct from cognitive skills (`skills/`):
+### 9.4 Autonomous External Tool & MCP Utilization Standard
+External tools (CLI binaries, diagnostic scripts, and MCP servers) provide operational capabilities distinct from cognitive skills (`skills/`):
 - **Tier 1 — Autonomous Read & Diagnostic Tools (Zero Risk)**:
   - Linters, static analysis tools, read-only MCP queries, Chrome DevTools DOM inspection, schema validators, and diagnostic scripts (`haws.sh doctor`, `haws.sh status`).
   - **Policy**: Autonomous execution is **encouraged and expected**. Agents should invoke these tools immediately whenever relevant without waiting for human prompting.

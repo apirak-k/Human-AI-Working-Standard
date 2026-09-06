@@ -1,4 +1,4 @@
-﻿# Project Specification & Scope — [Project Name]
+# Project Specification & Scope — [Project Name]
 
 > **Purpose**: Defines project scope, boundaries (in-scope vs non-goals), tech stack conventions, and active delivery roadmap.
 
@@ -28,3 +28,24 @@
 - **Database & Storage**: [e.g., PostgreSQL, SQLite]
 - **Coding Conventions**: [e.g., Conventional Commits, kebab-case files, camelCase variables]
 - **Environment & Secrets**: [Document required env keys without secrets in .env.example]
+
+---
+
+## 4. System Source of Truth & Verified Live State
+*(Authoritative, verified ground truth for AI agents switching across tools, sessions, or machines)*
+
+- **Last Verified Date**: [YYYY-MM-DD]
+- **Verification Authority**: [e.g. Automated CI (100% PASS), Manual User Acceptance]
+- **Active Environment**: [e.g. Node v20.x, Python 3.11, Local Dev / Staging]
+
+### Verified Capabilities & Implemented Modules
+
+| Module / Component | File Location | Verified Functionality | Test Suite / Command |
+| :--- | :--- | :--- | :--- |
+| [e.g. Auth Service] | src/auth/ | OAuth2 + JWT session validation | npm test src/auth (PASS) |
+| [e.g. UI Header] | src/components/ | Responsive fluid header + theme toggle | Storybook / Unit test (PASS) |
+
+### Confirmed Architectural Invariants & Learned Lessons
+*(Record hard-learned facts here so cross-tool agents never re-introduce solved bugs)*
+- **Invariant 1**: [e.g. Database transactions must use serializable isolation for balance updates]
+- **Invariant 2**: [e.g. All filesystem operations on Windows must use forward slashes or path.resolve]
