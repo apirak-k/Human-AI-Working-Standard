@@ -1,9 +1,9 @@
 @echo off
 setlocal EnableDelayedExpansion
-title HAWS 1-Click Universal Sync ^& System Update
+title HAWS Interactive Setup & Skill Kit Configuration
 
 echo ================================================================
-echo           HAWS 1-Click Universal Sync ^& System Update
+echo         HAWS Interactive Setup & Skill Kit Configuration
 echo ================================================================
 echo.
 
@@ -37,31 +37,12 @@ if not defined BASH_CMD (
     exit /b 1
 )
 
-REM Detect First-Time Installation vs Routine Sync
-set "IS_FIRST_RUN="
-if not exist "%USERPROFILE%\.haws_manifest" set "IS_FIRST_RUN=1"
-where git >nul 2>&1
-if not errorlevel 1 (
-    git config core.hooksPath >nul 2>&1
-    if errorlevel 1 set "IS_FIRST_RUN=1"
-)
-
-if defined IS_FIRST_RUN (
-    echo [*] First-time setup detected. Starting HAWS Interactive Setup...
-    echo.
-    "%BASH_CMD%" haws.sh setup %*
-) else (
-    echo [*] Running HAWS Universal Sync (Second Brain + Skills + Environments)...
-    echo.
-    "%BASH_CMD%" haws.sh sync %*
-    echo.
-    echo [*] Verifying System Health (10-Axis Diagnostics)...
-    echo.
-    "%BASH_CMD%" haws.sh doctor
-)
+REM Run HAWS Setup
+"%BASH_CMD%" haws.sh setup %*
+echo.
 
 echo ================================================================
-echo   [PASS] 100%% Green - HAWS is fully updated, synced, and ready!
+echo   [PASS] 100%% Green - HAWS Setup Completed!
 echo ================================================================
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause
