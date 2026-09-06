@@ -891,8 +891,7 @@ run_sync() {
             if [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ]; then
                 target_dir="${sdir}"
             fi
-            [[ "${pdir}" == "${SOURCE_DIR}/skills/standalone" ]] && target_dir="${sdir}"
-            [[ "${sdir}" =~ taste-skill/skills ]] && target_dir="${sdir}"
+            [[ "${sdir}" =~ skills/standalone/ ]] && target_dir="${sdir}"
 
             local win_target="${target_dir}"
             command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
@@ -1482,79 +1481,90 @@ configure_repo_skills() {
 
 run_configure_skills() {
     load_disabled_skills
+    printf "  [*] Scanning skills catalog, please wait...\r"
+    local single_total=0
+    local single_names=()
+    local single_files=()
+
+    local -A repo_total=()
+    local -A repo_first_sn=()
+    local -A repo_first_sf=()
+    local -A repo_all_skills=()
+    local -A seen_combo=()
+    local -A repo_registered=()
+    local repo_order=()
+
+    while IFS= read -r sf; do
+        [ -z "$sf" ] && continue
+        [[ "$sf" =~ \.openclaw/ ]] && continue
+        [[ "$sf" =~ planning-with-files ]] && [[ ! "$sf" =~ \.agents/skills ]] && [[ ! "$sf" =~ skills/i18n ]] && continue
+        [[ "$sf" =~ ui-ux-pro-max ]] && [[ ! "$sf" =~ \.claude/skills ]] && continue
+        [[ "$sf" =~ caveman/plugins/ ]] && continue
+
+        local rel="${sf#${SCRIPT_DIR}/skills/}"
+        local category="${rel%%/*}"
+        local rest="${rel#*/}"
+        local rname="${rest%%/*}"
+        local rpath="${SCRIPT_DIR}/skills/${category}/${rname}"
+
+        local sn="$(extract_skill_name "$sf")"
+        [ -z "$sn" ] && continue
+
+        local combo="${rpath}|${sn}"
+        [ -n "${seen_combo[$combo]:-}" ] && continue
+        seen_combo["$combo"]=1
+
+        if [ -z "${repo_registered[$rpath]:-}" ]; then
+            repo_registered["$rpath"]=1
+            repo_order+=("$rpath")
+            repo_total["$rpath"]=0
+            repo_all_skills["$rpath"]=""
+        fi
+
+        repo_total["$rpath"]=$(( ${repo_total["$rpath"]} + 1 ))
+        repo_first_sn["$rpath"]="$sn"
+        repo_first_sf["$rpath"]="$sf"
+        repo_all_skills["$rpath"]="${repo_all_skills["$rpath"]} ${sn}"
+    done < <(find "${SCRIPT_DIR}/skills" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
+
+    local pack_repos=()
+    local pack_names=()
+    local pack_totals=()
+
+    for rpath in "${repo_order[@]}"; do
+        local rname="$(basename "$rpath")"
+        local tot="${repo_total[$rpath]}"
+
+        if [ "$tot" -eq 1 ]; then
+            single_total=$((single_total + 1))
+            single_names+=("${repo_first_sn[$rpath]}")
+            single_files+=("${repo_first_sf[$rpath]}")
+        else
+            pack_repos+=("$rpath")
+            pack_names+=("$rname")
+            pack_totals+=("$tot")
+        fi
+    done
+
+    printf "\033[2K"
+    echo "  [✓] Skills catalog ready."
+
     while true; do
-        printf "  [*] Scanning skills catalog, please wait...\r"
-        local single_total=0
+        # Fast in-memory recount of active skills (0 subprocesses, 0 disk I/O)
         local single_active=0
-        local single_names=()
-        local single_files=()
-
-        local -A repo_total=()
-        local -A repo_active=()
-        local -A repo_first_sn=()
-        local -A repo_first_sf=()
-        local -A seen_combo=()
-        local -A repo_registered=()
-        local repo_order=()
-
-        while IFS= read -r sf; do
-            [ -z "$sf" ] && continue
-            [[ "$sf" =~ \.openclaw/ ]] && continue
-            [[ "$sf" =~ planning-with-files ]] && [[ ! "$sf" =~ \.agents/skills ]] && [[ ! "$sf" =~ skills/i18n ]] && continue
-            [[ "$sf" =~ ui-ux-pro-max ]] && [[ ! "$sf" =~ \.claude/skills ]] && continue
-            [[ "$sf" =~ caveman/plugins/ ]] && continue
-
-            local rel="${sf#${SCRIPT_DIR}/skills/}"
-            local category="${rel%%/*}"
-            local rest="${rel#*/}"
-            local rname="${rest%%/*}"
-            local rpath="${SCRIPT_DIR}/skills/${category}/${rname}"
-
-            local sn="$(extract_skill_name "$sf")"
-            [ -z "$sn" ] && continue
-
-            local combo="${rpath}|${sn}"
-            [ -n "${seen_combo[$combo]:-}" ] && continue
-            seen_combo["$combo"]=1
-
-            if [ -z "${repo_registered[$rpath]:-}" ]; then
-                repo_registered["$rpath"]=1
-                repo_order+=("$rpath")
-                repo_total["$rpath"]=0
-                repo_active["$rpath"]=0
-            fi
-
-            repo_total["$rpath"]=$(( ${repo_total["$rpath"]} + 1 ))
-            repo_first_sn["$rpath"]="$sn"
-            repo_first_sf["$rpath"]="$sf"
-            [ -z "${DISABLED_SKILLS[$sn]:-}" ] && repo_active["$rpath"]=$(( ${repo_active["$rpath"]} + 1 ))
-        done < <(find "${SCRIPT_DIR}/skills" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
-
-        local pack_repos=()
-        local pack_names=()
-        local pack_totals=()
-        local pack_actives=()
-
-        for rpath in "${repo_order[@]}"; do
-            local rname="$(basename "$rpath")"
-            local tot="${repo_total[$rpath]}"
-            local act="${repo_active[$rpath]}"
-
-            if [ "$tot" -eq 1 ]; then
-                single_total=$((single_total + 1))
-                single_active=$((single_active + act))
-                single_names+=("${repo_first_sn[$rpath]}")
-                single_files+=("${repo_first_sf[$rpath]}")
-            else
-                pack_repos+=("$rpath")
-                pack_names+=("$rname")
-                pack_totals+=("$tot")
-                pack_actives+=("$act")
-            fi
+        for sn in "${single_names[@]}"; do
+            [ -z "${DISABLED_SKILLS[$sn]:-}" ] && single_active=$((single_active + 1))
         done
 
-        printf "\033[2K"
-        echo "  [✓] Skills catalog ready."
+        local pack_actives=()
+        for ((i=0; i<${#pack_repos[@]}; i++)); do
+            local rpath="${pack_repos[$i]}"
+            local act=0
+            for sn in ${repo_all_skills["$rpath"]}; do
+                [ -z "${DISABLED_SKILLS[$sn]:-}" ] && act=$((act + 1))
+            done
+            pack_actives+=("$act")
+        done
 
         echo ""
         echo "============================================================="
