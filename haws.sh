@@ -845,6 +845,160 @@ EOF
     echo "================================================================"
 }
 
+run_interactive_kit_setup() {
+    echo "=== HAWS Skill Kit Setup & Customizer ==="
+    echo "Manage your Git Submodule repositories (Packs & Standalone skills)."
+    echo "Note: Local custom skills in 'skills/custom/' remain 100% separate and untouched."
+    echo ""
+
+    local sub_paths=()
+    local sub_urls=()
+    local count=0
+
+    if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
+        while IFS=' ' read -r key url; do
+            [ -z "${key}" ] || [ -z "${url}" ] && continue
+            local path_name="${key#submodule.}"
+            path_name="${path_name%.url}"
+            sub_paths+=("${path_name}")
+            sub_urls+=("${url}")
+            count=$((count + 1))
+        done < <(git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp url 2>/dev/null || true)
+    fi
+
+    echo "--- Step 1: Review & Remove Existing Submodule Repositories ---"
+    if [ ${count} -eq 0 ]; then
+        echo "  No submodules currently configured in .gitmodules."
+    else
+        echo "Current Submodules in Kit:"
+        for i in "${!sub_paths[@]}"; do
+            local idx=$((i + 1))
+            local sp="${sub_paths[$i]}"
+            local su="${sub_urls[$i]}"
+            local sname="$(basename "${sp}")"
+            local stype="pack"
+            [[ "${sp}" =~ standalone ]] && stype="single"
+            printf "  [%d] %-20s (%-6s) -> %s\n" "${idx}" "${sname}" "${stype}" "${su}"
+        done
+        echo ""
+        local remove_input=""
+        if [ -t 0 ]; then
+            read -r -p "Enter number(s) to REMOVE separated by comma (e.g. 1,3), or press [Enter] to keep all: " remove_input || remove_input=""
+            remove_input="$(echo "${remove_input}" | tr -d ' \r\n')"
+        fi
+
+        local paths_to_prune=()
+        if [ -n "${remove_input}" ]; then
+            IFS=',' read -ra to_remove <<< "${remove_input}"
+            for num in "${to_remove[@]}"; do
+                num="$(echo "${num}" | tr -d ' ')"
+                if [[ "${num}" =~ ^[0-9]+$ ]] && [ "${num}" -ge 1 ] && [ "${num}" -le "${count}" ]; then
+                    local target_idx=$((num - 1))
+                    paths_to_prune+=("${sub_paths[$target_idx]}")
+                fi
+            done
+        fi
+
+        if [ ${#paths_to_prune[@]} -gt 0 ]; then
+            for prune_path in "${paths_to_prune[@]}"; do
+                local prune_name="$(basename "${prune_path}")"
+                echo "  [*] Pruning submodule: ${prune_name} (${prune_path})..."
+                git -C "${SCRIPT_DIR}" submodule deinit -f -- "${prune_path}" 2>/dev/null || true
+                git -C "${SCRIPT_DIR}" rm -f "${prune_path}" 2>/dev/null || true
+                rm -rf "${SCRIPT_DIR}/.git/modules/${prune_path}" 2>/dev/null || true
+                rm -rf "${SCRIPT_DIR}/${prune_path}" 2>/dev/null || true
+                echo "  [✓] Removed ${prune_name}"
+            done
+        else
+            echo "  [✓] Kept all existing submodules."
+        fi
+    fi
+
+    echo ""
+    echo "--- Step 2: Add External Git Repositories (Pack or Single) ---"
+    while true; do
+        local add_more="N"
+        if [ -t 0 ]; then
+            read -r -p "Add a Git repository? [y/N]: " add_more || add_more="N"
+            add_more="$(echo "${add_more}" | tr -d ' \r\n')"
+        fi
+        if [[ ! "${add_more}" =~ ^[Yy] ]]; then
+            break
+        fi
+
+        local new_url=""
+        if [ -t 0 ]; then
+            read -r -p "  Enter Git Repository URL: " new_url || new_url=""
+            new_url="$(echo "${new_url}" | tr -d ' \r\n')"
+        fi
+        if [ -z "${new_url}" ]; then
+            echo "  [SKIP] Empty URL provided."
+            continue
+        fi
+
+        local new_type="1"
+        if [ -t 0 ]; then
+            echo "  Select repository type:"
+            echo "    1) Pack         (Repository containing multiple skills -> skills/packs/)"
+            echo "    2) Single Skill (Repository containing a single skill  -> skills/standalone/)"
+            read -r -p "  Choose type [1-2] (default: 1): " new_type || new_type="1"
+            new_type="$(echo "${new_type}" | tr -d ' \r\n')"
+            [ -z "${new_type}" ] && new_type="1"
+        fi
+
+        local default_name
+        default_name="$(basename "${new_url}" .git)"
+        local new_name=""
+        if [ -t 0 ]; then
+            read -r -p "  Repository name (default: ${default_name}): " new_name || new_name=""
+            new_name="$(echo "${new_name}" | tr -d ' \r\n')"
+        fi
+        [ -z "${new_name}" ] && new_name="${default_name}"
+
+        local target_dir="skills/packs/${new_name}"
+        [ "${new_type}" = "2" ] && target_dir="skills/standalone/${new_name}"
+
+        echo "  [*] Adding Git submodule: ${new_name} -> ${target_dir}..."
+        git -C "${SCRIPT_DIR}" submodule add "${new_url}" "${target_dir}" 2>/dev/null || {
+            echo "  [WARNING] Git submodule add encountered an issue. Trying direct checkout..."
+            git -C "${SCRIPT_DIR}" clone "${new_url}" "${target_dir}" 2>/dev/null || true
+        }
+        echo "  [✓] Added ${new_name} successfully."
+        echo ""
+    done
+
+    echo ""
+    echo "--- Step 3: Confirmation & Synchronization ---"
+    echo "Active Submodules in Kit:"
+    if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
+        git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp url 2>/dev/null | while IFS=' ' read -r k u; do
+            local p="${k#submodule.}"
+            p="${p%.url}"
+            echo "  • ${p} (${u})"
+        done
+    else
+        echo "  No submodules configured."
+    fi
+    echo ""
+
+    local confirm_sync="Y"
+    if [ -t 0 ]; then
+        read -r -p "Confirm and synchronize kit now? [Y/n]: " confirm_sync || confirm_sync="Y"
+        confirm_sync="$(echo "${confirm_sync}" | tr -d ' \r\n')"
+        [ -z "${confirm_sync}" ] && confirm_sync="Y"
+    fi
+
+    if [[ ! "${confirm_sync}" =~ ^[Nn] ]]; then
+        echo "  [*] Initializing and synchronizing submodules..."
+        git -C "${SCRIPT_DIR}" submodule sync 2>/dev/null || true
+        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
+        echo "  [✓] Git submodules synchronized."
+        run_sync
+    else
+        echo "  [INFO] Kit configuration saved. Run './haws.sh sync' when you want to synchronize."
+    fi
+}
+
 run_kit() {
     local action="${1:-status}"
     shift || true
@@ -966,7 +1120,7 @@ run_kit() {
             echo "=== HAWS Skill Kit Setup & Adjustment ==="
             echo "Choose your skill kit setup mode:"
             echo "  1) Standard HAWS Kit (Default: 5 curated packs - superpowers, agent-skills, anthropics, mattpocock, ponytail)"
-            echo "  2) Setup (Open .gitmodules to add, edit, or remove Git links yourself)"
+            echo "  2) Setup (Interactive pack/skill selector - remove existing or add new Git links)"
             local mode_choice="1"
             if [ -t 0 ]; then
                 read -r -p "Enter selection [1-2] (default: 1): " mode_choice || mode_choice="1"
@@ -974,46 +1128,7 @@ run_kit() {
                 [ -z "${mode_choice}" ] && mode_choice="1"
             fi
             if [ "${mode_choice}" = "2" ]; then
-                echo ""
-                echo "--- Skill Kit Setup: Direct .gitmodules Management ---"
-                echo "Repository links are stored in: ${SCRIPT_DIR}/.gitmodules"
-                echo ""
-                echo "Current Submodule Packs in .gitmodules:"
-                git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print "  - " $2}' || true
-                echo ""
-                local open_choice="Y"
-                if [ -t 0 ]; then
-                    read -r -p "Open .gitmodules to edit links now? [Y/n]: " open_choice || open_choice="Y"
-                    open_choice="$(echo "${open_choice}" | tr -d ' \r\n')"
-                    [ -z "${open_choice}" ] && open_choice="Y"
-                fi
-                if [[ ! "${open_choice}" =~ ^[Nn] ]]; then
-                    echo "  [*] Opening .gitmodules in editor..."
-                    if command -v code >/dev/null 2>&1; then
-                        code "${SCRIPT_DIR}/.gitmodules"
-                    elif [ -n "${EDITOR:-}" ] && command -v "${EDITOR}" >/dev/null 2>&1; then
-                        "${EDITOR}" "${SCRIPT_DIR}/.gitmodules"
-                    elif command -v notepad.exe >/dev/null 2>&1; then
-                        notepad.exe "${SCRIPT_DIR}/.gitmodules" &
-                    elif command -v nano >/dev/null 2>&1; then
-                        nano "${SCRIPT_DIR}/.gitmodules"
-                    elif command -v vi >/dev/null 2>&1; then
-                        vi "${SCRIPT_DIR}/.gitmodules"
-                    fi
-                    echo ""
-                    if [ -t 0 ]; then
-                        read -r -p "Press [Enter] when done editing to sync submodules (or 's' to skip): " sync_confirm || sync_confirm=""
-                        if [[ "${sync_confirm}" =~ ^[Ss] ]]; then
-                            echo "  [INFO] Skipping submodule sync for now. Run './haws.sh sync' later."
-                            return 0
-                        fi
-                    fi
-                fi
-                echo "  [*] Synchronizing and updating configured submodules..."
-                git -C "${SCRIPT_DIR}" submodule sync 2>/dev/null || true
-                git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-                echo "  [✓] Submodule configuration synchronized."
-                run_sync
+                run_interactive_kit_setup
             else
                 echo ""
                 echo "Applying Standard HAWS Kit configuration..."
@@ -1627,52 +1742,14 @@ run_setup() {
         if [ -t 0 ]; then
             echo "Select Skill Kit Configuration:"
             echo "  1) Standard HAWS Kit (Default - 5 curated packs: superpowers, agent-skills, anthropics, mattpocock, ponytail)"
-            echo "  2) Setup (Open .gitmodules to add, edit, or remove Git links yourself)"
+            echo "  2) Setup (Interactive pack/skill selector - remove existing or add new Git links)"
             read -r -p "Enter selection [1-2] (default: 1): " kit_choice || kit_choice="1"
             kit_choice="$(echo "${kit_choice}" | tr -d ' \r\n')"
             [ -z "${kit_choice}" ] && kit_choice="1"
         fi
 
         if [ "${kit_choice}" = "2" ]; then
-            echo ""
-            echo "--- Skill Kit Setup: Direct .gitmodules Management ---"
-            echo "Repository links are stored in: ${SCRIPT_DIR}/.gitmodules"
-            echo ""
-            echo "Current Submodule Packs in .gitmodules:"
-            git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print "  - " $2}' || true
-            echo ""
-            local open_choice="Y"
-            if [ -t 0 ]; then
-                read -r -p "Open .gitmodules to edit links now? [Y/n]: " open_choice || open_choice="Y"
-                open_choice="$(echo "${open_choice}" | tr -d ' \r\n')"
-                [ -z "${open_choice}" ] && open_choice="Y"
-            fi
-            if [[ ! "${open_choice}" =~ ^[Nn] ]]; then
-                echo "  [*] Opening .gitmodules in editor..."
-                if command -v code >/dev/null 2>&1; then
-                    code "${SCRIPT_DIR}/.gitmodules"
-                elif [ -n "${EDITOR:-}" ] && command -v "${EDITOR}" >/dev/null 2>&1; then
-                    "${EDITOR}" "${SCRIPT_DIR}/.gitmodules"
-                elif command -v notepad.exe >/dev/null 2>&1; then
-                    notepad.exe "${SCRIPT_DIR}/.gitmodules" &
-                elif command -v nano >/dev/null 2>&1; then
-                    nano "${SCRIPT_DIR}/.gitmodules"
-                elif command -v vi >/dev/null 2>&1; then
-                    vi "${SCRIPT_DIR}/.gitmodules"
-                fi
-                echo ""
-                if [ -t 0 ]; then
-                    read -r -p "Press [Enter] when done editing to sync submodules (or 's' to skip): " sync_confirm || sync_confirm=""
-                    if [[ "${sync_confirm}" =~ ^[Ss] ]]; then
-                        echo "  [INFO] Skipping submodule sync for now. Run './haws.sh sync' later."
-                        return 0
-                    fi
-                fi
-            fi
-            echo "  [*] Synchronizing and updating configured submodules..."
-            git -C "${SCRIPT_DIR}" submodule sync 2>/dev/null || true
-            git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-            echo "  [✓] Submodule configuration synchronized."
+            run_interactive_kit_setup
         else
             echo "  [*] Initializing Standard HAWS Kit submodules..."
             git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
