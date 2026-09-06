@@ -139,8 +139,7 @@ run_doctor() {
     check_item "${SCRIPT_DIR}/templates/ai-configs/cursor/haws.mdc.template" "templates/ai-configs/cursor/haws.mdc.template"
     check_item "${SCRIPT_DIR}/templates/ai-configs/gemini/GEMINI.md.template" "templates/ai-configs/gemini/GEMINI.md.template"
     check_item "${SCRIPT_DIR}/templates/ai-configs/copilot/copilot-instructions.md.template" "templates/ai-configs/copilot/copilot-instructions.md.template"
-    check_item "${SCRIPT_DIR}/templates/ai-configs/devcontainer/devcontainer.json" "templates/ai-configs/devcontainer/devcontainer.json"
-    local container_tpls=("Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
+    local container_tpls=("devcontainer.json" "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
     for f in "${container_tpls[@]}"; do
         check_item "${SCRIPT_DIR}/templates/containers/${f}" "templates/containers/${f}"
     done
@@ -966,22 +965,24 @@ run_kit() {
         setup|interactive)
             echo "=== HAWS Skill Kit Setup & Adjustment ==="
             echo "Choose your skill kit setup mode:"
-            echo "  1) Standard Kit (Recommended: superpowers, agent-skills, anthropics, mattpocock, ponytail)"
-            echo "  2) Custom Kit (Add / prune Git links)"
+            echo "  1) Standard HAWS Kit (Default: 5 curated packs - superpowers, agent-skills, anthropics, mattpocock, ponytail)"
+            echo "  2) Tailored / Selective (Customize Git submodule packs - add or prune specific packs)"
             local mode_choice="1"
             if [ -t 0 ]; then
                 read -r -p "Enter selection [1-2] (default: 1): " mode_choice || mode_choice="1"
                 mode_choice="$(echo "${mode_choice}" | tr -d ' \r\n')"
+                [ -z "${mode_choice}" ] && mode_choice="1"
             fi
             if [ "${mode_choice}" = "2" ]; then
                 echo ""
-                echo "Custom Kit Mode:"
-                echo "Use './haws.sh kit add <git-url> [name]' to add skills."
-                echo "Use './haws.sh kit prune <name>' to remove skills."
-                echo "Use './haws.sh kit list' to see installed skills."
+                echo "--- Tailored Submodule Pack Management ---"
+                echo "Use './haws.sh kit add <git-url> [name]' to add packs."
+                echo "Use './haws.sh kit prune <name>' to remove packs."
+                echo "Use './haws.sh kit list' to see installed packs."
+                echo "Note: Local custom skills in 'skills/custom/' remain 100% separate and unaffected."
             else
                 echo ""
-                echo "Applying Standard Kit configuration..."
+                echo "Applying Standard HAWS Kit configuration..."
                 git -C "${SCRIPT_DIR}" submodule update --init --recursive
                 run_sync
             fi
@@ -1587,9 +1588,39 @@ run_setup() {
     run_user status
     echo ""
     if [ -d "${SCRIPT_DIR}/.git" ]; then
-        echo "[2/5] Initializing Git Submodules..."
-        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-        echo "  [✓] Submodules verified."
+        echo "[2/5] Configuring Skill Kit & Git Submodules..."
+        local kit_choice="1"
+        if [ -t 0 ]; then
+            echo "Select Skill Kit Configuration:"
+            echo "  1) Standard HAWS Kit (Default - 5 curated packs: superpowers, agent-skills, anthropics, mattpocock, ponytail)"
+            echo "  2) Tailored / Selective (Customize which packs to clone, or add/omit specific Git links)"
+            read -r -p "Enter selection [1-2] (default: 1): " kit_choice || kit_choice="1"
+            kit_choice="$(echo "${kit_choice}" | tr -d ' \r\n')"
+            [ -z "${kit_choice}" ] && kit_choice="1"
+        fi
+
+        if [ "${kit_choice}" = "2" ]; then
+            echo ""
+            echo "--- Tailored Submodule Pack Management ---"
+            echo "Installed Packs in .gitmodules:"
+            git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print "  - " $2}' || true
+            echo ""
+            echo "Commands for tailoring packs:"
+            echo "  • To add a pack   : ./haws.sh kit add <git-url> [name]"
+            echo "  • To prune a pack : ./haws.sh kit prune <name>"
+            echo "  • To list status  : ./haws.sh kit list"
+            echo "Note: Local custom skills in 'skills/custom/' remain 100% separate and untouched."
+            echo ""
+            read -r -p "Proceed with current submodules? [Y/n]: " proceed_choice || proceed_choice="Y"
+            if [[ "${proceed_choice}" =~ ^[Nn] ]]; then
+                echo "Setup paused for manual tailoring. Run './haws.sh sync' when ready."
+                return 0
+            fi
+        else
+            echo "  [*] Initializing Standard HAWS Kit submodules..."
+            git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
+            echo "  [✓] Standard HAWS Kit submodules verified."
+        fi
     fi
     echo ""
     echo "[3/5] Linking Skills, Commands, and Agent Profiles..."

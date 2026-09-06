@@ -129,7 +129,7 @@ Double-click `UNINSTALL.bat` in Windows File Explorer:
 ├── templates/                           # 14 Project blueprints and templates (see templates/README.md)
 │   ├── docs/                            # Documentation & SOT blueprints (PROJECT, ARCHITECTURE, etc.)
 │   ├── ai-configs/                      # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot)
-│   └── containers/                      # Leak-proof container blueprints (Dockerfile, compose, ignore)
+│   └── containers/                      # Container & DevContainer blueprints (Dockerfile, compose, devcontainer)
 ├── skills/                              # Curated Skill Repository (3 Clean Categories)
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter

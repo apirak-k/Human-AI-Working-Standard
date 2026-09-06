@@ -34,12 +34,12 @@ This directory contains 14 reusable blueprints and configuration templates for s
 | `ai-configs/claude/CLAUDE.md.template` | `CLAUDE.md` | Phase 1 (Setup) | Workspace instructions blueprint for Claude Code CLI and web sessions. |
 | `ai-configs/cursor/haws.mdc.template` | `.cursor/rules/haws.mdc` | Phase 1 (Setup) | Modern Cursor IDE rule configuration using MDC schema (`alwaysApply: true`, `globs: *`). |
 | `ai-configs/copilot/copilot-instructions.md.template` | `.github/copilot-instructions.md` | Phase 1 (Setup) | Hooks GitHub Copilot and OpenAI Codex into HAWS core rules and project contracts. |
-| `ai-configs/devcontainer/devcontainer.json` | `.devcontainer/devcontainer.json` | Phase 1 (Setup) | Reproducible VS Code Dev Container with pre-installed Node.js, Python, Git, and development extensions. |
 
-### 3. Container & Deployment Blueprints (`templates/containers/`)
+### 3. Container & Development Environment Blueprints (`templates/containers/`)
 
 | Template | Target Path | When to Use | Purpose |
 | :--- | :--- | :--- | :--- |
+| `containers/devcontainer.json` | `.devcontainer/devcontainer.json` | Phase 1 (Setup) | Reproducible VS Code Dev Container with pre-installed Node.js, Python, Git, and development extensions. |
 | `containers/Dockerfile.template` | `Dockerfile` | Phase 4 (Implementation) | Multi-stage production container build with an unprivileged non-root user (`apprunner`). |
 | `containers/.dockerignore.template` | `.dockerignore` | Phase 4 (Implementation) | Leak-proof container ignore rules preventing `.git`, `.env*`, and build caches from entering images. |
 | `containers/docker-compose.yml.template` | `docker-compose.yml` | Phase 4 (Implementation) | Local multi-service development stack configuring the application service with PostgreSQL and Redis. |
