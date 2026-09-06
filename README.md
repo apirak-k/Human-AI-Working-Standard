@@ -144,10 +144,11 @@ HAWS organizes skills into two main tiers:
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
-├── templates/                           # 14 Project blueprints and templates (see templates/README.md)
-│   ├── docs/                            # Documentation & SOT blueprints (PROJECT, ARCHITECTURE, etc.)
-│   ├── ai-configs/                      # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot)
-│   └── containers/                      # Container & DevContainer blueprints (Dockerfile, compose, devcontainer)
+├── templates/                           # Documentation & governance blueprints
+│   └── docs/                            # SOT blueprints (PROJECT, ARCHITECTURE, CONSTRAINTS, etc.)
+├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot, Codex)
+├── containers/                          # Container & DevContainer blueprints (Dockerfile, compose, devcontainer)
+├── skills.disabled                      # Disabled skills configuration (root level)
 ├── skills/                              # Curated Skill Repository (3 Clean Categories)
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter

@@ -151,9 +151,8 @@ run_doctor() {
         check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
     done
 
-    # 2. Check Project Templates & Blueprints (16 Blueprints)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (16 Blueprints)..."
-    check_item "${SCRIPT_DIR}/templates/README.md" "templates/README.md"
+    # 2. Check Project Templates & Blueprints (15 Blueprints)
+    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (15 Blueprints)..."
     local doc_tpls=("PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "AGENTS.md" "DESIGN.md")
     for f in "${doc_tpls[@]}"; do
         check_item "${SCRIPT_DIR}/templates/docs/${f}" "templates/docs/${f}"
