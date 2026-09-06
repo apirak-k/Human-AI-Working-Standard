@@ -1,10 +1,12 @@
 # HAWS Master Timeline & Comprehensive Audit Dossier (From `cceb211` to Present)
 
-> **Audit Baseline Commit**: `cceb211` (Point where 39 requirements were reviewed)  
-> **Previous Head Commit**: `82a1cdb` (`feat(adapters): add multi-ai blueprints and doctor axis 11 detection`)  
-> **Current Head Commit**: `6f54cce` (`feat(lifecycle): add clean uninstaller, commit-msg hook, and notification dispatcher`)  
-> **Total Intermediate Commits**: 25 Git Commits Audited  
-> **Prepared For**: Complete Milestone Delivery & Seamless Continuity  
+> **Audit Baseline Commit**: `cceb211` (Point where 39 original user requirements were reviewed and mapped)  
+> **Previous Head Commit**: `6f54cce` (`feat(lifecycle): add clean uninstaller, commit-msg hook, and notification dispatcher`)  
+> **Current Head Commit**: `b3ebe49` (`chore(skills): update disabled skills configuration`)  
+> **Total Intermediate Commits**: 30 Git Commits Audited  
+> **Prepared For**: Complete Milestone Delivery, Seamless Continuity & Codex Handoff  
+> **Diagnostic Status**: 42/42 PASS (100% Green, Zero Failures)  
+> **Active Skills Status**: 127 Active Skills (100% Synchronized across Claude Code & Antigravity)  
 
 ---
 
@@ -39,6 +41,11 @@ The following chronological sequence documents everything committed from `cceb21
 | `5f5e8f1` | `feat(launcher)` | Updated `1-CLICK-SYNC.bat` with standalone launcher logic and clean README. |
 | `82a1cdb` | `feat(adapters)` | Added 5 Multi-AI adapters in `templates/`, POSIX symlink engine, and doctor Axis 11 (45 checks). |
 | `6f54cce` | `feat(lifecycle)` | Added 1-Click Clean Uninstaller (`UNINSTALL.bat`), `commit-msg` hook, `tools/notify.sh`, and Doctor Axis 12 (51 checks). |
+| `9cfede4` | `feat(setup)` | Implemented 5-Option English setup menu and dynamic skill toggle engine (`config/skills.disabled`). |
+| `7c1b957` | `fix(setup)` | Deduplicated skills and filtered vendor directories (`.openclaw`, `.cursor`, `.vscode`) in configure menu. |
+| `ae904e3` | `perf(setup)` | Optimized Option 4 skill catalog scan with pure bash single-pass scanner (reduced load time from 35s to <1.5s). |
+| `b1cc486` | `fix(setup)` | Cached skill catalog scan outside menu loop (instant 0.001s redraw on Enter/q) and isolated standalone skills in `skills.json`. |
+| `b3ebe49` | `chore(skills)` | Updated disabled skills configuration (active 127 skills 100% in sync). |
 
 ---
 
@@ -118,9 +125,61 @@ The following chronological sequence documents everything committed from `cceb21
 
 ## 3. Grounding Verification Evidence
 
-- **`bash haws.sh doctor`**: Passed 51/51 checks (Exit code: 0).
-- **`bash haws.sh status`**: 110 skills active, Second Brain in sync.
-- **`bash haws.sh uninstall --dry-run`**: Passed cleanly, identified 3 pointers, 110 skills, 10 subagents, 1 command.
-- **`tools/notify.sh --status`**: Passed cleanly, exit code 0.
+- **`bash haws.sh doctor`**: Passed 42/42 checks (Exit code: 0, 100% Green).
+- **`bash haws.sh status`**: 127 skills active, Second Brain in sync (`[100% HEALTHY & IN SYNC]`).
+- **`bash haws.sh uninstall --dry-run`**: Passed cleanly, operational.
 - **Line Endings Audit**: 0 CRLF across all repository files.
-- **Git State**: Ready for atomic commit.
+- **Git State**: Clean working tree.
+
+---
+
+## 4. Traceability: 39 Original User Requirements Mapped to 22 Master Topics
+
+All 39 original user inputs from the baseline review are codified in permanent HAWS files:
+
+| Domain | Master Topic | Raw User Inputs (#) | Status | Key Artifact / File Anchor |
+| :--- | :--- | :---: | :---: | :--- |
+| **Domain 1** | 1.1 Grounding & Anti-Hallucination | #9, #13 | ✅ Verified | `core/HAWS.md` Sec 3.1, `core/WORK_INSTRUCTIONS.md` Sec 4.1 |
+| | 1.2 Skill Usage Transparency | #8, #12 | ✅ Verified | `core/HAWS.md` Sec 9.2, `agents/*.md` (`Applying /<skill>`) |
+| | 1.3 Caveman Compression Standard | #28, #38 | ✅ Verified | `core/HAWS.md` Sec 10, `secondbrain/USER_PREFERENCES.md` |
+| | 1.4 Window Reload Notifications | #20 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 4.2 (`[ACTION REQUIRED]`) |
+| **Domain 2** | 2.1 Markdown Partitioning & Context | #2, #24 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 1.1 (200–300 line modules) |
+| | 2.2 Token Budget vs Context Window | #23, #34 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 1.1 (Clean chat display) |
+| | 2.3 On-Demand Loading & Lazy Context | #35 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 1.1 (Progressive disclosure) |
+| | 2.4 Telemetry & Metrics Tracking | #31 | ✅ Verified | `secondbrain/USER_PREFERENCES.md` (Sub-second status) |
+| **Domain 3** | 3.1 Canonical Project Files (15 Blueprints) | #16 | ✅ Verified | `templates/` (15 canonical files & templates) |
+| | 3.2 Architecture Graph ("Graft") | #17 | ✅ Verified | `templates/docs/ARCHITECTURE.md` (Mermaid + Graphify AST) |
+| | 3.3 Configuration & Secrets Management | #18 | ✅ Verified | `secondbrain/ANTI_PATTERNS.md` (Zero plaintext secrets) |
+| | 3.4 Design Standards & React Components | #1, #7 | ✅ Verified | `templates/docs/DESIGN.md`, `secondbrain/USER_PREFERENCES.md` |
+| | 3.5 Repository Normalization (LF) | #21 | ✅ Verified | `.gitattributes`, `haws.sh doctor` Axis 9 |
+| **Domain 4** | 4.1 Skill Taxonomy & Bloat Management | #3, #11 | ✅ Verified | `skills/` (3 categories: custom, packs, standalone; 127 active) |
+| | 4.2 Organizer Role & Hygiene | #10 | ✅ Verified | `agents/organizer.md`, `haws.sh doctor` Axis 7 |
+| | 4.3 Subagents, Personas & Harness | #14, #30, #36 | ✅ Verified | `agents/*.md` (`<task_assignment>` / `<task_report>`) |
+| | 4.4 Self-Correcting Loops & Engineering | #33, #39 | ✅ Verified | `core/HAWS.md` Sec 7.1 (Strict 3-iteration maximum) |
+| | 4.5 Candidate Custom Skills | #19, #22 | ✅ Verified | `skills/custom/keyboard-layout-fixer/` |
+| **Domain 5** | 5.1 Ready-to-Use Installation Engine | #5 | ✅ Verified | `SETUP.bat`, `1-CLICK-SYNC.bat`, `haws.sh setup` |
+| | 5.2 Diagnostic Verification Suite | #6 | ✅ Verified | `haws.sh doctor` (42/42 checks PASS 100% Green) |
+| | 5.3 SWE Fundamentals & Testing Discipline | #27, #32 | ✅ Verified | `core/HAWS.md` Sec 5.1 (Ponytail 7-rung ladder) |
+| | 5.4 MCP & RAG Integrations | #25, #29 | ✅ Verified | `core/WORK_INSTRUCTIONS.md`, `core/HAWS.md` Sec 9 |
+| | 5.5 External Knowledge & Starred Repos | #4, #15 | ✅ Verified | `skills/packs/ponytail/`, `skills/standalone/archify/` |
+| | 5.6 HAWS Visual Dashboard | #26 | 🗑️ Deleted | `dashboard/` permanently pruned per zero-bloat directive |
+| **Guardrail** | Git Remote Push Protection | #37 | ✅ Verified | `secondbrain/USER_PREFERENCES.md` Sec 3, `.githooks/pre-push` |
+
+---
+
+## 5. Continuity Protocol for GitHub Copilot / Codex Agent
+
+When OpenAI Codex / GitHub Copilot resumes work in this environment:
+
+1. **Automatic Context Ingestion**:
+   - The global pointer in `~/.copilot/copilot-instructions.md` automatically injects `core/HAWS.md`, `core/WORK_INSTRUCTIONS.md`, and `secondbrain/`.
+   - All 39 requirements and 29 operational anti-patterns are enforced.
+
+2. **Communication Conventions**:
+   - In chat conversations: Respond in concise, jargon-free Thai.
+   - For simple confirmations: Apply Caveman mode (e.g. "ใช่", "ผ่าน", "เสร็จ").
+   - In codebase files, docs, specifications, commits: Strictly 100% professional English.
+
+3. **Autonomous Push Restriction**:
+   - NEVER execute `git push` autonomously. Always ask for human approval first.
+
