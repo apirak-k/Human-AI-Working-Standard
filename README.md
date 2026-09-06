@@ -97,7 +97,7 @@ Double-click `UNINSTALL.bat` in Windows File Explorer:
 | `bash haws.sh status` | Instant skill count, token budget, and sync health check (< 0.2s) |
 | `bash haws.sh doctor` | Comprehensive 12-axis system diagnostic suite |
 | `bash haws.sh uninstall` | Safely detach HAWS pointers, skills, and hooks without deleting user data (`--dry-run` supported) |
-| `bash haws.sh kit setup` | Interactive skill kit setup (Default Kit vs Custom Kit) |
+| `bash haws.sh kit setup` | Interactive skill kit selector (Review/prune existing packs or add new Git links) |
 | `bash haws.sh kit add <url> [name]` | Add external skill pack submodule with merge protection |
 | `bash haws.sh kit prune <name>` | Cleanly remove submodule, clear git cache, and delete directory |
 | `bash haws.sh kit update [name]` | Update active submodules from upstream remote links |
@@ -107,6 +107,23 @@ Double-click `UNINSTALL.bat` in Windows File Explorer:
 | `bash haws.sh brain disconnect` | Switch Second Brain to local-only mode (alias: `user disconnect`) |
 | `bash haws.sh hook install` | Install hardware git hooks (`pre-commit` and `pre-push`) |
 | `bash haws.sh hook status` | Inspect git hook activation status |
+
+### Managing Skills (Add & Remove)
+
+HAWS organizes skills into two main tiers:
+
+1. **External Git Submodules (Multi-Skill Packs & Standalone Skills)**:
+   - **Interactive CLI Wizard**: Run `bash haws.sh kit setup` (or choose `2) Setup` during initial `bash haws.sh setup`). The CLI lists all current packs with their Git URLs, allows entering numbers to cleanly remove (prune), and prompts for Git URLs to add new packs or standalone skills.
+   - **Direct CLI Commands**:
+     - Add repository: `bash haws.sh kit add <git-url> [name]`
+     - Remove repository: `bash haws.sh kit prune <name>`
+     - List active submodules: `bash haws.sh kit list`
+     - Update from remotes: `bash haws.sh kit update [name]`
+
+2. **In-House Custom Skills (`skills/custom/`)**:
+   - **To Add**: Create a folder under `skills/custom/<skill-name>/` containing a valid `SKILL.md`. Then run `bash haws.sh sync`.
+   - **To Remove**: Delete the folder under `skills/custom/<skill-name>/` and run `bash haws.sh sync --clean`.
+   - Local custom skills have top linking priority and are never overwritten by upstream framework updates.
 
 ---
 
