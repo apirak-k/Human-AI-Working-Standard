@@ -216,12 +216,24 @@ run_doctor() {
 
     # 5. Check Personal Second Brain & Plugins
     [ "$json_mode" = false ] && echo "" && echo "5. Checking Personal Second Brain & Plugins..."
-    if [ -d "${SCRIPT_DIR}/secondbrain/.git" ] && [ -s "${SCRIPT_DIR}/secondbrain/USER_PREFERENCES.md" ] && [ -s "${SCRIPT_DIR}/secondbrain/ANTI_PATTERNS.md" ]; then
+    local sb_dir="${SCRIPT_DIR}/secondbrain"
+    if [ ! -d "${sb_dir}" ]; then
+        local git_common
+        git_common=$(git -C "${SCRIPT_DIR}" rev-parse --git-common-dir 2>/dev/null || true)
+        if [ -n "${git_common}" ]; then
+            local primary_root
+            primary_root=$(cd "${git_common}/.." && pwd)
+            if [ -d "${primary_root}/secondbrain" ]; then
+                sb_dir="${primary_root}/secondbrain"
+            fi
+        fi
+    fi
+    if [ -d "${sb_dir}/.git" ] && [ -s "${sb_dir}/USER_PREFERENCES.md" ] && [ -s "${sb_dir}/ANTI_PATTERNS.md" ]; then
         passed=$((passed + 1))
         [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ (decoupled local git repository)"
         details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"PASS\"}")
         local dirty_notes
-        dirty_notes=$(git -C "${SCRIPT_DIR}/secondbrain" status --porcelain 2>/dev/null | wc -l || echo 0)
+        dirty_notes=$(git -C "${sb_dir}" status --porcelain 2>/dev/null | wc -l || echo 0)
         if [ "${dirty_notes}" -gt 0 ]; then
             [ "$json_mode" = false ] && echo "   [NOTE] secondbrain has ${dirty_notes} uncommitted note(s). Run './haws.sh sync' or './haws.sh user sync'."
         fi

@@ -2,8 +2,8 @@
 
 > **Audit Baseline Commit**: `cceb211` (Point where 39 original user requirements were reviewed and mapped)  
 > **Previous Head Commit**: `6f54cce` (`feat(lifecycle): add clean uninstaller, commit-msg hook, and notification dispatcher`)  
-> **Current Head Commit**: `b37e822` (`docs(handoff): update timeline to b3ebe49, add 39-req traceability table and Codex continuity protocol`)  
-> **Total Intermediate Commits**: 52 Git Commits Audited  
+> **Current Head Commit**: `f6d0e19` (`fix(launchers): resolve CMD block parsing syntax error in 1-CLICK-SYNC.bat and 2nd-BRAIN-TOGGLE.bat`)  
+> **Total Intermediate Commits**: 62 Git Commits Audited  
 > **Prepared For**: Complete Milestone Delivery, Seamless Continuity & Native Multi-AI Support (Antigravity, Claude, Codex)  
 > **Diagnostic Status**: 43/43 PASS (100% Green, Zero Failures)  
 > **Active Skills Status**: 127 Active Skills (100% Synchronized across Claude Code, Antigravity & OpenAI Codex)  
@@ -46,6 +46,18 @@ The following chronological sequence documents everything committed from `cceb21
 | `ae904e3` | `perf(setup)` | Optimized Option 4 skill catalog scan with pure bash single-pass scanner (reduced load time from 35s to <1.5s). |
 | `b1cc486` | `fix(setup)` | Cached skill catalog scan outside menu loop (instant 0.001s redraw on Enter/q) and isolated standalone skills in `skills.json`. |
 | `b3ebe49` | `chore(skills)` | Updated disabled skills configuration (active 127 skills 100% in sync). |
+| `b37e822` | `docs(handoff)` | Updated timeline to `b3ebe49`, added 39-req traceability table and Codex continuity protocol. |
+| `535d36f` | `feat(codex)` | Integrated native OpenAI Codex, hardened batch launchers, and reconciled audit ledger. |
+| `eaf998a` | `feat(core)` | Codified universal skill execution and proactive recommendation rule. |
+| `843ce4d` | `feat(core)` | Enforced subagent action bias, uncertainty inquiry, and fail-fast launchers. |
+| `ece66e3` | `feat(core)` | Codified subagent skill autonomy and main agent exclusive user interface. |
+| `024ccf8` | `refactor(templates)` | Removed legacy config/container paths, integrated secondbrain/notes into standards. |
+| `21c3d41` | `revert` | Restored templates/ai-configs, templates/containers, and haws.sh doctor. |
+| `caccd44` | `refactor(structure)` | Moved ai-configs, containers, and skills.disabled to root; kept pure .md in templates. |
+| `8605168` | `refactor(templates)` | Removed templates/README.md; deferred usage documentation to WORKFLOW.md. |
+| `5c08e56` | `refactor(templates)` | Flattened docs/ blueprints directly into templates/. |
+| `553f5b2` | `feat(launchers)` | Dedicated SETUP.bat to skill manager, prioritized skills in first-run setup, and verified in doctor. |
+| `f6d0e19` | `fix(launchers)` | Resolved CMD block parsing syntax error in 1-CLICK-SYNC.bat and 2nd-BRAIN-TOGGLE.bat. |
 
 ---
 
@@ -56,8 +68,8 @@ The following chronological sequence documents everything committed from `cceb21
 1. **Anti-Hallucination & Grounding Standard** (`core/HAWS.md` Sec 3.1):
    - Prohibits asserting completion without real command execution outputs.
    - Mandatory `[Unverified]` tagging for unchecked paths.
-2. **Top-Line Skill Declaration & Mandatory File Ingestion** (`core/WORK_INSTRUCTIONS.md` Sec 2.1):
-   - Every skill execution must declare `Applying /<skill-name>...` on the first line.
+2. **Seamless Protocol Execution & Mandatory File Ingestion** (`core/HAWS.md` Sec 9.2, `core/WORK_INSTRUCTIONS.md` Sec 2.1):
+   - Prohibits artificial announcement banners (`Applying /...` or `[Auto-Skill: ...]`) in user chat.
    - First tool call must be `view_file` on target `SKILL.md`. Zero vanity tags.
 3. **Caveman Communication Engine** (`skills/standalone/caveman/`):
    - Multi-level token compression (`lite`, `full`, `ultra`).
@@ -106,6 +118,19 @@ The following chronological sequence documents everything committed from `cceb21
     - Grounded architectural modeling in executable tools (`skills/standalone/graphify/`) capable of AST parsing, JSON dependency extraction, and interactive visualizers, rather than static text drawings.
 16. **Templates Architecture Invariant**:
     - Flat directory structure in `templates/` maintained for rapid discoverability, operating as an opt-in buffet based on project technology stack rather than mandatory wholesale scaffolding.
+17. **Subagent Skill Autonomy & Exclusive Main Agent Interface** (`core/HAWS.md` Sec 9.3, `core/WORK_INSTRUCTIONS.md` Sec 2.3):
+    - Subagents autonomously select and execute skills from installed skill packs without prompting user.
+    - Main Agent serves as exclusive single point of user contact.
+18. **Subagent Action Bias & Proactive Uncertainty Inquiry**:
+    - Dispatches subagents proactively when tasks permit, without hesitating.
+    - Prompts user when uncertain whether solo or subagent delegation is preferred.
+19. **Template & Blueprint Structural Flattening**:
+    - Flattened blueprints directly into `templates/` (pure Markdown), isolated `ai-configs/` and `containers/` to root.
+20. **Launcher Hardening & Dedicated Skill Manager**:
+    - Dedicated `SETUP.bat` to skill management, verified fail-fast error handling in launchers.
+    - Resolved CMD block parsing syntax error in batch scripts (`1-CLICK-SYNC.bat`, `2nd-BRAIN-TOGGLE.bat`).
+21. **Git Worktree Isolation Standard**:
+    - All non-trivial feature additions, refactorings, and script modifications operate strictly within `.worktrees/<branch>` workspaces rather than dirtying `main`.
 
 ---
 
