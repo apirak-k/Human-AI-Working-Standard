@@ -764,6 +764,7 @@ run_sync() {
 
     # 5. Link Skills
     echo "--- Step 5: Linking Skills ---"
+    echo "  [*] Discovering and linking active skills to AI environments, please wait..."
     declare -A PROCESSED_SKILLS
 
     local MANIFEST_FILE="${HOME}/.haws_manifest"
@@ -916,6 +917,7 @@ run_sync() {
         echo "  [CONFIG] Antigravity Native Config (Dynamic): ${target_json}"
         SKILLS_LINKED=$((SKILLS_LINKED + ${#PROCESSED_SKILLS[@]}))
     fi
+    echo "  [✓] Skills linking complete (${#PROCESSED_SKILLS[@]} active skills linked)."
     echo ""
 
     # 6. Link Subagents
@@ -1477,6 +1479,8 @@ configure_repo_skills() {
 run_configure_skills() {
     load_disabled_skills
     while true; do
+        echo ""
+        echo "  [*] Scanning skills catalog, please wait..."
         local single_total=0
         local single_active=0
         local single_repos=()
@@ -1515,6 +1519,7 @@ run_configure_skills() {
                 pack_actives+=("$active_in_repo")
             fi
         done
+        echo "  [✓] Skills catalog ready."
 
         echo ""
         echo "============================================================="
@@ -1536,6 +1541,8 @@ run_configure_skills() {
         [ -z "${sub_choice}" ] && sub_choice="0"
 
         if [ "${sub_choice}" = "1" ]; then
+            echo ""
+            echo "  [*] Loading Single Skills checklist..."
             local chk_items=()
             for sitem in "${single_repos[@]}"; do
                 local sn="${sitem%%|*}"
@@ -1577,6 +1584,8 @@ run_configure_skills() {
             if [[ "${p_idx}" =~ ^[1-9][0-9]*$ ]] && [ "${p_idx}" -le "${#pack_names[@]}" ]; then
                 local sel_pack_dir="${pack_repos[$((p_idx - 1))]}"
                 local sel_pack_name="${pack_names[$((p_idx - 1))]}"
+                echo ""
+                echo "  [*] Loading skills for ${sel_pack_name}, please wait..."
                 configure_repo_skills "${sel_pack_dir}" "${sel_pack_name}"
             fi
 
@@ -2370,9 +2379,10 @@ run_setup() {
 
                 case "${kit_choice}" in
                     1)
-                        echo "  [*] Initializing Standard HAWS Kit submodules..."
+                        echo ""
+                        echo "  [*] Initializing Standard HAWS Kit submodules, please wait..."
                         git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-                        echo "  [✓] Standard HAWS Kit submodules verified."
+                        echo "  [✓] Standard HAWS Kit submodules verified & ready."
                         break
                         ;;
                     2)
