@@ -851,84 +851,180 @@ run_interactive_kit_setup() {
     echo "Note: Local custom skills in 'skills/custom/' remain 100% separate and untouched."
     echo ""
 
-    local sub_paths=()
-    local sub_urls=()
-    local count=0
+    local names=()
+    local types=()
+    local paths=()
+    local details=()
 
+    # 1. Load submodules from .gitmodules
     if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
         while IFS=' ' read -r key url; do
             [ -z "${key}" ] || [ -z "${url}" ] && continue
-            local path_name="${key#submodule.}"
-            path_name="${path_name%.url}"
-            sub_paths+=("${path_name}")
-            sub_urls+=("${url}")
-            count=$((count + 1))
+            local path="${key#submodule.}"
+            path="${path%.url}"
+            local name="$(basename "${path}")"
+            local stype="PACK"
+            [[ "${path}" =~ standalone ]] && stype="SINGLE"
+            names+=("${name}")
+            types+=("${stype}")
+            paths+=("${path}")
+            details+=("${url}")
         done < <(git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp url 2>/dev/null || true)
     fi
 
-    echo "--- Step 1: Review & Remove Existing Submodule Repositories ---"
-    if [ ${count} -eq 0 ]; then
-        echo "  No submodules currently configured in .gitmodules."
-    else
-        echo "Current Submodules in Kit:"
-        for i in "${!sub_paths[@]}"; do
-            local idx=$((i + 1))
-            local sp="${sub_paths[$i]}"
-            local su="${sub_urls[$i]}"
-            local sname="$(basename "${sp}")"
-            local stype="pack"
-            [[ "${sp}" =~ standalone ]] && stype="single"
-            printf "  [%d] %-20s (%-6s) -> %s\n" "${idx}" "${sname}" "${stype}" "${su}"
-        done
-        echo ""
-        local remove_input=""
-        if [ -t 0 ]; then
-            read -r -p "Enter number(s) to REMOVE separated by comma (e.g. 1,3), or press [Enter] to keep all: " remove_input || remove_input=""
-            remove_input="$(echo "${remove_input}" | tr -d ' \r\n')"
-        fi
-
-        local paths_to_prune=()
-        if [ -n "${remove_input}" ]; then
-            IFS=',' read -ra to_remove <<< "${remove_input}"
-            for num in "${to_remove[@]}"; do
-                num="$(echo "${num}" | tr -d ' ')"
-                if [[ "${num}" =~ ^[0-9]+$ ]] && [ "${num}" -ge 1 ] && [ "${num}" -le "${count}" ]; then
-                    local target_idx=$((num - 1))
-                    paths_to_prune+=("${sub_paths[$target_idx]}")
+    # 2. Load standalone skills in skills/standalone/
+    if [ -d "${SCRIPT_DIR}/skills/standalone" ]; then
+        for item in "${SCRIPT_DIR}/skills/standalone"/*; do
+            [ ! -d "${item}" ] && continue
+            local sname="$(basename "${item}")"
+            local spath="skills/standalone/${sname}"
+            local exists=0
+            for p in "${paths[@]}"; do
+                if [ "${p}" = "${spath}" ]; then
+                    exists=1
+                    break
                 fi
             done
+            if [ "${exists}" -eq 0 ]; then
+                names+=("${sname}")
+                types+=("SINGLE")
+                paths+=("${spath}")
+                details+=("Local Standalone")
+            fi
+        done
+    fi
+
+    local total=${#names[@]}
+
+    echo "=== [Step 1/2] Select Skills/Packs to REMOVE ==="
+    if [ "${total}" -eq 0 ]; then
+        echo "  No skills or packs currently installed."
+    else
+        echo "Use [↑/↓] to navigate, [Space] to toggle [x], [Enter] to confirm:"
+        echo ""
+
+        local cursor=0
+        local selected=()
+        for ((i=0; i<total; i++)); do selected+=(0); done
+
+        # Initial draw
+        for i in "${!names[@]}"; do
+            local ptr="  "
+            [ "$i" -eq "$cursor" ] && ptr="> "
+            local chk="[ ]"
+            [ "${selected[$i]}" -eq 1 ] && chk="[x]"
+            printf "%s%s %-20s %-8s (%s)\n" "${ptr}" "${chk}" "${names[$i]}" "[${types[$i]}]" "${details[$i]}"
+        done
+
+        if [ -t 0 ]; then
+            printf "\033[?25l" 2>/dev/null || true
+
+            while true; do
+                local key=""
+                IFS= read -rsn1 key || break
+                if [[ "${key}" == $'\x1b' ]]; then
+                    local rest=""
+                    read -rsn2 -t 0.1 rest || rest=""
+                    case "${rest}" in
+                        "[A") # Up arrow
+                            cursor=$(( (cursor - 1 + total) % total ))
+                            ;;
+                        "[B") # Down arrow
+                            cursor=$(( (cursor + 1) % total ))
+                            ;;
+                    esac
+                elif [[ "${key}" == "k" || "${key}" == "K" ]]; then
+                    cursor=$(( (cursor - 1 + total) % total ))
+                elif [[ "${key}" == "j" || "${key}" == "J" ]]; then
+                    cursor=$(( (cursor + 1) % total ))
+                elif [[ "${key}" == " " || "${key}" == "x" || "${key}" == "X" ]]; then
+                    if [ "${selected[$cursor]}" -eq 1 ]; then
+                        selected[$cursor]=0
+                    else
+                        selected[$cursor]=1
+                    fi
+                elif [[ "${key}" == "" ]]; then
+                    break
+                elif [[ "${key}" == "q" || "${key}" == "Q" ]]; then
+                    break
+                fi
+
+                # Redraw list
+                printf "\033[%dA" "${total}"
+                for i in "${!names[@]}"; do
+                    local ptr="  "
+                    [ "$i" -eq "$cursor" ] && ptr="> "
+                    local chk="[ ]"
+                    [ "${selected[$i]}" -eq 1 ] && chk="[x]"
+                    printf "\033[2K\r%s%s %-20s %-8s (%s)\n" "${ptr}" "${chk}" "${names[$i]}" "[${types[$i]}]" "${details[$i]}"
+                done
+            done
+
+            printf "\033[?25h" 2>/dev/null || true
+        else
+            echo "  [Non-interactive terminal: keeping all items]"
         fi
 
-        if [ ${#paths_to_prune[@]} -gt 0 ]; then
-            for prune_path in "${paths_to_prune[@]}"; do
-                local prune_name="$(basename "${prune_path}")"
-                echo "  [*] Pruning submodule: ${prune_name} (${prune_path})..."
-                git -C "${SCRIPT_DIR}" submodule deinit -f -- "${prune_path}" 2>/dev/null || true
-                git -C "${SCRIPT_DIR}" rm -f "${prune_path}" 2>/dev/null || true
-                rm -rf "${SCRIPT_DIR}/.git/modules/${prune_path}" 2>/dev/null || true
-                rm -rf "${SCRIPT_DIR}/${prune_path}" 2>/dev/null || true
-                echo "  [✓] Removed ${prune_name}"
+        # Process removals
+        local to_remove_indices=()
+        for i in "${!names[@]}"; do
+            if [ "${selected[$i]}" -eq 1 ]; then
+                to_remove_indices+=("$i")
+            fi
+        done
+
+        if [ ${#to_remove_indices[@]} -gt 0 ]; then
+            echo ""
+            echo "Selected for REMOVAL:"
+            for idx in "${to_remove_indices[@]}"; do
+                echo "  [-] ${names[$idx]} [${types[$idx]}]"
             done
+            echo ""
+            local confirm_del="y"
+            if [ -t 0 ]; then
+                read -r -p "Remove the ${#to_remove_indices[@]} selected item(s)? [y/N]: " confirm_del || confirm_del="n"
+                confirm_del="$(echo "${confirm_del}" | tr -d ' \r\n')"
+            fi
+            if [[ "${confirm_del}" =~ ^[Yy] ]]; then
+                for idx in "${to_remove_indices[@]}"; do
+                    local r_name="${names[$idx]}"
+                    local r_type="${types[$idx]}"
+                    local r_path="${paths[$idx]}"
+                    echo "  [*] Removing ${r_type}: ${r_name} (${r_path})..."
+                    if [ "${r_type}" = "PACK" ] || grep -q "${r_path}" "${SCRIPT_DIR}/.gitmodules" 2>/dev/null; then
+                        git -C "${SCRIPT_DIR}" submodule deinit -f -- "${r_path}" 2>/dev/null || true
+                        git -C "${SCRIPT_DIR}" rm -f "${r_path}" 2>/dev/null || true
+                        rm -rf "${SCRIPT_DIR}/.git/modules/${r_path}" 2>/dev/null || true
+                        rm -rf "${SCRIPT_DIR}/${r_path}" 2>/dev/null || true
+                    else
+                        git -C "${SCRIPT_DIR}" rm -rf "${r_path}" 2>/dev/null || rm -rf "${SCRIPT_DIR}/${r_path}" 2>/dev/null || true
+                    fi
+                    echo "  [✓] Removed ${r_name}"
+                done
+            else
+                echo "  [INFO] Removal cancelled. Kept all items."
+            fi
         else
-            echo "  [✓] Kept all existing submodules."
+            echo ""
+            echo "  [✓] No items marked for removal. Kept all."
         fi
     fi
 
     echo ""
-    echo "--- Step 2: Add External Git Repositories (Pack or Single) ---"
+    echo "=== [Step 2/2] Add External Git Repository ==="
     while true; do
-        local add_more="N"
+        local add_choice="n"
         if [ -t 0 ]; then
-            read -r -p "Add a Git repository? [y/N]: " add_more || add_more="N"
-            add_more="$(echo "${add_more}" | tr -d ' \r\n')"
+            read -r -p "Do you want to add a Git repository? [y/N]: " add_choice || add_choice="n"
+            add_choice="$(echo "${add_choice}" | tr -d ' \r\n')"
         fi
-        if [[ ! "${add_more}" =~ ^[Yy] ]]; then
+        if [[ ! "${add_choice}" =~ ^[Yy] ]]; then
             break
         fi
 
         local new_url=""
         if [ -t 0 ]; then
-            read -r -p "  Enter Git Repository URL: " new_url || new_url=""
+            read -r -p "Paste Git Repository URL: " new_url || new_url=""
             new_url="$(echo "${new_url}" | tr -d ' \r\n')"
         fi
         if [ -z "${new_url}" ]; then
@@ -936,56 +1032,52 @@ run_interactive_kit_setup() {
             continue
         fi
 
-        local new_type="1"
+        local is_pack="y"
         if [ -t 0 ]; then
-            echo "  Select repository type:"
-            echo "    1) Pack         (Repository containing multiple skills -> skills/packs/)"
-            echo "    2) Single Skill (Repository containing a single skill  -> skills/standalone/)"
-            read -r -p "  Choose type [1-2] (default: 1): " new_type || new_type="1"
-            new_type="$(echo "${new_type}" | tr -d ' \r\n')"
-            [ -z "${new_type}" ] && new_type="1"
+            read -r -p "Is this a multi-skill pack? [Y/n] (yes=skills/packs/, no=skills/standalone/): " is_pack || is_pack="y"
+            is_pack="$(echo "${is_pack}" | tr -d ' \r\n')"
+            [ -z "${is_pack}" ] && is_pack="y"
         fi
 
-        local default_name
-        default_name="$(basename "${new_url}" .git)"
-        local new_name=""
-        if [ -t 0 ]; then
-            read -r -p "  Repository name (default: ${default_name}): " new_name || new_name=""
-            new_name="$(echo "${new_name}" | tr -d ' \r\n')"
-        fi
-        [ -z "${new_name}" ] && new_name="${default_name}"
-
+        local new_name
+        new_name="$(basename "${new_url}" .git)"
         local target_dir="skills/packs/${new_name}"
-        [ "${new_type}" = "2" ] && target_dir="skills/standalone/${new_name}"
+        local target_type="PACK"
+        if [[ "${is_pack}" =~ ^[Nn] ]]; then
+            target_dir="skills/standalone/${new_name}"
+            target_type="SINGLE"
+        fi
 
-        echo "  [*] Adding Git submodule: ${new_name} -> ${target_dir}..."
+        echo "  [*] Adding ${target_type}: ${new_name} -> ${target_dir}..."
         git -C "${SCRIPT_DIR}" submodule add "${new_url}" "${target_dir}" 2>/dev/null || {
-            echo "  [WARNING] Git submodule add encountered an issue. Trying direct checkout..."
+            echo "  [WARNING] Git submodule add failed. Attempting direct clone..."
             git -C "${SCRIPT_DIR}" clone "${new_url}" "${target_dir}" 2>/dev/null || true
         }
-        echo "  [✓] Added ${new_name} successfully."
+        echo "  [✓] Added ${new_name} (${target_type}) successfully."
         echo ""
     done
 
     echo ""
-    echo "--- Step 3: Confirmation & Synchronization ---"
+    echo "=== Summary & Confirmation ==="
     echo "Active Submodules in Kit:"
     if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
         git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp url 2>/dev/null | while IFS=' ' read -r k u; do
             local p="${k#submodule.}"
             p="${p%.url}"
-            echo "  • ${p} (${u})"
+            local t="PACK"
+            [[ "${p}" =~ standalone ]] && t="SINGLE"
+            printf "  • %-20s [%-6s] -> %s\n" "$(basename "${p}")" "${t}" "${u}"
         done
     else
-        echo "  No submodules configured."
+        echo "  No external submodules configured."
     fi
     echo ""
 
-    local confirm_sync="Y"
+    local confirm_sync="y"
     if [ -t 0 ]; then
-        read -r -p "Confirm and synchronize kit now? [Y/n]: " confirm_sync || confirm_sync="Y"
+        read -r -p "Synchronize now? [Y/n]: " confirm_sync || confirm_sync="y"
         confirm_sync="$(echo "${confirm_sync}" | tr -d ' \r\n')"
-        [ -z "${confirm_sync}" ] && confirm_sync="Y"
+        [ -z "${confirm_sync}" ] && confirm_sync="y"
     fi
 
     if [[ ! "${confirm_sync}" =~ ^[Nn] ]]; then
@@ -995,7 +1087,7 @@ run_interactive_kit_setup() {
         echo "  [✓] Git submodules synchronized."
         run_sync
     else
-        echo "  [INFO] Kit configuration saved. Run './haws.sh sync' when you want to synchronize."
+        echo "  [INFO] Kit configuration saved. Run './haws.sh sync' when ready."
     fi
 }
 
