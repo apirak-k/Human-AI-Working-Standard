@@ -418,6 +418,47 @@ EOF
     fi
 }
 
+declare -A DISABLED_SKILLS
+
+extract_skill_name() {
+    local sfile="$1"
+    local sname=""
+    if [ -f "$sfile" ]; then
+        while IFS= read -r line; do
+            if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
+                sname="${BASH_REMATCH[1]}"
+                sname="${sname%"${sname##*[![:space:]]}"}"
+                break
+            fi
+        done < "$sfile"
+    fi
+    [ -z "$sname" ] && sname="$(basename "$(dirname "$sfile")")"
+    echo "$sname"
+}
+
+load_disabled_skills() {
+    DISABLED_SKILLS=()
+    local dfile="${SCRIPT_DIR}/config/skills.disabled"
+    if [ -f "${dfile}" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
+            [ -n "$line" ] && DISABLED_SKILLS["$line"]=1
+        done < "${dfile}"
+    fi
+}
+
+save_disabled_skills() {
+    local dfile="${SCRIPT_DIR}/config/skills.disabled"
+    mkdir -p "$(dirname "${dfile}")"
+    {
+        echo "# HAWS Disabled Skills"
+        echo "# Skills listed here will not be linked to Claude Code or Antigravity"
+        for sk in "${!DISABLED_SKILLS[@]}"; do
+            [ -n "$sk" ] && echo "$sk"
+        done | sort
+    } > "${dfile}"
+}
+
 run_sync() {
     local CLEAN_UNMANAGED=false
     for opt in "$@"; do
@@ -428,6 +469,7 @@ run_sync() {
     echo ""
 
     local SOURCE_DIR="${SCRIPT_DIR}"
+    load_disabled_skills
 
     # 0. Sync Personal Second Brain if connected
     echo "--- Step 0: Syncing Personal Second Brain ---"
@@ -690,6 +732,9 @@ run_sync() {
             fi
             [ -z "${skill_name}" ] && skill_name="$(basename "${skill_dir}")"
 
+            # Check dynamic disabled list
+            [ -n "${DISABLED_SKILLS[${skill_name}]:-}" ] && continue
+
             # Filter rules per user specification:
             # 1. planning-with-files: keep only primary 'planning-with-files'
             [[ "${skill_name}" == "pi-planning-with-files" ]] && continue
@@ -731,30 +776,54 @@ run_sync() {
         command -v cygpath &>/dev/null && win_source="$(cygpath -m "${SOURCE_DIR}")"
 
         local json_entries=()
-        json_entries+=("    { \"path\": \"${win_source}/skills/standalone\" }")
-        json_entries+=("    { \"path\": \"${win_source}/skills/custom\" }")
-
         declare -A seen_dirs
-        seen_dirs["${win_source}/skills/standalone"]=1
-        seen_dirs["${win_source}/skills/custom"]=1
 
+        # 1. Custom skills (respect disabled)
+        if [ -d "${SOURCE_DIR}/skills/custom" ]; then
+            for cdir in "${SOURCE_DIR}/skills/custom"/*; do
+                [ ! -d "$cdir" ] && continue
+                local cname="$(basename "$cdir")"
+                [ -n "${DISABLED_SKILLS[$cname]:-}" ] && continue
+                local win_cdir="$cdir"
+                command -v cygpath &>/dev/null && win_cdir="$(cygpath -m "$cdir")"
+                seen_dirs["$win_cdir"]=1
+                json_entries+=("    { \"path\": \"${win_cdir}\" }")
+            done
+        fi
+
+        # 2. Standalone & Packs
         while IFS= read -r f; do
             [ -z "${f}" ] && continue
             local sdir="$(dirname "${f}")"
             local pdir="$(dirname "${sdir}")"
+            local sname=""
+            while IFS= read -r line; do
+                if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
+                    sname="${BASH_REMATCH[1]}"
+                    sname="${sname%"${sname##*[![:space:]]}"}"
+                    break
+                fi
+            done < "${f}"
+            [ -z "${sname}" ] && sname="$(basename "${sdir}")"
+
+            # Check if disabled
+            [ -n "${DISABLED_SKILLS[$sname]:-}" ] && continue
+            [[ "${sname}" == "pi-planning-with-files" ]] && continue
+            [[ "${sname}" =~ ^planning-with-files- ]] && continue
+            [[ "${sname}" == "design-taste-frontend-v1" ]] && continue
+
+            # Structural rules
+            [[ "${sdir}" =~ \.openclaw ]] && continue
+            [[ "${sdir}" =~ planning-with-files ]] && [[ ! "${sdir}" =~ \.agents/skills ]] && continue
+            [[ "${sdir}" =~ ui-ux-pro-max ]] && [[ ! "${sdir}" =~ \.claude/skills ]] && continue
+
             local target_dir="${pdir}"
             if [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ]; then
-                if [ -f "${sdir}/SKILL.md" ] || [ -f "${sdir}/skill.md" ]; then
-                    target_dir="${sdir}"
-                else
-                    continue
-                fi
+                target_dir="${sdir}"
             fi
+            [[ "${pdir}" == "${SOURCE_DIR}/skills/standalone" ]] && target_dir="${sdir}"
             [[ "${sdir}" =~ taste-skill/skills ]] && target_dir="${sdir}"
-            [[ "${target_dir}" =~ \.openclaw ]] && continue
-            [[ "${target_dir}" =~ planning-with-files ]] && [[ ! "${target_dir}" =~ \.agents/skills ]] && continue
-            [[ "${target_dir}" =~ ui-ux-pro-max ]] && [[ ! "${target_dir}" =~ \.claude/skills ]] && continue
-            [[ "${target_dir}" =~ taste-skill-v1 ]] && continue
+
             local win_target="${target_dir}"
             command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
             if [ -z "${seen_dirs[${win_target}]:-}" ]; then
@@ -944,18 +1013,255 @@ run_edit_gitmodules() {
     echo "  [✓] Submodule configuration synchronized."
 }
 
-run_interactive_kit_setup() {
-    echo "=== HAWS Skill Kit Setup & Customizer ==="
-    echo "Manage your Git Submodule repositories (Packs & Standalone skills)."
-    echo "Note: Local custom skills in 'skills/custom/' remain 100% separate and untouched."
+interactive_checklist() {
+    local title="$1"
+    shift
+    local items=("$@") # Format: "name|detail|initial_state_0_or_1"
+    local count=${#items[@]}
+    [ "$count" -eq 0 ] && return 0
+
+    local item_names=()
+    local item_details=()
+    local item_states=()
+
+    for item in "${items[@]}"; do
+        local n="${item%%|*}"
+        local rest="${item#*|}"
+        local d="${rest%%|*}"
+        local s="${rest##*|}"
+        item_names+=("$n")
+        item_details+=("$d")
+        item_states+=("$s")
+    done
+
+    local total=$((count + 1))
+    local cursor=0
+    local cancelled=0
+
+    render_row() {
+        local idx="$1"
+        local is_curr="$2"
+        local ptr="  "
+        [ "$is_curr" -eq 1 ] && ptr="> "
+
+        if [ "$idx" -eq 0 ]; then
+            local all_sel=1
+            local any_sel=0
+            for ((j=0; j<count; j++)); do
+                if [ "${item_states[$j]}" -eq 1 ]; then
+                    any_sel=1
+                else
+                    all_sel=0
+                fi
+            done
+            local mark="[ ]"
+            if [ "$all_sel" -eq 1 ]; then
+                mark="[x]"
+            elif [ "$any_sel" -eq 1 ]; then
+                mark="[-]"
+            fi
+            printf "\033[2K\r%s\033[1;36m%s [Toggle All: Select All / Deselect All]\033[0m\n" "${ptr}" "${mark}"
+        else
+            local real_idx=$((idx - 1))
+            local mark="[ ]"
+            local color="\033[0m"
+            if [ "${item_states[$real_idx]}" -eq 1 ]; then
+                mark="[x]"
+                color="\033[32m"
+            else
+                color="\033[90m"
+            fi
+            printf "\033[2K\r%s%s %b%-26s\033[0m \033[90m(%s)\033[0m\n" "${ptr}" "${mark}" "${color}" "${item_names[$real_idx]}" "${item_details[$real_idx]}"
+        fi
+    }
+
+    echo ""
+    echo "=== ${title} ==="
+    echo "Controls: [↑/↓] Navigate | [Space] Toggle | [Enter] Confirm & Save | [q] Cancel"
     echo ""
 
-    local names=()
-    local types=()
-    local paths=()
-    local details=()
+    for ((i=0; i<total; i++)); do
+        local is_c=0
+        [ "$i" -eq "$cursor" ] && is_c=1
+        render_row "$i" "$is_c"
+    done
 
-    # 1. Load submodules from .gitmodules
+    if [ -t 0 ]; then
+        printf "\033[?25l" 2>/dev/null || true
+        while true; do
+            local key=""
+            IFS= read -rsn1 key || break
+            if [[ "${key}" == $'\x1b' ]]; then
+                local rest=""
+                read -rsn2 -t 0.1 rest || rest=""
+                case "${rest}" in
+                    "[A") cursor=$(( (cursor - 1 + total) % total )) ;;
+                    "[B") cursor=$(( (cursor + 1) % total )) ;;
+                esac
+            elif [[ "${key}" == "k" || "${key}" == "K" ]]; then
+                cursor=$(( (cursor - 1 + total) % total ))
+            elif [[ "${key}" == "j" || "${key}" == "J" ]]; then
+                cursor=$(( (cursor + 1) % total ))
+            elif [[ "${key}" == " " || "${key}" == "x" || "${key}" == "X" ]]; then
+                if [ "$cursor" -eq 0 ]; then
+                    local any_unsel=0
+                    for ((j=0; j<count; j++)); do
+                        [ "${item_states[$j]}" -eq 0 ] && any_unsel=1 && break
+                    done
+                    local new_state=1
+                    [ "$any_unsel" -eq 0 ] && new_state=0
+                    for ((j=0; j<count; j++)); do
+                        item_states[$j]=$new_state
+                    done
+                else
+                    local target_idx=$((cursor - 1))
+                    if [ "${item_states[$target_idx]}" -eq 1 ]; then
+                        item_states[$target_idx]=0
+                    else
+                        item_states[$target_idx]=1
+                    fi
+                fi
+            elif [[ "${key}" == "" ]]; then
+                break
+            elif [[ "${key}" == "q" || "${key}" == "Q" ]]; then
+                cancelled=1
+                break
+            fi
+
+            printf "\033[%dA" "${total}"
+            for ((i=0; i<total; i++)); do
+                local is_c=0
+                [ "$i" -eq "$cursor" ] && is_c=1
+                render_row "$i" "$is_c"
+            done
+        done
+        printf "\033[?25h" 2>/dev/null || true
+    fi
+
+    echo ""
+    if [ "$cancelled" -eq 1 ]; then
+        return 1
+    fi
+
+    CHECKLIST_RESULTS=()
+    for ((i=0; i<count; i++)); do
+        CHECKLIST_RESULTS["${item_names[$i]}"]="${item_states[$i]}"
+    done
+    return 0
+}
+
+run_add_git_repo() {
+    echo ""
+    echo "============================================================="
+    echo "                 Add Git Repository"
+    echo "============================================================="
+    echo "Enter external Git repository URLs to clone as submodules."
+    echo "Type 'done' when finished, or 'c' / 'cancel' to return."
+    echo ""
+
+    local added_count=0
+    local newly_added_dirs=()
+
+    while true; do
+        local repo_url=""
+        read -r -p "Enter Git Repository URL (or 'done' to finish, 'c' to cancel): " repo_url || repo_url=""
+        repo_url="$(echo "${repo_url}" | tr -d ' \r\n')"
+
+        if [ -z "${repo_url}" ] || [[ "${repo_url}" =~ ^(c|cancel)$ ]]; then
+            if [ "${added_count}" -eq 0 ]; then
+                echo "  [INFO] No repositories added. Returning to main menu."
+                return 1
+            fi
+            break
+        fi
+
+        if [[ "${repo_url}" =~ ^(done|exit|quit|q)$ ]]; then
+            break
+        fi
+
+        local repo_name
+        repo_name="$(basename "${repo_url}" .git)"
+
+        echo "  [*] Inspecting repository structure for ${repo_name}..."
+        local tmp_inspect
+        tmp_inspect="$(mktemp -d 2>/dev/null || mktemp -d -t 'haws_inspect_XXXXXX')"
+        if ! git clone --depth 1 -q "${repo_url}" "${tmp_inspect}" 2>/dev/null; then
+            echo "  [ERROR] Failed to clone ${repo_url}. Please verify URL and credentials."
+            rm -rf "${tmp_inspect}" 2>/dev/null || true
+            continue
+        fi
+
+        local total_skills=0
+        total_skills=$(find "${tmp_inspect}" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | wc -l || echo "0")
+
+        local target_dir="skills/packs/${repo_name}"
+        local target_type="PACK"
+        if [ -f "${tmp_inspect}/SKILL.md" ] || [ -f "${tmp_inspect}/skill.md" ] || [ "${total_skills}" -eq 1 ]; then
+            target_dir="skills/standalone/${repo_name}"
+            target_type="SINGLE"
+            echo "  [✓] Auto-detected: Single Skill repository (1 skill found)"
+        elif [ "${total_skills}" -gt 1 ]; then
+            target_dir="skills/packs/${repo_name}"
+            target_type="PACK"
+            echo "  [✓] Auto-detected: Multi-Skill Pack repository (${total_skills} skills found)"
+        else
+            echo "  [WARNING] No SKILL.md found in repository. Registering as pack."
+        fi
+        rm -rf "${tmp_inspect}" 2>/dev/null || true
+
+        echo "  [*] Adding submodule: ${repo_name} -> ${target_dir}..."
+        if git -C "${SCRIPT_DIR}" submodule add "${repo_url}" "${target_dir}" 2>/dev/null || \
+           git -C "${SCRIPT_DIR}" clone "${repo_url}" "${target_dir}" 2>/dev/null; then
+            git -C "${SCRIPT_DIR}" submodule update --init --recursive "${target_dir}" 2>/dev/null || true
+            echo "  [✓] Successfully added and downloaded ${repo_name} (${target_type})."
+            added_count=$((added_count + 1))
+            newly_added_dirs+=("${target_dir}")
+        else
+            echo "  [ERROR] Failed to add submodule ${repo_url}."
+        fi
+        echo ""
+    done
+
+    if [ "${added_count}" -eq 0 ]; then
+        return 1
+    fi
+
+    echo ""
+    echo "============================================================="
+    echo "Successfully downloaded ${added_count} new repository/repositories!"
+    echo "============================================================="
+    local configure_now="n"
+    read -r -p "Configure active skills now? [y/N] (Default: N - enable all skills): " configure_now || configure_now="n"
+    configure_now="$(echo "${configure_now}" | tr -d ' \r\n')"
+
+    if [[ "${configure_now}" =~ ^[Yy] ]]; then
+        load_disabled_skills
+        for ndir in "${newly_added_dirs[@]}"; do
+            configure_repo_skills "${SCRIPT_DIR}/${ndir}"
+        done
+        save_disabled_skills
+    else
+        echo "  [✓] Kept all skills enabled by default."
+    fi
+
+    echo ""
+    echo "  [✓] Add Git Repository complete. Returning to main menu."
+    return 0
+}
+
+run_remove_git_repo() {
+    echo ""
+    echo "============================================================="
+    echo "                Remove Git Repository"
+    echo "============================================================="
+    echo "Select repository/repositories to remove from Git and disk."
+    echo ""
+
+    local repos=()
+    local repo_paths=()
+    local repo_types=()
+    local checklist_items=()
+
     if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
         while IFS=' ' read -r key url; do
             [ -z "${key}" ] || [ -z "${url}" ] && continue
@@ -964,242 +1270,259 @@ run_interactive_kit_setup() {
             local name="$(basename "${path}")"
             local stype="PACK"
             [[ "${path}" =~ standalone ]] && stype="SINGLE"
-            names+=("${name}")
-            types+=("${stype}")
-            paths+=("${path}")
-            details+=("${url}")
+            repos+=("${name}")
+            repo_paths+=("${path}")
+            repo_types+=("${stype}")
+            checklist_items+=("${name}|[${stype}] ${path}|0")
         done < <(git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp url 2>/dev/null || true)
     fi
 
-    # 2. Load standalone skills in skills/standalone/
-    if [ -d "${SCRIPT_DIR}/skills/standalone" ]; then
-        for item in "${SCRIPT_DIR}/skills/standalone"/*; do
-            [ ! -d "${item}" ] && continue
-            local sname="$(basename "${item}")"
-            local spath="skills/standalone/${sname}"
-            local exists=0
-            for p in "${paths[@]}"; do
-                if [ "${p}" = "${spath}" ]; then
-                    exists=1
-                    break
-                fi
-            done
-            if [ "${exists}" -eq 0 ]; then
-                names+=("${sname}")
-                types+=("SINGLE")
-                paths+=("${spath}")
-                details+=("Local Standalone")
-            fi
-        done
+    if [ "${#checklist_items[@]}" -eq 0 ]; then
+        echo "  No external git repositories currently installed."
+        read -r -p "Press [Enter] to return to main menu: " _dummy || true
+        return 1
     fi
 
-    local total=${#names[@]}
-
-    echo "=== [Step 1/2] Select Skills/Packs to REMOVE ==="
-    if [ "${total}" -eq 0 ]; then
-        echo "  No skills or packs currently installed."
-    else
-        echo "Use [↑/↓] to navigate, [Space] to toggle [x], [Enter] to confirm:"
-        echo ""
-
-        local cursor=0
-        local selected=()
-        for ((i=0; i<total; i++)); do selected+=(0); done
-
-        # Initial draw
-        for i in "${!names[@]}"; do
-            local ptr="  "
-            [ "$i" -eq "$cursor" ] && ptr="> "
-            local chk="[ ]"
-            [ "${selected[$i]}" -eq 1 ] && chk="[x]"
-            printf "%s%s %-20s %-8s (%s)\n" "${ptr}" "${chk}" "${names[$i]}" "[${types[$i]}]" "${details[$i]}"
-        done
-
-        if [ -t 0 ]; then
-            printf "\033[?25l" 2>/dev/null || true
-
-            while true; do
-                local key=""
-                IFS= read -rsn1 key || break
-                if [[ "${key}" == $'\x1b' ]]; then
-                    local rest=""
-                    read -rsn2 -t 0.1 rest || rest=""
-                    case "${rest}" in
-                        "[A") # Up arrow
-                            cursor=$(( (cursor - 1 + total) % total ))
-                            ;;
-                        "[B") # Down arrow
-                            cursor=$(( (cursor + 1) % total ))
-                            ;;
-                    esac
-                elif [[ "${key}" == "k" || "${key}" == "K" ]]; then
-                    cursor=$(( (cursor - 1 + total) % total ))
-                elif [[ "${key}" == "j" || "${key}" == "J" ]]; then
-                    cursor=$(( (cursor + 1) % total ))
-                elif [[ "${key}" == " " || "${key}" == "x" || "${key}" == "X" ]]; then
-                    if [ "${selected[$cursor]}" -eq 1 ]; then
-                        selected[$cursor]=0
-                    else
-                        selected[$cursor]=1
-                    fi
-                elif [[ "${key}" == "" ]]; then
-                    break
-                elif [[ "${key}" == "q" || "${key}" == "Q" ]]; then
-                    break
-                fi
-
-                # Redraw list
-                printf "\033[%dA" "${total}"
-                for i in "${!names[@]}"; do
-                    local ptr="  "
-                    [ "$i" -eq "$cursor" ] && ptr="> "
-                    local chk="[ ]"
-                    [ "${selected[$i]}" -eq 1 ] && chk="[x]"
-                    printf "\033[2K\r%s%s %-20s %-8s (%s)\n" "${ptr}" "${chk}" "${names[$i]}" "[${types[$i]}]" "${details[$i]}"
-                done
-            done
-
-            printf "\033[?25h" 2>/dev/null || true
-        else
-            echo "  [Non-interactive terminal: keeping all items]"
-        fi
-
-        # Process removals
-        local to_remove_indices=()
-        for i in "${!names[@]}"; do
-            if [ "${selected[$i]}" -eq 1 ]; then
-                to_remove_indices+=("$i")
-            fi
-        done
-
-        if [ ${#to_remove_indices[@]} -gt 0 ]; then
-            echo ""
-            echo "Selected for REMOVAL:"
-            for idx in "${to_remove_indices[@]}"; do
-                echo "  [-] ${names[$idx]} [${types[$idx]}]"
-            done
-            echo ""
-            local confirm_del="y"
-            if [ -t 0 ]; then
-                read -r -p "Remove the ${#to_remove_indices[@]} selected item(s)? [y/N]: " confirm_del || confirm_del="n"
-                confirm_del="$(echo "${confirm_del}" | tr -d ' \r\n')"
-            fi
-            if [[ "${confirm_del}" =~ ^[Yy] ]]; then
-                for idx in "${to_remove_indices[@]}"; do
-                    local r_name="${names[$idx]}"
-                    local r_type="${types[$idx]}"
-                    local r_path="${paths[$idx]}"
-                    echo "  [*] Removing ${r_type}: ${r_name} (${r_path})..."
-                    if [ "${r_type}" = "PACK" ] || grep -q "${r_path}" "${SCRIPT_DIR}/.gitmodules" 2>/dev/null; then
-                        git -C "${SCRIPT_DIR}" submodule deinit -f -- "${r_path}" 2>/dev/null || true
-                        git -C "${SCRIPT_DIR}" rm -f "${r_path}" 2>/dev/null || true
-                        rm -rf "${SCRIPT_DIR}/.git/modules/${r_path}" 2>/dev/null || true
-                        rm -rf "${SCRIPT_DIR}/${r_path}" 2>/dev/null || true
-                    else
-                        git -C "${SCRIPT_DIR}" rm -rf "${r_path}" 2>/dev/null || rm -rf "${SCRIPT_DIR}/${r_path}" 2>/dev/null || true
-                    fi
-                    echo "  [✓] Removed ${r_name}"
-                done
-            else
-                echo "  [INFO] Removal cancelled. Kept all items."
-            fi
-        else
-            echo ""
-            echo "  [✓] No items marked for removal. Kept all."
-        fi
+    declare -A CHECKLIST_RESULTS
+    if ! interactive_checklist "Select Repositories to REMOVE" "${checklist_items[@]}"; then
+        echo "  [INFO] Removal cancelled. Kept all repositories."
+        return 1
     fi
 
-    echo ""
-    echo "=== [Step 2/2] Add External Git Repository ==="
-    while true; do
-        local add_choice="n"
-        if [ -t 0 ]; then
-            read -r -p "Do you want to add a Git repository? [y/N]: " add_choice || add_choice="n"
-            add_choice="$(echo "${add_choice}" | tr -d ' \r\n')"
-        fi
-        if [[ ! "${add_choice}" =~ ^[Yy] ]]; then
-            break
-        fi
+    local selected_repos=()
+    local selected_paths=()
+    local selected_types=()
 
-        local new_url=""
-        if [ -t 0 ]; then
-            read -r -p "Paste Git Repository URL: " new_url || new_url=""
-            new_url="$(echo "${new_url}" | tr -d ' \r\n')"
+    for ((i=0; i<${#repos[@]}; i++)); do
+        local rname="${repos[$i]}"
+        if [ "${CHECKLIST_RESULTS[$rname]:-0}" -eq 1 ]; then
+            selected_repos+=("${rname}")
+            selected_paths+=("${repo_paths[$i]}")
+            selected_types+=("${repo_types[$i]}")
         fi
-        if [ -z "${new_url}" ]; then
-            echo "  [SKIP] Empty URL provided."
-            continue
-        fi
-
-        local new_name
-        new_name="$(basename "${new_url}" .git)"
-
-        echo "  [*] Inspecting repository structure for ${new_name}..."
-        local tmp_inspect
-        tmp_inspect="$(mktemp -d 2>/dev/null || mktemp -d -t 'haws_inspect_XXXXXX')"
-        git clone --depth 1 -q "${new_url}" "${tmp_inspect}" 2>/dev/null || true
-
-        local total_skills=0
-        if [ -d "${tmp_inspect}" ]; then
-            total_skills=$(find "${tmp_inspect}" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | wc -l || echo "0")
-        fi
-
-        local target_dir="skills/packs/${new_name}"
-        local target_type="PACK"
-        if [ -f "${tmp_inspect}/SKILL.md" ] || [ -f "${tmp_inspect}/skill.md" ] || [ "${total_skills}" -eq 1 ]; then
-            target_dir="skills/standalone/${new_name}"
-            target_type="SINGLE"
-            echo "  [✓] Auto-detected: Single Skill (1 skill found)"
-        elif [ "${total_skills}" -gt 1 ]; then
-            target_dir="skills/packs/${new_name}"
-            target_type="PACK"
-            echo "  [✓] Auto-detected: Multi-Skill Pack (${total_skills} skills found)"
-        else
-            echo "  [WARNING] No SKILL.md found in repository. Defaulting to pack structure."
-        fi
-        rm -rf "${tmp_inspect}" 2>/dev/null || true
-
-        echo "  [*] Registering ${target_type}: ${new_name} -> ${target_dir}..."
-        git -C "${SCRIPT_DIR}" submodule add "${new_url}" "${target_dir}" 2>/dev/null || {
-            echo "  [WARNING] Git submodule add failed. Attempting direct clone..."
-            git -C "${SCRIPT_DIR}" clone "${new_url}" "${target_dir}" 2>/dev/null || true
-        }
-        echo "  [✓] Added ${new_name} (${target_type}) successfully."
-        echo ""
     done
 
+    if [ "${#selected_repos[@]}" -eq 0 ]; then
+        echo "  [✓] No repositories selected for removal. Kept all."
+        return 1
+    fi
+
     echo ""
-    echo "=== Summary & Confirmation ==="
-    echo "Active Submodules in Kit:"
-    if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
-        git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp url 2>/dev/null | while IFS=' ' read -r k u; do
-            local p="${k#submodule.}"
-            p="${p%.url}"
-            local t="PACK"
-            [[ "${p}" =~ standalone ]] && t="SINGLE"
-            printf "  • %-20s [%-6s] -> %s\n" "$(basename "${p}")" "${t}" "${u}"
+    echo "Selected for REMOVAL:"
+    for ((i=0; i<${#selected_repos[@]}; i++)); do
+        echo "  [-] ${selected_repos[$i]} [${selected_types[$i]}] (${selected_paths[$i]})"
+    done
+    echo ""
+    local confirm_del="n"
+    read -r -p "Remove the ${#selected_repos[@]} selected repository/repositories from Git and disk? [y/N]: " confirm_del || confirm_del="n"
+    confirm_del="$(echo "${confirm_del}" | tr -d ' \r\n')"
+
+    if [[ ! "${confirm_del}" =~ ^[Yy] ]]; then
+        echo "  [INFO] Removal cancelled. Kept all repositories."
+        return 1
+    fi
+
+    load_disabled_skills
+    for ((i=0; i<${#selected_repos[@]}; i++)); do
+        local r_name="${selected_repos[$i]}"
+        local r_path="${selected_paths[$i]}"
+        local r_type="${selected_types[$i]}"
+        echo "  [*] Removing ${r_type}: ${r_name} (${r_path})..."
+
+        # Clean any skills in this repo from DISABLED_SKILLS
+        if [ -d "${SCRIPT_DIR}/${r_path}" ]; then
+            while IFS= read -r sf; do
+                local sn
+                sn="$(basename "$(dirname "$sf")")"
+                unset "DISABLED_SKILLS[$sn]"
+            done < <(find "${SCRIPT_DIR}/${r_path}" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
+        fi
+
+        git -C "${SCRIPT_DIR}" submodule deinit -f -- "${r_path}" 2>/dev/null || true
+        git -C "${SCRIPT_DIR}" rm -f "${r_path}" 2>/dev/null || true
+        rm -rf "${SCRIPT_DIR}/.git/modules/${r_path}" 2>/dev/null || true
+        rm -rf "${SCRIPT_DIR}/${r_path}" 2>/dev/null || true
+        echo "  [✓] Removed ${r_name} from disk and Git."
+    done
+    save_disabled_skills
+    return 0
+}
+
+configure_repo_skills() {
+    local rdir="$1"
+    local rname="${2:-$(basename "$rdir")}"
+
+    local chk_items=()
+    while IFS= read -r sf; do
+        [ -z "$sf" ] && continue
+        local sn
+        sn="$(extract_skill_name "$sf")"
+        local sdesc=""
+        sdesc=$(grep -E '^[[:space:]]*description:[[:space:]]*' "$sf" | head -n 1 | sed -E 's/^[[:space:]]*description:[[:space:]]*["'"'"']?([^"'"'"'#\r\n]+)["'"'"']?.*$/\1/' | tr -d '\r\n' | xargs 2>/dev/null || true)
+        [ -z "$sdesc" ] && sdesc="${sn}"
+        [ ${#sdesc} -gt 50 ] && sdesc="${sdesc:0:47}..."
+
+        local is_on=1
+        [ -n "${DISABLED_SKILLS[$sn]:-}" ] && is_on=0
+        chk_items+=("${sn}|${sdesc}|${is_on}")
+    done < <(find "$rdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
+
+    if [ ${#chk_items[@]} -eq 0 ]; then
+        echo "  [INFO] No skills found in ${rname}."
+        return 0
+    fi
+
+    declare -A CHECKLIST_RESULTS
+    if interactive_checklist "Configure Skills in ${rname}" "${chk_items[@]}"; then
+        for sn in "${!CHECKLIST_RESULTS[@]}"; do
+            if [ "${CHECKLIST_RESULTS[$sn]}" -eq 1 ]; then
+                unset "DISABLED_SKILLS[$sn]"
+            else
+                DISABLED_SKILLS["$sn"]=1
+            fi
         done
-    else
-        echo "  No external submodules configured."
+        save_disabled_skills
+        echo "  [✓] Updated active skills for ${rname}."
     fi
-    echo ""
+}
 
-    local confirm_sync="y"
-    if [ -t 0 ]; then
-        read -r -p "Synchronize now? [Y/n]: " confirm_sync || confirm_sync="y"
-        confirm_sync="$(echo "${confirm_sync}" | tr -d ' \r\n')"
-        [ -z "${confirm_sync}" ] && confirm_sync="y"
-    fi
+run_configure_skills() {
+    load_disabled_skills
+    while true; do
+        local single_total=0
+        local single_active=0
+        local single_repos=()
 
-    if [[ ! "${confirm_sync}" =~ ^[Nn] ]]; then
-        echo "  [*] Initializing and synchronizing submodules..."
-        git -C "${SCRIPT_DIR}" submodule sync 2>/dev/null || true
-        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-        echo "  [✓] Git submodules synchronized."
-        run_sync
-    else
-        echo "  [INFO] Kit configuration saved. Run './haws.sh sync' when ready."
-    fi
+        # Standalone 1-skill
+        if [ -d "${SCRIPT_DIR}/skills/standalone" ]; then
+            for sdir in "${SCRIPT_DIR}/skills/standalone"/*; do
+                [ ! -d "$sdir" ] && continue
+                local sk_count
+                sk_count=$(find "$sdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | wc -l || echo "0")
+                if [ "$sk_count" -eq 1 ]; then
+                    single_repos+=("$sdir")
+                    single_total=$((single_total + 1))
+                    local sf
+                    sf=$(find "$sdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | head -n 1)
+                    local sn
+                    sn="$(extract_skill_name "$sf")"
+                    [ -z "${DISABLED_SKILLS[$sn]:-}" ] && single_active=$((single_active + 1))
+                fi
+            done
+        fi
+        # Custom skills
+        if [ -d "${SCRIPT_DIR}/skills/custom" ]; then
+            for cdir in "${SCRIPT_DIR}/skills/custom"/*; do
+                [ ! -d "$cdir" ] && continue
+                single_repos+=("$cdir")
+                single_total=$((single_total + 1))
+                local sf
+                sf=$(find "$cdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | head -n 1)
+                local sn
+                sn="$(extract_skill_name "$sf")"
+                [ -z "${DISABLED_SKILLS[$sn]:-}" ] && single_active=$((single_active + 1))
+            done
+        fi
+
+        # Multi-skill packs
+        local pack_repos=()
+        local pack_names=()
+        local pack_totals=()
+        local pack_actives=()
+
+        for ppath in "${SCRIPT_DIR}/skills/packs"/* "${SCRIPT_DIR}/skills/standalone"/*; do
+            [ ! -d "$ppath" ] && continue
+            local pname="$(basename "$ppath")"
+            local sk_count
+            sk_count=$(find "$ppath" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | wc -l || echo "0")
+            if [ "$sk_count" -gt 1 ]; then
+                pack_repos+=("$ppath")
+                pack_names+=("$pname")
+                pack_totals+=("$sk_count")
+                local act_count=0
+                while IFS= read -r sf; do
+                    [ -z "$sf" ] && continue
+                    local sn
+                    sn="$(extract_skill_name "$sf")"
+                    [ -z "${DISABLED_SKILLS[$sn]:-}" ] && act_count=$((act_count + 1))
+                done < <(find "$ppath" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
+                pack_actives+=("$act_count")
+            fi
+        done
+
+        echo ""
+        echo "============================================================="
+        echo "             Configure Active Skills (Enable / Disable)"
+        echo "============================================================="
+        echo "Select skill category to configure:"
+        printf "  1) Single Skills\n     Status: [Active: %d / %d skills]\n" "${single_active}" "${single_total}"
+        echo "  2) Multi-Skill Packs"
+        echo "     Status:"
+        for ((i=0; i<${#pack_names[@]}; i++)); do
+            printf "       • %-20s [Active: %2d / %2d skills]\n" "${pack_names[$i]}" "${pack_actives[$i]}" "${pack_totals[$i]}"
+        done
+        echo "  0) Back to Main Menu"
+        echo ""
+
+        local sub_choice="0"
+        read -r -p "Enter selection [0-2] (default: 0): " sub_choice || sub_choice="0"
+        sub_choice="$(echo "${sub_choice}" | tr -d ' \r\n')"
+        [ -z "${sub_choice}" ] && sub_choice="0"
+
+        if [ "${sub_choice}" = "1" ]; then
+            local chk_items=()
+            for sdir in "${single_repos[@]}"; do
+                local sf
+                sf=$(find "$sdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | head -n 1)
+                local sn
+                sn="$(extract_skill_name "$sf")"
+                local is_on=1
+                [ -n "${DISABLED_SKILLS[$sn]:-}" ] && is_on=0
+                local rel_path="${sdir#${SCRIPT_DIR}/}"
+                chk_items+=("${sn}|${rel_path}|${is_on}")
+            done
+
+            declare -A CHECKLIST_RESULTS
+            if interactive_checklist "Configure Single Skills" "${chk_items[@]}"; then
+                for sn in "${!CHECKLIST_RESULTS[@]}"; do
+                    if [ "${CHECKLIST_RESULTS[$sn]}" -eq 1 ]; then
+                        unset "DISABLED_SKILLS[$sn]"
+                    else
+                        DISABLED_SKILLS["$sn"]=1
+                    fi
+                done
+                save_disabled_skills
+                echo "  [✓] Updated single skills configuration."
+            fi
+
+        elif [ "${sub_choice}" = "2" ]; then
+            echo ""
+            echo "Select a Skill Pack to configure:"
+            for ((i=0; i<${#pack_names[@]}; i++)); do
+                printf "  %2d) %-20s [Active: %2d / %2d skills]\n" "$((i+1))" "${pack_names[$i]}" "${pack_actives[$i]}" "${pack_totals[$i]}"
+            done
+            echo "   0) Back"
+            echo ""
+            local p_idx=""
+            read -r -p "Select pack [0-${#pack_names[@]}] (default: 0): " p_idx || p_idx="0"
+            p_idx="$(echo "${p_idx}" | tr -d ' \r\n')"
+            [ -z "${p_idx}" ] && p_idx="0"
+
+            if [[ "${p_idx}" =~ ^[1-9][0-9]*$ ]] && [ "${p_idx}" -le "${#pack_names[@]}" ]; then
+                local sel_pack_dir="${pack_repos[$((p_idx - 1))]}"
+                local sel_pack_name="${pack_names[$((p_idx - 1))]}"
+                configure_repo_skills "${sel_pack_dir}" "${sel_pack_name}"
+            fi
+
+        elif [ "${sub_choice}" = "0" ] || [[ "${sub_choice}" =~ ^(q|quit|back|b)$ ]]; then
+            break
+        fi
+    done
+    return 0
+}
+
+run_interactive_kit_setup() {
+    run_setup "$@"
 }
 
 run_kit() {
@@ -1951,23 +2274,64 @@ run_setup() {
     echo ""
     if [ -d "${SCRIPT_DIR}/.git" ]; then
         echo "[2/5] Configuring Skill Kit & Git Submodules..."
-        local kit_choice="1"
-        if [ -t 0 ]; then
-            echo "Select Skill Kit Configuration:"
-            echo "  1) Standard HAWS Kit (Default)"
-            echo "  2) Custom Setup (Select, remove, or add skills)"
-            echo "  3) Edit .gitmodules (Open file to edit links directly)"
-            read -r -p "Enter selection [1-3] (default: 1): " kit_choice || kit_choice="1"
-            kit_choice="$(echo "${kit_choice}" | tr -d ' \r\n')"
-            [ -z "${kit_choice}" ] && kit_choice="1"
-        fi
+        local is_modified=false
 
-        if [ "${kit_choice}" = "2" ]; then
-            run_interactive_kit_setup
-        elif [ "${kit_choice}" = "3" ]; then
-            run_edit_gitmodules
+        if [ -t 0 ]; then
+            while true; do
+                local default_choice="1"
+                [ "$is_modified" = true ] && default_choice="0"
+
+                echo ""
+                echo "============================================================="
+                echo "             HAWS Automated Setup & Skill Kit"
+                echo "============================================================="
+                echo "Choose setup mode:"
+                echo "  1) Standard HAWS Kit      (Default — install standard curated skills & sync)"
+                echo "  2) Add Git Repository     (Add Git repo URLs until 'done')"
+                echo "  3) Remove Git Repository  (Select repos to remove with confirmation)"
+                echo "  4) Configure Active Skills (Single skills directly, Packs choose repo first)"
+                echo "  5) Edit .gitmodules       (Edit Git Repository Links directly in editor)"
+                if [ "$is_modified" = true ]; then
+                    echo "  0) Save & Finish          (Sync your changes to AI & complete setup)"
+                else
+                    echo "  0) Save & Finish          (Sync configuration to AI & complete setup)"
+                fi
+                echo ""
+                local kit_choice=""
+                read -r -p "Select [0-5] (Default: ${default_choice}): " kit_choice || kit_choice="${default_choice}"
+                kit_choice="$(echo "${kit_choice}" | tr -d ' \r\n')"
+                [ -z "${kit_choice}" ] && kit_choice="${default_choice}"
+
+                case "${kit_choice}" in
+                    1)
+                        echo "  [*] Initializing Standard HAWS Kit submodules..."
+                        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
+                        echo "  [✓] Standard HAWS Kit submodules verified."
+                        break
+                        ;;
+                    2)
+                        run_add_git_repo && is_modified=true
+                        ;;
+                    3)
+                        run_remove_git_repo && is_modified=true
+                        ;;
+                    4)
+                        run_configure_skills && is_modified=true
+                        ;;
+                    5)
+                        run_edit_gitmodules && is_modified=true
+                        ;;
+                    0)
+                        break
+                        ;;
+                    *)
+                        echo "  [ERROR] Invalid option '${kit_choice}'. Please enter 0-5."
+                        sleep 1
+                        ;;
+                esac
+            done
         else
-            echo "  [*] Initializing Standard HAWS Kit submodules..."
+            echo "  [*] Initializing Standard HAWS Kit submodules (Non-interactive)..."
             git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
             echo "  [✓] Standard HAWS Kit submodules verified."
         fi
