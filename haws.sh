@@ -799,6 +799,11 @@ run_sync() {
             [ -n "${DISABLED_SKILLS[${skill_name}]:-}" ] && continue
 
             # Filter rules per user specification:
+            [[ "${skill_dir}" =~ \.openclaw ]] && continue
+            [[ "${skill_dir}" =~ planning-with-files ]] && [[ ! "${skill_dir}" =~ \.agents/skills ]] && continue
+            [[ "${skill_dir}" =~ ui-ux-pro-max ]] && [[ ! "${skill_dir}" =~ \.claude/skills ]] && continue
+            [[ "${skill_dir}" =~ caveman/plugins ]] && continue
+
             # 1. planning-with-files: keep only primary 'planning-with-files'
             [[ "${skill_name}" == "pi-planning-with-files" ]] && continue
             [[ "${skill_name}" =~ ^planning-with-files- ]] && continue
@@ -879,6 +884,7 @@ run_sync() {
             [[ "${sdir}" =~ \.openclaw ]] && continue
             [[ "${sdir}" =~ planning-with-files ]] && [[ ! "${sdir}" =~ \.agents/skills ]] && continue
             [[ "${sdir}" =~ ui-ux-pro-max ]] && [[ ! "${sdir}" =~ \.claude/skills ]] && continue
+            [[ "${sdir}" =~ caveman/plugins ]] && continue
 
             local target_dir="${pdir}"
             if [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ]; then
@@ -1419,6 +1425,7 @@ get_repo_skills() {
         [[ "$sf" =~ \.openclaw/ ]] && continue
         [[ "$sf" =~ planning-with-files ]] && [[ ! "$sf" =~ \.agents/skills ]] && [[ ! "$sf" =~ skills/i18n ]] && continue
         [[ "$sf" =~ ui-ux-pro-max ]] && [[ ! "$sf" =~ \.claude/skills ]] && continue
+        [[ "$sf" =~ caveman/plugins/ ]] && continue
 
         local sn
         sn="$(extract_skill_name "$sf")"
