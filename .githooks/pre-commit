@@ -12,7 +12,7 @@ echo "=== [HAWS PRE-COMMIT HOOK] Running Quality Gates ==="
 
 # 1. Secret & Sensitive File Shield
 echo "1. Checking for sensitive files in staged index..."
-STAGED_FILES=$(git diff --cached --name-only)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 
 for file in $STAGED_FILES; do
   # Disallow .env files (except .env.example or .env.template)

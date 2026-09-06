@@ -36,7 +36,25 @@ run_status() {
 import glob, os, re, json
 gemini_json = os.path.expanduser('~/.gemini/config/skills.json')
 gemini_dir = os.path.expanduser('~/.gemini/config/skills')
-files = []
+unique_skills = set()
+
+def check_skill(dp, default_name):
+    for mname in ('SKILL.md', 'skill.md'):
+        mf = os.path.join(dp, mname)
+        if os.path.isfile(mf):
+            sname = default_name
+            try:
+                with open(mf, 'r', encoding='utf-8') as sf:
+                    for line in sf:
+                        m = re.match(r'^[ \t]*name:[ \t]*[\'\"]?([^\'\"#\r\n]+)', line)
+                        if m:
+                            sname = m.group(1).strip()
+                            break
+            except: pass
+            unique_skills.add(sname)
+            return True
+    return False
+
 if os.path.isfile(gemini_json):
     try:
         with open(gemini_json, 'r', encoding='utf-8') as f:
@@ -44,18 +62,17 @@ if os.path.isfile(gemini_json):
         for entry in cfg.get('entries', []):
             p = entry.get('path', '')
             if os.path.isdir(p):
+                check_skill(p, os.path.basename(p))
                 for s in os.listdir(p):
-                    for mname in ('SKILL.md', 'skill.md'):
-                        mf = os.path.join(p, s, mname)
-                        if os.path.isfile(mf):
-                            files.append(mf)
-                            break
+                    sp = os.path.join(p, s)
+                    if os.path.isdir(sp):
+                        check_skill(sp, s)
     except: pass
-if not files and os.path.isdir(gemini_dir):
-    raw_files = glob.glob(os.path.join(gemini_dir, '*', 'SKILL.md')) + glob.glob(os.path.join(gemini_dir, '*', 'skill.md'))
-    files = list({os.path.normcase(f): f for f in raw_files}.values())
+if not unique_skills and os.path.isdir(gemini_dir):
+    for s in os.listdir(gemini_dir):
+        unique_skills.add(s)
 
-print(len(files))
+print(len(unique_skills))
 " 2>/dev/null || echo "0")
         gemini_count="${stat_res}"
     fi
@@ -436,7 +453,7 @@ run_sync() {
     # 2. Sync Submodules
     if [ -f "${SOURCE_DIR}/.gitmodules" ]; then
         echo "--- Step 2: Syncing Embedded Skill Submodules ---"
-        git -C "${SOURCE_DIR}" submodule update --init --recursive --remote --quiet 2>/dev/null || true
+        git -C "${SOURCE_DIR}" submodule update --init --recursive --quiet 2>/dev/null || true
         echo "  [✓] Embedded submodules ready."
         echo ""
     fi
@@ -717,14 +734,24 @@ run_sync() {
             [ -z "${f}" ] && continue
             local sdir="$(dirname "${f}")"
             local pdir="$(dirname "${sdir}")"
-            [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ] && continue
-            local win_pdir="${pdir}"
-            command -v cygpath &>/dev/null && win_pdir="$(cygpath -m "${pdir}")"
-            if [ -z "${seen_dirs[${win_pdir}]:-}" ]; then
-                seen_dirs["${win_pdir}"]=1
-                json_entries+=("    { \"path\": \"${win_pdir}\" }")
+            local target_dir="${pdir}"
+            if [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ]; then
+                if [ -f "${sdir}/SKILL.md" ] || [ -f "${sdir}/skill.md" ]; then
+                    target_dir="${sdir}"
+                else
+                    continue
+                fi
             fi
-        done < <(find "${SOURCE_DIR}/skills/packs" -not -path "*/.*/*" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
+            [[ "${target_dir}" =~ \.openclaw ]] && continue
+            [[ "${target_dir}" =~ planning-with-files ]] && [[ ! "${target_dir}" =~ \.agents/skills ]] && [[ ! "${target_dir}" =~ \.pi/skills ]] && [[ ! "${target_dir}" =~ skills/i18n ]] && continue
+            [[ "${target_dir}" =~ ui-ux-pro-max ]] && [[ ! "${target_dir}" =~ \.claude/skills ]] && continue
+            local win_target="${target_dir}"
+            command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
+            if [ -z "${seen_dirs[${win_target}]:-}" ]; then
+                seen_dirs["${win_target}"]=1
+                json_entries+=("    { \"path\": \"${win_target}\" }")
+            fi
+        done < <(find "${SOURCE_DIR}/skills/packs" "${SOURCE_DIR}/skills/standalone" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
 
         {
             echo "{"
