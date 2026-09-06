@@ -871,6 +871,42 @@ EOF
     echo "================================================================"
 }
 
+run_edit_gitmodules() {
+    echo "=== Direct .gitmodules Management ==="
+    echo "Repository links are configured in: ${SCRIPT_DIR}/.gitmodules"
+    echo ""
+    if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
+        echo "Current Submodules in .gitmodules:"
+        git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print "  - " $2}' || true
+    fi
+    echo ""
+    echo "  [*] Opening .gitmodules in editor..."
+    if command -v code >/dev/null 2>&1; then
+        code "${SCRIPT_DIR}/.gitmodules"
+    elif [ -n "${EDITOR:-}" ] && command -v "${EDITOR}" >/dev/null 2>&1; then
+        "${EDITOR}" "${SCRIPT_DIR}/.gitmodules"
+    elif command -v notepad.exe >/dev/null 2>&1; then
+        notepad.exe "${SCRIPT_DIR}/.gitmodules" &
+    elif command -v nano >/dev/null 2>&1; then
+        nano "${SCRIPT_DIR}/.gitmodules"
+    elif command -v vi >/dev/null 2>&1; then
+        vi "${SCRIPT_DIR}/.gitmodules"
+    fi
+    echo ""
+    if [ -t 0 ]; then
+        local sync_confirm=""
+        read -r -p "Press [Enter] when done editing to sync submodules (or 's' to skip): " sync_confirm || sync_confirm=""
+        if [[ "${sync_confirm}" =~ ^[Ss] ]]; then
+            echo "  [INFO] Skipping submodule sync for now. Run './haws.sh sync' later."
+            return 0
+        fi
+    fi
+    echo "  [*] Synchronizing and updating configured submodules..."
+    git -C "${SCRIPT_DIR}" submodule sync 2>/dev/null || true
+    git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
+    echo "  [✓] Submodule configuration synchronized."
+}
+
 run_interactive_kit_setup() {
     echo "=== HAWS Skill Kit Setup & Customizer ==="
     echo "Manage your Git Submodule repositories (Packs & Standalone skills)."
@@ -1246,19 +1282,29 @@ run_kit() {
             echo ""
             run_sync
             ;;
+        edit|modules)
+            run_edit_gitmodules
+            echo ""
+            run_sync
+            ;;
         setup|interactive)
             echo "=== HAWS Skill Kit Setup & Adjustment ==="
             echo "Choose your skill kit setup mode:"
             echo "  1) Standard HAWS Kit (Default)"
             echo "  2) Custom Setup (Select, remove, or add skills)"
+            echo "  3) Edit .gitmodules (Open file to edit links directly)"
             local mode_choice="1"
             if [ -t 0 ]; then
-                read -r -p "Enter selection [1-2] (default: 1): " mode_choice || mode_choice="1"
+                read -r -p "Enter selection [1-3] (default: 1): " mode_choice || mode_choice="1"
                 mode_choice="$(echo "${mode_choice}" | tr -d ' \r\n')"
                 [ -z "${mode_choice}" ] && mode_choice="1"
             fi
             if [ "${mode_choice}" = "2" ]; then
                 run_interactive_kit_setup
+            elif [ "${mode_choice}" = "3" ]; then
+                run_edit_gitmodules
+                echo ""
+                run_sync
             else
                 echo ""
                 echo "Applying Standard HAWS Kit configuration..."
@@ -1275,7 +1321,7 @@ run_kit() {
             fi
             ;;
         *)
-            echo "Usage: ./haws.sh kit [setup|add|prune|update|list]"
+            echo "Usage: ./haws.sh kit [setup|edit|add|prune|update|list]"
             return 1
             ;;
     esac
@@ -1873,13 +1919,16 @@ run_setup() {
             echo "Select Skill Kit Configuration:"
             echo "  1) Standard HAWS Kit (Default)"
             echo "  2) Custom Setup (Select, remove, or add skills)"
-            read -r -p "Enter selection [1-2] (default: 1): " kit_choice || kit_choice="1"
+            echo "  3) Edit .gitmodules (Open file to edit links directly)"
+            read -r -p "Enter selection [1-3] (default: 1): " kit_choice || kit_choice="1"
             kit_choice="$(echo "${kit_choice}" | tr -d ' \r\n')"
             [ -z "${kit_choice}" ] && kit_choice="1"
         fi
 
         if [ "${kit_choice}" = "2" ]; then
             run_interactive_kit_setup
+        elif [ "${kit_choice}" = "3" ]; then
+            run_edit_gitmodules
         else
             echo "  [*] Initializing Standard HAWS Kit submodules..."
             git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
