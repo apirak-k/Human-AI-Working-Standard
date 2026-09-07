@@ -2523,14 +2523,17 @@ EOF
                 echo "  [*] Syncing Second Brain with ${current_remote} (3s timeout)..."
                 git -C "${brain_dir}" add . 2>/dev/null || true
                 git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet &>/dev/null || true
-                if ! timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
-                    echo "  [*] Symmetrical reconciliation required..."
-                    git -C "${brain_dir}" rebase --abort 2>/dev/null || true
-                    timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" fetch origin main --quiet 2>/dev/null || true
-                    symmetrical_merge_secondbrain "${brain_dir}"
+                if ! timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
+                    echo "  [INFO] Second Brain remote unreachable or timed out (3s). Proceeding with local data."
+                else
+                    if ! git -C "${brain_dir}" rebase origin/main --quiet 2>/dev/null; then
+                        echo "  [*] Symmetrical reconciliation required..."
+                        git -C "${brain_dir}" rebase --abort 2>/dev/null || true
+                        symmetrical_merge_secondbrain "${brain_dir}"
+                    fi
+                    timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
+                    echo "  [✓] Second Brain in sync."
                 fi
-                timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
-                echo "  [✓] Second Brain in sync."
             else
                 echo "  [i] Second Brain is Local-Only. (Connect cloud anytime via './haws.sh user connect <url>')"
             fi
