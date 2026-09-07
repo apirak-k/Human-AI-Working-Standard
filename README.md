@@ -181,6 +181,7 @@ HAWS organizes skills into two main tiers:
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
 ├── templates/                           # Documentation & governance blueprints (pure Markdown)
 ├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot, Codex)
+│   └── environments.disabled            # Disabled AI environments blacklist (filter gate)
 ├── containers/                          # Container & DevContainer blueprints (Dockerfile, compose, devcontainer)
 ├── skills/                              # Curated Skill Repository (3 Clean Categories)
 │   ├── skills.disabled                  # Disabled skills blacklist (filter gate)

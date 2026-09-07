@@ -33,5 +33,6 @@ scratch/
 *.conf.local
 
 # Local AI Environment Preferences
+ai-configs/environments.disabled
 config/environments.disabled
 environments.disabled

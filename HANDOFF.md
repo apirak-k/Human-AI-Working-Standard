@@ -1,10 +1,10 @@
 # HAWS Master Timeline & Comprehensive Audit Dossier (From `cceb211` to Present)
 
 > **Audit Baseline Commit**: `cceb211` (Point where 39 original user requirements were reviewed and mapped)  
-> **Previous Head Commit**: `6f54cce` (`feat(lifecycle): add clean uninstaller, commit-msg hook, and notification dispatcher`)  
-> **Current Head Commit**: `f6d0e19` (`fix(launchers): resolve CMD block parsing syntax error in 1-CLICK-SYNC.bat and 2nd-BRAIN-TOGGLE.bat`)  
-> **Total Intermediate Commits**: 62 Git Commits Audited  
-> **Prepared For**: Complete Milestone Delivery, Seamless Continuity & Native Multi-AI Support (Antigravity, Claude, Codex)  
+> **Previous Head Commit**: `f6d0e19` (`fix(launchers): resolve CMD block parsing syntax error in 1-CLICK-SYNC.bat and 2nd-BRAIN-TOGGLE.bat`)  
+> **Current Head Commit**: `ae052e1` (`fix(brain): add clean timeout fallback message and prevent hanging on offline mode`)  
+> **Total Intermediate Commits**: 72 Git Commits Audited  
+> **Prepared For**: Complete Milestone Delivery, Seamless Cross-Device Continuity & Native Multi-AI Support (Antigravity, Claude, Codex, Cursor, Copilot)  
 > **Diagnostic Status**: 43/43 PASS (100% Green, Zero Failures)  
 > **Active Skills Status**: 127 Active Skills (100% Synchronized across Claude Code, Antigravity & OpenAI Codex)  
 
@@ -58,6 +58,16 @@ The following chronological sequence documents everything committed from `cceb21
 | `5c08e56` | `refactor(templates)` | Flattened docs/ blueprints directly into templates/. |
 | `553f5b2` | `feat(launchers)` | Dedicated SETUP.bat to skill manager, prioritized skills in first-run setup, and verified in doctor. |
 | `f6d0e19` | `fix(launchers)` | Resolved CMD block parsing syntax error in 1-CLICK-SYNC.bat and 2nd-BRAIN-TOGGLE.bat. |
+| `fa176be` | `fix(doctor)` | Made secondbrain path resolution worktree-aware and sync handoff. |
+| `db1edde` | `refactor(skills)` | Moved skills.disabled into skills/ directory. |
+| `7179722` | `feat(codex)` | Added native subagent profiles and test suite (`ai-configs/codex/agents.test.mjs`). |
+| `4f19004` | `merge` | Merged branch 'codex/haws-bootstrap' into main. |
+| `689d52f` | `feat(setup)` | Added selective AI environment linking, smart path-aware skill sync, and unified setup hub. |
+| `77d3fc1` | `feat(sync)` | Universal AI reconciliation across 5 platforms, 3s network timeout, and flat setup hub. |
+| `14520c8` | `fix(setup)` | Looped back to menu on cancelled uninstall and cleaned redundant root launchers. |
+| `d7b2d1a` | `fix(setup)` | Defaulted to 0 save-and-exit, automated 1-click sync without prompts, optimized performance. |
+| `326ae21` | `fix(cli)` | Enforced 100% English output, fast local-first submodule check, and clean abort wording. |
+| `ae052e1` | `fix(brain)` | Added clean timeout fallback message and prevented hanging on offline mode. |
 
 ---
 

@@ -584,7 +584,8 @@ save_disabled_skills() {
 
 load_disabled_environments() {
     declare -g -A DISABLED_ENVS=()
-    local dfile="${SCRIPT_DIR}/config/environments.disabled"
+    local dfile="${SCRIPT_DIR}/ai-configs/environments.disabled"
+    [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/config/environments.disabled" ] && dfile="${SCRIPT_DIR}/config/environments.disabled"
     [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/environments.disabled" ] && dfile="${SCRIPT_DIR}/environments.disabled"
     if [ -f "${dfile}" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
@@ -598,7 +599,7 @@ load_disabled_environments() {
 }
 
 save_disabled_environments() {
-    local dfile="${SCRIPT_DIR}/config/environments.disabled"
+    local dfile="${SCRIPT_DIR}/ai-configs/environments.disabled"
     mkdir -p "$(dirname "${dfile}")"
     {
         echo "# HAWS Disabled AI Environments"
@@ -977,6 +978,13 @@ run_sync() {
         mkdir -p "$(dirname "${target_file}")"
 
         local pointer_content=""
+        if [[ "${target_file}" =~ \.mdc$ ]]; then
+            pointer_content+="---\n"
+            pointer_content+="description: Human-AI Working Standard (HAWS) Core Rules and Work Instructions\n"
+            pointer_content+="globs: *\n"
+            pointer_content+="alwaysApply: true\n"
+            pointer_content+="---\n"
+        fi
         pointer_content+="${marker_start}\n"
         pointer_content+="# HAWS — Human-AI Working Standard\n"
         pointer_content+="This environment operates under HAWS. Read and adhere to:\n"
@@ -1408,6 +1416,13 @@ EOF
             fi
         done < "${PREV_MANIFEST}"
     fi
+    # Clean broken symlinks across all AI skill folders
+    for sdir in "${HOME}/.claude/skills" "${HOME}/.gemini/config/skills" "${HOME}/.agents/skills"; do
+        if [ -d "${sdir}" ]; then
+            find "${sdir}" -xtype l -delete 2>/dev/null || true
+        fi
+    done
+
     if [ "${PRUNED}" -eq 0 ]; then
         echo "  [✓] Zero orphaned items detected."
     else
