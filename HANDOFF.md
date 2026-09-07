@@ -147,6 +147,11 @@ The following chronological sequence documents everything committed from `cceb21
 ### Category B: [DOING] In-Progress / Active Working Tree
 
 1. Review the 39-requirement traceability claims against current artifacts before treating them as user-accepted.
+2. Complete the device-local AI environment configuration batch:
+   - `ai-configs/environments.disabled` must exist on every installed device, remain Git-ignored, and contain only disabled AI environment identifiers.
+   - An empty file means every detected AI environment is enabled. No `.example` file is needed.
+   - Setup must create the file, preserve existing device choices, and Doctor must verify it.
+3. Add integration tests for AI environment selection, skill enable/disable behavior, and slow/offline update paths.
 
 ---
 
@@ -154,6 +159,9 @@ The following chronological sequence documents everything committed from `cceb21
 
 1. **Deep Walkthrough of 22 Master Topics**:
    - Ready for human review and exploration at the user's preferred pace.
+2. **Skill-first repository layout**:
+   - Keep repositories such as Graphify, Archify, Draw.io Skill, and future Figma workflows under `skills/` when the agent enters through `SKILL.md`.
+   - Keep each skill's CLI, MCP integration, scripts, references, and templates inside that skill repository. Do not add a root `tools/` directory without a concrete shared non-skill tool.
 
 ---
 
