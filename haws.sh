@@ -428,8 +428,6 @@ run_doctor() {
     [ "$json_mode" = false ] && echo "" && echo "12. Checking Launchers & Automation Tools..."
     check_item "${SCRIPT_DIR}/1-CLICK-SYNC.bat" "1-CLICK-SYNC.bat"
     check_item "${SCRIPT_DIR}/SETUP.bat" "SETUP.bat"
-    check_item "${SCRIPT_DIR}/2nd-BRAIN-TOGGLE.bat" "2nd-BRAIN-TOGGLE.bat"
-    check_item "${SCRIPT_DIR}/UNINSTALL.bat" "UNINSTALL.bat"
 
     if "${SCRIPT_DIR}/haws.sh" uninstall --dry-run >/dev/null 2>&1; then
         passed=$((passed + 1))
@@ -2566,7 +2564,7 @@ run_uninstall() {
         read -r -p "Are you sure you want to proceed with uninstallation? (y/N): " confirm_uninstall
         if [[ ! "${confirm_uninstall:-}" =~ ^[Yy]$ ]]; then
             echo "[ABORTED] Uninstallation cancelled by user."
-            return 0
+            return 1
         fi
         echo ""
     fi
@@ -2858,8 +2856,9 @@ run_setup() {
                 fi
                 ;;
             8)
-                run_uninstall
-                return 0
+                if run_uninstall; then
+                    return 0
+                fi
                 ;;
             0|q|quit|exit)
                 echo ""
