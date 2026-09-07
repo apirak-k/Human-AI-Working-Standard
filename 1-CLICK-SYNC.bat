@@ -54,7 +54,7 @@ echo.
 if errorlevel 1 goto :FAIL
 
 echo.
-echo [*] Verifying System Health: 10-Axis Diagnostics...
+echo [*] Verifying System Health: 11-Axis Diagnostics...
 echo.
 "%BASH_CMD%" haws.sh doctor
 if errorlevel 1 goto :FAIL

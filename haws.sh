@@ -394,15 +394,34 @@ run_doctor() {
     details+=("{\"item\":\"OS Platform: ${os_type}\",\"status\":\"PASS\"}")
 
     local detected_ais=()
-    [ -d "${HOME}/.gemini" ] && detected_ais+=("Antigravity")
-    [ -d "${HOME}/.claude" ] && detected_ais+=("Claude Code")
-    { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && detected_ais+=("Cursor")
-    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && detected_ais+=("Codex/Copilot")
+    load_disabled_environments
+    local active_ais=()
 
-    local ai_summary="None detected"
-    [ "${#detected_ais[@]}" -gt 0 ] && ai_summary="${detected_ais[*]}"
+    if [ -d "${HOME}/.gemini" ]; then
+        detected_ais+=("Antigravity")
+        [ -z "${DISABLED_ENVS[gemini]:-}" ] && active_ais+=("Antigravity")
+    fi
+    if [ -d "${HOME}/.claude" ]; then
+        detected_ais+=("Claude Code")
+        [ -z "${DISABLED_ENVS[claude]:-}" ] && active_ais+=("Claude Code")
+    fi
+    if [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; then
+        detected_ais+=("Cursor")
+        [ -z "${DISABLED_ENVS[cursor]:-}" ] && active_ais+=("Cursor")
+    fi
+    if [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; then
+        detected_ais+=("Copilot")
+        [ -z "${DISABLED_ENVS[copilot]:-}" ] && active_ais+=("Copilot")
+    fi
+    if [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; then
+        detected_ais+=("Codex")
+        [ -z "${DISABLED_ENVS[codex]:-}" ] && active_ais+=("Codex")
+    fi
+
+    local ai_summary="None active"
+    [ "${#active_ais[@]}" -gt 0 ] && ai_summary="${active_ais[*]}"
     passed=$((passed + 1))
-    [ "$json_mode" = false ] && echo "   [PASS] Active AI Environments: ${ai_summary}"
+    [ "$json_mode" = false ] && echo "   [PASS] Active AI Environments: ${ai_summary} (Configured: ${#active_ais[@]}/${#detected_ais[@]} detected)"
     details+=("{\"item\":\"Active AIs: ${ai_summary}\",\"status\":\"PASS\"}")
 
     # 12. Check Launchers & Automation Tools
@@ -556,6 +575,190 @@ save_disabled_skills() {
     } > "${dfile}"
 }
 
+load_disabled_environments() {
+    declare -g -A DISABLED_ENVS=()
+    local dfile="${SCRIPT_DIR}/config/environments.disabled"
+    [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/environments.disabled" ] && dfile="${SCRIPT_DIR}/environments.disabled"
+    if [ -f "${dfile}" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
+            [ -n "$line" ] && DISABLED_ENVS["$line"]=1
+        done < "${dfile}"
+    fi
+}
+
+save_disabled_environments() {
+    local dfile="${SCRIPT_DIR}/config/environments.disabled"
+    mkdir -p "$(dirname "${dfile}")"
+    {
+        echo "# HAWS Disabled AI Environments"
+        echo "# Environments listed here will not receive Global Pointers or Linked Skills"
+        for env_id in "${!DISABLED_ENVS[@]}"; do
+            [ -n "$env_id" ] && echo "$env_id"
+        done | sort
+    } > "${dfile}"
+}
+
+run_configure_environments() {
+    load_disabled_environments
+    echo ""
+    echo "  [*] Detecting installed AI environments on this machine..."
+
+    local has_claude=0; [ -d "${HOME}/.claude" ] && has_claude=1
+    local has_gemini=0; [ -d "${HOME}/.gemini" ] && has_gemini=1
+    local has_cursor=0; { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && has_cursor=1
+    local has_copilot=0; { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && has_copilot=1
+    local has_codex=0; { [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; } && has_codex=1
+
+    local env_keys=("claude" "gemini" "cursor" "copilot" "codex")
+    local env_labels=(
+        "Claude Code"
+        "Google Antigravity"
+        "Cursor IDE"
+        "GitHub Copilot"
+        "OpenAI Codex"
+    )
+    local env_paths=(
+        "${HOME}/.claude/CLAUDE.md"
+        "${HOME}/.gemini/GEMINI.md"
+        "${HOME}/.cursor/rules/haws.mdc"
+        "${HOME}/.copilot/copilot-instructions.md"
+        "${HOME}/.codex/AGENTS.md"
+    )
+    local env_detected=($has_claude $has_gemini $has_cursor $has_copilot $has_codex)
+
+    local chk_items=()
+    for ((i=0; i<${#env_keys[@]}; i++)); do
+        local key="${env_keys[$i]}"
+        local lbl="${env_labels[$i]}"
+        local pth="${env_paths[$i]}"
+        local det="${env_detected[$i]}"
+        local detail="${pth}"
+        [ "$det" -eq 1 ] && detail="${detail} (detected)" || detail="${detail} (not detected)"
+
+        local is_on=1
+        [ -n "${DISABLED_ENVS[$key]:-}" ] && is_on=0
+        chk_items+=("${lbl}|${detail}|${is_on}")
+    done
+
+    declare -A CHECKLIST_RESULTS
+    if interactive_checklist "Configure Active AI Environments" "${chk_items[@]}"; then
+        for ((i=0; i<${#env_keys[@]}; i++)); do
+            local key="${env_keys[$i]}"
+            local lbl="${env_labels[$i]}"
+            if [ "${CHECKLIST_RESULTS[$lbl]}" -eq 1 ]; then
+                unset "DISABLED_ENVS[$key]"
+            else
+                DISABLED_ENVS["$key"]=1
+            fi
+        done
+        save_disabled_environments
+        echo "  [✓] Updated AI environments configuration."
+    else
+        echo "  [INFO] Configuration cancelled. No changes saved."
+    fi
+    return 0
+}
+
+sync_submodules_selective() {
+    local source_dir="$1"
+    [ ! -f "${source_dir}/.gitmodules" ] && return 0
+    echo "--- Step 2: Syncing Embedded Skill Submodules (Smart Path-Aware) ---"
+
+    local sub_paths=()
+    while IFS= read -r line; do
+        if [[ "${line}" =~ ^[[:space:]]*path[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+            local p="${BASH_REMATCH[1]}"
+            p="$(echo "${p}" | tr -d '\r\n')"
+            sub_paths+=("${p}")
+        fi
+    done < "${source_dir}/.gitmodules"
+
+    for sub_rel in "${sub_paths[@]}"; do
+        local sub_full="${source_dir}/${sub_rel}"
+        local sub_name="$(basename "${sub_rel}")"
+
+        # 1. Discover skills belonging to this submodule
+        local sub_skills=()
+        local active_skills=()
+        local active_skill_rel_paths=()
+
+        if [ -d "${sub_full}" ]; then
+            while IFS= read -r sf; do
+                [ -z "$sf" ] && continue
+                local sn
+                sn="$(extract_skill_name "$sf")"
+                [ -z "$sn" ] && sn="$(basename "$(dirname "$sf")")"
+                sub_skills+=("$sn")
+                if [ -z "${DISABLED_SKILLS[$sn]:-}" ]; then
+                    active_skills+=("$sn")
+                    local rel_sf="${sf#${sub_full}/}"
+                    active_skill_rel_paths+=("$(dirname "${rel_sf}")")
+                fi
+            done < <(find "${sub_full}" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
+        fi
+
+        # Fallback if uninitialized
+        if [ ${#sub_skills[@]} -eq 0 ]; then
+            sub_skills+=("${sub_name}")
+            if [ -z "${DISABLED_SKILLS[$sub_name]:-}" ]; then
+                active_skills+=("${sub_name}")
+                active_skill_rel_paths+=(".")
+            fi
+        fi
+
+        # 2. Rule: If ALL skills in this submodule are disabled, SKIP completely!
+        if [ ${#active_skills[@]} -eq 0 ]; then
+            echo "  [SKIP] Submodule '${sub_rel}' (all skills disabled, 0 KB)"
+            continue
+        fi
+
+        # 3. If submodule not initialized, clone shallowly
+        if [ ! -d "${sub_full}/.git" ] && [ ! -f "${sub_full}/.git" ]; then
+            echo "  [*] Initializing active submodule '${sub_rel}'..."
+            git -C "${source_dir}" submodule update --init --depth 1 "${sub_rel}" 2>/dev/null || true
+            continue
+        fi
+
+        # 4. Check if enabled skills have remote changes (Smart Path-Diff)
+        if git -C "${sub_full}" fetch --quiet origin 2>/dev/null; then
+            local remote_head=""
+            remote_head="$(git -C "${sub_full}" rev-parse FETCH_HEAD 2>/dev/null || true)"
+            local local_head=""
+            local_head="$(git -C "${sub_full}" rev-parse HEAD 2>/dev/null || true)"
+
+            if [ -n "${remote_head}" ] && [ "${remote_head}" != "${local_head}" ]; then
+                local has_active_diff=0
+                for act_path in "${active_skill_rel_paths[@]}"; do
+                    local diff_files=""
+                    if [ "${act_path}" = "." ]; then
+                        diff_files="$(git -C "${sub_full}" diff --name-only HEAD FETCH_HEAD 2>/dev/null || true)"
+                    else
+                        diff_files="$(git -C "${sub_full}" diff --name-only HEAD FETCH_HEAD -- "${act_path}" 2>/dev/null || true)"
+                    fi
+                    if [ -n "${diff_files}" ]; then
+                        has_active_diff=1
+                        break
+                    fi
+                done
+
+                if [ "$has_active_diff" -eq 1 ]; then
+                    echo "  [*] Submodule '${sub_rel}': Changes detected in active skills. Updating..."
+                    git -C "${sub_full}" merge --ff-only FETCH_HEAD 2>/dev/null || git -C "${source_dir}" submodule update -- "${sub_rel}" 2>/dev/null || true
+                else
+                    echo "  [✓] Submodule '${sub_rel}': Active skill(s) unchanged (${#active_skills[@]} active). Skipped."
+                fi
+            else
+                echo "  [✓] Submodule '${sub_rel}': Up to date."
+            fi
+        else
+            echo "  [✓] Submodule '${sub_rel}': Ready."
+        fi
+    done
+    echo "  [✓] Embedded submodules ready."
+    echo ""
+}
+
 run_sync() {
     local CLEAN_UNMANAGED=false
     for opt in "$@"; do
@@ -567,6 +770,7 @@ run_sync() {
 
     local SOURCE_DIR="${SCRIPT_DIR}"
     load_disabled_skills
+    load_disabled_environments
 
     # 0. Sync Personal Second Brain if connected
     echo "--- Step 0: Syncing Personal Second Brain ---"
@@ -589,13 +793,8 @@ run_sync() {
         echo ""
     fi
 
-    # 2. Sync Submodules
-    if [ -f "${SOURCE_DIR}/.gitmodules" ]; then
-        echo "--- Step 2: Syncing Embedded Skill Submodules ---"
-        git -C "${SOURCE_DIR}" submodule update --init --recursive --quiet 2>/dev/null || true
-        echo "  [✓] Embedded submodules ready."
-        echo ""
-    fi
+    # 2. Sync Submodules (Smart Path-Aware)
+    sync_submodules_selective "${SOURCE_DIR}"
 
     # 3. Detect AI Environments
     echo "--- Step 3: Detecting AI Environments ---"
@@ -779,32 +978,63 @@ run_sync() {
         fi
     }
 
+    # Determine active linking targets
+    local LINK_CLAUDE=false; [ "$DETECTED_CLAUDE" = true ] && [ -z "${DISABLED_ENVS[claude]:-}" ] && LINK_CLAUDE=true
+    local LINK_GEMINI=false; [ "$DETECTED_GEMINI" = true ] && [ -z "${DISABLED_ENVS[gemini]:-}" ] && LINK_GEMINI=true
+    local LINK_CURSOR=false; [ "$DETECTED_CURSOR" = true ] && [ -z "${DISABLED_ENVS[cursor]:-}" ] && LINK_CURSOR=true
+    local LINK_COPILOT=false; [ "$DETECTED_COPILOT" = true ] && [ -z "${DISABLED_ENVS[copilot]:-}" ] && LINK_COPILOT=true
+    local LINK_CODEX=false; [ "$DETECTED_CODEX" = true ] && [ -z "${DISABLED_ENVS[codex]:-}" ] && LINK_CODEX=true
+
     # 4. Setup Global Pointers
     echo "--- Step 4: Setting Up Global Environment Pointers ---"
-    [ "$DETECTED_CLAUDE" = true ] && safe_append_pointer "${HOME}/.claude/CLAUDE.md"
-    [ "$DETECTED_GEMINI" = true ] && safe_append_pointer "${HOME}/.gemini/GEMINI.md"
-    if [ "$DETECTED_CURSOR" = true ]; then
-        if [ -d "${HOME}/.cursor" ]; then
-            mkdir -p "${HOME}/.cursor/rules"
-            safe_append_pointer "${HOME}/.cursor/rules/haws.mdc"
+    if [ "$DETECTED_CLAUDE" = true ]; then
+        if [ "$LINK_CLAUDE" = true ]; then
+            safe_append_pointer "${HOME}/.claude/CLAUDE.md"
         else
-            safe_append_pointer "${HOME}/.cursorrules"
+            echo "  [SKIPPED] Claude Code (disabled in configuration)"
+        fi
+    fi
+    if [ "$DETECTED_GEMINI" = true ]; then
+        if [ "$LINK_GEMINI" = true ]; then
+            safe_append_pointer "${HOME}/.gemini/GEMINI.md"
+        else
+            echo "  [SKIPPED] Google Antigravity (disabled in configuration)"
+        fi
+    fi
+    if [ "$DETECTED_CURSOR" = true ]; then
+        if [ "$LINK_CURSOR" = true ]; then
+            if [ -d "${HOME}/.cursor" ]; then
+                mkdir -p "${HOME}/.cursor/rules"
+                safe_append_pointer "${HOME}/.cursor/rules/haws.mdc"
+            else
+                safe_append_pointer "${HOME}/.cursorrules"
+            fi
+        else
+            echo "  [SKIPPED] Cursor IDE (disabled in configuration)"
         fi
     fi
     if [ "$DETECTED_COPILOT" = true ]; then
-        if [ -d "${HOME}/.copilot" ]; then
-            safe_append_pointer "${HOME}/.copilot/copilot-instructions.md"
-        elif [ -d "${HOME}/.config/github-copilot" ]; then
-            safe_append_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
+        if [ "$LINK_COPILOT" = true ]; then
+            if [ -d "${HOME}/.copilot" ]; then
+                safe_append_pointer "${HOME}/.copilot/copilot-instructions.md"
+            elif [ -d "${HOME}/.config/github-copilot" ]; then
+                safe_append_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
+            fi
+        else
+            echo "  [SKIPPED] GitHub Copilot (disabled in configuration)"
         fi
     fi
     if [ "$DETECTED_CODEX" = true ]; then
-        if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
-        elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.md"
-        elif [ -d "${HOME}/.codex" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+        if [ "$LINK_CODEX" = true ]; then
+            if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+            elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.md"
+            elif [ -d "${HOME}/.codex" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+            fi
+        else
+            echo "  [SKIPPED] OpenAI Codex (disabled in configuration)"
         fi
     fi
     echo ""
@@ -863,11 +1093,11 @@ run_sync() {
                 PROCESSED_SKILLS[${skill_name}]=1
                 echo "skill:${skill_name}" >> "${TMP_MANIFEST}"
 
-                if [ "$DETECTED_CLAUDE" = true ]; then
+                if [ "$LINK_CLAUDE" = true ]; then
                     safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${skill_name}" "Claude Skill [${skill_name}]"
                     SKILLS_LINKED=$((SKILLS_LINKED + 1))
                 fi
-                if [ "$DETECTED_CODEX" = true ]; then
+                if [ "$LINK_CODEX" = true ]; then
                     safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${skill_name}" "Codex Skill [${skill_name}]"
                     SKILLS_LINKED=$((SKILLS_LINKED + 1))
                 fi
@@ -879,7 +1109,7 @@ run_sync() {
     find_and_link_skills "${SOURCE_DIR}/skills"
     [ -d "${SOURCE_DIR}/skills/packs/ponytail/skills" ] && find_and_link_skills "${SOURCE_DIR}/skills/packs/ponytail/skills"
 
-    if [ "$DETECTED_GEMINI" = true ]; then
+    if [ "$LINK_GEMINI" = true ]; then
         local target_json="${HOME}/.gemini/config/skills.json"
         mkdir -p "${HOME}/.gemini/config"
 
@@ -974,7 +1204,7 @@ run_sync() {
 
     # 6. Link Subagents
     echo "--- Step 6: Linking Subagents ---"
-    if [ "$DETECTED_CODEX" = true ]; then
+    if [ "$LINK_CODEX" = true ]; then
         run_codex_agents install --source "${SOURCE_DIR}"
         AGENTS_LINKED=$((AGENTS_LINKED + 5))
     fi
@@ -985,11 +1215,11 @@ run_sync() {
                 agent_name="$(basename "${agent_file}" .md)"
                 echo "agent:${agent_name}" >> "${TMP_MANIFEST}"
 
-                if [ "$DETECTED_CLAUDE" = true ]; then
+                if [ "$LINK_CLAUDE" = true ]; then
                     safe_link_file "${agent_file}" "${HOME}/.claude/agents/${agent_name}.md" "Claude Agent [${agent_name}]"
                     AGENTS_LINKED=$((AGENTS_LINKED + 1))
                 fi
-                if [ "$DETECTED_GEMINI" = true ]; then
+                if [ "$LINK_GEMINI" = true ]; then
                     local gemini_agent_dir="${HOME}/.gemini/config/agents/${agent_name}"
                     mkdir -p "${gemini_agent_dir}"
                     safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]"
@@ -1003,7 +1233,7 @@ run_sync() {
     # 7. Link Custom Commands
     echo "--- Step 7: Linking Slash Commands for Custom Skills ---"
     local COMMANDS_LINKED=0
-    if [ "$DETECTED_CLAUDE" = true ] && [ -d "${SOURCE_DIR}/skills/custom" ]; then
+    if [ "$LINK_CLAUDE" = true ] && [ -d "${SOURCE_DIR}/skills/custom" ]; then
         mkdir -p "${HOME}/.claude/commands"
         for custom_skill_dir in "${SOURCE_DIR}/skills/custom"/*; do
             if [ -d "${custom_skill_dir}" ]; then
@@ -2468,73 +2698,84 @@ run_uninstall() {
 }
 
 run_setup() {
-    echo "================================================================"
-    echo "           HAWS Automated Setup & First-Time Installation"
-    echo "================================================================"
-    echo ""
+    local SOURCE_DIR="${SCRIPT_DIR}"
+    load_disabled_skills
+    load_disabled_environments
 
-    # Question 1: Skills First
-    echo "[Question 1/2] Skills Configuration:"
-    echo "  Do you want to install standard KIT skills or configure them manually?"
-    echo "  1) Standard HAWS Kit  (Recommended — 127 curated skills & packs) [Default]"
-    echo "  2) Customize Skills   (Select specific packs or toggle skills)"
-    echo ""
-    local skill_choice="1"
-    if [ -t 0 ]; then
-        read -r -p "Select [1-2] (Default: 1): " skill_choice || skill_choice="1"
-        skill_choice="$(echo "${skill_choice}" | tr -d ' \r\n')"
-        [ -z "${skill_choice}" ] && skill_choice="1"
-    fi
-
-    if [ "${skill_choice}" = "2" ]; then
+    while true; do
+        echo "============================================================="
+        echo "             HAWS Automated Setup & Configuration"
+        echo "============================================================="
+        echo "Choose setup mode or configuration task:"
         echo ""
-        echo "  [*] Launching Interactive Skill Configurator..."
-        run_configure_skills
-    else
+        echo "  1) Standard Setup             (Default — install standard curated skills & link all AI)"
+        echo "  2) Add Git Repository         (Add Git repo URLs until 'done')"
+        echo "  3) Remove Git Repository      (Select repos to remove with confirmation)"
+        echo "  4) Configure Active Skills    (Single skills & packs category selection)"
+        echo "  5) Configure AI Environments  (Choose active AI providers: Claude, Gemini, etc.)"
+        echo "  6) Personal Second Brain      (Connect Private GitHub Cloud / Local)"
+        echo "  0) Save & Exit (Run Sync)     (Sync configuration to AI & complete setup)"
         echo ""
-        echo "  [*] Initializing Standard HAWS Kit submodules, please wait..."
-        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-        echo "  [✓] Standard HAWS Kit submodules verified & ready."
-    fi
-    echo ""
 
-    # Question 2: Second Brain Second
-    echo "[Question 2/2] Second Brain (Personal Knowledge & Preferences):"
-    echo "  Do you want to connect Second Brain to a Private GitHub repository?"
-    echo "  y) Yes — Connect Private GitHub Cloud (e.g. git@github.com:username/my-brain.git)"
-    echo "  n) No  — Use Local-Only mode on this machine [Default]"
-    echo ""
-    local brain_choice="n"
-    if [ -t 0 ]; then
-        read -r -p "Connect to Private GitHub? (y/N): " brain_choice || brain_choice="n"
-        brain_choice="$(echo "${brain_choice}" | tr -d ' \r\n')"
-    fi
+        local choice="1"
+        read -r -p "Enter selection [0-6] (Default: 1): " choice || choice="1"
+        choice="$(echo "${choice}" | tr -d ' \r\n')"
+        [ -z "${choice}" ] && choice="1"
 
-    if [ "${brain_choice}" = "y" ] || [ "${brain_choice}" = "Y" ]; then
-        echo ""
-        local repo_url=""
-        read -r -p "Enter Private GitHub Repo URL: " repo_url || repo_url=""
-        repo_url="$(echo "${repo_url}" | tr -d ' \r\n')"
-        if [ -n "${repo_url}" ]; then
-            run_user connect "${repo_url}"
-        else
-            echo "  [INFO] No URL entered. Second Brain remains in Local-Only mode."
-            run_user status
-        fi
-    else
-        echo "  [*] Setting up Second Brain in Local-Only mode..."
-        run_user status
-    fi
-    echo ""
-
-    echo "[Step 3/5] Linking Skills, Commands, and Agent Profiles..."
-    run_sync "$@"
-    echo ""
-    echo "[Step 4/5] Configuring HAWS Git Safety Hooks..."
-    run_hooks install
-    echo ""
-    echo "[Step 5/5] Running Diagnostic Verification..."
-    run_doctor
+        case "${choice}" in
+            1)
+                echo ""
+                echo "  [*] Running Standard Setup (All AI + Standard Kit)..."
+                DISABLED_ENVS=()
+                save_disabled_environments
+                run_sync "$@"
+                run_hooks install
+                run_doctor
+                return 0
+                ;;
+            2)
+                run_add_git_repo
+                ;;
+            3)
+                run_remove_git_repo
+                ;;
+            4)
+                run_configure_skills
+                ;;
+            5)
+                run_configure_environments
+                ;;
+            6)
+                echo ""
+                echo "--- Second Brain Configuration ---"
+                echo "  1) Connect Private GitHub Cloud"
+                echo "  2) Use Local-Only Mode"
+                echo "  0) Back"
+                local b_choice="0"
+                read -r -p "Select [0-2] (default: 0): " b_choice || b_choice="0"
+                b_choice="$(echo "${b_choice}" | tr -d ' \r\n')"
+                if [ "${b_choice}" = "1" ]; then
+                    local repo_url=""
+                    read -r -p "Enter Private GitHub Repo URL: " repo_url || repo_url=""
+                    repo_url="$(echo "${repo_url}" | tr -d ' \r\n')"
+                    [ -n "${repo_url}" ] && run_user connect "${repo_url}"
+                elif [ "${b_choice}" = "2" ]; then
+                    run_user status
+                fi
+                ;;
+            0|q|quit|exit)
+                echo ""
+                echo "  [*] Saving configuration and synchronizing..."
+                run_sync "$@"
+                run_hooks install
+                run_doctor
+                return 0
+                ;;
+            *)
+                echo "  [ERROR] Invalid selection '${choice}'. Please enter 0-6."
+                ;;
+        esac
+    done
 }
 
 case "${COMMAND}" in
@@ -2556,6 +2797,10 @@ case "${COMMAND}" in
     skills|skill)
         shift || true
         run_configure_skills "$@"
+        ;;
+    env|envs|environment|environments)
+        shift || true
+        run_configure_environments "$@"
         ;;
     kit)
         shift || true

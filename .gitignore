@@ -32,3 +32,6 @@ scratch/
 .notify.conf
 *.conf.local
 
+# Local AI Environment Preferences
+config/environments.disabled
+environments.disabled
