@@ -42,7 +42,7 @@ To prevent context rot, maintain high reasoning precision, and keep execution fa
 - **Modular Markdown Partitioning**: Keep markdown documentation modular (~200–300 lines limit per file). Use the **Summary + Pointer pattern (Progressive Disclosure)**: parent documents provide a clear structural overview and link to deep implementation details in `references/` or `docs/`.
 - **On-Demand Loading & Lazy Context**: Load specialized domain specifications, API references, and schemas Just-in-Time only when the active task touches that area. Persist findings to disk and do not retain heavy unparsed text in conversation memory.
 - **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`HANDOFF.md`, task checklists, or implementation plans).
-- **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Query or build a dependency graph (`graphify`, `archify`, or `templates/docs/ARCHITECTURE.md`) to isolate the blast radius, target only affected callers, and preserve context budget.
+- **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Query or build a dependency graph (`graphify`, `archify`, or `templates/ARCHITECTURE.md`) to isolate the blast radius, target only affected callers, and preserve context budget.
 - **Proactive session compaction**: When a task phase completes, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
 
 ## 2. Starting and performing work
@@ -326,7 +326,7 @@ the user's local repository or remote (e.g. a sandboxed AI session).
 Prompting without curated context causes model failure. Context Engineering ensures high-fidelity execution through a 3-step lifecycle:
 
 1. **Ideation (`INITIAL.md`)**: The user provides high-level intent, feature ideas, or business requirements.
-2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using `templates/docs/ARCHITECTURE.md` and `templates/docs/PROJECT.md` as reference blueprints). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
+2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using `templates/ARCHITECTURE.md` and `templates/PROJECT.md` as reference blueprints). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
 3. **Execution Loop (`/execute-prp`)**: The implementing agent or subagent executes the tasks under a self-correcting validation loop:
    - Run tests / build checks.
    - If tests fail, diagnose systematically (trace input ➔ state ➔ output).

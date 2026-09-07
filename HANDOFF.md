@@ -2,11 +2,11 @@
 
 > **Audit Baseline Commit**: `cceb211` (Point where 39 original user requirements were reviewed and mapped)  
 > **Previous Head Commit**: `f6d0e19` (`fix(launchers): resolve CMD block parsing syntax error in 1-CLICK-SYNC.bat and 2nd-BRAIN-TOGGLE.bat`)  
-> **Current Head Commit**: `ae052e1` (`fix(brain): add clean timeout fallback message and prevent hanging on offline mode`)  
-> **Total Intermediate Commits**: 72 Git Commits Audited  
+> **State Inspected At**: `d72470e` on 2026-09-07; verify live Git before resuming
+> **Total Intermediate Commits**: 73 Git Commits Audited through the inspected state
 > **Prepared For**: Complete Milestone Delivery, Seamless Cross-Device Continuity & Native Multi-AI Support (Antigravity, Claude, Codex, Cursor, Copilot)  
-> **Diagnostic Status**: 43/43 PASS (100% Green, Zero Failures)  
-> **Active Skills Status**: 127 Active Skills (100% Synchronized across Claude Code, Antigravity & OpenAI Codex)  
+> **Diagnostic Status**: Fresh 41/41 PASS on 2026-09-07 after the Graphify adapter change
+> **Active Skills Status**: 127 linked HAWS skills; native Codex discovery parity is verified after the Graphify adapter fix
 
 ---
 
@@ -68,6 +68,7 @@ The following chronological sequence documents everything committed from `cceb21
 | `d7b2d1a` | `fix(setup)` | Defaulted to 0 save-and-exit, automated 1-click sync without prompts, optimized performance. |
 | `326ae21` | `fix(cli)` | Enforced 100% English output, fast local-first submodule check, and clean abort wording. |
 | `ae052e1` | `fix(brain)` | Added clean timeout fallback message and prevented hanging on offline mode. |
+| `d72470e` | `docs(handoff)` | Synchronized the cross-device handoff dossier and doctor manifests. |
 
 ---
 
@@ -101,20 +102,19 @@ The following chronological sequence documents everything committed from `cceb21
    - `pre-commit`: Scans staged diff for `.env*` secrets, validates LF line endings, runs doctor.
    - `commit-msg`: Enforces Conventional Commits syntax and HAWS 100% English invariant.
    - `pre-push`: Hardware blocker preventing unauthorized remote pushes without `HAWS_ALLOW_PUSH=1`.
-9. **Universal Multi-AI Blueprints (19 Templates)** (`templates/`):
-   - Google Antigravity (`templates/.gemini/GEMINI.md.template`)
-   - Claude Code (`templates/CLAUDE.md.template`)
-   - Cursor IDE (`templates/.cursor/rules/haws.mdc.template` and `templates/.cursorrules.template`)
-   - OpenAI Codex & GitHub Copilot (`templates/.github/copilot-instructions.md.template`)
+9. **Universal Multi-AI Blueprints**:
+   - Project governance blueprints live flat under `templates/`.
+   - AI adapters live under `ai-configs/` for Antigravity, Claude Code, Cursor, GitHub Copilot, and OpenAI Codex.
 10. **Clean Uninstallation Engine** (`haws.sh uninstall` & `UNINSTALL.bat`):
     - Strips HAWS pointer blocks from `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.cursor/rules/haws.mdc`, `~/.cursorrules`, `~/.copilot/copilot-instructions.md`.
     - Cleans skills from `~/.gemini/config/skills.json` and `~/.claude/skills`.
     - Unlinks `.githooks` from `.git/config` (`core.hooksPath`).
     - Strictly preserves user repositories and Second Brain notes.
-11. **Native OpenAI Codex Integration & Multi-AI Support** (`~/.codex/AGENTS.md`, `~/.agents/skills`):
-    - Fully verified native Codex integration with 127 active skills and preserved user directives.
-    - Added `templates/ai-configs/codex/AGENTS.override.md.template`.
-12. **Cross-OS Engine & Doctor 43/43 Checks (12 Diagnostic Axes)** (`haws.sh`):
+11. **Native OpenAI Codex Integration & Multi-AI Support** (`~/.codex/AGENTS.md`, `~/.agents/skills`, `~/.codex/agents`):
+    - Native discovery and execution of the HAWS researcher role were verified in a live subagent task.
+    - Added `ai-configs/codex/AGENTS.override.md.template` and five generated native agent profiles.
+    - Added a Codex-specific Graphify adapter because upstream uses lowercase `skill.md`, while Codex requires exact `SKILL.md` discovery.
+12. **Cross-OS Engine & Doctor (12 Diagnostic Axes)** (`haws.sh`):
     - Windows NTFS hardlinks/junctions + MSYS2 `cygpath`.
     - macOS & Linux atomic POSIX symlinks (`ln -sfn`).
     - 43 checks passing 100% across all 12 diagnostic axes.
@@ -146,7 +146,7 @@ The following chronological sequence documents everything committed from `cceb21
 
 ### Category B: [DOING] In-Progress / Active Working Tree
 
-*None* — All tasks fully implemented, empirically verified, and synced.
+1. Review the 39-requirement traceability claims against current artifacts before treating them as user-accepted.
 
 ---
 
@@ -159,8 +159,10 @@ The following chronological sequence documents everything committed from `cceb21
 
 ## 3. Grounding Verification Evidence
 
-- **`bash haws.sh doctor`**: Passed 43/43 checks (Exit code: 0, 100% Green).
-- **`bash haws.sh status`**: 127 skills active across Antigravity, Claude Code, and OpenAI Codex, Second Brain in sync (`[100% HEALTHY & IN SYNC]`).
+- **`bash haws.sh doctor`**: Fresh run passed 41 checks with 0 failures after the Graphify adapter change.
+- **`bash haws.sh status`**: 127 linked skills across Antigravity, Claude Code, and OpenAI Codex.
+- **Native Codex discovery**: Force reload found every linked HAWS skill after adapting Graphify; the overall catalog increased from 143 to 144 entries.
+- **Native Codex subagent**: `researcher` was selected by exact role name and loaded its installed HAWS developer instructions.
 - **`bash haws.sh uninstall --dry-run`**: Passed cleanly, operational.
 - **Line Endings Audit**: 0 CRLF across all repository files.
 - **Git State**: Clean working tree.
@@ -182,9 +184,9 @@ All 39 original user inputs from the baseline review are codified in permanent H
 | | 2.3 On-Demand Loading & Lazy Context | #35 | ✅ Verified | `core/WORK_INSTRUCTIONS.md` Sec 1.1 (Progressive disclosure) |
 | | 2.4 Telemetry & Metrics Tracking | #31 | ✅ Verified | `secondbrain/USER_PREFERENCES.md` (Sub-second status) |
 | **Domain 3** | 3.1 Canonical Project Files (15 Blueprints) | #16 | ✅ Verified | `templates/` (15 canonical files & templates) |
-| | 3.2 Architecture Graph ("Graft") | #17 | ✅ Verified | `templates/docs/ARCHITECTURE.md` (Mermaid + Graphify AST) |
+| | 3.2 Architecture Graph ("Graft") | #17 | ✅ Verified | `templates/ARCHITECTURE.md` (Mermaid + Graphify AST) |
 | | 3.3 Configuration & Secrets Management | #18 | ✅ Verified | `secondbrain/ANTI_PATTERNS.md` (Zero plaintext secrets) |
-| | 3.4 Design Standards & React Components | #1, #7 | ✅ Verified | `templates/docs/DESIGN.md`, `secondbrain/USER_PREFERENCES.md` |
+| | 3.4 Design Standards & React Components | #1, #7 | ✅ Verified | `templates/DESIGN.md`, `secondbrain/USER_PREFERENCES.md` |
 | | 3.5 Repository Normalization (LF) | #21 | ✅ Verified | `.gitattributes`, `haws.sh doctor` Axis 9 |
 | **Domain 4** | 4.1 Skill Taxonomy & Bloat Management | #3, #11 | ✅ Verified | `skills/` (3 categories: custom, packs, standalone; 127 active) |
 | | 4.2 Organizer Role & Hygiene | #10 | ✅ Verified | `agents/organizer.md`, `haws.sh doctor` Axis 7 |
@@ -192,7 +194,7 @@ All 39 original user inputs from the baseline review are codified in permanent H
 | | 4.4 Self-Correcting Loops & Engineering | #33, #39 | ✅ Verified | `core/HAWS.md` Sec 7.1 (Strict 3-iteration maximum) |
 | | 4.5 Candidate Custom Skills | #19, #22 | ✅ Verified | `skills/custom/keyboard-layout-fixer/` |
 | **Domain 5** | 5.1 Ready-to-Use Installation Engine | #5 | ✅ Verified | `SETUP.bat`, `1-CLICK-SYNC.bat`, `haws.sh setup` |
-| | 5.2 Diagnostic Verification Suite | #6 | ✅ Verified | `haws.sh doctor` (42/42 checks PASS 100% Green) |
+| | 5.2 Diagnostic Verification Suite | #6 | ✅ Verified | `haws.sh doctor` (fresh 41 checks PASS, 0 failures) |
 | | 5.3 SWE Fundamentals & Testing Discipline | #27, #32 | ✅ Verified | `core/HAWS.md` Sec 5.1 (Ponytail 7-rung ladder) |
 | | 5.4 MCP & RAG Integrations | #25, #29 | ✅ Verified | `core/WORK_INSTRUCTIONS.md`, `core/HAWS.md` Sec 9 |
 | | 5.5 External Knowledge & Starred Repos | #4, #15 | ✅ Verified | `skills/packs/ponytail/`, `skills/standalone/archify/` |
@@ -206,8 +208,8 @@ All 39 original user inputs from the baseline review are codified in permanent H
 When OpenAI Codex / GitHub Copilot resumes work in this environment:
 
 1. **Automatic Context Ingestion**:
-   - The global pointer in `~/.copilot/copilot-instructions.md` automatically injects `core/HAWS.md`, `core/WORK_INSTRUCTIONS.md`, and `secondbrain/`.
-   - All 39 requirements and 29 operational anti-patterns are enforced.
+   - Codex loads the HAWS pointer from `~/.codex/AGENTS.md` or the effective `AGENTS.override.md`, skills from `~/.agents/skills`, and native roles from `~/.codex/agents/`.
+   - GitHub Copilot uses its separate adapter. Verify the active environment before claiming rules are enforced.
 
 2. **Communication Conventions**:
    - In chat conversations: Respond in concise, jargon-free Thai.
@@ -216,4 +218,3 @@ When OpenAI Codex / GitHub Copilot resumes work in this environment:
 
 3. **Autonomous Push Restriction**:
    - NEVER execute `git push` autonomously. Always ask for human approval first.
-

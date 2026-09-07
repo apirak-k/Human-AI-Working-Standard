@@ -94,6 +94,11 @@ Native format reference: [OpenAI custom subagents](https://learn.chatgpt.com/doc
 
 Focused regression checks: `node --test ai-configs/codex/agents.test.mjs`.
 
+During Codex reconciliation, HAWS also prepares Graphify's upstream
+Codex-specific skill file and references in `~/.haws/codex-skills/graphify`.
+This adapter is necessary because the upstream repository stores its generic
+entrypoint as lowercase `skill.md`, while Codex discovers exact `SKILL.md` files.
+
 ## Cross-Device Sync (Work and Home)
 
 HAWS physically decouples the **upstream framework (`core/`)** from your **personal Second Brain (`secondbrain/`)**:

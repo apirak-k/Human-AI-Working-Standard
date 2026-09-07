@@ -1365,7 +1365,13 @@ EOF
             local codex_count=0
             mkdir -p "${HOME}/.agents/skills"
             for sname in "${!ACTIVE_SKILL_DIRS[@]}"; do
-                safe_link_dir "${ACTIVE_SKILL_DIRS[${sname}]}" "${HOME}/.agents/skills/${sname}" "Codex Skill [${sname}]"
+                local codex_skill_source="${ACTIVE_SKILL_DIRS[${sname}]}"
+                if [ "${sname}" = "graphify" ] && [ -f "${codex_skill_source}/skill-codex.md" ] && [ -d "${codex_skill_source}/skills/codex/references" ]; then
+                    local codex_graphify_adapter="${HOME}/.haws/codex-skills/graphify"
+                    node "${SCRIPT_DIR}/ai-configs/codex/skills.mjs" graphify --source "${codex_skill_source}" --target "${codex_graphify_adapter}"
+                    codex_skill_source="${codex_graphify_adapter}"
+                fi
+                safe_link_dir "${codex_skill_source}" "${HOME}/.agents/skills/${sname}" "Codex Skill [${sname}]"
                 codex_count=$((codex_count + 1))
             done
             SKILLS_LINKED=$((SKILLS_LINKED + codex_count))
