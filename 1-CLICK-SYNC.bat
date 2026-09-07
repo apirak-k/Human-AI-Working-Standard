@@ -70,7 +70,7 @@ if errorlevel 1 goto :FAIL
 
 echo.
 echo ================================================================
-echo   [PASS] 100%% Green - HAWS is fully updated, synced, and ready!
+echo   [PASS] System Fully Verified & Ready!
 echo ================================================================
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause

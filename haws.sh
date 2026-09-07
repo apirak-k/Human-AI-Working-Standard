@@ -557,7 +557,7 @@ load_disabled_skills() {
     [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/config/skills.disabled" ] && dfile="${SCRIPT_DIR}/config/skills.disabled"
     if [ -f "${dfile}" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
-            line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
+            line="$(echo "$line" | tr -d '\r\0' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
             [ -n "$line" ] && DISABLED_SKILLS["$line"]=1
         done < "${dfile}"
     fi
@@ -581,7 +581,7 @@ load_disabled_environments() {
     [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/environments.disabled" ] && dfile="${SCRIPT_DIR}/environments.disabled"
     if [ -f "${dfile}" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
-            line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
+            line="$(echo "$line" | tr -d '\r\0' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
             [ -n "$line" ] && DISABLED_ENVS["$line"]=1
         done < "${dfile}"
     fi
@@ -713,15 +713,17 @@ sync_submodules_selective() {
             continue
         fi
 
-        # 3. If submodule not initialized, clone shallowly
-        if [ ! -d "${sub_full}/.git" ] && [ ! -f "${sub_full}/.git" ]; then
+        # 3. If submodule not initialized or missing HEAD commit, try shallow clone with 3s timeout
+        if [ ! -d "${sub_full}/.git" ] && [ ! -f "${sub_full}/.git" ] || ! git -C "${sub_full}" rev-parse --verify HEAD &>/dev/null; then
             echo "  [*] Initializing active submodule '${sub_rel}'..."
-            git -C "${source_dir}" submodule update --init --depth 1 "${sub_rel}" 2>/dev/null || true
+            if ! git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update --init --depth 1 "${sub_rel}" 2>/dev/null; then
+                echo "  [INFO] Submodule '${sub_rel}' init timed out (3s). Proceeding in offline mode."
+            fi
             continue
         fi
 
-        # 4. Check if enabled skills have remote changes (Smart Path-Diff)
-        if git -C "${sub_full}" fetch --quiet origin 2>/dev/null; then
+        # 4. Check if enabled skills have remote changes (Smart Path-Diff with 3s timeout)
+        if git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${sub_full}" fetch --quiet origin 2>/dev/null; then
             local remote_head=""
             remote_head="$(git -C "${sub_full}" rev-parse FETCH_HEAD 2>/dev/null || true)"
             local local_head=""
@@ -744,7 +746,7 @@ sync_submodules_selective() {
 
                 if [ "$has_active_diff" -eq 1 ]; then
                     echo "  [*] Submodule '${sub_rel}': Changes detected in active skills. Updating..."
-                    git -C "${sub_full}" merge --ff-only FETCH_HEAD 2>/dev/null || git -C "${source_dir}" submodule update -- "${sub_rel}" 2>/dev/null || true
+                    git -C "${sub_full}" merge --ff-only FETCH_HEAD 2>/dev/null || git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update -- "${sub_rel}" 2>/dev/null || true
                 else
                     echo "  [✓] Submodule '${sub_rel}': Active skill(s) unchanged (${#active_skills[@]} active). Skipped."
                 fi
@@ -752,7 +754,7 @@ sync_submodules_selective() {
                 echo "  [✓] Submodule '${sub_rel}': Up to date."
             fi
         else
-            echo "  [✓] Submodule '${sub_rel}': Ready."
+            echo "  [✓] Submodule '${sub_rel}': Ready (offline / local-first)."
         fi
     done
     echo "  [✓] Embedded submodules ready."
@@ -772,23 +774,34 @@ run_sync() {
     load_disabled_skills
     load_disabled_environments
 
+    # Enforce strict 3-second network timeouts across all git operations and submodule children
+    if [ -e "${SOURCE_DIR}/.git" ]; then
+        git -C "${SOURCE_DIR}" config http.connectTimeout 3 2>/dev/null || true
+        git -C "${SOURCE_DIR}" config http.lowSpeedLimit 1000 2>/dev/null || true
+        git -C "${SOURCE_DIR}" config http.lowSpeedTime 4 2>/dev/null || true
+    fi
+    export GIT_CONFIG_PARAMETERS="'http.connecttimeout=3' 'http.lowspeedlimit=1000' 'http.lowspeedtime=4'"
+
     # 0. Sync Personal Second Brain if connected
     echo "--- Step 0: Syncing Personal Second Brain ---"
     run_user sync
     echo ""
 
-    # 1. Check Git Remote
-    if [ -d "${SOURCE_DIR}/.git" ]; then
-        echo "--- Step 1: Checking Remote Repository ---"
-        git -C "${SOURCE_DIR}" fetch --quiet origin main 2>/dev/null || true
-        local INCOMING_COMMITS
-        INCOMING_COMMITS=$(git -C "${SOURCE_DIR}" rev-list HEAD..origin/main --count 2>/dev/null || echo 0)
-        if [ "${INCOMING_COMMITS}" -gt 0 ]; then
-            echo "  [*] Remote updates detected (${INCOMING_COMMITS} new commits). Pulling..."
-            git -C "${SOURCE_DIR}" pull --quiet || true
-            echo "  [✓] Repository updated to latest commit."
+    # 1. Check Git Remote (3s Timeout)
+    if [ -e "${SOURCE_DIR}/.git" ]; then
+        echo "--- Step 1: Checking Remote Repository (3s Timeout) ---"
+        if ! git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${SOURCE_DIR}" fetch --quiet origin main 2>/dev/null; then
+            echo "  [INFO] Remote connection timed out (3s). Proceeding in fast offline/local-first mode."
         else
-            echo "  [✓] Local repository is up to date."
+            local INCOMING_COMMITS
+            INCOMING_COMMITS=$(git -C "${SOURCE_DIR}" rev-list HEAD..origin/main --count 2>/dev/null || echo 0)
+            if [ "${INCOMING_COMMITS}" -gt 0 ]; then
+                echo "  [*] Remote updates detected (${INCOMING_COMMITS} new commits). Pulling..."
+                git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${SOURCE_DIR}" pull --quiet || true
+                echo "  [✓] Repository updated to latest commit."
+            else
+                echo "  [✓] Local repository is up to date."
+            fi
         fi
         echo ""
     fi
@@ -821,6 +834,7 @@ run_sync() {
     local SKILLS_LINKED=0
     local AGENTS_LINKED=0
     local RULES_LINKED=0
+    local COMMANDS_LINKED=0
     local SKIPPED_COUNT=0
     local IS_WINDOWS=false
     if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
@@ -978,6 +992,31 @@ run_sync() {
         fi
     }
 
+    safe_remove_pointer() {
+        local target_file="$1"
+        local marker_start="<!-- HAWS_GLOBAL_POINTER_START -->"
+        local marker_end="<!-- HAWS_GLOBAL_POINTER_END -->"
+        [ ! -f "${target_file}" ] && return 0
+
+        if grep -q "${marker_start}" "${target_file}" 2>/dev/null; then
+            local tmp_file="${target_file}.tmp.$$"
+            awk -v start="${marker_start}" -v end="${marker_end}" '
+                $0 ~ start { skip=1; next }
+                $0 ~ end { skip=0; next }
+                !skip { print }
+            ' "${target_file}" > "${tmp_file}"
+            local non_whitespace
+            non_whitespace="$(tr -d '[:space:]' < "${tmp_file}" 2>/dev/null || true)"
+            if [ -z "${non_whitespace}" ]; then
+                rm -f "${tmp_file}" "${target_file}"
+            else
+                mv -f "${tmp_file}" "${target_file}"
+            fi
+            return 0
+        fi
+        return 0
+    }
+
     # Determine active linking targets
     local LINK_CLAUDE=false; [ "$DETECTED_CLAUDE" = true ] && [ -z "${DISABLED_ENVS[claude]:-}" ] && LINK_CLAUDE=true
     local LINK_GEMINI=false; [ "$DETECTED_GEMINI" = true ] && [ -z "${DISABLED_ENVS[gemini]:-}" ] && LINK_GEMINI=true
@@ -985,65 +1024,8 @@ run_sync() {
     local LINK_COPILOT=false; [ "$DETECTED_COPILOT" = true ] && [ -z "${DISABLED_ENVS[copilot]:-}" ] && LINK_COPILOT=true
     local LINK_CODEX=false; [ "$DETECTED_CODEX" = true ] && [ -z "${DISABLED_ENVS[codex]:-}" ] && LINK_CODEX=true
 
-    # 4. Setup Global Pointers
-    echo "--- Step 4: Setting Up Global Environment Pointers ---"
-    if [ "$DETECTED_CLAUDE" = true ]; then
-        if [ "$LINK_CLAUDE" = true ]; then
-            safe_append_pointer "${HOME}/.claude/CLAUDE.md"
-        else
-            echo "  [SKIPPED] Claude Code (disabled in configuration)"
-        fi
-    fi
-    if [ "$DETECTED_GEMINI" = true ]; then
-        if [ "$LINK_GEMINI" = true ]; then
-            safe_append_pointer "${HOME}/.gemini/GEMINI.md"
-        else
-            echo "  [SKIPPED] Google Antigravity (disabled in configuration)"
-        fi
-    fi
-    if [ "$DETECTED_CURSOR" = true ]; then
-        if [ "$LINK_CURSOR" = true ]; then
-            if [ -d "${HOME}/.cursor" ]; then
-                mkdir -p "${HOME}/.cursor/rules"
-                safe_append_pointer "${HOME}/.cursor/rules/haws.mdc"
-            else
-                safe_append_pointer "${HOME}/.cursorrules"
-            fi
-        else
-            echo "  [SKIPPED] Cursor IDE (disabled in configuration)"
-        fi
-    fi
-    if [ "$DETECTED_COPILOT" = true ]; then
-        if [ "$LINK_COPILOT" = true ]; then
-            if [ -d "${HOME}/.copilot" ]; then
-                safe_append_pointer "${HOME}/.copilot/copilot-instructions.md"
-            elif [ -d "${HOME}/.config/github-copilot" ]; then
-                safe_append_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
-            fi
-        else
-            echo "  [SKIPPED] GitHub Copilot (disabled in configuration)"
-        fi
-    fi
-    if [ "$DETECTED_CODEX" = true ]; then
-        if [ "$LINK_CODEX" = true ]; then
-            if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
-                safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
-            elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
-                safe_append_pointer "${HOME}/.codex/AGENTS.md"
-            elif [ -d "${HOME}/.codex" ]; then
-                safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
-            fi
-        else
-            echo "  [SKIPPED] OpenAI Codex (disabled in configuration)"
-        fi
-    fi
-    echo ""
-
-    # 5. Link Skills
-    echo "--- Step 5: Linking Skills ---"
-    echo "  [*] Discovering and linking active skills to AI environments, please wait..."
-    declare -A PROCESSED_SKILLS
-
+    # Collect Active Skills and Agents
+    declare -A ACTIVE_SKILL_DIRS
     local MANIFEST_FILE="${HOME}/.haws_manifest"
     local PREV_MANIFEST="${HOME}/.haws_manifest.prev"
     local TMP_MANIFEST="${HOME}/.haws_manifest.tmp"
@@ -1053,7 +1035,7 @@ run_sync() {
     rm -f "${TMP_MANIFEST}"
     touch "${TMP_MANIFEST}"
 
-    find_and_link_skills() {
+    collect_active_skills() {
         local base_dir="$1"
         [ ! -d "${base_dir}" ] && return 0
 
@@ -1076,199 +1058,279 @@ run_sync() {
             # Check dynamic disabled list
             [ -n "${DISABLED_SKILLS[${skill_name}]:-}" ] && continue
 
-            # Filter rules per user specification:
+            # Filter rules per specification
             [[ "${skill_dir}" =~ \.openclaw ]] && continue
             [[ "${skill_dir}" =~ planning-with-files ]] && [[ ! "${skill_dir}" =~ \.agents/skills ]] && continue
             [[ "${skill_dir}" =~ ui-ux-pro-max ]] && [[ ! "${skill_dir}" =~ \.claude/skills ]] && continue
             [[ "${skill_dir}" =~ caveman/plugins ]] && continue
-
-            # 1. planning-with-files: keep only primary 'planning-with-files'
             [[ "${skill_name}" == "pi-planning-with-files" ]] && continue
             [[ "${skill_name}" =~ ^planning-with-files- ]] && continue
-
-            # 2. taste-skill: exclude v1, keep only v2
             [[ "${skill_name}" == "design-taste-frontend-v1" ]] && continue
 
-            if [ -n "${skill_name}" ] && [ -z "${PROCESSED_SKILLS[${skill_name}]:-}" ]; then
-                PROCESSED_SKILLS[${skill_name}]=1
+            if [ -n "${skill_name}" ] && [ -z "${ACTIVE_SKILL_DIRS[${skill_name}]:-}" ]; then
+                ACTIVE_SKILL_DIRS[${skill_name}]="${skill_dir}"
                 echo "skill:${skill_name}" >> "${TMP_MANIFEST}"
-
-                if [ "$LINK_CLAUDE" = true ]; then
-                    safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${skill_name}" "Claude Skill [${skill_name}]"
-                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
-                fi
-                if [ "$LINK_CODEX" = true ]; then
-                    safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${skill_name}" "Codex Skill [${skill_name}]"
-                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
-                fi
             fi
         done < <(find "${base_dir}" -type f \( -name "SKILL.md" -o -name "skill.md" \) -print0 2>/dev/null || true)
     }
 
-    [ -d "${SOURCE_DIR}/skills/custom" ] && find_and_link_skills "${SOURCE_DIR}/skills/custom"
-    find_and_link_skills "${SOURCE_DIR}/skills"
-    [ -d "${SOURCE_DIR}/skills/packs/ponytail/skills" ] && find_and_link_skills "${SOURCE_DIR}/skills/packs/ponytail/skills"
+    [ -d "${SOURCE_DIR}/skills/custom" ] && collect_active_skills "${SOURCE_DIR}/skills/custom"
+    collect_active_skills "${SOURCE_DIR}/skills"
+    [ -d "${SOURCE_DIR}/skills/packs/ponytail/skills" ] && collect_active_skills "${SOURCE_DIR}/skills/packs/ponytail/skills"
 
-    if [ "$LINK_GEMINI" = true ]; then
-        local target_json="${HOME}/.gemini/config/skills.json"
-        mkdir -p "${HOME}/.gemini/config"
-
-        # Clean legacy broken junctions on Windows so Antigravity doesn't choke
-        if [ "$IS_WINDOWS" = true ] && [ -d "${HOME}/.gemini/config/skills" ]; then
-            for junc in "${HOME}/.gemini/config/skills"/*; do
-                if [ -d "${junc}" ] || [ -L "${junc}" ]; then
-                    rm -rf "${junc}" 2>/dev/null || true
-                fi
-            done
-        fi
-
-        local win_source="${SOURCE_DIR}"
-        command -v cygpath &>/dev/null && win_source="$(cygpath -m "${SOURCE_DIR}")"
-
-        local json_entries=()
-        declare -A seen_dirs
-
-        # 1. Custom skills (respect disabled)
-        if [ -d "${SOURCE_DIR}/skills/custom" ]; then
-            for cdir in "${SOURCE_DIR}/skills/custom"/*; do
-                [ ! -d "$cdir" ] && continue
-                local cname="$(basename "$cdir")"
-                [ -n "${DISABLED_SKILLS[$cname]:-}" ] && continue
-                local win_cdir="$cdir"
-                command -v cygpath &>/dev/null && win_cdir="$(cygpath -m "$cdir")"
-                seen_dirs["$win_cdir"]=1
-                json_entries+=("    { \"path\": \"${win_cdir}\" }")
-            done
-        fi
-
-        # 2. Standalone & Packs
-        while IFS= read -r f; do
-            [ -z "${f}" ] && continue
-            local sdir="$(dirname "${f}")"
-            local pdir="$(dirname "${sdir}")"
-            local sname=""
-            while IFS= read -r line; do
-                if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
-                    sname="${BASH_REMATCH[1]}"
-                    sname="${sname%"${sname##*[![:space:]]}"}"
-                    break
-                fi
-            done < "${f}"
-            [ -z "${sname}" ] && sname="$(basename "${sdir}")"
-
-            # Check if disabled
-            [ -n "${DISABLED_SKILLS[$sname]:-}" ] && continue
-            [[ "${sname}" == "pi-planning-with-files" ]] && continue
-            [[ "${sname}" =~ ^planning-with-files- ]] && continue
-            [[ "${sname}" == "design-taste-frontend-v1" ]] && continue
-
-            # Structural rules
-            [[ "${sdir}" =~ \.openclaw ]] && continue
-            [[ "${sdir}" =~ planning-with-files ]] && [[ ! "${sdir}" =~ \.agents/skills ]] && continue
-            [[ "${sdir}" =~ ui-ux-pro-max ]] && [[ ! "${sdir}" =~ \.claude/skills ]] && continue
-            [[ "${sdir}" =~ caveman/plugins ]] && continue
-
-            local target_dir="${pdir}"
-            if [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ]; then
-                target_dir="${sdir}"
-            fi
-            [[ "${sdir}" =~ skills/standalone/ ]] && target_dir="${sdir}"
-
-            local win_target="${target_dir}"
-            command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
-            if [ -z "${seen_dirs[${win_target}]:-}" ]; then
-                seen_dirs["${win_target}"]=1
-                json_entries+=("    { \"path\": \"${win_target}\" }")
-            fi
-        done < <(find "${SOURCE_DIR}/skills/packs" "${SOURCE_DIR}/skills/standalone" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
-
-        {
-            echo "{"
-            echo '  "entries": ['
-            local total_entries=${#json_entries[@]}
-            for ((i=0; i<total_entries; i++)); do
-                local comma=","
-                [ "$i" -eq $((total_entries - 1)) ] && comma=""
-                echo "${json_entries[$i]}${comma}"
-            done
-            echo '  ]'
-            echo "}"
-        } > "${target_json}"
-        echo "  [CONFIG] Antigravity Native Config (Dynamic): ${target_json}"
-        local active_count=${#PROCESSED_SKILLS[@]}
-        SKILLS_LINKED=$((SKILLS_LINKED + active_count))
-    fi
-    local active_count=${#PROCESSED_SKILLS[@]}
-    echo "  [✓] Skills linking complete (${active_count} active skills linked)."
-    echo ""
-
-    # 6. Link Subagents
-    echo "--- Step 6: Linking Subagents ---"
-    if [ "$LINK_CODEX" = true ]; then
-        run_codex_agents install --source "${SOURCE_DIR}"
-        AGENTS_LINKED=$((AGENTS_LINKED + 5))
-    fi
+    # Collect agents into manifest
     if [ -d "${SOURCE_DIR}/agents" ]; then
         for agent_file in "${SOURCE_DIR}/agents"/*.md; do
-            if [ -f "${agent_file}" ]; then
-                local agent_name
-                agent_name="$(basename "${agent_file}" .md)"
-                echo "agent:${agent_name}" >> "${TMP_MANIFEST}"
-
-                if [ "$LINK_CLAUDE" = true ]; then
-                    safe_link_file "${agent_file}" "${HOME}/.claude/agents/${agent_name}.md" "Claude Agent [${agent_name}]"
-                    AGENTS_LINKED=$((AGENTS_LINKED + 1))
-                fi
-                if [ "$LINK_GEMINI" = true ]; then
-                    local gemini_agent_dir="${HOME}/.gemini/config/agents/${agent_name}"
-                    mkdir -p "${gemini_agent_dir}"
-                    safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]"
-                    AGENTS_LINKED=$((AGENTS_LINKED + 1))
-                fi
-            fi
+            [ -f "${agent_file}" ] && echo "agent:$(basename "${agent_file}" .md)" >> "${TMP_MANIFEST}"
         done
     fi
-    echo ""
 
-    # 7. Link Custom Commands
-    echo "--- Step 7: Linking Slash Commands for Custom Skills ---"
-    local COMMANDS_LINKED=0
-    if [ "$LINK_CLAUDE" = true ] && [ -d "${SOURCE_DIR}/skills/custom" ]; then
-        mkdir -p "${HOME}/.claude/commands"
-        for custom_skill_dir in "${SOURCE_DIR}/skills/custom"/*; do
-            if [ -d "${custom_skill_dir}" ]; then
-                local custom_name
-                custom_name="$(basename "${custom_skill_dir}")"
-                local cmd_target="${HOME}/.claude/commands/${custom_name}.md"
-                local desc="Execute the custom ${custom_name} skill workflow."
+    # Step 3: Universal AI Environment Reconciliation
+    echo "--- Step 3: Reconciling AI Environments (Universal Lifecycle) ---"
 
-                for sfile in "${custom_skill_dir}/SKILL.md" "${custom_skill_dir}/skill.md"; do
-                    if [ -f "$sfile" ]; then
-                        local extracted_desc
-                        extracted_desc=$(grep -E '^[[:space:]]*description:[[:space:]]*' "$sfile" | head -n 1 | sed -E 's/^[[:space:]]*description:[[:space:]]*["'"'"']?([^"'"'"'#\r\n]+)["'"'"']?.*$/\1/' | tr -d '\r\n' | xargs 2>/dev/null || true)
-                        [ -n "$extracted_desc" ] && desc="$extracted_desc"
-                        break
-                    fi
-                done
-
-                cat <<EOF > "${cmd_target}"
+    # Claude Code
+    if [ "$DETECTED_CLAUDE" = true ]; then
+        if [ "$LINK_CLAUDE" = true ]; then
+            safe_append_pointer "${HOME}/.claude/CLAUDE.md"
+            mkdir -p "${HOME}/.claude/skills" "${HOME}/.claude/agents" "${HOME}/.claude/commands"
+            local claude_count=0
+            for sname in "${!ACTIVE_SKILL_DIRS[@]}"; do
+                safe_link_dir "${ACTIVE_SKILL_DIRS[${sname}]}" "${HOME}/.claude/skills/${sname}" "Claude Skill [${sname}]"
+                claude_count=$((claude_count + 1))
+            done
+            for agent_file in "${SOURCE_DIR}/agents"/*.md; do
+                if [ -f "${agent_file}" ]; then
+                    local aname="$(basename "${agent_file}")"
+                    safe_link_file "${agent_file}" "${HOME}/.claude/agents/${aname}" "Claude Agent [${aname%.md}]"
+                    AGENTS_LINKED=$((AGENTS_LINKED + 1))
+                fi
+            done
+            if [ -d "${SOURCE_DIR}/skills/custom" ]; then
+                for custom_skill_dir in "${SOURCE_DIR}/skills/custom"/*; do
+                    if [ -d "${custom_skill_dir}" ]; then
+                        local custom_name="$(basename "${custom_skill_dir}")"
+                        local cmd_target="${HOME}/.claude/commands/${custom_name}.md"
+                        local desc="Execute the custom ${custom_name} skill workflow."
+                        for sfile in "${custom_skill_dir}/SKILL.md" "${custom_skill_dir}/skill.md"; do
+                            if [ -f "$sfile" ]; then
+                                local extracted_desc
+                                extracted_desc=$(grep -E '^[[:space:]]*description:[[:space:]]*' "$sfile" | head -n 1 | sed -E 's/^[[:space:]]*description:[[:space:]]*["'"'"']?([^"'"'"'#\r\n]+)["'"'"']?.*$/\1/' | tr -d '\r\n' | xargs 2>/dev/null || true)
+                                [ -n "$extracted_desc" ] && desc="$extracted_desc"
+                                break
+                            fi
+                        done
+                        cat <<EOF > "${cmd_target}"
 ---
 description: ${desc}
 ---
 Execute the ${custom_name} skill workflow defined in ~/.claude/skills/${custom_name}/SKILL.md.
 EOF
-                echo "  [COMMAND] Claude Slash Command [/${custom_name}]: ${cmd_target}"
-                COMMANDS_LINKED=$((COMMANDS_LINKED + 1))
+                        COMMANDS_LINKED=$((COMMANDS_LINKED + 1))
+                    fi
+                done
             fi
-        done
+            SKILLS_LINKED=$((SKILLS_LINKED + claude_count))
+            echo "  [*] Claude Code: [APPLIED] (Pointer, ${claude_count} skills, 5 agents & slash commands ready)"
+        else
+            safe_remove_pointer "${HOME}/.claude/CLAUDE.md"
+            for sname in "${!ACTIVE_SKILL_DIRS[@]}"; do
+                [ -e "${HOME}/.claude/skills/${sname}" ] || [ -L "${HOME}/.claude/skills/${sname}" ] && rm -rf "${HOME}/.claude/skills/${sname}"
+            done
+            for agent_file in "${SOURCE_DIR}/agents"/*.md; do
+                [ -f "${agent_file}" ] && rm -f "${HOME}/.claude/agents/$(basename "${agent_file}")"
+            done
+            if [ -d "${SOURCE_DIR}/skills/custom" ]; then
+                for custom_skill_dir in "${SOURCE_DIR}/skills/custom"/*; do
+                    [ -d "${custom_skill_dir}" ] && rm -f "${HOME}/.claude/commands/$(basename "${custom_skill_dir}").md"
+                done
+            fi
+            echo "  [*] Claude Code: [PRUNED] (Pointers, skills & agents cleanly detached)"
+        fi
+    fi
+
+    # Google Antigravity
+    if [ "$DETECTED_GEMINI" = true ]; then
+        if [ "$LINK_GEMINI" = true ]; then
+            safe_append_pointer "${HOME}/.gemini/GEMINI.md"
+            local target_json="${HOME}/.gemini/config/skills.json"
+            mkdir -p "${HOME}/.gemini/config"
+
+            # Clean legacy broken junctions on Windows
+            if [ "$IS_WINDOWS" = true ] && [ -d "${HOME}/.gemini/config/skills" ]; then
+                for junc in "${HOME}/.gemini/config/skills"/*; do
+                    if [ -d "${junc}" ] || [ -L "${junc}" ]; then
+                        rm -rf "${junc}" 2>/dev/null || true
+                    fi
+                done
+            fi
+
+            local win_source="${SOURCE_DIR}"
+            command -v cygpath &>/dev/null && win_source="$(cygpath -m "${SOURCE_DIR}")"
+            local json_entries=()
+            declare -A seen_dirs
+
+            if [ -d "${SOURCE_DIR}/skills/custom" ]; then
+                for cdir in "${SOURCE_DIR}/skills/custom"/*; do
+                    [ ! -d "$cdir" ] && continue
+                    local cname="$(basename "$cdir")"
+                    [ -n "${DISABLED_SKILLS[$cname]:-}" ] && continue
+                    local win_cdir="$cdir"
+                    command -v cygpath &>/dev/null && win_cdir="$(cygpath -m "$cdir")"
+                    seen_dirs["$win_cdir"]=1
+                    json_entries+=("    { \"path\": \"${win_cdir}\" }")
+                done
+            fi
+
+            while IFS= read -r f; do
+                [ -z "${f}" ] && continue
+                local sdir="$(dirname "${f}")"
+                local pdir="$(dirname "${sdir}")"
+                local sname=""
+                while IFS= read -r line; do
+                    if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
+                        sname="${BASH_REMATCH[1]}"
+                        sname="${sname%"${sname##*[![:space:]]}"}"
+                        break
+                    fi
+                done < "${f}"
+                [ -z "${sname}" ] && sname="$(basename "${sdir}")"
+                [ -n "${DISABLED_SKILLS[$sname]:-}" ] && continue
+                [[ "${sname}" == "pi-planning-with-files" ]] && continue
+                [[ "${sname}" =~ ^planning-with-files- ]] && continue
+                [[ "${sname}" == "design-taste-frontend-v1" ]] && continue
+                [[ "${sdir}" =~ \.openclaw ]] && continue
+                [[ "${sdir}" =~ planning-with-files ]] && [[ ! "${sdir}" =~ \.agents/skills ]] && continue
+                [[ "${sdir}" =~ ui-ux-pro-max ]] && [[ ! "${sdir}" =~ \.claude/skills ]] && continue
+                [[ "${sdir}" =~ caveman/plugins ]] && continue
+
+                local target_dir="${pdir}"
+                if [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ]; then
+                    target_dir="${sdir}"
+                fi
+                [[ "${sdir}" =~ skills/standalone/ ]] && target_dir="${sdir}"
+
+                local win_target="${target_dir}"
+                command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
+                if [ -z "${seen_dirs[${win_target}]:-}" ]; then
+                    seen_dirs["${win_target}"]=1
+                    json_entries+=("    { \"path\": \"${win_target}\" }")
+                fi
+            done < <(find "${SOURCE_DIR}/skills/packs" "${SOURCE_DIR}/skills/standalone" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
+
+            {
+                echo "{"
+                echo '  "entries": ['
+                local total_entries=${#json_entries[@]}
+                for ((i=0; i<total_entries; i++)); do
+                    local comma=","
+                    [ "$i" -eq $((total_entries - 1)) ] && comma=""
+                    echo "${json_entries[$i]}${comma}"
+                done
+                echo '  ]'
+                echo "}"
+            } > "${target_json}"
+
+            for agent_file in "${SOURCE_DIR}/agents"/*.md; do
+                if [ -f "${agent_file}" ]; then
+                    local agent_name="$(basename "${agent_file}" .md)"
+                    local gemini_agent_dir="${HOME}/.gemini/config/agents/${agent_name}"
+                    mkdir -p "${gemini_agent_dir}"
+                    safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]"
+                    AGENTS_LINKED=$((AGENTS_LINKED + 1))
+                fi
+            done
+            SKILLS_LINKED=$((SKILLS_LINKED + ${#ACTIVE_SKILL_DIRS[@]}))
+            echo "  [*] Google Antigravity: [APPLIED] (Pointer, ${#ACTIVE_SKILL_DIRS[@]} skills in skills.json, 5 agents ready)"
+        else
+            safe_remove_pointer "${HOME}/.gemini/GEMINI.md"
+            local target_json="${HOME}/.gemini/config/skills.json"
+            if [ -f "${target_json}" ]; then
+                local rem_entries
+                rem_entries="$(grep -v 'Human-AI-Working-Standard' "${target_json}" 2>/dev/null | grep '"path"' || true)"
+                if [ -z "${rem_entries}" ]; then
+                    rm -f "${target_json}"
+                fi
+            fi
+            for agent_file in "${SOURCE_DIR}/agents"/*.md; do
+                if [ -f "${agent_file}" ]; then
+                    local aname="$(basename "${agent_file}" .md)"
+                    rm -rf "${HOME}/.gemini/config/agents/${aname}"
+                fi
+            done
+            echo "  [*] Google Antigravity: [PRUNED] (Pointers, skills.json & agents cleanly detached)"
+        fi
+    fi
+
+    # Cursor IDE
+    if [ "$DETECTED_CURSOR" = true ]; then
+        if [ "$LINK_CURSOR" = true ]; then
+            if [ -d "${HOME}/.cursor" ]; then
+                mkdir -p "${HOME}/.cursor/rules"
+                safe_append_pointer "${HOME}/.cursor/rules/haws.mdc"
+            else
+                safe_append_pointer "${HOME}/.cursorrules"
+            fi
+            echo "  [*] Cursor IDE: [APPLIED] (Rules pointer active)"
+        else
+            safe_remove_pointer "${HOME}/.cursor/rules/haws.mdc"
+            safe_remove_pointer "${HOME}/.cursorrules"
+            echo "  [*] Cursor IDE: [PRUNED] (Rules pointer cleanly detached)"
+        fi
+    fi
+
+    # GitHub Copilot
+    if [ "$DETECTED_COPILOT" = true ]; then
+        if [ "$LINK_COPILOT" = true ]; then
+            if [ -d "${HOME}/.copilot" ]; then
+                safe_append_pointer "${HOME}/.copilot/copilot-instructions.md"
+            elif [ -d "${HOME}/.config/github-copilot" ]; then
+                safe_append_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
+            fi
+            echo "  [*] GitHub Copilot: [APPLIED] (Instructions pointer active)"
+        else
+            safe_remove_pointer "${HOME}/.copilot/copilot-instructions.md"
+            safe_remove_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
+            echo "  [*] GitHub Copilot: [PRUNED] (Instructions pointer cleanly detached)"
+        fi
+    fi
+
+    # OpenAI Codex
+    if [ "$DETECTED_CODEX" = true ]; then
+        if [ "$LINK_CODEX" = true ]; then
+            if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+            elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.md"
+            elif [ -d "${HOME}/.codex" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+            fi
+            run_codex_agents install --source "${SOURCE_DIR}"
+            AGENTS_LINKED=$((AGENTS_LINKED + 5))
+            local codex_count=0
+            mkdir -p "${HOME}/.agents/skills"
+            for sname in "${!ACTIVE_SKILL_DIRS[@]}"; do
+                safe_link_dir "${ACTIVE_SKILL_DIRS[${sname}]}" "${HOME}/.agents/skills/${sname}" "Codex Skill [${sname}]"
+                codex_count=$((codex_count + 1))
+            done
+            SKILLS_LINKED=$((SKILLS_LINKED + codex_count))
+            echo "  [*] OpenAI Codex: [APPLIED] (Pointer, 5 native agents, ${codex_count} skills ready)"
+        else
+            safe_remove_pointer "${HOME}/.codex/AGENTS.override.md"
+            safe_remove_pointer "${HOME}/.codex/AGENTS.md"
+            run_codex_agents uninstall
+            for sname in "${!ACTIVE_SKILL_DIRS[@]}"; do
+                [ -e "${HOME}/.agents/skills/${sname}" ] || [ -L "${HOME}/.agents/skills/${sname}" ] && rm -rf "${HOME}/.agents/skills/${sname}"
+            done
+            echo "  [*] OpenAI Codex: [PRUNED] (Pointer, subagents & skills cleanly detached)"
+        fi
     fi
     echo ""
 
     # Commit Manifest
     [ -f "${TMP_MANIFEST}" ] && mv -f "${TMP_MANIFEST}" "${MANIFEST_FILE}"
 
-    # 8. Auto-Pruning
-    echo "--- Step 8: Auto-Pruning Orphaned & Removed Items ---"
+    # 4. Auto-Pruning
+    echo "--- Step 4: Auto-Pruning Orphaned & Removed Items ---"
     local PRUNED=0
     if [ -f "${PREV_MANIFEST}" ] && [ -f "${MANIFEST_FILE}" ]; then
         while IFS= read -r entry || [ -n "$entry" ]; do
@@ -1279,6 +1341,7 @@ EOF
                 if [ "$type" = "skill" ]; then
                     [ -e "${HOME}/.claude/skills/${name}" ] && rm -rf "${HOME}/.claude/skills/${name}" && PRUNED=$((PRUNED + 1))
                     [ -e "${HOME}/.gemini/config/skills/${name}" ] && rm -rf "${HOME}/.gemini/config/skills/${name}" && PRUNED=$((PRUNED + 1))
+                    [ -e "${HOME}/.agents/skills/${name}" ] && rm -rf "${HOME}/.agents/skills/${name}" && PRUNED=$((PRUNED + 1))
                     echo "  [PRUNED] Skill [${name}]"
                 elif [ "$type" = "agent" ]; then
                     [ -e "${HOME}/.claude/agents/${name}.md" ] && rm -f "${HOME}/.claude/agents/${name}.md" && PRUNED=$((PRUNED + 1))
@@ -1297,12 +1360,11 @@ EOF
     if [ "$CLEAN_UNMANAGED" = true ] && [ -f "${MANIFEST_FILE}" ]; then
         echo "  [*] Purging unmanaged foreign skills (--clean requested)..."
         local UNMANAGED_PURGED=0
-        for dir in "${HOME}/.gemini/config/skills" "${HOME}/.claude/skills"; do
+        for dir in "${HOME}/.gemini/config/skills" "${HOME}/.claude/skills" "${HOME}/.agents/skills"; do
             if [ -d "${dir}" ]; then
                 for s in "${dir}"/*; do
                     [ ! -d "${s}" ] && [ ! -L "${s}" ] && continue
-                    local sname
-                    sname="$(basename "${s}")"
+                    local sname="$(basename "${s}")"
                     if ! grep -q "^skill:${sname}$" "${MANIFEST_FILE}" 2>/dev/null; then
                         rm -rf "${s}" 2>/dev/null || true
                         echo "  [PURGED UNMANAGED] Skill [${sname}]"
@@ -1319,7 +1381,7 @@ EOF
     fi
     echo ""
 
-    # 9. Summary & Fast Status
+    # 5. Summary
     echo "=== Summary ==="
     echo "Global Rules  : ${RULES_LINKED}"
     echo "Skills Linked : ${SKILLS_LINKED}"
@@ -2702,23 +2764,52 @@ run_setup() {
     load_disabled_skills
     load_disabled_environments
 
+    # Flow 1: First-time setup welcome prompt
+    if [ ! -f "${HOME}/.haws_manifest" ]; then
+        echo "============================================================="
+        echo "            Welcome to HAWS (Human-AI Working Standard)"
+        echo "============================================================="
+        echo "Recommended Defaults:"
+        echo "  • AI Environments : All detected (Claude, Antigravity, etc.)"
+        echo "  • Active Skills   : Standard Curated Kit (127 skills)"
+        echo "  • Second Brain    : Local-Only Mode (Private on this machine)"
+        echo ""
+        local first_run_choice=""
+        read -r -p "Press [Enter] for Quick Setup (Recommended) or [C] to Customize: " first_run_choice || first_run_choice=""
+        first_run_choice="$(echo "${first_run_choice}" | tr -d ' \r\n')"
+        if [ "${first_run_choice}" != "c" ] && [ "${first_run_choice}" != "C" ]; then
+            echo ""
+            echo "  [*] Running Quick Setup with recommended defaults..."
+            DISABLED_ENVS=()
+            save_disabled_environments
+            run_sync "$@"
+            run_hooks install
+            run_doctor
+            return 0
+        fi
+        echo ""
+    fi
+
+    # Flow 3: Flat Setup & System Control Center [0-8]
     while true; do
         echo "============================================================="
-        echo "             HAWS Automated Setup & Configuration"
+        echo "             HAWS Setup & System Control Center"
         echo "============================================================="
         echo "Choose setup mode or configuration task:"
         echo ""
-        echo "  1) Standard Setup             (Default — install standard curated skills & link all AI)"
-        echo "  2) Add Git Repository         (Add Git repo URLs until 'done')"
-        echo "  3) Remove Git Repository      (Select repos to remove with confirmation)"
-        echo "  4) Configure Active Skills    (Single skills & packs category selection)"
-        echo "  5) Configure AI Environments  (Choose active AI providers: Claude, Gemini, etc.)"
-        echo "  6) Personal Second Brain      (Connect Private GitHub Cloud / Local)"
-        echo "  0) Save & Exit (Run Sync)     (Sync configuration to AI & complete setup)"
+        echo "  1) Standard Quick Setup        (Default — ติดตั้ง standard kit & เชื่อมโยง AI ทั้งหมด)"
+        echo "  2) Add Git Repository          (ใส่ URL เพื่อเพิ่ม Submodule สกิลใหม่)"
+        echo "  3) Remove Git Repository       (เลือก Submodule สกิลที่จะลบออกพร้อมยืนยัน)"
+        echo "  4) Direct .gitmodules Editor   (เปิดดูหรือแก้ไขไฟล์ .gitmodules โดยตรง)"
+        echo "  5) Configure Active Skills     (เลือกเปิด/ปิด สกิลเดี่ยวหรือยกแพ็ก)"
+        echo "  6) Configure AI Environments   (เลือกเปิด/ปิด AI: Claude, Antigravity, Cursor, ฯลฯ)"
+        echo "  7) Personal Second Brain       (สลับโหมด Cloud GitHub / Local-Only)"
+        echo "  8) Uninstall HAWS              (ถอนการติดตั้ง ลบกฎและลิ้งก์ทั้งหมดอย่างปลอดภัย)"
+        echo "  0) Save & Exit (Run Sync)      (บันทึกการตั้งค่าทั้งหมด ซิงค์ไปยัง AI และเสร็จสิ้น)"
         echo ""
 
         local choice="1"
-        read -r -p "Enter selection [0-6] (Default: 1): " choice || choice="1"
+        read -r -p "Enter selection [0-8] (Default: 1): " choice || choice="1"
         choice="$(echo "${choice}" | tr -d ' \r\n')"
         [ -z "${choice}" ] && choice="1"
 
@@ -2740,12 +2831,15 @@ run_setup() {
                 run_remove_git_repo
                 ;;
             4)
-                run_configure_skills
+                run_edit_gitmodules
                 ;;
             5)
-                run_configure_environments
+                run_configure_skills
                 ;;
             6)
+                run_configure_environments
+                ;;
+            7)
                 echo ""
                 echo "--- Second Brain Configuration ---"
                 echo "  1) Connect Private GitHub Cloud"
@@ -2763,6 +2857,10 @@ run_setup() {
                     run_user status
                 fi
                 ;;
+            8)
+                run_uninstall
+                return 0
+                ;;
             0|q|quit|exit)
                 echo ""
                 echo "  [*] Saving configuration and synchronizing..."
@@ -2772,7 +2870,7 @@ run_setup() {
                 return 0
                 ;;
             *)
-                echo "  [ERROR] Invalid selection '${choice}'. Please enter 0-6."
+                echo "  [ERROR] Invalid selection '${choice}'. Please enter 0-8."
                 ;;
         esac
     done

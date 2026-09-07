@@ -52,7 +52,7 @@ if errorlevel 1 (
 echo.
 
 echo ================================================================
-echo   [PASS] 100%% Green - Setup Completed!
+echo   [PASS] Setup Completed Successfully!
 echo ================================================================
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause

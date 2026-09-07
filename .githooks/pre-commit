@@ -4,7 +4,7 @@
 # Ensures:
 # 1. Zero uncommitted/leaked .env secrets or API keys
 # 2. Universal LF Line Endings (no Windows CRLF corruption)
-# 3. 100% Green pass on HAWS System Doctor diagnostics
+# 3. Zero-failure pass on HAWS System Doctor diagnostics
 # ==============================================================================
 set -e
 
@@ -57,5 +57,5 @@ else
   echo "[SKIP] haws.sh not found in current directory."
 fi
 
-echo "=== [HAWS PRE-COMMIT HOOK] All Quality Gates PASSED (100% Green) ==="
+echo "=== [HAWS PRE-COMMIT HOOK] All Quality Gates PASSED (System Verified) ==="
 exit 0
