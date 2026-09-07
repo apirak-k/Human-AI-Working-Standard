@@ -116,7 +116,13 @@ print(len(unique_skills))
     fi
     echo "Second Brain Mode         : [${brain_mode}]"
 
-    if [ "${claude_count}" -eq "${manifest_count}" ] && [ "${gemini_count}" -eq "${manifest_count}" ]; then
+    load_disabled_environments
+    local exp_claude=0
+    local exp_gemini=0
+    [ -d "${HOME}/.claude" ] && [ -z "${DISABLED_ENVS[claude]:-}" ] && exp_claude="${manifest_count}"
+    [ -d "${HOME}/.gemini" ] && [ -z "${DISABLED_ENVS[gemini]:-}" ] && exp_gemini="${manifest_count}"
+
+    if [ "${claude_count}" -eq "${exp_claude}" ] && [ "${gemini_count}" -eq "${exp_gemini}" ]; then
         echo "Sync Health Status        : [100% HEALTHY & IN SYNC]"
     elif [ "${total_unmanaged}" -gt 0 ]; then
         echo "Sync Health Status        : [UNMANAGED SKILLS DETECTED - Run './haws.sh sync --clean']"
@@ -687,94 +693,49 @@ sync_submodules_selective() {
 
     for sub_rel in "${sub_paths[@]}"; do
         local sub_full="${source_dir}/${sub_rel}"
-        local sub_name="$(basename "${sub_rel}")"
+        local sub_name="${sub_rel##*/}"
 
-        # 1. Discover skills belonging to this submodule
-        local sub_skills=()
-        local active_skills=()
-        local active_skill_rel_paths=()
-
-        if [ -d "${sub_full}" ]; then
-            while IFS= read -r sf; do
-                [ -z "$sf" ] && continue
-                local sn
-                sn="$(extract_skill_name "$sf")"
-                [ -z "$sn" ] && sn="$(basename "$(dirname "$sf")")"
-                sub_skills+=("$sn")
-                if [ -z "${DISABLED_SKILLS[$sn]:-}" ]; then
-                    active_skills+=("$sn")
-                    local rel_sf="${sf#${sub_full}/}"
-                    active_skill_rel_paths+=("$(dirname "${rel_sf}")")
-                fi
-            done < <(find "${sub_full}" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
-        fi
-
-        # Fallback if uninitialized
-        if [ ${#sub_skills[@]} -eq 0 ]; then
-            sub_skills+=("${sub_name}")
-            if [ -z "${DISABLED_SKILLS[$sub_name]:-}" ]; then
-                active_skills+=("${sub_name}")
-                active_skill_rel_paths+=(".")
-            fi
-        fi
-
-        # 2. Rule: If ALL skills in this submodule are disabled, SKIP completely!
-        if [ ${#active_skills[@]} -eq 0 ]; then
-            echo "  [SKIP] Submodule '${sub_rel}' (all skills disabled, 0 KB)"
+        # 1. Check if whole submodule/pack is disabled
+        if [ -n "${DISABLED_SKILLS[$sub_name]:-}" ] || [ -n "${DISABLED_SKILLS[$sub_rel]:-}" ]; then
+            echo "  [SKIP] Submodule '${sub_rel}' (disabled, 0 KB)"
             continue
         fi
 
-        # 3. If submodule not initialized or missing HEAD commit
-        if [ ! -d "${sub_full}/.git" ] && [ ! -f "${sub_full}/.git" ] || ! git -C "${sub_full}" rev-parse --verify HEAD &>/dev/null; then
-            if [ "$check_remote" = true ]; then
-                echo "  [*] Initializing active submodule '${sub_rel}' (3s limit)..."
-                if ! timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update --init --depth 1 "${sub_rel}" 2>/dev/null; then
-                    echo "  [INFO] Submodule '${sub_rel}' init timed out (3s limit). Proceeding in offline mode."
-                fi
+        # 2. Local-First Fast Path: Zero network, instant filesystem verification (<0.01s)
+        if [ "$check_remote" = false ]; then
+            if [ -e "${sub_full}/.git" ]; then
+                echo "  [✓] Submodule '${sub_rel}': Ready (local-first)."
             else
                 echo "  [INFO] Submodule '${sub_rel}' is not initialized locally. (Run './haws.sh sync --update' to fetch)"
             fi
             continue
         fi
 
-        # 4. Check if enabled skills have remote changes (ONLY if check_remote=true)
-        if [ "$check_remote" = true ]; then
-            echo "  [*] Querying remote updates for '${sub_rel}' (3s timeout)..."
-            if timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${sub_full}" fetch --quiet origin 2>/dev/null; then
-                local remote_head=""
-                remote_head="$(git -C "${sub_full}" rev-parse FETCH_HEAD 2>/dev/null || true)"
-                local local_head=""
-                local_head="$(git -C "${sub_full}" rev-parse HEAD 2>/dev/null || true)"
+        # 3. If submodule not initialized or missing HEAD commit (Remote Mode)
+        if [ ! -e "${sub_full}/.git" ] || ! git -C "${sub_full}" rev-parse --verify HEAD &>/dev/null; then
+            echo "  [*] Initializing active submodule '${sub_rel}' (3s limit)..."
+            if ! timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update --init --depth 1 "${sub_rel}" 2>/dev/null; then
+                echo "  [INFO] Submodule '${sub_rel}' init timed out (3s limit). Proceeding in offline mode."
+            fi
+            continue
+        fi
 
-                if [ -n "${remote_head}" ] && [ "${remote_head}" != "${local_head}" ]; then
-                    local has_active_diff=0
-                    for act_path in "${active_skill_rel_paths[@]}"; do
-                        local diff_files=""
-                        if [ "${act_path}" = "." ]; then
-                            diff_files="$(git -C "${sub_full}" diff --name-only HEAD FETCH_HEAD 2>/dev/null || true)"
-                        else
-                            diff_files="$(git -C "${sub_full}" diff --name-only HEAD FETCH_HEAD -- "${act_path}" 2>/dev/null || true)"
-                        fi
-                        if [ -n "${diff_files}" ]; then
-                            has_active_diff=1
-                            break
-                        fi
-                    done
+        # 4. Check remote updates (Remote Mode)
+        echo "  [*] Querying remote updates for '${sub_rel}' (3s timeout)..."
+        if timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${sub_full}" fetch --quiet origin 2>/dev/null; then
+            local remote_head=""
+            remote_head="$(git -C "${sub_full}" rev-parse FETCH_HEAD 2>/dev/null || true)"
+            local local_head=""
+            local_head="$(git -C "${sub_full}" rev-parse HEAD 2>/dev/null || true)"
 
-                    if [ "$has_active_diff" -eq 1 ]; then
-                        echo "  [*] Submodule '${sub_rel}': Changes detected in active skills. Updating..."
-                        git -C "${sub_full}" merge --ff-only FETCH_HEAD 2>/dev/null || git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update -- "${sub_rel}" 2>/dev/null || true
-                    else
-                        echo "  [✓] Submodule '${sub_rel}': Active skill(s) unchanged (${#active_skills[@]} active). Skipped."
-                    fi
-                else
-                    echo "  [✓] Submodule '${sub_rel}': Up to date."
-                fi
+            if [ -n "${remote_head}" ] && [ "${remote_head}" != "${local_head}" ]; then
+                echo "  [*] Submodule '${sub_rel}': Changes detected. Updating..."
+                git -C "${sub_full}" merge --ff-only FETCH_HEAD 2>/dev/null || timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update -- "${sub_rel}" 2>/dev/null || true
             else
-                echo "  [✓] Submodule '${sub_rel}': Ready (offline / local-first)."
+                echo "  [✓] Submodule '${sub_rel}': Up to date."
             fi
         else
-            echo "  [✓] Submodule '${sub_rel}': Ready (${#active_skills[@]} active skills, local-first)."
+            echo "  [✓] Submodule '${sub_rel}': Ready (offline / local-first)."
         fi
     done
     echo "  [✓] Embedded submodules ready."
@@ -802,7 +763,13 @@ run_sync() {
         git -C "${SOURCE_DIR}" config http.lowSpeedLimit 1000 2>/dev/null || true
         git -C "${SOURCE_DIR}" config http.lowSpeedTime 4 2>/dev/null || true
     fi
-    export GIT_CONFIG_PARAMETERS="'http.connecttimeout=3' 'http.lowspeedlimit=1000' 'http.lowspeedtime=4'"
+    export GIT_CONFIG_COUNT=3
+    export GIT_CONFIG_KEY_0="http.connectTimeout"
+    export GIT_CONFIG_VALUE_0="3"
+    export GIT_CONFIG_KEY_1="http.lowSpeedLimit"
+    export GIT_CONFIG_VALUE_1="1000"
+    export GIT_CONFIG_KEY_2="http.lowSpeedTime"
+    export GIT_CONFIG_VALUE_2="4"
 
     # 0. Sync Personal Second Brain if connected
     echo "--- Step 0: Syncing Personal Second Brain ---"
@@ -814,7 +781,7 @@ run_sync() {
     if [ -e "${SOURCE_DIR}/.git" ]; then
         echo "--- Step 1: Checking Remote Repository (3s Timeout) ---"
         echo "  [*] Checking for HAWS updates from GitHub (3s limit)..."
-        if ! git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${SOURCE_DIR}" fetch --quiet origin main 2>/dev/null; then
+        if ! timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${SOURCE_DIR}" fetch --quiet origin main 2>/dev/null; then
             echo "  [INFO] Remote connection timed out (3s). Proceeding in fast offline/local-first mode."
         else
             local INCOMING_COMMITS
@@ -1094,8 +1061,7 @@ run_sync() {
         [ ! -d "${base_dir}" ] && return 0
 
         while IFS= read -r -d '' skill_file; do
-            local skill_dir
-            skill_dir="$(dirname "${skill_file}")"
+            local skill_dir="${skill_file%/*}"
 
             local skill_name=""
             if [ -f "${skill_file}" ]; then
@@ -1107,7 +1073,7 @@ run_sync() {
                     fi
                 done < "${skill_file}"
             fi
-            [ -z "${skill_name}" ] && skill_name="$(basename "${skill_dir}")"
+            [ -z "${skill_name}" ] && skill_name="${skill_dir##*/}"
 
             # Check dynamic disabled list
             [ -n "${DISABLED_SKILLS[${skill_name}]:-}" ] && continue
@@ -1135,7 +1101,10 @@ run_sync() {
     # Collect agents into manifest
     if [ -d "${SOURCE_DIR}/agents" ]; then
         for agent_file in "${SOURCE_DIR}/agents"/*.md; do
-            [ -f "${agent_file}" ] && echo "agent:$(basename "${agent_file}" .md)" >> "${TMP_MANIFEST}"
+            if [ -f "${agent_file}" ]; then
+                local aname="${agent_file##*/}"
+                echo "agent:${aname%.md}" >> "${TMP_MANIFEST}"
+            fi
         done
     fi
 
@@ -1189,15 +1158,29 @@ EOF
         else
             echo "  [*] Detaching Claude Code..."
             safe_remove_pointer "${HOME}/.claude/CLAUDE.md"
-            for sname in "${!ACTIVE_SKILL_DIRS[@]}"; do
-                [ -e "${HOME}/.claude/skills/${sname}" ] || [ -L "${HOME}/.claude/skills/${sname}" ] && rm -rf "${HOME}/.claude/skills/${sname}"
-            done
+            if [ -d "${HOME}/.claude/skills" ]; then
+                for f in "${HOME}/.claude/skills"/*; do
+                    if [ -L "$f" ] || [ -d "$f" ]; then
+                        local tgt
+                        tgt="$(readlink "$f" 2>/dev/null || true)"
+                        if [[ "$tgt" =~ Human-AI-Working-Standard ]] || [ ! -e "$f" ]; then
+                            rm -rf "$f"
+                        fi
+                    fi
+                done
+            fi
             for agent_file in "${SOURCE_DIR}/agents"/*.md; do
-                [ -f "${agent_file}" ] && rm -f "${HOME}/.claude/agents/$(basename "${agent_file}")"
+                if [ -f "${agent_file}" ]; then
+                    local aname="${agent_file##*/}"
+                    rm -f "${HOME}/.claude/agents/${aname}"
+                fi
             done
             if [ -d "${SOURCE_DIR}/skills/custom" ]; then
                 for custom_skill_dir in "${SOURCE_DIR}/skills/custom"/*; do
-                    [ -d "${custom_skill_dir}" ] && rm -f "${HOME}/.claude/commands/$(basename "${custom_skill_dir}").md"
+                    if [ -d "${custom_skill_dir}" ]; then
+                        local cname="${custom_skill_dir##*/}"
+                        rm -f "${HOME}/.claude/commands/${cname}.md"
+                    fi
                 done
             fi
             echo "  [✓] Claude Code: [PRUNED] (Pointers, skills & agents cleanly detached)"
@@ -1229,7 +1212,7 @@ EOF
             if [ -d "${SOURCE_DIR}/skills/custom" ]; then
                 for cdir in "${SOURCE_DIR}/skills/custom"/*; do
                     [ ! -d "$cdir" ] && continue
-                    local cname="$(basename "$cdir")"
+                    local cname="${cdir##*/}"
                     [ -n "${DISABLED_SKILLS[$cname]:-}" ] && continue
                     local win_cdir
                     win_cdir="$(to_mixed_path "$cdir")"
@@ -1240,8 +1223,8 @@ EOF
 
             while IFS= read -r f; do
                 [ -z "${f}" ] && continue
-                local sdir="$(dirname "${f}")"
-                local pdir="$(dirname "${sdir}")"
+                local sdir="${f%/*}"
+                local pdir="${sdir%/*}"
                 local sname=""
                 while IFS= read -r line; do
                     if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
@@ -1250,7 +1233,7 @@ EOF
                         break
                     fi
                 done < "${f}"
-                [ -z "${sname}" ] && sname="$(basename "${sdir}")"
+                [ -z "${sname}" ] && sname="${sdir##*/}"
                 [ -n "${DISABLED_SKILLS[$sname]:-}" ] && continue
                 [[ "${sname}" == "pi-planning-with-files" ]] && continue
                 [[ "${sname}" =~ ^planning-with-files- ]] && continue
@@ -1261,7 +1244,8 @@ EOF
                 [[ "${sdir}" =~ caveman/plugins ]] && continue
 
                 local target_dir="${pdir}"
-                if [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ]; then
+                local pdir_base="${pdir##*/}"
+                if [ -d "${pdir}/skills" ] && [ "${pdir_base}" != "skills" ]; then
                     target_dir="${sdir}"
                 fi
                 [[ "${sdir}" =~ skills/standalone/ ]] && target_dir="${sdir}"
@@ -1289,7 +1273,8 @@ EOF
 
             for agent_file in "${SOURCE_DIR}/agents"/*.md; do
                 if [ -f "${agent_file}" ]; then
-                    local agent_name="$(basename "${agent_file}" .md)"
+                    local aname="${agent_file##*/}"
+                    local agent_name="${aname%.md}"
                     local gemini_agent_dir="${HOME}/.gemini/config/agents/${agent_name}"
                     mkdir -p "${gemini_agent_dir}"
                     safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]"
@@ -2537,14 +2522,14 @@ EOF
             if [ -n "${current_remote}" ]; then
                 echo "  [*] Syncing Second Brain with ${current_remote} (3s timeout)..."
                 git -C "${brain_dir}" add . 2>/dev/null || true
-                git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet 2>/dev/null || true
-                if ! git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
+                git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet &>/dev/null || true
+                if ! timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
                     echo "  [*] Symmetrical reconciliation required..."
                     git -C "${brain_dir}" rebase --abort 2>/dev/null || true
-                    git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" fetch origin main --quiet 2>/dev/null || true
+                    timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" fetch origin main --quiet 2>/dev/null || true
                     symmetrical_merge_secondbrain "${brain_dir}"
                 fi
-                git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
+                timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
                 echo "  [✓] Second Brain in sync."
             else
                 echo "  [i] Second Brain is Local-Only. (Connect cloud anytime via './haws.sh user connect <url>')"
@@ -2637,7 +2622,7 @@ run_uninstall() {
         echo ""
         read -r -p "Are you sure you want to proceed with uninstallation? (y/N): " confirm_uninstall
         if [[ ! "${confirm_uninstall:-}" =~ ^[Yy]$ ]]; then
-            echo "[ABORTED] Uninstallation cancelled by user."
+            echo "  [INFO] Uninstallation cancelled."
             return 1
         fi
         echo ""
@@ -2869,15 +2854,15 @@ run_setup() {
         echo "============================================================="
         echo "Choose setup mode or configuration task:"
         echo ""
-        echo "  0) Save & Exit / Run Sync      (Default [Enter] — บันทึกการตั้งค่าทั้งหมด ซิงค์ไปยัง AI และเสร็จสิ้น)"
-        echo "  1) Reset Standard Setup        (รีเซ็ตค่าเริ่มต้น — ติดตั้ง standard kit & เปิดใช้งาน AI ทั้งหมด)"
-        echo "  2) Add Git Repository          (ใส่ URL เพื่อเพิ่ม Submodule สกิลใหม่)"
-        echo "  3) Remove Git Repository       (เลือก Submodule สกิลที่จะลบออกพร้อมยืนยัน)"
-        echo "  4) Direct .gitmodules Editor   (เปิดดูหรือแก้ไขไฟล์ .gitmodules โดยตรง)"
-        echo "  5) Configure Active Skills     (เลือกเปิด/ปิด สกิลเดี่ยวหรือยกแพ็ก)"
-        echo "  6) Configure AI Environments   (เลือกเปิด/ปิด AI: Claude, Antigravity, Cursor, ฯลฯ)"
-        echo "  7) Personal Second Brain       (สลับโหมด Cloud GitHub / Local-Only)"
-        echo "  8) Uninstall HAWS              (ถอนการติดตั้ง ลบกฎและลิ้งก์ทั้งหมดอย่างปลอดภัย)"
+        echo "  0) Save & Exit / Run Sync      (Default [Enter] - Save settings, sync to AI, and finish)"
+        echo "  1) Reset Standard Setup        (Reset defaults - Install standard kit & enable all AI)"
+        echo "  2) Add Git Repository          (Add new skill submodule by URL)"
+        echo "  3) Remove Git Repository       (Select and remove skill submodule)"
+        echo "  4) Direct .gitmodules Editor   (View or edit .gitmodules directly)"
+        echo "  5) Configure Active Skills     (Toggle individual skills or packs)"
+        echo "  6) Configure AI Environments   (Toggle AI: Claude, Antigravity, Cursor, Copilot, Codex)"
+        echo "  7) Personal Second Brain       (Switch Cloud GitHub / Local-Only mode)"
+        echo "  8) Uninstall HAWS              (Safely remove pointers and links)"
         echo ""
 
         local choice="0"
