@@ -555,7 +555,10 @@ load_disabled_skills() {
     [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/config/skills.disabled" ] && dfile="${SCRIPT_DIR}/config/skills.disabled"
     if [ -f "${dfile}" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
-            line="$(echo "$line" | tr -d '\r\0' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
+            line="${line%$'\r'}"
+            line="${line%%#*}"
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%"${line##*[![:space:]]}"}"
             [ -n "$line" ] && DISABLED_SKILLS["$line"]=1
         done < "${dfile}"
     fi
@@ -579,7 +582,10 @@ load_disabled_environments() {
     [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/environments.disabled" ] && dfile="${SCRIPT_DIR}/environments.disabled"
     if [ -f "${dfile}" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
-            line="$(echo "$line" | tr -d '\r\0' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
+            line="${line%$'\r'}"
+            line="${line%%#*}"
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%"${line##*[![:space:]]}"}"
             [ -n "$line" ] && DISABLED_ENVS["$line"]=1
         done < "${dfile}"
     fi
@@ -660,8 +666,15 @@ run_configure_environments() {
 
 sync_submodules_selective() {
     local source_dir="$1"
+    local check_remote="${2:-false}"
     [ ! -f "${source_dir}/.gitmodules" ] && return 0
-    echo "--- Step 2: Syncing Embedded Skill Submodules (Smart Path-Aware) ---"
+    echo "--- Step 2: Syncing Embedded Skill Submodules ---"
+
+    if [ "$check_remote" = false ]; then
+        echo "  [*] Fast Local-First Mode: Checking local skill submodules..."
+    else
+        echo "  [*] Remote Update Mode: Checking submodules for upstream changes..."
+    fi
 
     local sub_paths=()
     while IFS= read -r line; do
@@ -711,48 +724,57 @@ sync_submodules_selective() {
             continue
         fi
 
-        # 3. If submodule not initialized or missing HEAD commit, try shallow clone with 3s timeout
+        # 3. If submodule not initialized or missing HEAD commit
         if [ ! -d "${sub_full}/.git" ] && [ ! -f "${sub_full}/.git" ] || ! git -C "${sub_full}" rev-parse --verify HEAD &>/dev/null; then
-            echo "  [*] Initializing active submodule '${sub_rel}'..."
-            if ! git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update --init --depth 1 "${sub_rel}" 2>/dev/null; then
-                echo "  [INFO] Submodule '${sub_rel}' init timed out (3s). Proceeding in offline mode."
+            if [ "$check_remote" = true ]; then
+                echo "  [*] Initializing active submodule '${sub_rel}' (3s limit)..."
+                if ! timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update --init --depth 1 "${sub_rel}" 2>/dev/null; then
+                    echo "  [INFO] Submodule '${sub_rel}' init timed out (3s limit). Proceeding in offline mode."
+                fi
+            else
+                echo "  [INFO] Submodule '${sub_rel}' is not initialized locally. (Run './haws.sh sync --update' to fetch)"
             fi
             continue
         fi
 
-        # 4. Check if enabled skills have remote changes (Smart Path-Diff with 3s timeout)
-        if git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${sub_full}" fetch --quiet origin 2>/dev/null; then
-            local remote_head=""
-            remote_head="$(git -C "${sub_full}" rev-parse FETCH_HEAD 2>/dev/null || true)"
-            local local_head=""
-            local_head="$(git -C "${sub_full}" rev-parse HEAD 2>/dev/null || true)"
+        # 4. Check if enabled skills have remote changes (ONLY if check_remote=true)
+        if [ "$check_remote" = true ]; then
+            echo "  [*] Querying remote updates for '${sub_rel}' (3s timeout)..."
+            if timeout 3 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${sub_full}" fetch --quiet origin 2>/dev/null; then
+                local remote_head=""
+                remote_head="$(git -C "${sub_full}" rev-parse FETCH_HEAD 2>/dev/null || true)"
+                local local_head=""
+                local_head="$(git -C "${sub_full}" rev-parse HEAD 2>/dev/null || true)"
 
-            if [ -n "${remote_head}" ] && [ "${remote_head}" != "${local_head}" ]; then
-                local has_active_diff=0
-                for act_path in "${active_skill_rel_paths[@]}"; do
-                    local diff_files=""
-                    if [ "${act_path}" = "." ]; then
-                        diff_files="$(git -C "${sub_full}" diff --name-only HEAD FETCH_HEAD 2>/dev/null || true)"
+                if [ -n "${remote_head}" ] && [ "${remote_head}" != "${local_head}" ]; then
+                    local has_active_diff=0
+                    for act_path in "${active_skill_rel_paths[@]}"; do
+                        local diff_files=""
+                        if [ "${act_path}" = "." ]; then
+                            diff_files="$(git -C "${sub_full}" diff --name-only HEAD FETCH_HEAD 2>/dev/null || true)"
+                        else
+                            diff_files="$(git -C "${sub_full}" diff --name-only HEAD FETCH_HEAD -- "${act_path}" 2>/dev/null || true)"
+                        fi
+                        if [ -n "${diff_files}" ]; then
+                            has_active_diff=1
+                            break
+                        fi
+                    done
+
+                    if [ "$has_active_diff" -eq 1 ]; then
+                        echo "  [*] Submodule '${sub_rel}': Changes detected in active skills. Updating..."
+                        git -C "${sub_full}" merge --ff-only FETCH_HEAD 2>/dev/null || git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update -- "${sub_rel}" 2>/dev/null || true
                     else
-                        diff_files="$(git -C "${sub_full}" diff --name-only HEAD FETCH_HEAD -- "${act_path}" 2>/dev/null || true)"
+                        echo "  [✓] Submodule '${sub_rel}': Active skill(s) unchanged (${#active_skills[@]} active). Skipped."
                     fi
-                    if [ -n "${diff_files}" ]; then
-                        has_active_diff=1
-                        break
-                    fi
-                done
-
-                if [ "$has_active_diff" -eq 1 ]; then
-                    echo "  [*] Submodule '${sub_rel}': Changes detected in active skills. Updating..."
-                    git -C "${sub_full}" merge --ff-only FETCH_HEAD 2>/dev/null || git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${source_dir}" submodule update -- "${sub_rel}" 2>/dev/null || true
                 else
-                    echo "  [✓] Submodule '${sub_rel}': Active skill(s) unchanged (${#active_skills[@]} active). Skipped."
+                    echo "  [✓] Submodule '${sub_rel}': Up to date."
                 fi
             else
-                echo "  [✓] Submodule '${sub_rel}': Up to date."
+                echo "  [✓] Submodule '${sub_rel}': Ready (offline / local-first)."
             fi
         else
-            echo "  [✓] Submodule '${sub_rel}': Ready (offline / local-first)."
+            echo "  [✓] Submodule '${sub_rel}': Ready (${#active_skills[@]} active skills, local-first)."
         fi
     done
     echo "  [✓] Embedded submodules ready."
@@ -761,8 +783,10 @@ sync_submodules_selective() {
 
 run_sync() {
     local CLEAN_UNMANAGED=false
+    local CHECK_REMOTE_SUBMODULES=false
     for opt in "$@"; do
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
+        { [ "$opt" = "--update" ] || [ "$opt" = "-u" ] || [ "$opt" = "update" ]; } && CHECK_REMOTE_SUBMODULES=true
     done
     shift || true
     echo "=== HAWS Universal Command Engine (All-in-One Sync) ==="
@@ -782,12 +806,14 @@ run_sync() {
 
     # 0. Sync Personal Second Brain if connected
     echo "--- Step 0: Syncing Personal Second Brain ---"
+    echo "  [*] Connecting to Second Brain repository..."
     run_user sync
     echo ""
 
     # 1. Check Git Remote (3s Timeout)
     if [ -e "${SOURCE_DIR}/.git" ]; then
         echo "--- Step 1: Checking Remote Repository (3s Timeout) ---"
+        echo "  [*] Checking for HAWS updates from GitHub (3s limit)..."
         if ! git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${SOURCE_DIR}" fetch --quiet origin main 2>/dev/null; then
             echo "  [INFO] Remote connection timed out (3s). Proceeding in fast offline/local-first mode."
         else
@@ -797,6 +823,7 @@ run_sync() {
                 echo "  [*] Remote updates detected (${INCOMING_COMMITS} new commits). Pulling..."
                 git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${SOURCE_DIR}" pull --quiet || true
                 echo "  [✓] Repository updated to latest commit."
+                CHECK_REMOTE_SUBMODULES=true
             else
                 echo "  [✓] Local repository is up to date."
             fi
@@ -805,7 +832,7 @@ run_sync() {
     fi
 
     # 2. Sync Submodules (Smart Path-Aware)
-    sync_submodules_selective "${SOURCE_DIR}"
+    sync_submodules_selective "${SOURCE_DIR}" "${CHECK_REMOTE_SUBMODULES}"
 
     # 3. Detect AI Environments
     echo "--- Step 3: Detecting AI Environments ---"
@@ -839,11 +866,43 @@ run_sync() {
         IS_WINDOWS=true
     fi
 
+    to_win_path() {
+        local p="$1"
+        if [[ "$p" =~ ^/([a-zA-Z])/(.*)$ ]]; then
+            local drive="${BASH_REMATCH[1]}"
+            local rest="${BASH_REMATCH[2]}"
+            echo "${drive^^}:\\${rest//\//\\}"
+        elif command -v cygpath &>/dev/null; then
+            cygpath -w "$p"
+        else
+            echo "${p//\//\\}"
+        fi
+    }
+
+    to_mixed_path() {
+        local p="$1"
+        if [[ "$p" =~ ^/([a-zA-Z])/(.*)$ ]]; then
+            local drive="${BASH_REMATCH[1]}"
+            local rest="${BASH_REMATCH[2]}"
+            echo "${drive^^}:/${rest}"
+        elif command -v cygpath &>/dev/null; then
+            cygpath -m "$p"
+        else
+            echo "$p"
+        fi
+    }
+
     safe_link_file() {
         local src="$1"
         local dest="$2"
         local label="$3"
         mkdir -p "$(dirname "${dest}")"
+
+        # Fast path: same inode / hardlink (0 processes spawned, microsecond test)
+        if [ -f "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+            return 0
+        fi
 
         if [ -L "${dest}" ]; then
             local current_target
@@ -854,7 +913,7 @@ run_sync() {
             fi
             rm -f "${dest}"
         elif [ -f "${dest}" ]; then
-            if diff -q --strip-trailing-cr "${src}" "${dest}" >/dev/null 2>&1; then
+            if cmp -s "${src}" "${dest}"; then
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -863,8 +922,8 @@ run_sync() {
 
         if [ "$IS_WINDOWS" = true ]; then
             local win_src win_dest
-            win_src="$(cygpath -w "${src}")"
-            win_dest="$(cygpath -w "${dest}")"
+            win_src="$(to_win_path "${src}")"
+            win_dest="$(to_win_path "${dest}")"
             rm -f "${dest}" 2>/dev/null || true
             if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" >/dev/null 2>&1; then
                 echo "  [HARDLINK] ${label}: ${dest} -> ${src}"
@@ -888,21 +947,23 @@ run_sync() {
         dest_dir="$(dirname "${dest}")"
         mkdir -p "${dest_dir}"
 
-        if [ "$IS_WINDOWS" = true ]; then
-            local win_src win_dest
-            win_src="$(cygpath -w "${src}")"
-            win_dest="$(cygpath -w "${dest}")"
+        # Fast path: check if destination marker matches src marker (junction / same file)
+        local src_marker="${src}/SKILL.md"
+        [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
+        local dest_marker="${dest}/SKILL.md"
+        [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
 
-            # Check if skill marker already exists and matches to avoid redundant process spawning
-            local src_marker="${src}/SKILL.md"
-            [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
-            local dest_marker="${dest}/SKILL.md"
-            [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
-
-            if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] && diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
+        if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ]; then
+            if [ "${src_marker}" -ef "${dest_marker}" ] || cmp -s "${src_marker}" "${dest_marker}"; then
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
+        fi
+
+        if [ "$IS_WINDOWS" = true ]; then
+            local win_src win_dest
+            win_src="$(to_win_path "${src}")"
+            win_dest="$(to_win_path "${dest}")"
 
             if [ -d "${dest}" ] || [ -L "${dest}" ]; then
                 MSYS2_ARG_CONV_EXCL="*" cmd.exe /c rmdir "${win_dest}" >/dev/null 2>&1 || rm -rf "${dest}" 2>/dev/null || true
@@ -923,12 +984,7 @@ run_sync() {
             fi
             rm -f "${dest}"
         elif [ -d "${dest}" ]; then
-            local src_marker="${src}/SKILL.md"
-            [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
-            local dest_marker="${dest}/SKILL.md"
-            [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
-
-            if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] && diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
+            if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] && cmp -s "${src_marker}" "${dest_marker}"; then
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             else
@@ -1089,6 +1145,7 @@ run_sync() {
     # Claude Code
     if [ "$DETECTED_CLAUDE" = true ]; then
         if [ "$LINK_CLAUDE" = true ]; then
+            echo "  [*] Reconciling Claude Code (${#ACTIVE_SKILL_DIRS[@]} skills, 5 agents)..."
             safe_append_pointer "${HOME}/.claude/CLAUDE.md"
             mkdir -p "${HOME}/.claude/skills" "${HOME}/.claude/agents" "${HOME}/.claude/commands"
             local claude_count=0
@@ -1128,8 +1185,9 @@ EOF
                 done
             fi
             SKILLS_LINKED=$((SKILLS_LINKED + claude_count))
-            echo "  [*] Claude Code: [APPLIED] (Pointer, ${claude_count} skills, 5 agents & slash commands ready)"
+            echo "  [✓] Claude Code: [APPLIED] (Pointer, ${claude_count} skills, 5 agents & slash commands ready)"
         else
+            echo "  [*] Detaching Claude Code..."
             safe_remove_pointer "${HOME}/.claude/CLAUDE.md"
             for sname in "${!ACTIVE_SKILL_DIRS[@]}"; do
                 [ -e "${HOME}/.claude/skills/${sname}" ] || [ -L "${HOME}/.claude/skills/${sname}" ] && rm -rf "${HOME}/.claude/skills/${sname}"
@@ -1142,13 +1200,14 @@ EOF
                     [ -d "${custom_skill_dir}" ] && rm -f "${HOME}/.claude/commands/$(basename "${custom_skill_dir}").md"
                 done
             fi
-            echo "  [*] Claude Code: [PRUNED] (Pointers, skills & agents cleanly detached)"
+            echo "  [✓] Claude Code: [PRUNED] (Pointers, skills & agents cleanly detached)"
         fi
     fi
 
     # Google Antigravity
     if [ "$DETECTED_GEMINI" = true ]; then
         if [ "$LINK_GEMINI" = true ]; then
+            echo "  [*] Reconciling Google Antigravity (skills.json & agents)..."
             safe_append_pointer "${HOME}/.gemini/GEMINI.md"
             local target_json="${HOME}/.gemini/config/skills.json"
             mkdir -p "${HOME}/.gemini/config"
@@ -1163,7 +1222,7 @@ EOF
             fi
 
             local win_source="${SOURCE_DIR}"
-            command -v cygpath &>/dev/null && win_source="$(cygpath -m "${SOURCE_DIR}")"
+            win_source="$(to_mixed_path "${SOURCE_DIR}")"
             local json_entries=()
             declare -A seen_dirs
 
@@ -1172,8 +1231,8 @@ EOF
                     [ ! -d "$cdir" ] && continue
                     local cname="$(basename "$cdir")"
                     [ -n "${DISABLED_SKILLS[$cname]:-}" ] && continue
-                    local win_cdir="$cdir"
-                    command -v cygpath &>/dev/null && win_cdir="$(cygpath -m "$cdir")"
+                    local win_cdir
+                    win_cdir="$(to_mixed_path "$cdir")"
                     seen_dirs["$win_cdir"]=1
                     json_entries+=("    { \"path\": \"${win_cdir}\" }")
                 done
@@ -1207,8 +1266,8 @@ EOF
                 fi
                 [[ "${sdir}" =~ skills/standalone/ ]] && target_dir="${sdir}"
 
-                local win_target="${target_dir}"
-                command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
+                local win_target
+                win_target="$(to_mixed_path "${target_dir}")"
                 if [ -z "${seen_dirs[${win_target}]:-}" ]; then
                     seen_dirs["${win_target}"]=1
                     json_entries+=("    { \"path\": \"${win_target}\" }")
@@ -1238,8 +1297,9 @@ EOF
                 fi
             done
             SKILLS_LINKED=$((SKILLS_LINKED + ${#ACTIVE_SKILL_DIRS[@]}))
-            echo "  [*] Google Antigravity: [APPLIED] (Pointer, ${#ACTIVE_SKILL_DIRS[@]} skills in skills.json, 5 agents ready)"
+            echo "  [✓] Google Antigravity: [APPLIED] (Pointer, ${#ACTIVE_SKILL_DIRS[@]} skills in skills.json, 5 agents ready)"
         else
+            echo "  [*] Detaching Google Antigravity..."
             safe_remove_pointer "${HOME}/.gemini/GEMINI.md"
             local target_json="${HOME}/.gemini/config/skills.json"
             if [ -f "${target_json}" ]; then
@@ -1255,50 +1315,55 @@ EOF
                     rm -rf "${HOME}/.gemini/config/agents/${aname}"
                 fi
             done
-            echo "  [*] Google Antigravity: [PRUNED] (Pointers, skills.json & agents cleanly detached)"
+            echo "  [✓] Google Antigravity: [PRUNED] (Pointers, skills.json & agents cleanly detached)"
         fi
     fi
 
     # Cursor IDE
     if [ "$DETECTED_CURSOR" = true ]; then
         if [ "$LINK_CURSOR" = true ]; then
+            echo "  [*] Reconciling Cursor IDE rules..."
             if [ -d "${HOME}/.cursor" ]; then
                 mkdir -p "${HOME}/.cursor/rules"
                 safe_append_pointer "${HOME}/.cursor/rules/haws.mdc"
             else
                 safe_append_pointer "${HOME}/.cursorrules"
             fi
-            echo "  [*] Cursor IDE: [APPLIED] (Rules pointer active)"
+            echo "  [✓] Cursor IDE: [APPLIED] (Rules pointer active)"
         else
+            echo "  [*] Detaching Cursor IDE..."
             safe_remove_pointer "${HOME}/.cursor/rules/haws.mdc"
             safe_remove_pointer "${HOME}/.cursorrules"
-            echo "  [*] Cursor IDE: [PRUNED] (Rules pointer cleanly detached)"
+            echo "  [✓] Cursor IDE: [PRUNED] (Rules pointer cleanly detached)"
         fi
     fi
 
     # GitHub Copilot
     if [ "$DETECTED_COPILOT" = true ]; then
         if [ "$LINK_COPILOT" = true ]; then
+            echo "  [*] Reconciling GitHub Copilot instructions..."
             if [ -d "${HOME}/.copilot" ]; then
                 safe_append_pointer "${HOME}/.copilot/copilot-instructions.md"
             elif [ -d "${HOME}/.config/github-copilot" ]; then
                 safe_append_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
             fi
-            echo "  [*] GitHub Copilot: [APPLIED] (Instructions pointer active)"
+            echo "  [✓] GitHub Copilot: [APPLIED] (Instructions pointer active)"
         else
+            echo "  [*] Detaching GitHub Copilot..."
             safe_remove_pointer "${HOME}/.copilot/copilot-instructions.md"
             safe_remove_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
-            echo "  [*] GitHub Copilot: [PRUNED] (Instructions pointer cleanly detached)"
+            echo "  [✓] GitHub Copilot: [PRUNED] (Instructions pointer cleanly detached)"
         fi
     fi
 
     # OpenAI Codex
     if [ "$DETECTED_CODEX" = true ]; then
         if [ "$LINK_CODEX" = true ]; then
+            echo "  [*] Reconciling OpenAI Codex (${#ACTIVE_SKILL_DIRS[@]} skills, 5 native agents)..."
             if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
                 safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
             elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
-                safe_append_pointer "${HOME}/.codex/AGENTS.md"
+                safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
             elif [ -d "${HOME}/.codex" ]; then
                 safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
             fi
@@ -1311,15 +1376,16 @@ EOF
                 codex_count=$((codex_count + 1))
             done
             SKILLS_LINKED=$((SKILLS_LINKED + codex_count))
-            echo "  [*] OpenAI Codex: [APPLIED] (Pointer, 5 native agents, ${codex_count} skills ready)"
+            echo "  [✓] OpenAI Codex: [APPLIED] (Pointer, 5 native agents, ${codex_count} skills ready)"
         else
+            echo "  [*] Detaching OpenAI Codex..."
             safe_remove_pointer "${HOME}/.codex/AGENTS.override.md"
             safe_remove_pointer "${HOME}/.codex/AGENTS.md"
             run_codex_agents uninstall
             for sname in "${!ACTIVE_SKILL_DIRS[@]}"; do
                 [ -e "${HOME}/.agents/skills/${sname}" ] || [ -L "${HOME}/.agents/skills/${sname}" ] && rm -rf "${HOME}/.agents/skills/${sname}"
             done
-            echo "  [*] OpenAI Codex: [PRUNED] (Pointer, subagents & skills cleanly detached)"
+            echo "  [✓] OpenAI Codex: [PRUNED] (Pointer, subagents & skills cleanly detached)"
         fi
     fi
     echo ""
@@ -1329,11 +1395,19 @@ EOF
 
     # 4. Auto-Pruning
     echo "--- Step 4: Auto-Pruning Orphaned & Removed Items ---"
+    echo "  [*] Scanning for orphaned or unmanaged items..."
     local PRUNED=0
-    if [ -f "${PREV_MANIFEST}" ] && [ -f "${MANIFEST_FILE}" ]; then
+    declare -A curr_manifest_entries
+    if [ -f "${MANIFEST_FILE}" ]; then
+        while IFS= read -r centry || [ -n "$centry" ]; do
+            [ -n "$centry" ] && curr_manifest_entries["$centry"]=1
+        done < "${MANIFEST_FILE}"
+    fi
+
+    if [ -f "${PREV_MANIFEST}" ]; then
         while IFS= read -r entry || [ -n "$entry" ]; do
             [ -z "$entry" ] && continue
-            if ! grep -q -F "${entry}" "${MANIFEST_FILE}" 2>/dev/null; then
+            if [ -z "${curr_manifest_entries[${entry}]:-}" ]; then
                 local type="${entry%%:*}"
                 local name="${entry#*:}"
                 if [ "$type" = "skill" ]; then
@@ -1363,7 +1437,7 @@ EOF
                 for s in "${dir}"/*; do
                     [ ! -d "${s}" ] && [ ! -L "${s}" ] && continue
                     local sname="$(basename "${s}")"
-                    if ! grep -q "^skill:${sname}$" "${MANIFEST_FILE}" 2>/dev/null; then
+                    if [ -z "${curr_manifest_entries[skill:${sname}]:-}" ]; then
                         rm -rf "${s}" 2>/dev/null || true
                         echo "  [PURGED UNMANAGED] Skill [${sname}]"
                         UNMANAGED_PURGED=$((UNMANAGED_PURGED + 1))
@@ -2410,11 +2484,11 @@ EOF
                 git -C "${brain_dir}" remote add origin "${repo_url}"
             fi
 
-            echo "  [*] Testing remote connection..."
-            if git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
+            echo "  [*] Testing remote connection (3s timeout)..."
+            if git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
                 echo "  [*] Remote repo has existing history. Performing Symmetrical Merge..."
                 symmetrical_merge_secondbrain "${brain_dir}"
-                if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
+                if git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
                     echo "  [✓] Second brain synced and connected to ${repo_url}"
                 else
                     echo "  [ERROR] Failed to push merged updates to ${repo_url}."
@@ -2422,10 +2496,10 @@ EOF
                 fi
             else
                 echo "  [*] Remote is fresh or initial push. Publishing local brain..."
-                if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
+                if git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
                     echo "  [✓] Local second brain pushed to cloud ${repo_url}"
                 else
-                    echo "  [ERROR] Failed to connect or push to ${repo_url}."
+                    echo "  [ERROR] Failed to connect or push to ${repo_url} (3s timeout reached or auth error)."
                     echo "  [INFO] Please check URL, network, or GitHub SSH/Token authentication."
                     git -C "${brain_dir}" remote remove origin 2>/dev/null || true
                     return 1
@@ -2461,16 +2535,16 @@ EOF
             local current_remote
             current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
             if [ -n "${current_remote}" ]; then
-                echo "  [*] Syncing Second Brain with ${current_remote}..."
+                echo "  [*] Syncing Second Brain with ${current_remote} (3s timeout)..."
                 git -C "${brain_dir}" add . 2>/dev/null || true
                 git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet 2>/dev/null || true
-                if ! git -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
+                if ! git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
                     echo "  [*] Symmetrical reconciliation required..."
                     git -C "${brain_dir}" rebase --abort 2>/dev/null || true
-                    git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null || true
+                    git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" fetch origin main --quiet 2>/dev/null || true
                     symmetrical_merge_secondbrain "${brain_dir}"
                 fi
-                git -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
+                git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
                 echo "  [✓] Second Brain in sync."
             else
                 echo "  [i] Second Brain is Local-Only. (Connect cloud anytime via './haws.sh user connect <url>')"
@@ -2795,7 +2869,8 @@ run_setup() {
         echo "============================================================="
         echo "Choose setup mode or configuration task:"
         echo ""
-        echo "  1) Standard Quick Setup        (Default — ติดตั้ง standard kit & เชื่อมโยง AI ทั้งหมด)"
+        echo "  0) Save & Exit / Run Sync      (Default [Enter] — บันทึกการตั้งค่าทั้งหมด ซิงค์ไปยัง AI และเสร็จสิ้น)"
+        echo "  1) Reset Standard Setup        (รีเซ็ตค่าเริ่มต้น — ติดตั้ง standard kit & เปิดใช้งาน AI ทั้งหมด)"
         echo "  2) Add Git Repository          (ใส่ URL เพื่อเพิ่ม Submodule สกิลใหม่)"
         echo "  3) Remove Git Repository       (เลือก Submodule สกิลที่จะลบออกพร้อมยืนยัน)"
         echo "  4) Direct .gitmodules Editor   (เปิดดูหรือแก้ไขไฟล์ .gitmodules โดยตรง)"
@@ -2803,13 +2878,12 @@ run_setup() {
         echo "  6) Configure AI Environments   (เลือกเปิด/ปิด AI: Claude, Antigravity, Cursor, ฯลฯ)"
         echo "  7) Personal Second Brain       (สลับโหมด Cloud GitHub / Local-Only)"
         echo "  8) Uninstall HAWS              (ถอนการติดตั้ง ลบกฎและลิ้งก์ทั้งหมดอย่างปลอดภัย)"
-        echo "  0) Save & Exit (Run Sync)      (บันทึกการตั้งค่าทั้งหมด ซิงค์ไปยัง AI และเสร็จสิ้น)"
         echo ""
 
-        local choice="1"
-        read -r -p "Enter selection [0-8] (Default: 1): " choice || choice="1"
+        local choice="0"
+        read -r -p "Enter selection [0-8] (Default: 0 [Save & Exit]): " choice || choice="0"
         choice="$(echo "${choice}" | tr -d ' \r\n')"
-        [ -z "${choice}" ] && choice="1"
+        [ -z "${choice}" ] && choice="0"
 
         case "${choice}" in
             1)

@@ -6,6 +6,9 @@ echo ================================================================
 echo           HAWS 1-Click Universal Sync ^& System Update
 echo ================================================================
 echo.
+echo [*] Initializing HAWS One-Click Sync engine...
+echo [*] Preparing runtime environment...
+echo.
 
 cd /d "%~dp0"
 
@@ -37,40 +40,26 @@ if not defined BASH_CMD (
     exit /b 1
 )
 
-REM Detect First-Time Installation vs Routine Sync
-set "IS_FIRST_RUN="
-if not exist "%USERPROFILE%\.haws_manifest" set "IS_FIRST_RUN=1"
-where git >nul 2>&1
-if not errorlevel 1 (
-    git config core.hooksPath >nul 2>&1
-    if errorlevel 1 set "IS_FIRST_RUN=1"
-)
-
-if defined IS_FIRST_RUN goto :DO_SETUP
-
 echo [*] Running HAWS Universal Sync: Second Brain, Skills, Environments...
 echo.
 "%BASH_CMD%" haws.sh sync %*
 if errorlevel 1 goto :FAIL
 
+REM Ensure Git hooks are active
+"%BASH_CMD%" haws.sh hook install >nul 2>&1
+
 echo.
-echo [*] Verifying System Health: 11-Axis Diagnostics...
+echo [*] Verifying System Health: 11-Axis Diagnostics (40-Point Integrity Check)...
 echo.
 "%BASH_CMD%" haws.sh doctor
 if errorlevel 1 goto :FAIL
 goto :SUCCESS
 
-:DO_SETUP
-echo [*] First-time setup detected. Starting HAWS Interactive Setup...
-echo.
-"%BASH_CMD%" haws.sh setup %*
-if errorlevel 1 goto :FAIL
-
 :SUCCESS
 
 echo.
 echo ================================================================
-echo   [PASS] System Fully Verified & Ready!
+echo   [PASS] System Fully Verified ^& Ready!
 echo ================================================================
 echo.
 if "%HAWS_NO_PAUSE%"=="" pause
