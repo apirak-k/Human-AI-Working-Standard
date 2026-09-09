@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 overall_status=0
 test_count=0
 
+# Keep the catalog contract in the aggregate fixture suite as the source
+# registry boundary is consumed by the later integration tasks.
 for test_file in "${SCRIPT_DIR}"/*_test.sh; do
   [ -f "${test_file}" ] || continue
   test_count=$((test_count + 1))

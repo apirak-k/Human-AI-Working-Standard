@@ -16,6 +16,9 @@ export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
 . "${SCRIPT_DIR}/runtime/platform.sh"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/state.sh"
+# Read-only source/skill discovery boundary used by later integration flows.
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/runtime/catalog.sh"
 
 # Native Codex agent installation is also available without a global sync.
 run_codex_agents() {
@@ -24,6 +27,17 @@ run_codex_agents() {
         return 1
     fi
     node "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$@"
+}
+
+run_catalog() {
+    case "${1:-skills}" in
+        sources) catalog_sources ;;
+        skills) catalog_skills ;;
+        *)
+            echo "Usage: ./haws.sh catalog [sources|skills]" >&2
+            return 1
+            ;;
+    esac
 }
 
 run_status() {
@@ -486,18 +500,9 @@ declare -A DISABLED_SKILLS
 
 extract_skill_name() {
     local sfile="$1"
-    local sname=""
-    if [ -f "$sfile" ]; then
-        while IFS= read -r line; do
-            if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
-                sname="${BASH_REMATCH[1]}"
-                sname="${sname%"${sname##*[![:space:]]}"}"
-                break
-            fi
-        done < "$sfile"
-    fi
-    [ -z "$sname" ] && sname="$(basename "$(dirname "$sfile")")"
-    echo "$sname"
+    local fallback
+    fallback="$(basename "$(dirname "${sfile}")")"
+    _catalog_skill_display_name "${sfile}" "${fallback}"
 }
 
 extract_skill_desc() {
@@ -2972,6 +2977,10 @@ case "${COMMAND}" in
         shift || true
         run_codex_agents "$@"
         ;;
+    catalog)
+        shift || true
+        run_catalog "$@"
+        ;;
     status|health|check)
         run_status
         ;;
@@ -3020,8 +3029,9 @@ case "${COMMAND}" in
         fi
         ;;
     *)
-        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents] [--clean]"
+        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents|catalog] [--clean]"
         echo "  codex-agents [install|check|uninstall] [--dry-run] Native Codex roles only (no network sync)"
+        echo "  catalog [sources|skills]  Read the local .gitmodules source and skill catalog"
         echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
         echo "  kit [add|prune|update] Manage KIT submodules and external tools with merge protection"
