@@ -25,6 +25,10 @@ export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
 . "${SCRIPT_DIR}/runtime/ui.sh"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/integrations.sh"
+# Guarded per-target sync operations.  Legacy setup helpers below remain
+# available until their later migration task, while direct sync uses this API.
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/runtime/operations.sh"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/settings.sh"
 
@@ -618,6 +622,7 @@ load_disabled_environments() {
             [ -n "$line" ] && DISABLED_ENVS["$line"]=1
         done < "${dfile}"
     fi
+    return 0
 }
 
 save_disabled_environments() {
@@ -3041,7 +3046,7 @@ case "${COMMAND}" in
         run_hooks "$@"
         ;;
     sync|update|install)
-        run_sync "$@"
+        sync_run "$@"
         ;;
     uninstall|remove)
         shift || true
