@@ -36,3 +36,7 @@ scratch/
 ai-configs/environments.disabled
 config/environments.disabled
 environments.disabled
+
+# Device-local HAWS CLI state and skill selection
+/.haws/state/
+skills/skills.disabled
