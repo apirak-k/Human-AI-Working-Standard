@@ -3054,7 +3054,7 @@ case "${COMMAND}" in
         ;;
     uninstall|remove)
         shift || true
-        run_uninstall "$@"
+        uninstall_run "$@"
         ;;
     notify)
         shift || true

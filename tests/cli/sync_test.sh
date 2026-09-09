@@ -14,6 +14,7 @@ make_source_fixture() {
   git -C "${path}" init -q
   git -C "${path}" config user.email test@example.invalid
   git -C "${path}" config user.name HAWS-Test
+  git -C "${path}" config core.autocrlf false
   git -C "${path}" add SKILL.md
   git -C "${path}" commit -qm initial
 }

@@ -183,3 +183,121 @@ EOF
   trap - EXIT INT TERM
   return "${status}"
 }
+
+_uninstall_group_name() {
+  case "$1" in
+    pointers|environments) printf '%s\n' environments ;;
+    skills) printf '%s\n' skills ;;
+    agents) printf '%s\n' agents ;;
+    hooks) printf '%s\n' hooks ;;
+    metadata) printf '%s\n' metadata ;;
+    *) return 1 ;;
+  esac
+}
+
+uninstall_plan() {
+  local groups="${1:-pointers,skills,agents,hooks,metadata}" group mapped line output
+  output="${HAWS_UNINSTALL_PLAN:-$(_operations_state)/uninstall.plan}"
+  mkdir -p "$(dirname "${output}")" || return 1
+  : > "${output}" || return 1
+  groups="${groups// /,}"
+  IFS=',' read -r -a _uninstall_groups <<< "${groups}"
+  for group in "${_uninstall_groups[@]}"; do
+    mapped="$(_uninstall_group_name "${group}" 2>/dev/null || true)"
+    [ -n "${mapped}" ] || continue
+    while IFS= read -r line || [ -n "${line}" ]; do
+      [ -n "${line}" ] || continue
+      printf 'remove\t%s\n' "${line}" >> "${output}"
+    done <<EOF
+$(ownership_list "${mapped}")
+EOF
+  done
+  printf '%s\n' "${output}"
+}
+
+ownership_verify() {
+  local record="${1:-}" group kind path source fingerprint actual
+  IFS=$'\t' read -r group kind path source fingerprint <<EOF
+${record}
+EOF
+  [ -n "${kind}" ] && [ -n "${path}" ] || return 2
+  if [ "${kind}" = symlink ]; then
+    [ -L "${path}" ] || return 1
+    [ "$(canonical_path "${path}")" = "${source}" ] || return 1
+    return 0
+  fi
+  if [ "${kind}" = generated-file ] || [ "${kind}" = file ]; then
+    [ -f "${path}" ] || return 1
+    actual="$(_haws_sha256 "${path}")"
+    [ -n "${fingerprint}" ] && [ "${actual}" = "${fingerprint}" ] || return 1
+    return 0
+  fi
+  [ -e "${path}" ] || [ -L "${path}" ]
+}
+
+_ownership_remove_record() {
+  local record="$1" group kind path file temp
+  IFS=$'\t' read -r group kind path _ _ <<EOF
+${record}
+EOF
+  file="$(_operations_state)/ownership.tsv"; temp="${file}.stage.$$"
+  [ -f "${file}" ] || return 0
+  awk -F $'\t' -v g="${group}" -v k="${kind}" -v p="${path}" '!($1==g && $2==k && $3==p)' "${file}" > "${temp}" || { rm -f "${temp}"; return 1; }
+  atomic_replace "${temp}" "${file}"; local result=$?; rm -f "${temp}"; return "${result}"
+}
+
+uninstall_preview() {
+  local plan="${1:-}" action record
+  [ -f "${plan}" ] || return 1
+  echo "Uninstall preview"
+  while IFS=$'\t' read -r action record || [ -n "${action}" ]; do
+    [ "${action}" = remove ] || continue
+    if ownership_verify "${record}"; then
+      IFS=$'\t' read -r _ _ path _ _ <<EOF
+${record}
+EOF
+      printf 'Remove\t%s\n' "${path}"
+    else
+      IFS=$'\t' read -r _ _ path _ _ <<EOF
+${record}
+EOF
+      printf 'Preserved\t%s\tmodified, shared, or unproven\n' "${path}"
+    fi
+  done < "${plan}"
+}
+
+uninstall_apply() {
+  local plan="${1:-}" action record path
+  [ -f "${plan}" ] || return 1
+  while IFS=$'\t' read -r action record || [ -n "${action}" ]; do
+    [ "${action}" = remove ] || continue
+    IFS=$'\t' read -r _ _ path _ _ <<EOF
+${record}
+EOF
+    if ownership_verify "${record}"; then
+      if [ -d "${path}" ] && [ ! -L "${path}" ]; then rmdir "${path}" 2>/dev/null || true; else rm -f "${path}"; fi
+      if [ ! -e "${path}" ] && [ ! -L "${path}" ]; then
+        _ownership_remove_record "${record}" || return 1
+        printf 'Removed\t%s\n' "${path}"
+      else
+        printf 'Preserved\t%s\tremoval verification failed\n' "${path}"
+      fi
+    else
+      printf 'Preserved\t%s\tmodified, shared, or unproven\n' "${path}"
+    fi
+  done < "${plan}"
+}
+
+uninstall_run() {
+  local groups="${1:-pointers,skills,agents,hooks,metadata}" plan key
+  state_init || return $?
+  plan="$(uninstall_plan "${groups}")" || return 1
+  uninstall_preview "${plan}"
+  if [ -n "${HAWS_TEST_KEYS:-}" ]; then
+    key="${HAWS_TEST_KEYS%%,*}"
+    case "${key}" in yes|y|confirm|apply) uninstall_apply "${plan}"; return $? ;; *) echo "Cancelled. No changes saved."; return 1 ;; esac
+  fi
+  echo "Confirm uninstall? [yes/no]"
+  ui_next_key >/dev/null 2>&1 || return 1
+  case "${UI_LAST_KEY:-}" in yes|y|confirm|apply) uninstall_apply "${plan}" ;; *) echo "Cancelled. No changes saved."; return 1 ;; esac
+}

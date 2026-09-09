@@ -4,6 +4,10 @@
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${TEST_DIR}/../.." && pwd)"
 
+# Git hooks export repository variables.  Fixture commands must target their
+# temporary repositories, never the repository currently running the hook.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+
 FIXTURE_ROOT=""
 FIXTURE_REPO=""
 FIXTURE_HOME=""
