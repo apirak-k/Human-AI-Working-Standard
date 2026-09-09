@@ -26,6 +26,26 @@ test_checklist_supports_space_select_all_clear_all_and_enter() {
   printf '%s\n' "${result}" | grep -F "one" >/dev/null
 }
 
+test_checklist_starts_at_visible_toggle_all_and_selects_every_item() {
+  new_fixture
+  export HAWS_TEST_KEYS=space,enter
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  local result
+  result="$(ui_checklist Test $'one\tOne\tdetail\t0' $'two\tTwo\tdetail\t0')"
+  printf '%s\n' "${result}" | grep -Fx "one" >/dev/null || return 1
+  printf '%s\n' "${result}" | grep -Fx "two" >/dev/null
+}
+
+test_checklist_wraps_up_from_toggle_all_to_the_last_item() {
+  new_fixture
+  export HAWS_TEST_KEYS=up,space,enter
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  local result
+  result="$(ui_checklist Test $'one\tOne\tdetail\t1' $'two\tTwo\tdetail\t1')"
+  printf '%s\n' "${result}" | grep -Fx "one" >/dev/null || return 1
+  ! printf '%s\n' "${result}" | grep -Fx "two" >/dev/null 2>&1
+}
+
 test_boolean_requires_explicit_on_or_off() {
   new_fixture
   export HAWS_TEST_KEYS=off
@@ -82,6 +102,74 @@ test_uninstall_is_visible_only_after_install_complete() {
   assert_output_contains "Uninstall"
 }
 
+test_installed_settings_keeps_every_spec_action_and_adds_uninstall() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/.haws/state"
+  printf 'schema=1\tcompleted_at=now\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+  printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > "${FIXTURE_REPO}/.haws/state/settings.tsv"
+  export HAWS_TEST_KEYS=cancel
+  run_haws settings || true
+  assert_output_contains "Save & Apply / Exit" || return 1
+  assert_output_contains "Reset Standard Setup" || return 1
+  assert_output_contains "Repositories" || return 1
+  assert_output_contains "Skills" || return 1
+  assert_output_contains "AI Environments" || return 1
+  assert_output_contains "Second Brain" || return 1
+  assert_output_contains "Auto Update when Syncing" || return 1
+  assert_output_contains "Uninstall HAWS"
+}
+
+test_repositories_opens_a_draft_add_remove_submenu() {
+  new_fixture
+  export HAWS_TEST_KEYS=2,cancel
+  run_haws settings || true
+  assert_output_contains "Select Repositories / KIT" || return 1
+  assert_output_contains "Add Repository" || return 1
+  assert_output_contains "Remove Repository" || return 1
+  [ ! -f "${FIXTURE_REPO}/.gitmodules" ] || return 1
+  [ ! -d "${FIXTURE_REPO}/.haws/state" ]
+}
+
+test_skills_opens_the_legacy_single_and_pack_submenu() {
+  new_fixture
+  export HAWS_TEST_KEYS=3,cancel
+  run_haws settings || true
+  assert_output_contains "Single Skills" || return 1
+  assert_output_contains "Multi-Skill Packs" || return 1
+  [ ! -d "${FIXTURE_REPO}/.haws/state" ]
+}
+
+test_ai_environment_screen_lists_supported_options_on_a_clean_machine() {
+  new_fixture
+  export HAWS_TEST_KEYS=4,cancel
+  run_haws settings || true
+  assert_output_contains "Claude" || return 1
+  assert_output_contains "Gemini" || return 1
+  assert_output_contains "Copilot" || return 1
+  assert_output_contains "Codex"
+}
+
+test_boolean_settings_open_explicit_on_off_submenus() {
+  new_fixture
+  export HAWS_TEST_KEYS=5,cancel
+  run_haws settings || true
+  assert_output_contains "Second Brain"
+  assert_output_contains "1) On" || return 1
+  assert_output_contains "2) Off" || return 1
+}
+
+test_uninstall_setting_opens_group_checklist_before_preview() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/.haws/state"
+  printf 'schema=1\tcompleted_at=now\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+  printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > "${FIXTURE_REPO}/.haws/state/settings.tsv"
+  export HAWS_TEST_KEYS=7,cancel
+  run_haws settings || true
+  assert_output_contains "Uninstall groups" || return 1
+  assert_output_contains "AI pointers" || return 1
+  assert_output_contains "Skill links" || return 1
+}
+
 test_adapter_templates_reference_canonical_rules_without_duplicating_them() {
   local file
   for file in "${PROJECT_ROOT}"/ai-configs/*/*.template; do
@@ -95,11 +183,19 @@ run_test() { local name="$1"; if "$name"; then echo "PASS ${name}"; passed=$((pa
 trap cleanup_fixture EXIT
 run_test test_home_contains_status_sync_settings_doctor_details_and_exit
 run_test test_checklist_supports_space_select_all_clear_all_and_enter
+run_test test_checklist_starts_at_visible_toggle_all_and_selects_every_item
+run_test test_checklist_wraps_up_from_toggle_all_to_the_last_item
 run_test test_boolean_requires_explicit_on_or_off
 run_test test_review_precedes_every_mutation
 run_test test_later_save_apply_does_not_fetch_existing_sources
 run_test test_unrelated_setting_change_preserves_environment_disabled_bytes
 run_test test_uninstall_is_visible_only_after_install_complete
+run_test test_installed_settings_keeps_every_spec_action_and_adds_uninstall
+run_test test_repositories_opens_a_draft_add_remove_submenu
+run_test test_skills_opens_the_legacy_single_and_pack_submenu
+run_test test_ai_environment_screen_lists_supported_options_on_a_clean_machine
+run_test test_boolean_settings_open_explicit_on_off_submenus
+run_test test_uninstall_setting_opens_group_checklist_before_preview
 run_test test_adapter_templates_reference_canonical_rules_without_duplicating_them
 echo "CLI settings tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]

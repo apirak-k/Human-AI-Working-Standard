@@ -15,6 +15,29 @@ test_bare_first_launch_opens_default_populated_settings_without_git_calls() {
   [ ! -s "${CALL_LOG}" ] || return 1
 }
 
+test_first_install_settings_shows_every_spec_action_except_uninstall() {
+  new_fixture
+  export HAWS_TEST_KEYS=cancel
+  run_haws || true
+  assert_output_contains "Reset Standard Setup" || return 1
+  assert_output_contains "Repositories" || return 1
+  assert_output_contains "Skills" || return 1
+  assert_output_contains "AI Environments" || return 1
+  assert_output_contains "Second Brain" || return 1
+  assert_output_contains "Auto Update when Syncing" || return 1
+  assert_output_contains "Save & Apply / Exit" || return 1
+  ! grep -F "Uninstall HAWS" "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
+test_legacy_manifest_is_not_misclassified_as_first_install() {
+  new_fixture
+  printf 'skill:example\n' > "${FIXTURE_HOME}/.haws_manifest"
+  export HAWS_TEST_KEYS=cancel
+  run_haws || true
+  assert_output_contains "HAWS Home" || return 1
+  ! grep -F "First Install" "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
 test_default_setup_only_resets_the_draft() {
   new_fixture
   export HAWS_TEST_KEYS=default,cancel
@@ -79,6 +102,8 @@ run_test() {
 }
 trap cleanup_fixture EXIT
 run_test test_bare_first_launch_opens_default_populated_settings_without_git_calls
+run_test test_first_install_settings_shows_every_spec_action_except_uninstall
+run_test test_legacy_manifest_is_not_misclassified_as_first_install
 run_test test_default_setup_only_resets_the_draft
 run_test test_cancel_leaves_state_and_integrations_unchanged
 run_test test_first_save_apply_downloads_only_selected_missing_sources

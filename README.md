@@ -269,4 +269,4 @@ When instructions or information conflict, always resolve in this order:
 3. **HAWS (`core/HAWS.md`)**
 4. **Confirmed Project Specific requirements**
 5. **Applicable Work Instructions (`core/WORK_INSTRUCTIONS.md`)**
-6. **[HANDOFF.md](HANDOFF.md)** as a description of current work state
+6. **[Second Brain HANDOFF](secondbrain/PROJECT/HANDOFF.md)** as a description of current work state

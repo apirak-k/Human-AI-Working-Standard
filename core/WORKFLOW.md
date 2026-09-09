@@ -66,4 +66,4 @@ This document specifies the standard 6-phase software engineering lifecycle unde
   - `/caveman` ➔ Ultra-terse summaries and compressed status reports.
   - `/documentation-and-adrs` ➔ Record architectural decisions and user documentation.
   - `haws.sh status` ➔ Verify skill health, token budget, and platform synchronization.
-- **Exit Criteria**: Second Brain updated (`USER_PREFERENCES.md` / `ANTI_PATTERNS.md`), and local project `HANDOFF.md` updated.
+- **Exit Criteria**: Second Brain updated (`USER_PREFERENCES.md` / `ANTI_PATTERNS.md`), and `secondbrain/PROJECT/HANDOFF.md` updated.

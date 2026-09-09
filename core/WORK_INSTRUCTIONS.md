@@ -20,7 +20,7 @@ At the beginning of a new thread or work context:
 5. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
 6. read `design.md` if it exists (system architecture & design blueprint)
 7. read `PROJECT_SPECIFIC.md` if it exists
-8. read `HANDOFF.md` when continuing existing work
+8. read `secondbrain/PROJECT/HANDOFF.md` when continuing existing work
 9. report the understood goal, scope, current state, and starting point
 
 Read HAWS and applicable project information once per thread or work context.
@@ -41,9 +41,9 @@ To prevent context rot, maintain high reasoning precision, and keep execution fa
 - **Lean context principle**: Avoid flooding the active session with entire dumps of large unparsed files, build logs, or repetitive test output. Retrieve and quote only relevant snippets.
 - **Modular Markdown Partitioning**: Keep markdown documentation modular (~200–300 lines limit per file). Use the **Summary + Pointer pattern (Progressive Disclosure)**: parent documents provide a clear structural overview and link to deep implementation details in `references/` or `docs/`.
 - **On-Demand Loading & Lazy Context**: Load specialized domain specifications, API references, and schemas Just-in-Time only when the active task touches that area. Persist findings to disk and do not retain heavy unparsed text in conversation memory.
-- **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`HANDOFF.md`, task checklists, or implementation plans).
+- **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`secondbrain/PROJECT/HANDOFF.md`, task checklists, or implementation plans).
 - **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Query or build a dependency graph (`graphify`, `archify`, or `templates/ARCHITECTURE.md`) to isolate the blast radius, target only affected callers, and preserve context budget.
-- **Proactive session compaction**: When a task phase completes, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
+- **Proactive session compaction**: When a task phase completes, summarize progress, update `secondbrain/PROJECT/HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
 
 ## 2. Starting and performing work
 
@@ -55,7 +55,7 @@ For a new project or major feature:
 - during discovery and ideation, define project scope, roadmap, and live system state in `PROJECT.md` (from `templates/PROJECT.md`), system boundaries in `ARCHITECTURE.md` (from `templates/ARCHITECTURE.md`), and visual tokens in `DESIGN.md` (from `templates/DESIGN.md`)
 - before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` (from `templates/CONSTRAINTS.md`) and agent permission boundaries in `AGENTS.md` (from `templates/AGENTS.md`)
 - for containerized applications, scaffold from `containers/`: `Dockerfile.template` to `Dockerfile`, `.dockerignore.template` to `.dockerignore`, and `docker-compose.yml.template` to `docker-compose.yml`
-- create or update `HANDOFF.md` when work must pause or transfer across sessions
+- create or update `secondbrain/PROJECT/HANDOFF.md` when work must pause or transfer across sessions
 
 
 

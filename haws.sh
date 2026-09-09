@@ -2990,7 +2990,6 @@ if [ -z "${COMMAND}" ]; then
     # sync or any other mutation merely because stdin is unavailable.
     if [ -n "${HAWS_TEST_KEYS:-}" ] || [ -r /dev/tty ]; then
         if install_is_complete; then
-            state_init || exit $?
             home_run
         else
             settings_run first-install

@@ -332,7 +332,7 @@ On each turn, evaluate whether the task situation aligns with the `description` 
 - **Workflow, Audit, or Review Queries**: Automatically anchor in audit and review skills (`code-review`, `verification-before-completion`, `diagnosing-bugs`).
 - **Substantial / Milestone Work**:
   1. **Project / Feature Kickoff**: Naturally invoke brainstorming and planning capabilities to formulate `design.md`.
-  2. **Session Checkpoint / Pause**: Naturally invoke session persistence capabilities and update `HANDOFF.md`.
+  2. **Session Checkpoint / Pause**: Naturally invoke session persistence capabilities and update `secondbrain/PROJECT/HANDOFF.md`.
   3. **Domain Implementation**: Match context with domain skills (e.g. `taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD / debugging, `humanizer` for copy, `graphify` / `drawio-skill` for architecture).
 
 ### 9.2 Proactive and seamless execution
@@ -374,5 +374,4 @@ To maximize signal-to-noise ratio and optimize token consumption:
 - **Short Status Updates**: Use **Lite mode** (concise, direct, grammatically sound, zero conversational pleasantries or filler).
 - **Deep Technical Analysis / Architecture Plans**: Provide full structural depth and precision, but strip filler prose, marketing claims, and repetitive apologies.
 - **Language Boundaries**: UI chat with the human user may use direct Thai. All system-level notifications, commit messages, code comments, and formal artifacts must remain **100% English**.
-
 
