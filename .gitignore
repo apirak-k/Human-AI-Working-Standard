@@ -40,3 +40,6 @@ environments.disabled
 # Device-local HAWS CLI state and skill selection
 /.haws/state/
 skills/skills.disabled
+
+# Superpowers task and review artifacts
+/.superpowers/

@@ -112,6 +112,74 @@ test_haws_state_and_skill_selection_are_git_ignored() {
   return 0
 }
 
+test_settings_defaults_are_second_brain_off_and_auto_update_on() {
+  new_fixture
+  load_state_api || return 1
+  state_init || return 1
+  [ "${HAWS_SECOND_BRAIN_ENABLED}" = off ] || return 1
+  [ "${HAWS_AUTO_UPDATE}" = on ] || return 1
+  return 0
+}
+
+test_settings_write_replaces_complete_record_atomically() {
+  new_fixture
+  load_state_api || return 1
+  state_init || return 1
+  settings_save on off || return 1
+  [ "$(wc -l < "${HAWS_STATE_DIR}/settings.tsv" | tr -d ' ')" = 3 ] || return 1
+  ! grep -q 'stale' "${HAWS_STATE_DIR}/settings.tsv" || return 1
+  [ ! -e "${HAWS_STATE_DIR}/settings.tsv.tmp.$$" ] || return 1
+  settings_load || return 1
+  [ "${HAWS_SECOND_BRAIN_ENABLED}" = on ] && [ "${HAWS_AUTO_UPDATE}" = off ]
+}
+
+test_live_sync_lock_blocks_second_owner() {
+  new_fixture
+  load_state_api || return 1
+  state_init || return 1
+  sync_lock_acquire || return 1
+  if sync_lock_acquire 2>"${OUTPUT_FILE}"; then return 1; fi
+  grep -F 'sync already running' "${OUTPUT_FILE}" >/dev/null || return 1
+  sync_lock_release || return 1
+  [ ! -d "${HAWS_STATE_DIR}/sync.lock" ]
+}
+
+test_stale_lock_is_reported_and_recoverable_without_remote_work() {
+  new_fixture
+  load_state_api || return 1
+  state_init || return 1
+  mkdir -p "${HAWS_STATE_DIR}/sync.lock"
+  printf '99999999\n' > "${HAWS_STATE_DIR}/sync.lock/pid"
+  printf '1\n' > "${HAWS_STATE_DIR}/sync.lock/timestamp"
+  if sync_lock_acquire 2>"${OUTPUT_FILE}"; then return 1; fi
+  grep -F 'stale sync lock' "${OUTPUT_FILE}" >/dev/null || return 1
+  sync_lock_release --recover || return 1
+  sync_lock_acquire || return 1
+  sync_lock_release || return 1
+  [ ! -s "${CALL_LOG}" ]
+}
+
+test_ownership_round_trip_preserves_spaces_in_paths() {
+  new_fixture
+  load_state_api || return 1
+  state_init || return 1
+  local owned_path="${FIXTURE_HOME}/AI Profiles/Claude Code/skills/test skill"
+  ownership_record pointers symlink "${owned_path}" "/source/with spaces" fingerprint123 || return 1
+  ownership_list pointers | awk -F '\t' -v p="${owned_path}" '$3 == p && $4 == "/source/with spaces" && $5 == "fingerprint123" {found=1} END {exit found ? 0 : 1}'
+}
+
+test_first_state_init_preserves_environment_disabled_bytes() {
+  new_fixture
+  local disabled_file="${FIXTURE_REPO}/ai-configs/environments.disabled"
+  mkdir -p "$(dirname "${disabled_file}")"
+  printf 'cursor\r\ncodex\r\n' > "${disabled_file}"
+  local before_file="${FIXTURE_ROOT}/environment.before"
+  cp "${disabled_file}" "${before_file}"
+  load_state_api || return 1
+  state_init || return 1
+  cmp -s "${before_file}" "${disabled_file}"
+}
+
 run_test() {
   local test_name="$1"
   if "$test_name"; then
@@ -131,6 +199,12 @@ run_test test_existing_disabled_environment_file_is_not_overwritten_by_migration
 run_test test_existing_disabled_skill_file_is_not_overwritten_by_migration
 run_test test_valid_legacy_manifest_entries_can_be_migrated
 run_test test_haws_state_and_skill_selection_are_git_ignored
+run_test test_settings_defaults_are_second_brain_off_and_auto_update_on
+run_test test_settings_write_replaces_complete_record_atomically
+run_test test_live_sync_lock_blocks_second_owner
+run_test test_stale_lock_is_reported_and_recoverable_without_remote_work
+run_test test_ownership_round_trip_preserves_spaces_in_paths
+run_test test_first_state_init_preserves_environment_disabled_bytes
 
 echo "CLI state compatibility tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]
