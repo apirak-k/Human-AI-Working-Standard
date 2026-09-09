@@ -470,9 +470,6 @@ run_doctor() {
 
     # 12. Check Launchers & Automation Tools
     [ "$json_mode" = false ] && echo "" && echo "12. Checking Launchers & Automation Tools..."
-    check_item "${SCRIPT_DIR}/1-CLICK-SYNC.bat" "1-CLICK-SYNC.bat"
-    check_item "${SCRIPT_DIR}/SETUP.bat" "SETUP.bat"
-
     if "${SCRIPT_DIR}/haws.sh" uninstall --dry-run >/dev/null 2>&1; then
         passed=$((passed + 1))
         [ "$json_mode" = false ] && echo "   [PASS] haws.sh uninstall --dry-run (operational)"
@@ -3056,28 +3053,13 @@ case "${COMMAND}" in
         shift || true
         uninstall_run "$@"
         ;;
-    notify)
-        shift || true
-        if [ -f "${SCRIPT_DIR}/tools/notify.sh" ]; then
-            "${SCRIPT_DIR}/tools/notify.sh" "$@"
-        else
-            echo "[ERROR] tools/notify.sh not found."
-            exit 1
-        fi
-        ;;
     *)
-        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents|catalog] [--clean]"
-        echo "  codex-agents [install|check|uninstall] [--dry-run] Native Codex roles only (no network sync)"
-        echo "  catalog [sources|skills]  Read the local .gitmodules source and skill catalog"
-        echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
-        echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
-        echo "  kit [add|prune|update] Manage KIT submodules and external tools with merge protection"
-        echo "  user [connect]  Manage personal Second Brain (symmetrical 1-click cloud sync)"
-        echo "  hook [install]  Install or inspect HAWS Git pre-commit and pre-push hooks"
-        echo "  status          Instant sub-second skill count and token budget check"
-        echo "  doctor [--json] Run comprehensive 10-axis system diagnostics"
-        echo "  uninstall       Safely detach HAWS pointers, skills, and hooks without deleting user data"
-        echo "  notify          Dispatch task completion alert via Telegram/Discord/Webhook"
+        echo "Usage: ./haws.sh [sync|status|doctor|settings|uninstall]"
+        echo "  sync            Guarded per-target remote sync"
+        echo "  status [--details] Read-only local health overview"
+        echo "  doctor          Read-only local diagnosis"
+        echo "  settings        Edit local Settings"
+        echo "  uninstall       Preview and remove HAWS-owned integrations"
         exit 1
         ;;
 esac

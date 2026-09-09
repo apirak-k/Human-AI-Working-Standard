@@ -17,10 +17,9 @@
 *.html text eol=lf
 *.css text eol=lf
 
-# Windows batch files (must remain CRLF for cmd.exe compatibility)
-*.cmd text eol=crlf
-*.bat text eol=crlf
+# Keep tracked command scripts LF-normalized when present.
+*.cmd text eol=lf
 
 # Submodule independence (protect local submodule selection during upstream sync)
 .gitmodules merge=ours
-
+
