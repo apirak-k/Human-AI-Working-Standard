@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMMAND="${1:-sync}"
+COMMAND="${1:-}"
 
 # Shared portable primitives and device-local state boundary.  Higher-level
 # command implementations remain below while the boundary is introduced.
@@ -19,6 +19,14 @@ export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
 # Read-only source/skill discovery boundary used by later integration flows.
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/catalog.sh"
+# Interactive Settings/Home boundary.  Direct legacy commands continue to use
+# their existing handlers until the later operations/health tasks replace them.
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/runtime/ui.sh"
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/runtime/integrations.sh"
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/runtime/settings.sh"
 
 # Native Codex agent installation is also available without a global sync.
 run_codex_agents() {
@@ -2972,6 +2980,22 @@ run_setup() {
     done
 }
 
+if [ -z "${COMMAND}" ]; then
+    # A bare non-interactive launch must be safe and useful: it may not begin
+    # sync or any other mutation merely because stdin is unavailable.
+    if [ -n "${HAWS_TEST_KEYS:-}" ] || [ -r /dev/tty ]; then
+        if install_is_complete; then
+            state_init || exit $?
+            home_run
+        else
+            settings_run first-install
+        fi
+        exit $?
+    fi
+    echo "HAWS is non-interactive. Use ./haws.sh settings (or one of: sync, status, doctor, uninstall)."
+    exit 0
+fi
+
 case "${COMMAND}" in
     codex-agents)
         shift || true
@@ -2991,6 +3015,10 @@ case "${COMMAND}" in
     setup|bootstrap)
         shift || true
         run_setup "$@"
+        ;;
+    settings|configure)
+        shift || true
+        settings_run "${1:-settings}"
         ;;
     skills|skill)
         shift || true

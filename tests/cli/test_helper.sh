@@ -35,6 +35,7 @@ cleanup_fixture() {
   FAKE_BIN=""
   OUTPUT_FILE=""
   CALL_LOG=""
+  unset HAWS_STATE_DIR HAWS_REPO_DIR HAWS_TEST_KEYS
 }
 
 run_haws() {

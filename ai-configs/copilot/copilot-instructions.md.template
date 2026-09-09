@@ -1,33 +1,7 @@
-<!-- HAWS_COPILOT_INSTRUCTIONS_START -->
-# GitHub Copilot & OpenAI Codex Project Instructions
+## HAWS GitHub Copilot adapter
 
-This project adheres to the Human-AI Working Standard (HAWS). All AI assistants, autonomous agents, and completion engines operating in this repository must comply with these guidelines.
-
----
-
-## 1. Core Operating Standards
-
-Before planning or modifying code, consult and follow these repository standards:
-- **Core Standard**: [core/HAWS.md](../core/HAWS.md) (Operational principles, priority order, empirical grounding, anti-hallucination rules)
-- **Work Instructions**: [core/WORK_INSTRUCTIONS.md](../core/WORK_INSTRUCTIONS.md) (Context loading, lean context discipline, dynamic skill execution)
-- **Developer Preferences & Anti-Patterns**: [core/USER_PREFERENCES.md](../core/USER_PREFERENCES.md) and [core/ANTI_PATTERNS.md](../core/ANTI_PATTERNS.md) (or `secondbrain/` if connected)
-
----
-
-## 2. Project Architecture & Quality Contracts
-
-Always read and respect established project contracts before writing implementation code:
-- **Quality Gates & Invariants**: [CONSTRAINTS.md](../CONSTRAINTS.md) (Non-negotiable coverage floors, linting rules, forbidden patterns)
-- **Agent Permission Matrix**: [AGENTS.md](../AGENTS.md) (Authorized roles, tool scopes, execution boundaries)
-- **System Architecture**: [ARCHITECTURE.md](../ARCHITECTURE.md) (System topology and component boundaries)
-- **Active Handoff State**: [HANDOFF.md](../HANDOFF.md) (Current task checklist, decisions made, and resume points)
-
----
-
-## 3. Engineering Rules of Engagement
-
-1. **Empirical Verification**: Never assert that code or tests work without executing them and confirming exit codes.
-2. **Preserve Comments & Context**: Never remove, truncate, or overwrite existing comments, type annotations, or documentation unless explicitly requested.
-3. **Strict Line Endings**: Preserve LF line endings across all files. Never introduce CRLF.
-4. **No Secret Leaks**: Never commit API keys, tokens, or environment credentials.
-<!-- HAWS_COPILOT_INSTRUCTIONS_END -->
+Load canonical standards from `core/HAWS.md` and `core/WORK_INSTRUCTIONS.md`.
+Load private preferences from the connected Second Brain:
+`secondbrain/USER_PREFERENCES.md` and `secondbrain/ANTI_PATTERNS.md`.
+Skills and agent roles remain in the HAWS `skills/` and `agents/` catalogs.
+This adapter intentionally does not duplicate those sources.

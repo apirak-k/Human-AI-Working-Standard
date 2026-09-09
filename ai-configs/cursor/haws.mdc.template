@@ -1,38 +1,9 @@
 ---
-description: Human-AI Working Standard (HAWS) Core Rules and Work Instructions
+description: HAWS adapter; load canonical rules from the HAWS checkout
 globs: *
 alwaysApply: true
 ---
-<!-- HAWS_CURSOR_RULES_START -->
-# HAWS — Human-AI Working Standard for Cursor
 
-This repository operates under the Human-AI Working Standard (HAWS). All Cursor AI interactions, Agent Composer tasks, and inline completions must comply with these guidelines.
-
----
-
-## 1. Core Operating Standards
-
-Before proposing edits or writing code, adhere to:
-- **Core Standard**: [core/HAWS.md](../../core/HAWS.md) (Empirical grounding, anti-hallucination rules, priority order)
-- **Work Instructions**: [core/WORK_INSTRUCTIONS.md](../../core/WORK_INSTRUCTIONS.md) (Context loading, lean execution discipline)
-- **Preferences & Anti-Patterns**: [core/USER_PREFERENCES.md](../../core/USER_PREFERENCES.md) and [core/ANTI_PATTERNS.md](../../core/ANTI_PATTERNS.md) (or `secondbrain/` if connected)
-
----
-
-## 2. Project Architecture & Quality Contracts
-
-Respect the established repository contracts:
-- **Quality Gates**: [CONSTRAINTS.md](../../CONSTRAINTS.md) (Test coverage floors, linter checks, forbidden libraries)
-- **Agent Boundaries**: [AGENTS.md](../../AGENTS.md) (Authorized scopes, allowed commands)
-- **System Architecture**: [ARCHITECTURE.md](../../ARCHITECTURE.md) (System topology and component boundaries)
-- **Handoff & Continuity**: [HANDOFF.md](../../HANDOFF.md) (Task state, unverified items, decisions)
-
----
-
-## 3. Engineering Invariants
-
-1. **Verify Before Completion**: Run automated tests and verify terminal exit codes before claiming tasks are done.
-2. **Preserve Documentation & Comments**: Never strip existing comments, docstrings, or types.
-3. **Strict LF Line Endings**: Maintain LF across all modified files.
-4. **No Secret Leaks**: Never commit secrets or credentials.
-<!-- HAWS_CURSOR_RULES_END -->
+Load canonical standards from `core/HAWS.md` and `core/WORK_INSTRUCTIONS.md`.
+Load private preferences from `secondbrain/USER_PREFERENCES.md` and
+`secondbrain/ANTI_PATTERNS.md`. This adapter contains no duplicated HAWS rules.
