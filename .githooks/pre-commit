@@ -57,5 +57,10 @@ else
   echo "[SKIP] haws.sh not found in current directory."
 fi
 
+if [ -f "tests/cli/run.sh" ]; then
+  echo "5. Running CLI regression tests..."
+  bash tests/cli/run.sh
+fi
+
 echo "=== [HAWS PRE-COMMIT HOOK] All Quality Gates PASSED (System Verified) ==="
 exit 0

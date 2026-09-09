@@ -29,6 +29,9 @@ export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
 # available until their later migration task, while direct sync uses this API.
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/operations.sh"
+# Read-only local Status and Doctor reporting.
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/runtime/health.sh"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/settings.sh"
 
@@ -3011,11 +3014,12 @@ case "${COMMAND}" in
         run_catalog "$@"
         ;;
     status|health|check)
-        run_status
+        shift || true
+        status_run "$@"
         ;;
     doctor|test)
         shift || true
-        run_doctor "$@"
+        doctor_run "$@"
         ;;
     setup|bootstrap)
         shift || true
