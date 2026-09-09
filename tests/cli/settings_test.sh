@@ -54,6 +54,19 @@ test_later_save_apply_does_not_fetch_existing_sources() {
   assert_no_call "submodule update" || return 1
 }
 
+test_unrelated_setting_change_preserves_environment_disabled_bytes() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/ai-configs" "${FIXTURE_REPO}/.haws/state"
+  printf 'cursor\r\ncodex\r\n' > "${FIXTURE_REPO}/ai-configs/environments.disabled"
+  printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > "${FIXTURE_REPO}/.haws/state/settings.tsv"
+  local before after
+  before="$(sha256sum "${FIXTURE_REPO}/ai-configs/environments.disabled" | awk '{print $1}')"
+  export HAWS_TEST_KEYS=auto_update=off,save
+  run_haws settings || return 1
+  after="$(sha256sum "${FIXTURE_REPO}/ai-configs/environments.disabled" | awk '{print $1}')"
+  [ "${before}" = "${after}" ] || return 1
+}
+
 test_uninstall_is_visible_only_after_install_complete() {
   new_fixture
   export HAWS_TEST_KEYS=cancel
@@ -85,6 +98,7 @@ run_test test_checklist_supports_space_select_all_clear_all_and_enter
 run_test test_boolean_requires_explicit_on_or_off
 run_test test_review_precedes_every_mutation
 run_test test_later_save_apply_does_not_fetch_existing_sources
+run_test test_unrelated_setting_change_preserves_environment_disabled_bytes
 run_test test_uninstall_is_visible_only_after_install_complete
 run_test test_adapter_templates_reference_canonical_rules_without_duplicating_them
 echo "CLI settings tests: ${passed} passed, ${failed} failed"

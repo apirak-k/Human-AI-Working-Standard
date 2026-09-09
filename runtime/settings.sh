@@ -69,6 +69,7 @@ settings_edit() {
   settings_load || return $?
   disabled_envs_load || return $?
   disabled_skills_load || return $?
+  HAWS_DRAFT_ENVS_TOUCHED=0
   settings_draft_defaults
   [ "${mode}" = first-install ] && _settings_render "First Install"
   while true; do
@@ -76,12 +77,12 @@ settings_edit() {
     ui_next_key >/dev/null 2>&1 || key="cancel"
     key="${UI_LAST_KEY:-${key:-cancel}}"
     case "${key}" in
-      default|d|D) settings_draft_defaults; echo "Default Setup restored in draft." ;;
+      default|d|D) settings_draft_defaults; HAWS_DRAFT_ENVS_TOUCHED=1; echo "Default Setup restored in draft." ;;
       save|s|S|apply) settings_plan_apply || return $?; return 0 ;;
       cancel|c|C|q|quit|exit|no) echo "Cancelled. No changes saved."; return 1 ;;
       second_brain=*) HAWS_DRAFT_SECOND_BRAIN="${key#*=}" ;;
       auto_update=*) HAWS_DRAFT_AUTO_UPDATE="${key#*=}" ;;
-      envs=*) _settings_set_list HAWS_SELECTED_ENVS "${key#*=}" ;;
+      envs=*) _settings_set_list HAWS_SELECTED_ENVS "${key#*=}"; HAWS_DRAFT_ENVS_TOUCHED=1 ;;
       skills=*) _settings_set_list HAWS_SELECTED_SKILLS "${key#*=}" ;;
       sources=*) _settings_set_list HAWS_SELECTED_SOURCES "${key#*=}" ;;
       *)
@@ -122,14 +123,16 @@ settings_apply() {
     esac
   done < "${plan}"
   settings_save "${second_brain}" "${auto_update}" || return 1
-  local disabled_envs=""
-  for env in claude gemini cursor copilot codex; do
-    _settings_list_contains "${selected_envs}" "${env}" || disabled_envs="${disabled_envs}${env}\n"
-  done
-  if [ -n "${disabled_envs}" ]; then
-    disabled_envs_save $(printf '%b' "${disabled_envs}" | sed '/^$/d') || return 1
-  else
-    disabled_envs_save || return 1
+  if [ "${HAWS_DRAFT_ENVS_TOUCHED:-0}" = 1 ]; then
+    local disabled_envs=""
+    for env in claude gemini cursor copilot codex; do
+      _settings_list_contains "${selected_envs}" "${env}" || disabled_envs="${disabled_envs}${env}\n"
+    done
+    if [ -n "${disabled_envs}" ]; then
+      disabled_envs_save $(printf '%b' "${disabled_envs}" | sed '/^$/d') || return 1
+    else
+      disabled_envs_save || return 1
+    fi
   fi
   if [ -n "${HAWS_SELECTED_SKILLS:-}" ]; then
     local desired_skill_ids="" skill_row skill_id display source_id entrypoint active
