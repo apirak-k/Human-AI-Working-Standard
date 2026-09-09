@@ -1,5 +1,53 @@
 # HAWS Master Timeline & Comprehensive Audit Dossier (From `cceb211` to Present)
 
+## Current Checkpoint — 2026-09-09
+
+### Current scope
+
+The active work is the HAWS CLI redesign on branch `codex/haws-cli-task1`.
+The user confirmed that the discussion agenda is the agreed index of topics to
+continue discussing. It remains an agenda, not acceptance of the individual
+topics or a substitute for implementation verification.
+
+### Confirmed decisions
+
+- Preserve `docs/superpowers/plans/2026-09-09-discussion-agenda.md` as the
+  agreed starting point for the next discussion.
+- Keep the agenda as a separate documentation commit from the CLI work.
+- Do not merge the CLI work into `main` until the full regression suite has
+  completed and this handoff reflects the verified result.
+- Do not push without explicit user approval.
+
+### Actual repository state
+
+- Worktree: `.worktrees/cli-task1`
+- Branch: `codex/haws-cli-task1`
+- HEAD: `b80c994` (`fix(settings): preserve untouched environment selections`)
+- Relationship: `main` is an ancestor; this branch is 13 commits ahead and
+  can merge by fast-forward after verification.
+- Uncommitted file: `docs/superpowers/plans/2026-09-09-discussion-agenda.md`.
+  This is intentional pending its documentation commit.
+
+### Verification status
+
+- `git diff --check main..HEAD`: passed with no whitespace errors.
+- `tests/cli/catalog_test.sh`: 6 passed, 0 failed.
+- `tests/cli/cross_platform_test.sh`: 3 passed, 0 failed.
+- Full `tests/cli/run.sh`: [Unverified] in this session. The desktop command
+  runner ended before the aggregate suite completed; no test assertion failure
+  was observed in the completed targeted suites.
+
+### Resume sequence
+
+1. Commit the agenda separately, if the user confirms that checkpoint action.
+2. Run the complete CLI regression suite in a shell session that can finish
+   the aggregate command.
+3. Update this verification section with the exact final result.
+4. Merge `codex/haws-cli-task1` into `main` only after the user confirms the
+   verified merge; then consider pruning obsolete recovery branches.
+
+---
+
 > **Audit Baseline Commit**: `cceb211` (Point where 39 original user requirements were reviewed and mapped)  
 > **Previous Head Commit**: `f6d0e19` (`fix(launchers): resolve CMD block parsing syntax error in 1-CLICK-SYNC.bat and 2nd-BRAIN-TOGGLE.bat`)  
 > **State Inspected At**: `d72470e` on 2026-09-07; verify live Git before resuming
