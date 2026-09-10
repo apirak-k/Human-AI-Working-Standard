@@ -39,10 +39,11 @@ _haws_sha256() {
 
 settings_defaults() {
   HAWS_SECOND_BRAIN_ENABLED="off"
+  HAWS_SECOND_BRAIN_REMOTE=""
   HAWS_AUTO_UPDATE="on"
   SECOND_BRAIN_ENABLED="off"
   AUTO_UPDATE="on"
-  export HAWS_SECOND_BRAIN_ENABLED HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+  export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
 }
 
 _settings_valid_value() { [ "${1:-}" = on ] || [ "${1:-}" = off ]; }
@@ -59,18 +60,22 @@ settings_load() {
       second_brain|second_brain_enabled)
         [ -z "${extra:-}" ] && _settings_valid_value "${value}" || { echo "Blocked: malformed second brain setting; review ${file}" >&2; return 2; }
         HAWS_SECOND_BRAIN_ENABLED="${value}"; SECOND_BRAIN_ENABLED="${value}" ;;
+      second_brain_remote)
+        [ -z "${extra:-}" ] || { echo "Blocked: malformed second brain remote; review ${file}" >&2; return 2; }
+        HAWS_SECOND_BRAIN_REMOTE="${value}" ;;
       auto_update)
         [ -z "${extra:-}" ] && _settings_valid_value "${value}" || { echo "Blocked: malformed auto update setting; review ${file}" >&2; return 2; }
         HAWS_AUTO_UPDATE="${value}"; AUTO_UPDATE="${value}" ;;
       *) echo "Blocked: unknown settings key '${key}'; review ${file}" >&2; return 2 ;;
     esac
   done < "${file}"
-  export HAWS_SECOND_BRAIN_ENABLED HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+  export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
 }
 
 settings_save() {
   local second_brain="${1:-${HAWS_SECOND_BRAIN_ENABLED:-off}}"
   local auto_update="${2:-${HAWS_AUTO_UPDATE:-on}}"
+  local second_brain_remote="${3:-${HAWS_SECOND_BRAIN_REMOTE:-}}"
   _settings_valid_value "${second_brain}" || return 2
   _settings_valid_value "${auto_update}" || return 2
   local state="$(_haws_state_dir)" temp
@@ -79,14 +84,15 @@ settings_save() {
   {
     printf 'schema_version\t1\n'
     printf 'second_brain\t%s\n' "${second_brain}"
+    [ -z "${second_brain_remote}" ] || printf 'second_brain_remote\t%s\n' "${second_brain_remote}"
     printf 'auto_update\t%s\n' "${auto_update}"
   } > "${temp}" || { rm -f "${temp}"; return 1; }
   atomic_replace "${temp}" "${state}/settings.tsv"; local result=$?
   rm -f "${temp}"
   [ "${result}" -eq 0 ] || return "${result}"
-  HAWS_SECOND_BRAIN_ENABLED="${second_brain}"; HAWS_AUTO_UPDATE="${auto_update}"
+  HAWS_SECOND_BRAIN_ENABLED="${second_brain}"; HAWS_SECOND_BRAIN_REMOTE="${second_brain_remote}"; HAWS_AUTO_UPDATE="${auto_update}"
   SECOND_BRAIN_ENABLED="${second_brain}"; AUTO_UPDATE="${auto_update}"
-  export HAWS_SECOND_BRAIN_ENABLED HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+  export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
 }
 
 disabled_envs_load() {

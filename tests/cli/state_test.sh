@@ -133,6 +133,16 @@ test_settings_write_replaces_complete_record_atomically() {
   [ "${HAWS_SECOND_BRAIN_ENABLED}" = on ] && [ "${HAWS_AUTO_UPDATE}" = off ]
 }
 
+test_settings_persists_second_brain_remote_only_when_saved() {
+  new_fixture
+  load_state_api || return 1
+  state_init || return 1
+  settings_save on off "git@example.invalid:user/brain.git" || return 1
+  grep -F $'second_brain_remote\tgit@example.invalid:user/brain.git' "${HAWS_STATE_DIR}/settings.tsv" >/dev/null || return 1
+  settings_load || return 1
+  [ "${HAWS_SECOND_BRAIN_REMOTE}" = "git@example.invalid:user/brain.git" ]
+}
+
 test_live_sync_lock_blocks_second_owner() {
   new_fixture
   load_state_api || return 1
@@ -201,6 +211,7 @@ run_test test_valid_legacy_manifest_entries_can_be_migrated
 run_test test_haws_state_and_skill_selection_are_git_ignored
 run_test test_settings_defaults_are_second_brain_off_and_auto_update_on
 run_test test_settings_write_replaces_complete_record_atomically
+run_test test_settings_persists_second_brain_remote_only_when_saved
 run_test test_live_sync_lock_blocks_second_owner
 run_test test_stale_lock_is_reported_and_recoverable_without_remote_work
 run_test test_ownership_round_trip_preserves_spaces_in_paths

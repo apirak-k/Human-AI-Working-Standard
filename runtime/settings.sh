@@ -27,8 +27,9 @@ settings_draft_defaults() {
   HAWS_SELECTED_SOURCES="$(_settings_sources)"
   HAWS_SELECTED_SKILLS="$(_settings_active_skills)"
   HAWS_DRAFT_SECOND_BRAIN="off"
+  HAWS_DRAFT_SECOND_BRAIN_REMOTE="${HAWS_SECOND_BRAIN_REMOTE:-}"
   HAWS_DRAFT_AUTO_UPDATE="on"
-  export HAWS_SELECTED_ENVS HAWS_SELECTED_SOURCES HAWS_SELECTED_SKILLS HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_AUTO_UPDATE
+  export HAWS_SELECTED_ENVS HAWS_SELECTED_SOURCES HAWS_SELECTED_SKILLS HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE HAWS_DRAFT_AUTO_UPDATE
 }
 
 _settings_choose_list() {
@@ -45,7 +46,7 @@ _settings_choose_list() {
           copilot) label="Copilot"; detail="${HOME}/.copilot" ;;
           codex) label="Codex"; detail="${HOME}/.codex" ;;
         esac
-        [ -d "${detail}" ] && detail="${detail} (detected)" || detail="${detail} (not detected)"
+        [ -d "${detail}" ] && detail="Detected" || detail="Not detected"
         records+=("${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${active}")
       done
       ;;
@@ -80,19 +81,13 @@ EOF
 }
 
 repositories_menu() {
-  local key url
+  local key url records=()
   while true; do
-    echo ""
-    echo "Repositories"
-    echo "  1) Select Repositories / KIT"
-    echo "  2) Add Repository"
-    echo "  3) Remove Repository"
-    echo "  0) Back"
-    ui_next_key >/dev/null 2>&1 || return 0
-    key="${UI_LAST_KEY:-}"
+    records=($'add\tAdd Repository\t' $'remove\tRemove Repository\t' $'back\tBack to Settings\t')
+    ui_cursor_menu "HAWS Settings — Repositories" "${records[@]}" || return 0
+    key="${UI_MENU_RESULT:-back}"
     case "${key}" in
-      1) _settings_choose_list HAWS_SELECTED_SOURCES "Repositories" "${HAWS_SELECTED_SOURCES:-}" sources || true ;;
-      2)
+      add)
         echo "Add Repository"
         echo "Enter repository URL, or Q to cancel."
         ui_next_key >/dev/null 2>&1 || continue
@@ -102,28 +97,22 @@ repositories_menu() {
         export HAWS_DRAFT_ADDED_REPOSITORIES
         echo "Repository added to draft: ${url}"
         ;;
-      3) _settings_choose_list HAWS_SELECTED_SOURCES "Remove Repository" "${HAWS_SELECTED_SOURCES:-}" sources || true ;;
-      0|back|b|q|Q|cancel) return 0 ;;
-      *) echo "Invalid selection. Enter 0-3 or Q." ;;
+      remove) _settings_choose_list HAWS_SELECTED_SOURCES "Remove Repository" "${HAWS_SELECTED_SOURCES:-}" sources || true ;;
+      back) return 0 ;;
     esac
   done
 }
 
 skills_menu() {
-  local key
+  local key records=()
   while true; do
-    echo ""
-    echo "Skills"
-    echo "  1) Single Skills"
-    echo "  2) Multi-Skill Packs"
-    echo "  0) Back"
-    ui_next_key >/dev/null 2>&1 || return 0
-    key="${UI_LAST_KEY:-}"
+    records=($'single\tSingle Skills\t' $'packs\tMulti-Skill Packs\t' $'back\tBack to Settings\t')
+    ui_cursor_menu "HAWS Settings — Skills" "${records[@]}" || return 0
+    key="${UI_MENU_RESULT:-back}"
     case "${key}" in
-      1) _settings_choose_list HAWS_SELECTED_SKILLS "Single Skills" "${HAWS_SELECTED_SKILLS:-}" skills-single || true ;;
-      2) _settings_choose_list HAWS_SELECTED_SKILLS "Multi-Skill Packs" "${HAWS_SELECTED_SKILLS:-}" skills-pack || true ;;
-      0|back|b|q|Q|cancel) return 0 ;;
-      *) echo "Invalid selection. Enter 0-2 or Q." ;;
+      1|single) _settings_choose_list HAWS_SELECTED_SKILLS "Single Skills" "${HAWS_SELECTED_SKILLS:-}" skills-single || true ;;
+      2|packs) _settings_choose_list HAWS_SELECTED_SKILLS "Multi-Skill Packs" "${HAWS_SELECTED_SKILLS:-}" skills-pack || true ;;
+      back) return 0 ;;
     esac
   done
 }
@@ -131,23 +120,38 @@ skills_menu() {
 settings_boolean_menu() {
   local target="$1" title="$2" current="$3" key value
   while true; do
-    echo ""
-    echo "${title}"
-    echo "  1) On"
-    echo "  2) Off"
-    echo "  0) Back"
-    ui_next_key >/dev/null 2>&1 || return 0
-    key="${UI_LAST_KEY:-}"
+    ui_cursor_menu "${title}" $'on\tOn\t' $'off\tOff\t' $'back\tBack to Settings\t' || return 0
+    key="${UI_MENU_RESULT:-back}"
     case "${key}" in
-      1) value=on ;;
-      2) value=off ;;
-      0|back|b|q|Q|cancel) return 0 ;;
-      *) echo "Invalid selection. Enter 0-2 or Q."; continue ;;
+      1|on) value=on ;;
+      2|off) value=off ;;
+      back) return 0 ;;
     esac
     printf -v "${target}" '%s' "${value}"
     export "${target}"
     return 0
   done
+}
+
+settings_second_brain_menu() {
+  local key value
+  ui_cursor_menu "Second Brain Remote" $'on\tOn\t' $'off\tOff\t' $'back\tBack to Settings\t' || return 0
+  key="${UI_MENU_RESULT:-back}"
+  case "${key}" in
+    off) HAWS_DRAFT_SECOND_BRAIN=off; HAWS_DRAFT_SECOND_BRAIN_REMOTE=""; export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE; return 0 ;;
+    back) return 0 ;;
+    on) ;;
+  esac
+  HAWS_DRAFT_SECOND_BRAIN=on
+  if [ -z "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ]; then
+    echo "Second Brain Remote URL (draft only):"
+    ui_next_key >/dev/null 2>&1 || return 1
+    value="${UI_LAST_KEY:-}"
+    case "${value}" in ""|q|Q|cancel) HAWS_DRAFT_SECOND_BRAIN=off; return 0 ;; esac
+    case "${value}" in *://*|git@*:* ) HAWS_DRAFT_SECOND_BRAIN_REMOTE="${value}" ;; *) echo "Invalid remote URL. No changes saved."; HAWS_DRAFT_SECOND_BRAIN=off; return 1 ;; esac
+  fi
+  export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE
+  echo "Remote URL saved in draft; it will be applied only after Preview and Apply."
 }
 
 uninstall_settings_menu() {
@@ -175,7 +179,6 @@ _settings_render() {
   echo ""
   echo "HAWS Settings${1:+ — $1}"
   [ -s "${HOME}/.haws_manifest" ] && [ ! -s "$(_haws_state_dir)/install.complete" ] && echo "  Existing HAWS installation detected; no files are changed until Save & Apply."
-  echo "  0) Save & Apply / Exit"
   echo "  1) Reset Standard Setup"
   echo "  2) Repositories: $(printf '%s\n' "${HAWS_SELECTED_SOURCES:-}" | sed '/^$/d' | wc -l | tr -d ' ') selected"
   echo "  3) Skills: $(printf '%s\n' "${HAWS_SELECTED_SKILLS:-}" | sed '/^$/d' | wc -l | tr -d ' ') active"
@@ -183,7 +186,26 @@ _settings_render() {
   echo "  5) Second Brain: ${HAWS_DRAFT_SECOND_BRAIN}"
   echo "  6) Auto Update when Syncing: ${HAWS_DRAFT_AUTO_UPDATE}"
   install_is_complete && echo "  7) Uninstall HAWS"
+  echo "  0) Save & Apply / Exit"
   echo "  Q) Cancel"
+}
+
+_settings_menu_records() {
+  local mode="${1:-settings}" source_count skill_count env_count title
+  source_count="$(printf '%s\n' "${HAWS_SELECTED_SOURCES:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
+  skill_count="$(printf '%s\n' "${HAWS_SELECTED_SKILLS:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
+  env_count="$(printf '%s\n' "${HAWS_SELECTED_ENVS:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
+  [ "${mode}" = first-install ] && title="HAWS Settings — First Install" || title="HAWS Settings"
+  printf '%s\t%s\t%s\n' default "Restore Recommended Defaults" ""
+  printf '%s\t%s\t%s\n' repositories "Repositories" "${source_count} sources"
+  printf '%s\t%s\t%s\n' skills "Skills" "${skill_count} active"
+  printf '%s\t%s\t%s\n' envs "AI Environments" "${env_count} selected"
+  printf '%s\t%s\t%s\n' second-brain "Second Brain Remote" "[ ${HAWS_DRAFT_SECOND_BRAIN^} ]"
+  printf '%s\t%s\t%s\n' auto-update "Auto Update" "[ ${HAWS_DRAFT_AUTO_UPDATE^} ]"
+  [ "${mode}" = first-install ] && printf '%s\t%s\t%s\n' save "Preview Install" "" || printf '%s\t%s\t%s\n' save "Preview Update" ""
+  install_is_complete && printf '%s\t%s\t%s\n' uninstall "Uninstall HAWS" ""
+  [ "${mode}" = first-install ] && printf '%s\t%s\t%s\n' cancel "Cancel Setup" "" || printf '%s\t%s\t%s\n' cancel "Cancel Update" ""
+  printf '%s\n' "${title}" >&2
 }
 
 _settings_set_list() {
@@ -210,27 +232,36 @@ _settings_list_contains() {
 }
 
 settings_edit() {
-  local mode="${1:-settings}" key value
+  local mode="${1:-settings}" key value title records=()
   settings_load || return $?
   disabled_envs_load || return $?
   disabled_skills_load || return $?
   HAWS_DRAFT_ENVS_TOUCHED=0
   settings_draft_defaults
-  [ "${mode}" = first-install ] && _settings_render "First Install"
   while true; do
-    [ "${mode}" = first-install ] || _settings_render
-    ui_next_key >/dev/null 2>&1 || key="cancel"
-    key="${UI_LAST_KEY:-${key:-cancel}}"
+    records=()
+    while IFS=$'\t' read -r key value title; do records+=("${key}"$'\t'"${value}"$'\t'"${title}"); done <<EOF
+$(_settings_menu_records "${mode}")
+EOF
+    title="HAWS Settings"
+    [ "${mode}" = first-install ] && title="HAWS Settings — First Install"
+    if [ -n "${HAWS_TEST_KEYS:-}" ] && [[ "${_HAWS_UI_KEYS_REMAINING:-}" == *=* ]]; then
+      ui_next_key >/dev/null 2>&1 || key="cancel"
+      key="${UI_LAST_KEY:-cancel}"
+    else
+      ui_cursor_menu "${title}" "${records[@]}" || { echo "Cancelled. No changes saved."; return 1; }
+      key="${UI_MENU_RESULT:-cancel}"
+    fi
     case "${key}" in
-      1|default|d|D) settings_draft_defaults; HAWS_DRAFT_ENVS_TOUCHED=1; echo "Default Setup restored in draft." ;;
+      1|default|d|D) settings_draft_defaults; HAWS_DRAFT_ENVS_TOUCHED=1; echo "Recommended defaults restored in draft." ;;
       0|save|s|S|apply) settings_plan_apply || return $?; return 0 ;;
       cancel|c|C|q|quit|exit|no) echo "Cancelled. No changes saved."; return 1 ;;
-      2|sources|source) repositories_menu ;;
+      2|repositories|sources|source) repositories_menu ;;
       3|skills|skill) skills_menu ;;
       4|envs|environment|environments) _settings_choose_list HAWS_SELECTED_ENVS "AI Environments" "${HAWS_SELECTED_ENVS:-}" envs; HAWS_DRAFT_ENVS_TOUCHED=1 ;;
-      5|second-brain|second_brain) settings_boolean_menu HAWS_DRAFT_SECOND_BRAIN "Second Brain" "${HAWS_DRAFT_SECOND_BRAIN}" ;;
-      6|auto-update|auto_update) settings_boolean_menu HAWS_DRAFT_AUTO_UPDATE "Auto Update when Syncing" "${HAWS_DRAFT_AUTO_UPDATE}" ;;
-      7) uninstall_settings_menu; return $? ;;
+      5|second-brain|second_brain) settings_second_brain_menu ;;
+      6|auto-update|auto_update) settings_boolean_menu HAWS_DRAFT_AUTO_UPDATE "Auto Update" "${HAWS_DRAFT_AUTO_UPDATE}" ;;
+      7|uninstall) uninstall_settings_menu; return $? ;;
       second_brain=*) HAWS_DRAFT_SECOND_BRAIN="${key#*=}" ;;
       auto_update=*) HAWS_DRAFT_AUTO_UPDATE="${key#*=}" ;;
       envs=*) _settings_set_list HAWS_SELECTED_ENVS "${key#*=}"; HAWS_DRAFT_ENVS_TOUCHED=1 ;;

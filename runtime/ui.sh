@@ -36,6 +36,86 @@ ui_menu() {
   ui_next_key || return 1
 }
 
+# Keyboard-first single-select menu. Records use id<TAB>label<TAB>detail;
+# callers consume UI_MENU_RESULT rather than display text.
+ui_cursor_menu() {
+  local title="${1:-Menu}"; shift || true
+  local records=("$@") cursor=0 count="${#@}" key i id label detail
+  UI_MENU_RESULT=""
+  [ "${count}" -gt 0 ] || return 1
+
+  _ui_cursor_render() {
+    local row_id row_label row_detail
+    echo ""
+    echo "${title}"
+    for i in "${!records[@]}"; do
+      IFS=$'\t' read -r row_id row_label row_detail <<EOF
+${records[$i]}
+EOF
+      [ "${i}" = "${cursor}" ] && printf '> ' || printf '  '
+      printf '%s' "${row_label:-${row_id}}"
+      [ -n "${row_detail:-}" ] && printf '  %s' "${row_detail}"
+      printf '\n'
+    done
+    echo ""
+    echo "Up/Down Move   Enter Select   Q Back"
+  }
+
+  _ui_cursor_read_key() {
+    if [ -n "${HAWS_TEST_KEYS:-}" ]; then
+      ui_next_key >/dev/null 2>&1 || return 1
+      UI_CURSOR_KEY="${UI_LAST_KEY:-}"
+      return 0
+    fi
+    local raw rest
+    IFS= read -rsn1 raw < /dev/tty || return 1
+    if [ "${raw}" = $'\x1b' ]; then
+      IFS= read -rsn2 rest < /dev/tty || true
+      case "${rest}" in '[A') UI_CURSOR_KEY=up ;; '[B') UI_CURSOR_KEY=down ;; *) UI_CURSOR_KEY=esc ;; esac
+    elif [ -z "${raw}" ]; then
+      UI_CURSOR_KEY=enter
+    else
+      UI_CURSOR_KEY="${raw}"
+    fi
+  }
+
+  while true; do
+    _ui_cursor_render
+    _ui_cursor_read_key || return 1
+    key="${UI_CURSOR_KEY:-}"
+    case "${key}" in
+      up|k) cursor=$(( (cursor - 1 + count) % count )) ;;
+      down|j) cursor=$(( (cursor + 1) % count )) ;;
+      enter|Enter|"")
+        IFS=$'\t' read -r id label detail <<EOF
+${records[$cursor]}
+EOF
+        UI_MENU_RESULT="${id}"
+        export UI_MENU_RESULT
+        return 0
+        ;;
+      q|Q|esc|cancel|back) return 1 ;;
+      *)
+        if [[ "${key}" =~ ^[1-9][0-9]*$ ]] && [ "${key}" -le "${count}" ]; then
+          i=$((key - 1))
+          IFS=$'\t' read -r id label detail <<EOF
+${records[$i]}
+EOF
+          UI_MENU_RESULT="${id}"
+          export UI_MENU_RESULT
+          return 0
+        fi
+        for i in "${!records[@]}"; do
+          IFS=$'\t' read -r id label detail <<EOF
+${records[$i]}
+EOF
+          if [ "${key}" = "${id}" ]; then UI_MENU_RESULT="${id}"; export UI_MENU_RESULT; return 0; fi
+        done
+        ;;
+    esac
+  done
+}
+
 ui_checklist() {
   local title="${1:-Select}"; shift || true
   local records=("$@") i id label detail selected key cursor=0 count="${#@}" cancelled=0
@@ -61,8 +141,8 @@ EOF
     [ "${all}" = 1 ] && mark='[x]' || { [ "${any}" = 1 ] && mark='[-]' || mark='[ ]'; }
     printf '\033[H\033[2J'
     echo "=== ${title} ==="
-    echo "Controls: [↑/↓] Navigate | [Space] Toggle | [Enter] Confirm & Save | [q] Cancel"
-    [ "${cursor}" = 0 ] && printf '> %s [Toggle All: Select All / Deselect All]\n' "${mark}" || printf '  %s [Toggle All: Select All / Deselect All]\n' "${mark}"
+    echo "Up/Down Move   Space Toggle   Enter Select   Q Cancel"
+    [ "${cursor}" = 0 ] && printf '> %s Select All\n' "${mark}" || printf '  %s Select All\n' "${mark}"
     for i in "${!records[@]}"; do
       IFS=$'\t' read -r id label detail selected <<EOF
 ${records[$i]}

@@ -3019,7 +3019,8 @@ case "${COMMAND}" in
         ;;
     setup|bootstrap)
         shift || true
-        run_setup "$@"
+        # Keep the public setup entrypoint aligned with the agreed Settings UX.
+        settings_run "${1:-settings}"
         ;;
     settings|configure)
         shift || true

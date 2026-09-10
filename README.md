@@ -14,33 +14,17 @@ The actual goal and required outcome always take priority over following rigid p
 
 ## Quick Install and Setup
 
-### Windows 1-Click Launchers (Zero Terminal Needed)
-If you are on Windows, you don't even need to open a terminal or type any commands:
-* **`1-CLICK-SYNC.bat`** : **Double-click in Windows File Explorer** — Smart 1-click launcher: automatically launches interactive Setup on first run (Kit selection & hooks), and performs seamless auto-update, sync, and doctor diagnostics on subsequent runs!
-* **`SETUP.bat`** : **Double-click in Windows File Explorer** to launch interactive Skill Kit configuration anytime (select standard kit, prune existing packs, or add custom Git links).
-* **`2nd-BRAIN-TOGGLE.bat`** : **Double-click in Windows File Explorer** to connect or toggle your Second Brain cloud sync between Local-Only and Cloud mode.
-
----
-
-### Command Line Setup (All Platforms)
-Install and sync HAWS across your detected AI environments (**Google Antigravity**, **Claude Code**, **Cursor**, and **Codex / Copilot**) with a single command:
-
+HAWS uses one interactive, cross-platform CLI. A bare launch opens Settings on a first install and Home after installation. No network operation starts until you choose **Save & Apply** or **Sync**.
 
 ```bash
-# 1. Clone HAWS
 git clone https://github.com/apirak-k/Human-AI-Working-Standard.git
 cd Human-AI-Working-Standard
 
-# 2. Run setup (initializes Second Brain, submodules, links skills, installs git hooks, runs diagnostics)
-bash haws.sh setup
+# Open Settings and select AI environments and skills.
+bash haws.sh settings
 ```
 
-The automated `setup` script executes 5 steps in under 60 seconds:
-1. **Initializes Second Brain**: Creates an independent `secondbrain/` Git repository to keep personal notes separate from the public framework.
-2. **Initializes Submodules**: Clones external skill packs (`superpowers`, `agent-skills`, `anthropics-skills`, `mattpocock-skills`) and tool submodules (`ponytail`).
-3. **Links Skills**: Connects skills into Google Antigravity (`~/.gemini/config/skills.json`) and Claude Code (`~/.claude/skills/`).
-4. **Installs Hardware Git Hooks**: Sets up `.githooks/pre-commit` and `.githooks/pre-push` to block unverified code, secret leaks, and accidental remote pushes.
-5. **Runs Diagnostics**: Executes the 10-axis doctor suite (38 verification checks) to confirm everything is set up correctly.
+Choose **Save & Apply** to persist the selected configuration and install only selected integrations. Use **Sync** later for the explicit remote update operation. **Status** and **Doctor** are read-only.
 
 ### Prerequisites
 
@@ -53,7 +37,7 @@ The automated `setup` script executes 5 steps in under 60 seconds:
 
 ### Cross-Platform Setup Details
 
-- **Windows 10 / 11**: Double-click `1-CLICK-SYNC.bat` or run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required. Antigravity uses declarative JSON mapping (`skills.json`) to prevent NTFS junction issues; Claude Code uses safe junctions; Cursor and Codex/Copilot use dedicated configuration adapters.
+- **Windows 10 / 11**: Run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges are required. Use `bash haws.sh` or `bash haws.sh settings`.
 - **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
 
 ---
@@ -116,55 +100,20 @@ bash haws.sh brain connect <your-private-github-repo-url>
 - **Empty Remote (Machine 1)**: Automatically pushes your local second brain to the cloud.
 - **Populated Remote (Machine 2)**: Automatically pulls, merges, and syncs your brain history symmetrically.
 
-### Windows 1-Click Cloud Toggle (`2nd-BRAIN-TOGGLE.bat`)
-Double-click `2nd-BRAIN-TOGGLE.bat` in Windows File Explorer:
-- If offline: prompts for your private GitHub URL and connects.
-- If online: displays a safety guard prompt before returning to Local-Only mode.
-
-### Windows 1-Click Clean Uninstaller (`UNINSTALL.bat`)
-Double-click `UNINSTALL.bat` in Windows File Explorer:
-- Generates an instant dry-run inspection preview of all active pointers and skills.
-- Detaches global AI configuration pointers, linked skills, and Git hooks on confirmation.
-- Strictly preserves local project files and Second Brain data.
-
----
-
 ## HAWS CLI Reference (`haws.sh`)
 
 | Command | Purpose |
 | :--- | :--- |
-| `bash haws.sh setup` | First-time setup: initializes Second Brain, submodules, skill links, git hooks, and doctor check |
-| `bash haws.sh sync` | Two-way Second Brain sync, pulls upstream framework, updates submodules, and verifies links |
-| `bash haws.sh status` | Instant skill count, token budget, and sync health check (< 0.2s) |
-| `bash haws.sh doctor` | Comprehensive 12-axis system diagnostic suite |
-| `bash haws.sh uninstall` | Safely detach HAWS pointers, skills, and hooks without deleting user data (`--dry-run` supported) |
-| `bash haws.sh kit setup` | Interactive skill kit selector (Review/prune existing packs or add new Git links) |
-| `bash haws.sh kit add <url> [name]` | Add external skill pack submodule with merge protection |
-| `bash haws.sh kit prune <name>` | Cleanly remove submodule, clear git cache, and delete directory |
-| `bash haws.sh kit update [name]` | Update active submodules from upstream remote links |
-| `bash haws.sh kit list` | List installed skill submodules and statuses |
-| `bash haws.sh brain status` | Check Second Brain cloud connection and commit count (alias: `user status`) |
-| `bash haws.sh brain connect <url>` | Connect Second Brain to private GitHub repository (alias: `user connect`) |
-| `bash haws.sh brain disconnect` | Switch Second Brain to local-only mode (alias: `user disconnect`) |
-| `bash haws.sh hook install` | Install hardware git hooks (`pre-commit` and `pre-push`) |
-| `bash haws.sh hook status` | Inspect git hook activation status |
+| `bash haws.sh` | Opens Settings before first install, otherwise Home |
+| `bash haws.sh settings` | Review and edit local AI, skill, repository, and sync settings |
+| `bash haws.sh sync` | Run the guarded, explicit remote sync operation |
+| `bash haws.sh status [--details]` | Read local configuration and recorded sync health without network access |
+| `bash haws.sh doctor` | Run read-only local diagnostics without repairing configuration |
+| `bash haws.sh uninstall` | Preview and remove only HAWS-owned integrations; user data is preserved by default |
 
 ### Managing Skills (Add & Remove)
 
-HAWS organizes skills into two main tiers:
-
-1. **External Git Submodules (Multi-Skill Packs & Standalone Skills)**:
-   - **Interactive CLI Wizard**: Run `bash haws.sh kit setup` (or choose `2) Setup` during initial `bash haws.sh setup`). The CLI lists all current packs with their Git URLs, allows entering numbers to cleanly remove (prune), and prompts for Git URLs to add new packs or standalone skills.
-   - **Direct CLI Commands**:
-     - Add repository: `bash haws.sh kit add <git-url> [name]`
-     - Remove repository: `bash haws.sh kit prune <name>`
-     - List active submodules: `bash haws.sh kit list`
-     - Update from remotes: `bash haws.sh kit update [name]`
-
-2. **In-House Custom Skills (`skills/custom/`)**:
-   - **To Add**: Create a folder under `skills/custom/<skill-name>/` containing a valid `SKILL.md`. Then run `bash haws.sh sync`.
-   - **To Remove**: Delete the folder under `skills/custom/<skill-name>/` and run `bash haws.sh sync --clean`.
-   - Local custom skills have top linking priority and are never overwritten by upstream framework updates.
+Use **Settings → Skills** to choose active skills and **Settings → Repositories** to review the Git submodule registry or add/remove repositories from the draft. The choice is applied only by **Save & Apply**. A custom local skill is a directory under `skills/custom/<skill-name>/` containing a valid `SKILL.md`.
 
 ---
 
@@ -194,11 +143,7 @@ HAWS organizes skills into two main tiers:
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
-├── haws.sh                              # Standalone Universal CLI Engine (12-axis diagnostics)
-├── 1-CLICK-SYNC.bat                     # Windows 1-Click Complete System Sync & Health Check
-├── SETUP.bat                            # Windows 1-Click Interactive Skill Manager & Setup
-├── 2nd-BRAIN-TOGGLE.bat                 # Windows 1-Click File Explorer Cloud Toggle
-└── UNINSTALL.bat                        # Windows 1-Click Reversible Clean Uninstaller
+└── haws.sh                              # Interactive CLI: Settings, Sync, Status, Doctor, and Uninstall
 ```
 
 ---

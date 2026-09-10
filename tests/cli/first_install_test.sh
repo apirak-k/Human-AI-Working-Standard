@@ -10,7 +10,8 @@ test_bare_first_launch_opens_default_populated_settings_without_git_calls() {
   export HAWS_TEST_KEYS=cancel
   run_haws || true
   assert_output_contains "First Install" || return 1
-  assert_output_contains "Second Brain: off" || return 1
+  assert_output_contains "Second Brain Remote" || return 1
+  assert_output_contains "[ Off ]" || return 1
   [ ! -d "${FIXTURE_REPO}/.haws/state" ] || return 1
   [ ! -s "${CALL_LOG}" ] || return 1
 }
@@ -19,14 +20,25 @@ test_first_install_settings_shows_every_spec_action_except_uninstall() {
   new_fixture
   export HAWS_TEST_KEYS=cancel
   run_haws || true
-  assert_output_contains "Reset Standard Setup" || return 1
+  assert_output_contains "Restore Recommended Defaults" || return 1
   assert_output_contains "Repositories" || return 1
   assert_output_contains "Skills" || return 1
   assert_output_contains "AI Environments" || return 1
   assert_output_contains "Second Brain" || return 1
-  assert_output_contains "Auto Update when Syncing" || return 1
-  assert_output_contains "Save & Apply / Exit" || return 1
+  assert_output_contains "Auto Update" || return 1
+  assert_output_contains "Preview Install" || return 1
   ! grep -F "Uninstall HAWS" "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
+test_first_install_uses_approved_settings_labels() {
+  new_fixture
+  export HAWS_TEST_KEYS=cancel
+  run_haws || true
+  assert_output_contains "Repositories" || return 1
+  assert_output_contains "sources" || return 1
+  assert_output_contains "Second Brain Remote" || return 1
+  assert_output_contains "Preview Install" || return 1
+  assert_output_contains "Restore Recommended Defaults" || return 1
 }
 
 test_legacy_manifest_is_not_misclassified_as_first_install() {
@@ -42,7 +54,7 @@ test_default_setup_only_resets_the_draft() {
   new_fixture
   export HAWS_TEST_KEYS=default,cancel
   run_haws || true
-  assert_output_contains "Default Setup restored in draft." || return 1
+  assert_output_contains "Recommended defaults restored in draft." || return 1
   [ ! -d "${FIXTURE_REPO}/.haws/state" ] || return 1
   [ ! -e "${FIXTURE_HOME}/.haws_manifest" ] || return 1
 }
@@ -103,6 +115,7 @@ run_test() {
 trap cleanup_fixture EXIT
 run_test test_bare_first_launch_opens_default_populated_settings_without_git_calls
 run_test test_first_install_settings_shows_every_spec_action_except_uninstall
+run_test test_first_install_uses_approved_settings_labels
 run_test test_legacy_manifest_is_not_misclassified_as_first_install
 run_test test_default_setup_only_resets_the_draft
 run_test test_cancel_leaves_state_and_integrations_unchanged
