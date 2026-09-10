@@ -112,7 +112,7 @@ sync_target() {
   local target="${1:-}" revision current status
   [ -n "${target}" ] || return 2
   if [ "${target}" = secondbrain ]; then second_brain_sync; return $?; fi
-  if [ "${HAWS_AUTO_UPDATE:-${AUTO_UPDATE:-on}}" != on ]; then
+  if [ "${target}" != haws ] && [ "${HAWS_AUTO_UPDATE:-${AUTO_UPDATE:-on}}" != on ]; then
     sync_result_write "${target}" Disabled - "Auto Update is disabled" || true
     echo "${target}: Disabled"
     return 0
@@ -156,15 +156,8 @@ sync_run() {
   trap 'if [ "${HAWS_SYNC_LOCK_ACQUIRED:-0}" -eq 1 ]; then sync_lock_release >/dev/null 2>&1 || true; HAWS_SYNC_LOCK_ACQUIRED=0; fi' EXIT
   trap _sync_interrupt INT TERM
   settings_load || return $?
-  if [ "${HAWS_AUTO_UPDATE}" != on ] && [ "${HAWS_SECOND_BRAIN_ENABLED}" != on ]; then
-    echo "No remote targets enabled"
-    sync_result_write sync "Disabled" - "No remote targets enabled" || true
-    sync_lock_release >/dev/null 2>&1 || true
-    HAWS_SYNC_LOCK_ACQUIRED=0; trap - EXIT INT TERM
-    return 0
-  fi
+  sync_target haws || status=1
   if [ "${HAWS_AUTO_UPDATE}" = on ]; then
-    sync_target haws || status=1
     while IFS= read -r row || [ -n "${row}" ]; do
       [ -n "${row}" ] || continue
       IFS="	" read -r source_id _ _ _ <<EOF
@@ -175,7 +168,7 @@ EOF
 $(catalog_sources 2>/dev/null || true)
 EOF
   else
-    echo "Auto Update: Disabled"
+    echo "Auto Update: Disabled; sources skipped"
   fi
   if [ "${HAWS_SECOND_BRAIN_ENABLED}" = on ]; then second_brain_sync || status=1; else echo "Second Brain: Disabled"; fi
   sync_lock_release >/dev/null 2>&1 || true

@@ -28,14 +28,14 @@ write_gitmodules_fixture() {
   done
 }
 
-test_both_remote_settings_off_makes_no_network_request() {
+test_manual_sync_checks_haws_when_other_targets_are_off() {
   new_fixture
   mkdir -p "${FIXTURE_REPO}/.haws/state"
   printf 'schema_version\t1\nsecond_brain\toff\nauto_update\toff\n' > "${FIXTURE_REPO}/.haws/state/settings.tsv"
   install_fake_command git
   run_haws sync || return 1
-  assert_output_contains "No remote targets enabled" || return 1
-  assert_no_call "fetch" || return 1
+  assert_output_contains "HAWS:" || return 1
+  assert_output_contains "sources skipped" || return 1
 }
 
 test_second_brain_off_never_calls_its_git_remote() {
@@ -47,13 +47,13 @@ test_second_brain_off_never_calls_its_git_remote() {
   ! grep -F -- "secondbrain" "${CALL_LOG}" >/dev/null 2>&1 || return 1
 }
 
-test_auto_update_off_never_fetches_haws_or_sources() {
+test_auto_update_off_skips_sources_but_checks_haws() {
   new_fixture
   mkdir -p "${FIXTURE_REPO}/.haws/state"
   printf 'schema_version\t1\nsecond_brain\toff\nauto_update\toff\n' > "${FIXTURE_REPO}/.haws/state/settings.tsv"
   install_fake_command git
   run_haws sync || return 1
-  assert_no_call "fetch" || return 1
+  grep -F -- "fetch" "${CALL_LOG}" >/dev/null 2>&1 || return 1
 }
 
 test_concurrent_sync_reports_already_running() {
@@ -123,9 +123,9 @@ run_test() {
   cleanup_fixture
 }
 trap cleanup_fixture EXIT
-run_test test_both_remote_settings_off_makes_no_network_request
+run_test test_manual_sync_checks_haws_when_other_targets_are_off
 run_test test_second_brain_off_never_calls_its_git_remote
-run_test test_auto_update_off_never_fetches_haws_or_sources
+run_test test_auto_update_off_skips_sources_but_checks_haws
 run_test test_concurrent_sync_reports_already_running
 run_test test_lock_is_released_on_success_failure_and_interrupt
 run_test test_dirty_source_is_blocked_while_other_targets_continue

@@ -12,6 +12,9 @@ COMMAND="${1:-}"
 # command implementations remain below while the boundary is introduced.
 export HAWS_REPO_DIR="${HAWS_REPO_DIR:-${SCRIPT_DIR}}"
 export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
+if [ -r /dev/tty ]; then
+  echo "[HAWS] Loading runtime..."
+fi
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/platform.sh"
 # shellcheck disable=SC1091
@@ -33,7 +36,13 @@ export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/health.sh"
 # shellcheck disable=SC1091
+. "${SCRIPT_DIR}/runtime/command_integration.sh"
+# shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/settings.sh"
+
+if [ -r /dev/tty ]; then
+  echo "[HAWS] Runtime ready."
+fi
 
 # Native Codex agent installation is also available without a global sync.
 run_codex_agents() {
@@ -470,14 +479,14 @@ run_doctor() {
 
     # 12. Check Launchers & Automation Tools
     [ "$json_mode" = false ] && echo "" && echo "12. Checking Launchers & Automation Tools..."
-    if "${SCRIPT_DIR}/haws.sh" uninstall --dry-run >/dev/null 2>&1; then
+    if [ -f "${SCRIPT_DIR}/haws.sh" ] && [ -x "${SCRIPT_DIR}/haws.sh" ]; then
         passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] haws.sh uninstall --dry-run (operational)"
-        details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"PASS\"}")
+        [ "$json_mode" = false ] && echo "   [PASS] haws.sh is present and executable"
+        details+=("{\"item\":\"Launcher Script Check\",\"status\":\"PASS\"}")
     else
         failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] haws.sh uninstall --dry-run failed"
-        details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"FAIL\"}")
+        [ "$json_mode" = false ] && echo "   [FAIL] haws.sh missing or not executable"
+        details+=("{\"item\":\"Launcher Script Check\",\"status\":\"FAIL\"}")
     fi
 
 

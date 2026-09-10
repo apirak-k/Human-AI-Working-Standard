@@ -4,7 +4,10 @@
 # Ensures:
 # 1. Zero uncommitted/leaked .env secrets or API keys
 # 2. Universal LF Line Endings (no Windows CRLF corruption)
-# 3. Zero-failure pass on HAWS System Doctor diagnostics
+# 3. CLI regression tests (if present)
+# Note: haws.sh health/doctor checks are intentionally omitted here because
+#       catalog_skills scans all submodules via git-config calls and can take
+#       minutes. Run `bash haws.sh status` manually to verify system health.
 # ==============================================================================
 set -e
 
@@ -49,18 +52,11 @@ if [ "$CRLF_COUNT" -gt 0 ]; then
   exit 1
 fi
 
-# 4. HAWS System Doctor Diagnostic Suite
-echo "4. Executing HAWS System Doctor..."
-if [ -f "haws.sh" ]; then
-  bash haws.sh doctor
-else
-  echo "[SKIP] haws.sh not found in current directory."
-fi
-
+# 4. CLI Regression Tests (fast, fixture-based)
 if [ -f "tests/cli/run.sh" ]; then
-  echo "5. Running CLI regression tests..."
+  echo "4. Running CLI regression tests..."
   bash tests/cli/run.sh
 fi
 
-echo "=== [HAWS PRE-COMMIT HOOK] All Quality Gates PASSED (System Verified) ==="
+echo "=== [HAWS PRE-COMMIT HOOK] All Quality Gates PASSED ==="
 exit 0

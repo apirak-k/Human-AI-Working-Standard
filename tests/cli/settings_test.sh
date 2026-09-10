@@ -13,7 +13,9 @@ test_home_contains_status_sync_settings_doctor_details_and_exit() {
   export HAWS_TEST_KEYS=exit
   run_haws || return 1
   assert_output_contains "HAWS Home" || return 1
-  assert_output_contains "Status | Sync | Settings | Doctor | Status details | Exit"
+  assert_output_contains "Sync Now" || return 1
+  assert_output_contains "Status Details" || return 1
+  assert_output_contains "Exit" || return 1
 }
 
 test_checklist_supports_space_select_all_clear_all_and_enter() {
@@ -93,6 +95,16 @@ test_boolean_requires_explicit_on_or_off() {
   [ "$(ui_boolean Auto on | tail -1)" = off ]
 }
 
+test_settings_defers_skill_catalog_loading_until_the_user_needs_it() {
+  new_fixture
+  export HAWS_TEST_KEYS=cancel
+  run_haws settings || true
+  assert_output_contains "Loading HAWS settings..." || return 1
+  assert_output_contains "Loading repository catalog..." || return 1
+  assert_output_contains "Settings ready. Skills load when you open Skills or Preview." || return 1
+  ! grep -F "Loading skills catalog (this can take a moment)..." "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
 test_review_precedes_every_mutation() {
   new_fixture
   mkdir -p "${FIXTURE_HOME}/.claude"
@@ -157,6 +169,52 @@ test_installed_settings_keeps_every_spec_action_and_adds_uninstall() {
   assert_output_contains "Second Brain Remote" || return 1
   assert_output_contains "Auto Update" || return 1
   assert_output_contains "Uninstall HAWS"
+}
+
+test_preview_update_shows_review_actions_and_not_changed_safeguards() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/.haws/state"
+  printf 'schema=1\tcompleted_at=now\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+  printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > "${FIXTURE_REPO}/.haws/state/settings.tsv"
+  local before after
+  before="$(sha256sum "${FIXTURE_REPO}/.haws/state/install.complete" | awk '{print $1}')"
+  export HAWS_TEST_KEYS=6,off,save,cancel
+  run_haws settings || true
+  assert_output_contains "Preview Update" || return 1
+  assert_output_contains "Current settings:" || return 1
+  assert_output_contains "Not changed" || return 1
+  assert_output_contains "Apply Update" || return 1
+  assert_output_contains "Back to Settings" || return 1
+  assert_output_contains "Cancel Update" || return 1
+  after="$(sha256sum "${FIXTURE_REPO}/.haws/state/install.complete" | awk '{print $1}')"
+  [ "${before}" = "${after}" ] || return 1
+}
+
+test_second_brain_remote_connection_is_checked_in_draft_only() {
+  new_fixture
+  export HAWS_TEST_KEYS=5,on,https://example.invalid/brain.git,cancel
+  run_haws settings || true
+  assert_output_contains "Remote connection" || return 1
+  assert_output_contains "draft" || return 1
+  [ ! -d "${FIXTURE_REPO}/.haws/state" ] || return 1
+}
+
+test_second_brain_remote_persists_only_after_apply() {
+  new_fixture
+  export HAWS_TEST_KEYS=5,on,https://example.invalid/brain.git,save,yes
+  run_haws settings || true
+  assert_file_contains "${FIXTURE_REPO}/.haws/state/settings.tsv" $'second_brain_remote\thttps://example.invalid/brain.git' || return 1
+}
+
+test_preview_update_with_no_changes_has_no_apply_action() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/.haws/state"
+  printf 'schema=1\tcompleted_at=now\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+  printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > "${FIXTURE_REPO}/.haws/state/settings.tsv"
+  export HAWS_TEST_KEYS=save
+  run_haws settings || true
+  assert_output_contains "No changes detected" || return 1
+  ! grep -F "Apply Update" "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
 test_repositories_opens_approved_draft_add_remove_menu() {
@@ -234,11 +292,16 @@ run_test test_checklist_cancel_returns_no_result
 run_test test_cursor_menu_uses_down_and_enter_to_return_stable_id
 run_test test_cursor_menu_accepts_numbered_test_seam_for_existing_fixture_flows
 run_test test_boolean_requires_explicit_on_or_off
+run_test test_settings_defers_skill_catalog_loading_until_the_user_needs_it
 run_test test_review_precedes_every_mutation
 run_test test_later_save_apply_does_not_fetch_existing_sources
 run_test test_unrelated_setting_change_preserves_environment_disabled_bytes
 run_test test_uninstall_is_visible_only_after_install_complete
 run_test test_installed_settings_keeps_every_spec_action_and_adds_uninstall
+run_test test_preview_update_shows_review_actions_and_not_changed_safeguards
+run_test test_second_brain_remote_connection_is_checked_in_draft_only
+run_test test_second_brain_remote_persists_only_after_apply
+run_test test_preview_update_with_no_changes_has_no_apply_action
 run_test test_repositories_opens_approved_draft_add_remove_menu
 run_test test_skills_opens_the_legacy_single_and_pack_submenu
 run_test test_ai_environment_screen_lists_supported_options_on_a_clean_machine

@@ -46,14 +46,16 @@ ui_cursor_menu() {
 
   _ui_cursor_render() {
     local row_id row_label row_detail
+    # A real terminal receives one replacement screen per key press.  Fixture
+    # output deliberately omits control codes so tests remain readable.
     echo ""
-    echo "${title}"
+    echo "=== ${title} ==="
     for i in "${!records[@]}"; do
       IFS=$'\t' read -r row_id row_label row_detail <<EOF
 ${records[$i]}
 EOF
       [ "${i}" = "${cursor}" ] && printf '> ' || printf '  '
-      printf '%s' "${row_label:-${row_id}}"
+      printf '%s) %s' "$((i + 1))" "${row_label:-${row_id}}"
       [ -n "${row_detail:-}" ] && printf '  %s' "${row_detail}"
       printf '\n'
     done
@@ -139,7 +141,6 @@ EOF
       [ "${selected:-0}" = 1 ] && any=1 || all=0
     done
     [ "${all}" = 1 ] && mark='[x]' || { [ "${any}" = 1 ] && mark='[-]' || mark='[ ]'; }
-    printf '\033[H\033[2J'
     echo "=== ${title} ==="
     echo "Up/Down Move   Space Toggle   Enter Select   Q Cancel"
     [ "${cursor}" = 0 ] && printf '> %s Select All\n' "${mark}" || printf '  %s Select All\n' "${mark}"
@@ -213,16 +214,18 @@ ui_boolean() {
 }
 
 ui_review() {
-  local plan="${1:-}" key
+  local plan="${1:-}" key apply_label="Apply Update" cancel_label="Cancel Update"
+  [ -s "$(_haws_state_dir)/install.complete" ] || { apply_label="Install HAWS"; cancel_label="Cancel Setup"; }
+  echo "Current settings:"
+  echo "  Not changed values remain unchanged."
   echo "Review planned changes:"
   [ -f "${plan}" ] && cat "${plan}"
-  echo "Save & Apply? [yes/no]"
-  if [ -n "${HAWS_TEST_KEYS:-}" ]; then
-    ui_next_key >/dev/null 2>&1 || true
-    key="${UI_LAST_KEY:-}"
-    case "${key}" in no|n|cancel|q) return 1 ;; *) return 0 ;; esac
+  if [ -n "${HAWS_TEST_KEYS:-}" ] && { [ -z "${_HAWS_UI_KEYS_REMAINING:-}" ] || [ "${_HAWS_UI_KEYS_REMAINING:-}" = yes ] || [ "${_HAWS_UI_KEYS_REMAINING:-}" = y ]; }; then
+    [ -n "${_HAWS_UI_KEYS_REMAINING:-}" ] && ui_next_key >/dev/null 2>&1 || true
+    return 0
   fi
-  ui_next_key >/dev/null 2>&1 || true
-  key="${UI_LAST_KEY:-}"
-  case "${key}" in yes|y|Y|on|1|"" ) return 0 ;; *) return 1 ;; esac
+  local records=($'apply\t'"${apply_label}"$'\t' $'back\tBack to Settings\t' $'cancel\t'"${cancel_label}"$'\t')
+  ui_cursor_menu "Review changes" "${records[@]}" || return 1
+  key="${UI_MENU_RESULT:-cancel}"
+  case "${key}" in apply|yes|y) return 0 ;; back) return 2 ;; *) return 1 ;; esac
 }

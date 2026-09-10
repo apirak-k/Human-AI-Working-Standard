@@ -22,13 +22,27 @@ _settings_detected_envs() {
 _settings_active_skills() { catalog_skills 2>/dev/null | awk -F '	' '$5 == 1 {print $1}'; }
 _settings_sources() { catalog_sources 2>/dev/null | cut -f1; }
 
-settings_draft_defaults() {
-  HAWS_SELECTED_ENVS="$(_settings_detected_envs)"
-  HAWS_SELECTED_SOURCES="$(_settings_sources)"
+settings_ensure_skills_draft() {
+  [ "${HAWS_SKILLS_DRAFT_LOADED:-0}" = 1 ] && return 0
+  echo "Loading skills catalog (this can take a moment)..."
   HAWS_SELECTED_SKILLS="$(_settings_active_skills)"
+  HAWS_SKILLS_DRAFT_LOADED=1
+  export HAWS_SELECTED_SKILLS HAWS_SKILLS_DRAFT_LOADED
+}
+
+settings_draft_defaults() {
+  echo "Loading HAWS settings..."
+  HAWS_SELECTED_ENVS="$(_settings_detected_envs)"
+  echo "Loading repository catalog..."
+  HAWS_SELECTED_SOURCES="$(_settings_sources)"
+  # Skills are the expensive catalog. Load them only if the user enters Skills
+  # or asks for Preview; the opening screen must remain responsive.
+  HAWS_SELECTED_SKILLS=""
+  HAWS_SKILLS_DRAFT_LOADED=0
   HAWS_DRAFT_SECOND_BRAIN="off"
   HAWS_DRAFT_SECOND_BRAIN_REMOTE="${HAWS_SECOND_BRAIN_REMOTE:-}"
   HAWS_DRAFT_AUTO_UPDATE="on"
+  echo "Settings ready. Skills load when you open Skills or Preview."
   export HAWS_SELECTED_ENVS HAWS_SELECTED_SOURCES HAWS_SELECTED_SKILLS HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE HAWS_DRAFT_AUTO_UPDATE
 }
 
@@ -59,13 +73,13 @@ _settings_choose_list() {
 $(catalog_sources 2>/dev/null || true)
 EOF
       ;;
-    skills|skills-single|skills-pack)
+    skills|skills-single)
       while IFS=$'\t' read -r id label _ detail active; do
         [ -n "${id}" ] || continue
         if [ "${type}" != skills ]; then
           local source_count
           source_count="$(catalog_skills 2>/dev/null | awk -F '\t' -v wanted="${_}" '$3 == wanted {n++} END {print n+0}')"
-          [ "${type}" = skills-single ] && [ "${source_count}" -eq 1 ] || { [ "${type}" = skills-pack ] && [ "${source_count}" -gt 1 ] || continue; }
+          [ "${type}" = skills-single ] && [ "${source_count}" -eq 1 ] || continue
         fi
         _settings_list_contains "${current}" "${id}" && active=1 || active=0
         records+=("${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${active}")
@@ -78,6 +92,61 @@ EOF
   ui_checklist "${title}" "${records[@]}" || return 1
   printf -v "${target}" '%s' "${UI_CHECKLIST_RESULT}"
   export "${target}"
+}
+
+_settings_skill_counts() {
+  local current="$1" source filter="$2" id label source_id detail active total=0 enabled=0
+  while IFS=$'\t' read -r id label source_id detail active; do
+    [ -n "${id}" ] || continue
+    source="$(catalog_skills 2>/dev/null | awk -F '\t' -v wanted="${source_id}" '$3 == wanted {n++} END {print n+0}')"
+    [ "${filter}" = single ] && [ "${source}" -ne 1 ] && continue
+    [ "${filter}" = packs ] && [ "${source}" -le 1 ] && continue
+    total=$((total + 1))
+    _settings_list_contains "${current}" "${id}" && enabled=$((enabled + 1))
+  done <<EOF
+$(catalog_skills 2>/dev/null || true)
+EOF
+  printf '%s / %s active' "${enabled}" "${total}"
+}
+
+multi_skill_packs_menu() {
+  local current="${HAWS_SELECTED_SKILLS:-}" key id label source_id detail active count records=()
+  declare -A seen=()
+  while IFS=$'\t' read -r id label source_id detail active; do
+    [ -n "${id}" ] || continue
+    [ -n "${seen[${source_id}]:-}" ] && continue
+    seen[${source_id}]=1
+    count="$(catalog_skills 2>/dev/null | awk -F '\t' -v wanted="${source_id}" '$3 == wanted {n++} END {print n+0}')"
+    [ "${count}" -gt 1 ] || continue
+    local enabled=0 skill_id
+    while IFS=$'\t' read -r skill_id _ _ _ _; do _settings_list_contains "${current}" "${skill_id}" && enabled=$((enabled + 1)); done <<EOF
+$(catalog_skills 2>/dev/null | awk -F '\t' -v wanted="${source_id}" '$3 == wanted')
+EOF
+    records+=("${source_id}"$'\t'"${source_id}"$'\t'"${enabled} / ${count} active")
+  done <<EOF
+$(catalog_skills 2>/dev/null || true)
+EOF
+  records+=($'back\tBack to Skills\t')
+  while true; do
+    ui_cursor_menu "HAWS Settings — Multi-Skill Packs" "${records[@]}" || return 0
+    key="${UI_MENU_RESULT:-back}"; [ "${key}" = back ] && return 0
+    _settings_choose_pack "${key}" || true
+    current="${HAWS_SELECTED_SKILLS:-}"
+  done
+}
+
+_settings_choose_pack() {
+  local pack="$1" id label source_id detail active records=()
+  while IFS=$'\t' read -r id label source_id detail active; do
+    [ "${source_id}" = "${pack}" ] || continue
+    _settings_list_contains "${HAWS_SELECTED_SKILLS:-}" "${id}" && active=1 || active=0
+    records+=("${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${active}")
+  done <<EOF
+$(catalog_skills 2>/dev/null || true)
+EOF
+  [ "${#records[@]}" -gt 0 ] || return 1
+  ui_checklist "Configure Skills in ${pack}" "${records[@]}" || return 1
+  HAWS_SELECTED_SKILLS="${UI_CHECKLIST_RESULT}"; export HAWS_SELECTED_SKILLS
 }
 
 repositories_menu() {
@@ -104,14 +173,17 @@ repositories_menu() {
 }
 
 skills_menu() {
-  local key records=()
+  local key records=() single_count pack_count
+  settings_ensure_skills_draft || return 1
   while true; do
-    records=($'single\tSingle Skills\t' $'packs\tMulti-Skill Packs\t' $'back\tBack to Settings\t')
+    single_count="$(_settings_skill_counts "${HAWS_SELECTED_SKILLS:-}" single)"
+    pack_count="$(_settings_skill_counts "${HAWS_SELECTED_SKILLS:-}" packs)"
+    records=("single"$'\t'"Single Skills"$'\t'"${single_count}" "packs"$'\t'"Multi-Skill Packs"$'\t'"${pack_count}" $'back\tBack to Settings\t')
     ui_cursor_menu "HAWS Settings — Skills" "${records[@]}" || return 0
     key="${UI_MENU_RESULT:-back}"
     case "${key}" in
       1|single) _settings_choose_list HAWS_SELECTED_SKILLS "Single Skills" "${HAWS_SELECTED_SKILLS:-}" skills-single || true ;;
-      2|packs) _settings_choose_list HAWS_SELECTED_SKILLS "Multi-Skill Packs" "${HAWS_SELECTED_SKILLS:-}" skills-pack || true ;;
+      2|packs) multi_skill_packs_menu ;;
       back) return 0 ;;
     esac
   done
@@ -149,6 +221,11 @@ settings_second_brain_menu() {
     value="${UI_LAST_KEY:-}"
     case "${value}" in ""|q|Q|cancel) HAWS_DRAFT_SECOND_BRAIN=off; return 0 ;; esac
     case "${value}" in *://*|git@*:* ) HAWS_DRAFT_SECOND_BRAIN_REMOTE="${value}" ;; *) echo "Invalid remote URL. No changes saved."; HAWS_DRAFT_SECOND_BRAIN=off; return 1 ;; esac
+    if timeout 5 git ls-remote --heads "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}" HEAD >/dev/null 2>&1; then
+      echo "Remote connection: Ready (draft only)"
+    else
+      echo "Remote connection: Failed (draft only; URL was not saved)"
+    fi
   fi
   export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE
   echo "Remote URL saved in draft; it will be applied only after Preview and Apply."
@@ -254,7 +331,10 @@ EOF
     fi
     case "${key}" in
       1|default|d|D) settings_draft_defaults; HAWS_DRAFT_ENVS_TOUCHED=1; echo "Recommended defaults restored in draft." ;;
-      0|save|s|S|apply) settings_plan_apply || return $?; return 0 ;;
+      0|save|s|S|apply)
+        settings_plan_apply
+        case $? in 0) return 0 ;; 2) continue ;; *) return 1 ;; esac
+        ;;
       cancel|c|C|q|quit|exit|no) echo "Cancelled. No changes saved."; return 1 ;;
       2|repositories|sources|source) repositories_menu ;;
       3|skills|skill) skills_menu ;;
@@ -276,29 +356,52 @@ EOF
 }
 
 settings_plan_apply() {
-  local state plan integration old_envs env
+  local state plan integration command_plan old_envs env
   state="$(_haws_state_dir)"; mkdir -p "${state}" || return 1
-  plan="${state}/settings.plan"; integration="${state}/integrations.plan"
+  settings_ensure_skills_draft || return 1
+  plan="${state}/settings.plan"; integration="${state}/integrations.plan"; command_plan="${state}/command-integration.plan"
   HAWS_INTEGRATION_PLAN="${integration}" integration_plan "" "${HAWS_SELECTED_SOURCES:-}" >/dev/null || return 1
+  command_integration_plan "${command_plan}" >/dev/null || return 1
   {
     printf 'setting\tsecond_brain\t%s\n' "${HAWS_DRAFT_SECOND_BRAIN:-off}"
+    [ -z "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ] || printf 'setting\tsecond_brain_remote\t%s\n' "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"
     printf 'setting\tauto_update\t%s\n' "${HAWS_DRAFT_AUTO_UPDATE:-on}"
     printf 'envs\t%s\n' "$(_settings_encode_list "${HAWS_SELECTED_ENVS:-}")"
     printf 'skills\t%s\n' "$(_settings_encode_list "${HAWS_SELECTED_SKILLS:-}")"
     cat "${integration}"
+    cat "${command_plan}"
   } > "${plan}" || return 1
+  if [ -s "${state}/install.complete" ] \
+    && [ "${HAWS_DRAFT_SECOND_BRAIN:-off}" = "${HAWS_SECOND_BRAIN_ENABLED:-off}" ] \
+    && [ "${HAWS_DRAFT_AUTO_UPDATE:-on}" = "${HAWS_AUTO_UPDATE:-on}" ] \
+    && [ -z "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ] \
+    && [ -z "${HAWS_SELECTED_ENVS:-}" ] \
+    && [ -z "${HAWS_SELECTED_SKILLS:-}" ] \
+    && [ -z "${HAWS_SELECTED_SOURCES:-}" ]; then
+    echo "No changes detected"
+    return 0
+  fi
   echo "Settings review"
+  echo "Current -> Draft"
+  printf '  Second Brain Remote: %s -> %s\n' "${HAWS_SECOND_BRAIN_ENABLED:-off}" "${HAWS_DRAFT_SECOND_BRAIN:-off}"
+  printf '  Auto Update: %s -> %s\n' "${HAWS_AUTO_UPDATE:-on}" "${HAWS_DRAFT_AUTO_UPDATE:-on}"
   cat "${plan}"
   settings_apply "${plan}"
 }
 
 settings_apply() {
-  local plan="${1:-}" action key value list env disabled skill
+  local plan="${1:-}" action key value list env disabled skill command_plan command_result
   [ -f "${plan}" ] || return 1
-  ui_review "${plan}" || { echo "Cancelled. No changes saved."; return 1; }
+  ui_review "${plan}"
+  case $? in
+    0) ;;
+    2) return 2 ;;
+    *) echo "Cancelled. No changes saved."; return 1 ;;
+  esac
   # Adoption is a write, so it happens only after the reviewed confirmation.
   # This imports legacy manifest ownership before any reconciliation changes.
   state_init || return $?
+  command_plan="$(_haws_state_dir)/command-integration.plan"
   local second_brain=off auto_update=on selected_envs="" selected_skills=""
   while IFS="	" read -r action key value _ || [ -n "${action}" ]; do
     case "${action}" in
@@ -307,7 +410,11 @@ settings_apply() {
       skills) selected_skills="${key}" ;;
     esac
   done < "${plan}"
-  settings_save "${second_brain}" "${auto_update}" || return 1
+  local second_brain_remote=""
+  while IFS="	" read -r action key value _ || [ -n "${action}" ]; do
+    [ "${action}" = setting ] && [ "${key}" = second_brain_remote ] && second_brain_remote="${value}"
+  done < "${plan}"
+  settings_save "${second_brain}" "${auto_update}" "${second_brain_remote}" || return 1
   if [ "${HAWS_DRAFT_ENVS_TOUCHED:-0}" = 1 ]; then
     local disabled_envs=""
     for env in claude gemini cursor copilot codex; do
@@ -334,23 +441,49 @@ EOF
   else
     disabled_skills_save || return 1
   fi
-  integration_apply "${plan}" || return $?
+  if [ -f "${command_plan}" ]; then
+    if command_result="$(command_integration_apply "${command_plan}")"; then
+      [ -z "${command_result}" ] || printf '%s\n' "${command_result}"
+      echo "Done: Command Access"
+    else
+      case $? in
+        2) echo "Blocked: Command Access" ;;
+        *) echo "Failed: Command Access"; return 1 ;;
+      esac
+    fi
+  fi
+  if grep -qE '^(initialize|pointer|skill-link)[[:space:]]' "${plan}"; then
+    echo "Apply progress"
+    if integration_apply "${plan}"; then
+      echo "Done: integration changes"
+    else
+      echo "Failed: integration changes"
+      return 1
+    fi
+  else
+    echo "Apply progress"
+    echo "Skipped: no integration changes"
+  fi
   printf 'schema=1\tcompleted_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$(_haws_state_dir)/install.complete" || return 1
   echo "Doctor: Ready (read-only)"
   echo "Home"
-  return 0
+  home_run
 }
 
 home_run() {
-  local key
+  local key records=()
   settings_load || return $?
   while true; do
     status_run
     echo ""
-    echo "HAWS Home"
-    echo "Status | Sync | Settings | Doctor | Status details | Exit"
-    ui_next_key >/dev/null 2>&1 || return 0
-    key="${UI_LAST_KEY:-}"
+    records=($'sync	Sync Now	' $'settings	Settings	' $'doctor	Doctor	' $'details	Status Details	' $'exit	Exit	')
+    if [ -n "${HAWS_TEST_KEYS:-}" ] && [[ "${_HAWS_UI_KEYS_REMAINING:-}" == *=* ]]; then
+      ui_next_key >/dev/null 2>&1 || return 0
+      key="${UI_LAST_KEY:-}"
+    else
+      ui_cursor_menu "HAWS Home" "${records[@]}" || return 0
+      key="${UI_MENU_RESULT:-exit}"
+    fi
     case "${key}" in
       sync) sync_run || true ;;
       settings) settings_run || true ;;
