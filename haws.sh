@@ -2995,7 +2995,7 @@ run_setup() {
 if [ -z "${COMMAND}" ]; then
     # A bare non-interactive launch must be safe and useful: it may not begin
     # sync or any other mutation merely because stdin is unavailable.
-    if [ -n "${HAWS_TEST_KEYS:-}" ] || [ -r /dev/tty ]; then
+    if [ -n "${HAWS_TEST_KEYS:-}" ] || [ -t 0 ]; then
         if install_is_complete; then
             home_run
         else

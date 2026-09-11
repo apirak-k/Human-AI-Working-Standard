@@ -20,13 +20,14 @@ test_first_install_settings_shows_every_spec_action_except_uninstall() {
   new_fixture
   export HAWS_TEST_KEYS=cancel
   run_haws || true
-  assert_output_contains "Restore Recommended Defaults" || return 1
+  assert_output_contains "Use Recommended Defaults" || return 1
   assert_output_contains "Repositories" || return 1
   assert_output_contains "Skills" || return 1
   assert_output_contains "AI Environments" || return 1
   assert_output_contains "Second Brain" || return 1
   assert_output_contains "Auto Update" || return 1
   assert_output_contains "Preview Install" || return 1
+  assert_output_contains "Cancel Setup" || return 1
   ! grep -F "Uninstall HAWS" "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
@@ -38,7 +39,8 @@ test_first_install_uses_approved_settings_labels() {
   assert_output_contains "sources" || return 1
   assert_output_contains "Second Brain Remote" || return 1
   assert_output_contains "Preview Install" || return 1
-  assert_output_contains "Restore Recommended Defaults" || return 1
+  assert_output_contains "Use Recommended Defaults" || return 1
+  assert_output_contains "Cancel Setup" || return 1
 }
 
 test_legacy_manifest_is_not_misclassified_as_first_install() {

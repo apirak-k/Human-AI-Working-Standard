@@ -269,19 +269,35 @@ _settings_render() {
 
 _settings_menu_records() {
   local mode="${1:-settings}" source_count skill_count env_count title
+  if [ "${mode}" = "settings" ] && ! install_is_complete; then
+    mode="first-install"
+  fi
   source_count="$(printf '%s\n' "${HAWS_SELECTED_SOURCES:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
   skill_count="$(printf '%s\n' "${HAWS_SELECTED_SKILLS:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
   env_count="$(printf '%s\n' "${HAWS_SELECTED_ENVS:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
-  [ "${mode}" = first-install ] && title="HAWS Settings — First Install" || title="HAWS Settings"
-  printf '%s\t%s\t%s\n' default "Restore Recommended Defaults" ""
+  if [ "${mode}" = first-install ]; then
+    title="HAWS Settings — First Install"
+    printf '%s\t%s\t%s\n' default "Use Recommended Defaults" ""
+  else
+    title="HAWS Settings"
+    printf '%s\t%s\t%s\n' default "Restore Recommended Defaults" ""
+  fi
   printf '%s\t%s\t%s\n' repositories "Repositories" "${source_count} sources"
   printf '%s\t%s\t%s\n' skills "Skills" "${skill_count} active"
   printf '%s\t%s\t%s\n' envs "AI Environments" "${env_count} selected"
   printf '%s\t%s\t%s\n' second-brain "Second Brain Remote" "[ ${HAWS_DRAFT_SECOND_BRAIN^} ]"
   printf '%s\t%s\t%s\n' auto-update "Auto Update" "[ ${HAWS_DRAFT_AUTO_UPDATE^} ]"
-  [ "${mode}" = first-install ] && printf '%s\t%s\t%s\n' save "Preview Install" "" || printf '%s\t%s\t%s\n' save "Preview Update" ""
-  install_is_complete && printf '%s\t%s\t%s\n' uninstall "Uninstall HAWS" ""
-  [ "${mode}" = first-install ] && printf '%s\t%s\t%s\n' cancel "Cancel Setup" "" || printf '%s\t%s\t%s\n' cancel "Cancel Update" ""
+  if [ "${mode}" = first-install ]; then
+    printf '%s\t%s\t%s\n' save "Preview Install" ""
+  else
+    printf '%s\t%s\t%s\n' save "Preview Update" ""
+    install_is_complete && printf '%s\t%s\t%s\n' uninstall "Uninstall HAWS" ""
+  fi
+  if [ "${mode}" = first-install ]; then
+    printf '%s\t%s\t%s\n' cancel "Cancel Setup" ""
+  else
+    printf '%s\t%s\t%s\n' cancel "Cancel Update" ""
+  fi
   printf '%s\n' "${title}" >&2
 }
 
@@ -310,6 +326,9 @@ _settings_list_contains() {
 
 settings_edit() {
   local mode="${1:-settings}" key value title records=()
+  if [ "${mode}" = "settings" ] && ! install_is_complete; then
+    mode="first-install"
+  fi
   settings_load || return $?
   disabled_envs_load || return $?
   disabled_skills_load || return $?
@@ -481,4 +500,14 @@ home_run() {
   done
 }
 
-settings_run() { settings_edit "${1:-settings}"; }
+settings_run() {
+  local mode="${1:-}"
+  if [ -z "${mode}" ] || [ "${mode}" = "settings" ]; then
+    if install_is_complete; then
+      mode="settings"
+    else
+      mode="first-install"
+    fi
+  fi
+  settings_edit "${mode}"
+}

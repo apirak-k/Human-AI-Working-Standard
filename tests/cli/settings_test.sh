@@ -122,6 +122,28 @@ test_checklist_clear_all_key() {
   [ -z "${result:-}" ]
 }
 
+test_cursor_menu_renders_without_numeric_prefixes() {
+  new_fixture
+  export HAWS_TEST_KEYS=cancel
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  local out
+  out="$(ui_cursor_menu "Test menu" $'first\tFirst Label\t' $'second\tSecond Label\t' 2>&1)" || true
+  ! printf '%s\n' "${out}" | grep -E '[0-9]+\)' >/dev/null 2>&1 || return 1
+  printf '%s\n' "${out}" | grep -F "First Label" >/dev/null 2>&1 || return 1
+  printf '%s\n' "${out}" | grep -F "Second Label" >/dev/null 2>&1 || return 1
+}
+
+test_settings_lifecycle_labels_on_first_install() {
+  new_fixture
+  export HAWS_TEST_KEYS=cancel
+  run_haws settings || true
+  assert_output_contains "HAWS Settings — First Install" || return 1
+  assert_output_contains "Use Recommended Defaults" || return 1
+  assert_output_contains "Preview Install" || return 1
+  assert_output_contains "Cancel Setup" || return 1
+  ! grep -F "Uninstall HAWS" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+}
+
 test_cursor_menu_accepts_numbered_test_seam_for_existing_fixture_flows() {
   new_fixture
   export HAWS_TEST_KEYS=2
@@ -210,7 +232,8 @@ test_installed_settings_keeps_every_spec_action_and_adds_uninstall() {
   assert_output_contains "AI Environments" || return 1
   assert_output_contains "Second Brain Remote" || return 1
   assert_output_contains "Auto Update" || return 1
-  assert_output_contains "Uninstall HAWS"
+  assert_output_contains "Uninstall HAWS" || return 1
+  assert_output_contains "Cancel Update"
 }
 
 test_preview_update_shows_review_actions_and_not_changed_safeguards() {
@@ -337,6 +360,8 @@ run_test test_cursor_menu_wraps_down_from_last_to_first_item
 run_test test_cursor_menu_cancel_returns_nonzero
 run_test test_checklist_select_all_key
 run_test test_checklist_clear_all_key
+run_test test_cursor_menu_renders_without_numeric_prefixes
+run_test test_settings_lifecycle_labels_on_first_install
 run_test test_cursor_menu_accepts_numbered_test_seam_for_existing_fixture_flows
 run_test test_boolean_requires_explicit_on_or_off
 run_test test_settings_defers_skill_catalog_loading_until_the_user_needs_it

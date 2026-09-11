@@ -44,6 +44,19 @@ ui_cursor_menu() {
   UI_MENU_RESULT=""
   [ "${count}" -gt 0 ] || return 1
 
+  local q_action="Back"
+  for ((i=0; i<count; i++)); do
+    IFS=$'\t' read -r r_id _ _ <<EOF
+${records[$i]}
+EOF
+    if [ "${r_id}" = "cancel" ]; then
+      q_action="Cancel"
+      break
+    elif [ "${r_id}" = "exit" ]; then
+      q_action="Exit"
+    fi
+  done
+
   _ui_cursor_render_row() {
     local idx="$1" is_curr="$2"
     local ptr="  "
@@ -52,7 +65,7 @@ ui_cursor_menu() {
     IFS=$'\t' read -r r_id r_label r_detail <<EOF
 ${records[$idx]}
 EOF
-    printf '\033[2K\r%s%s) %s' "${ptr}" "$((idx + 1))" "${r_label:-${r_id}}"
+    printf '\033[2K\r%s%s' "${ptr}" "${r_label:-${r_id}}"
     [ -n "${r_detail:-}" ] && printf '  %s' "${r_detail}"
     printf '\n'
   }
@@ -66,12 +79,12 @@ EOF
 ${records[$i]}
 EOF
       [ "${i}" = "${cursor}" ] && printf '> ' || printf '  '
-      printf '%s) %s' "$((i + 1))" "${r_label:-${r_id}}"
+      printf '%s' "${r_label:-${r_id}}"
       [ -n "${r_detail:-}" ] && printf '  %s' "${r_detail}"
       printf '\n'
     done
     echo ""
-    echo "Up/Down Move   Enter Select   Q Back"
+    echo "Up/Down Move   Enter Select   Q ${q_action}"
   }
 
   if [ -n "${HAWS_TEST_KEYS:-}" ]; then
@@ -124,7 +137,7 @@ EOF
       _ui_cursor_render_row "${i}" "${is_c}"
     done
     echo ""
-    echo "Up/Down Move   Enter Select   Q Back"
+    echo "Up/Down Move   Enter Select   Q ${q_action}"
 
     trap 'printf "\033[?25h" 2>/dev/null || true' INT TERM
     printf "\033[?25l" 2>/dev/null || true
@@ -165,27 +178,7 @@ EOF
       elif [[ "${raw}" == "q" || "${raw}" == "Q" ]]; then
         printf "\033[?25h" 2>/dev/null || true
         return 1
-      elif [[ "${raw}" =~ ^[1-9][0-9]*$ ]] && [ "${raw}" -le "${count}" ]; then
-        local sel_idx=$((raw - 1))
-        IFS=$'\t' read -r id label detail <<EOF
-${records[$sel_idx]}
-EOF
-        UI_MENU_RESULT="${id}"
-        export UI_MENU_RESULT
-        printf "\033[?25h" 2>/dev/null || true
-        return 0
       else
-        for ((i=0; i<count; i++)); do
-          IFS=$'\t' read -r id label detail <<EOF
-${records[$i]}
-EOF
-          if [ "${raw}" = "${id}" ]; then
-            UI_MENU_RESULT="${id}"
-            export UI_MENU_RESULT
-            printf "\033[?25h" 2>/dev/null || true
-            return 0
-          fi
-        done
         continue
       fi
 
@@ -196,7 +189,7 @@ EOF
         _ui_cursor_render_row "${i}" "${is_c}"
       done
       printf '\033[2K\r\n'
-      printf '\033[2K\rUp/Down Move   Enter Select   Q Back\n'
+      printf '\033[2K\rUp/Down Move   Enter Select   Q %s\n' "${q_action}"
     done
 
     printf "\033[?25h" 2>/dev/null || true
@@ -391,8 +384,16 @@ ui_boolean() {
 }
 
 ui_review() {
-  local plan="${1:-}" key apply_label="Apply Update" cancel_label="Cancel Update"
-  [ -s "$(_haws_state_dir)/install.complete" ] || { apply_label="Install HAWS"; cancel_label="Cancel Setup"; }
+  local plan="${1:-}" key apply_label="Apply Update" cancel_label="Cancel Update" is_installed=0
+  if type install_is_complete >/dev/null 2>&1; then
+    install_is_complete && is_installed=1
+  elif [ -s "$(_haws_state_dir 2>/dev/null)/install.complete" ] || [ -s "${HOME}/.haws_manifest" ]; then
+    is_installed=1
+  fi
+  if [ "${is_installed}" -eq 0 ]; then
+    apply_label="Install HAWS"
+    cancel_label="Cancel Setup"
+  fi
   echo "Current settings:"
   echo "  Not changed values remain unchanged."
   echo "Review planned changes:"
