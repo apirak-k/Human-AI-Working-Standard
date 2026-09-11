@@ -12,7 +12,7 @@ COMMAND="${1:-}"
 # command implementations remain below while the boundary is introduced.
 export HAWS_REPO_DIR="${HAWS_REPO_DIR:-${SCRIPT_DIR}}"
 export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
-if [ -r /dev/tty ]; then
+if [ -t 0 ]; then
   echo "[HAWS] Loading runtime..."
 fi
 # shellcheck disable=SC1091
@@ -38,7 +38,7 @@ fi
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/settings.sh"
 
-if [ -r /dev/tty ]; then
+if [ -t 0 ]; then
   echo "[HAWS] Runtime ready."
 fi
 

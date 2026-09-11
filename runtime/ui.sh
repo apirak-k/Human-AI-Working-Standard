@@ -14,8 +14,8 @@ ui_next_key() {
     else
       _HAWS_UI_KEYS_REMAINING="${_HAWS_UI_KEYS_REMAINING#*,}"
     fi
-  elif [ -r /dev/tty ]; then
-    IFS= read -r key < /dev/tty || key=""
+  elif [ -t 0 ]; then
+    IFS= read -r key || key=""
   else
     return 1
   fi
@@ -65,7 +65,7 @@ EOF
       IFS=$'\t' read -r r_id r_label r_detail <<EOF
 ${records[$i]}
 EOF
-      [ "${i}" -eq "${cursor}" ] && printf '> ' || printf '  '
+      [ "${i}" = "${cursor}" ] && printf '> ' || printf '  '
       printf '%s) %s' "$((i + 1))" "${r_label:-${r_id}}"
       [ -n "${r_detail:-}" ] && printf '  %s' "${r_detail}"
       printf '\n'
@@ -115,16 +115,7 @@ EOF
       [ -z "${_HAWS_UI_KEYS_REMAINING:-}" ] && break
     done
     return 0
-  else
-    local tty_in=""
-    if [ -r /dev/tty ]; then
-      tty_in="/dev/tty"
-    elif [ -t 0 ]; then
-      tty_in="/dev/stdin"
-    else
-      return 1
-    fi
-
+  elif [ -t 0 ]; then
     echo ""
     echo "=== ${title} ==="
     for ((i=0; i<count; i++)); do
@@ -140,10 +131,10 @@ EOF
 
     while true; do
       local raw="" rest=""
-      IFS= read -rsn1 raw < "${tty_in}" || break
+      IFS= read -rsn1 raw || break
 
       if [[ "${raw}" == $'\x1b' ]]; then
-        read -rsn2 -t 0.1 rest < "${tty_in}" || rest=""
+        read -rsn2 -t 0.1 rest || rest=""
         case "${rest}" in
           "[A"|"[a"|"OA"|"oa")
             cursor=$(( (cursor - 1 + count) % count ))
@@ -209,6 +200,9 @@ EOF
     done
 
     printf "\033[?25h" 2>/dev/null || true
+    return 1
+  else
+    return 1
   fi
 }
 
@@ -305,16 +299,7 @@ EOF
       [ -z "${_HAWS_UI_KEYS_REMAINING:-}" ] && break
     done
     _ui_checklist_render_all >&2
-  else
-    local tty_in=""
-    if [ -r /dev/tty ]; then
-      tty_in="/dev/tty"
-    elif [ -t 0 ]; then
-      tty_in="/dev/stdin"
-    else
-      return 1
-    fi
-
+  elif [ -t 0 ]; then
     echo "=== ${title} ===" >&2
     echo "Up/Down Move   Space Toggle   Enter Select   Q Cancel" >&2
     for ((i=0; i<total; i++)); do
@@ -328,10 +313,10 @@ EOF
 
     while true; do
       local raw="" rest=""
-      IFS= read -rsn1 raw < "${tty_in}" || break
+      IFS= read -rsn1 raw || break
 
       if [[ "${raw}" == $'\x1b' ]]; then
-        read -rsn2 -t 0.1 rest < "${tty_in}" || rest=""
+        read -rsn2 -t 0.1 rest || rest=""
         case "${rest}" in
           "[A"|"[a"|"OA"|"oa")
             cursor=$(( (cursor - 1 + total) % total ))
@@ -379,6 +364,8 @@ EOF
     done
 
     printf "\033[?25h" >&2 2>/dev/null || true
+  else
+    return 1
   fi
 
   [ "${cancelled}" = 0 ] || return 1
