@@ -19,9 +19,9 @@ This dossier records the complete, exact recovery status for seamless continuati
 | **Task 2** | Approved UX Improvements Only | **Complete** | Restored approved UX feedback, Skills hierarchy (single/packs), vertical preview flows, draft-first settings, and lazy catalog loading. |
 | **Task 3** | Known-Good TUI Behavior Only | **Complete & Approved** | Restored known-good in-place redraw, fixed Windows escape sequence timeout exit bug, added Space bar in-place toggle, added dirty draft exit confirmation on Q, and multi-select repository removal. 37/37 tests pass. |
 | **Task 4** | Clean Base Validation Only | **Complete & Verified** | 100% pass across all suites (128/128 tests). Core is clean, robust, and verified against spec.md invariants. Ready for Task 5. |
-| **Task 5** | Windows `.bat` Entry Only | **Complete & Verified** | Created thin launcher `haws.bat` without logic duplication, removed blocking pause, passes static and execution suites (135/135 tests pass). |
-| **Task 6** | Cross-Platform Parity | **Ready** | Parity validation across Windows, macOS, and Linux launchers. |
-| **Task 7** | Documentation + Final Validation | **NOT Started** | Deferred. |
+| **Task 5** | Windows `.bat` Entry Only | **Complete & Verified** | Created thin launcher `haws.bat` without logic duplication, removed blocking pause, passes static and execution suites. |
+| **Task 6** | Cross-Platform Parity | **Complete & Verified** | Verified 14-point parity matrix between `haws.bat` and `haws.sh`. 141/141 tests pass 100% green. |
+| **Task 7** | Documentation + Final Validation | **Ready** | Update README and user documentation, run final regression, leave merge decision to user. |
 
 ---
 
@@ -69,20 +69,24 @@ All test suites pass 100% green (128 tests total):
 
 ## 4. Known Bugs, Gaps & Deferred Defects
 
-- **None in Clean Base**: All 128 tests (109 CLI + 19 Node.js) pass 100% green.
-- **Escape Resilience & TUI Redraw**: Verified on Windows conhost and mintty.
-- **Dirty Draft Guard**: Verified and tested for `q/Q` exit.
-- **Task 4 Clean Base Validation**: Fully verified and passing (21/21 in `task4_clean_base_validation.sh`).
+- **None**: All 141 tests (117 CLI + 24 Node.js) pass 100% green.
+- **Cross-Platform Parity**: Full parity verified between `haws.bat` and `haws.sh`.
+- **Launcher Discipline**: `haws.bat` is pure forwarder with zero business logic duplication.
+- **Line Endings**: Universal LF normalization strictly enforced on all shell/node/markdown files.
 
 ---
 
-## 5. Exact Next Steps for Task 6 (Cross-Platform Parity)
+## 5. Exact Next Steps for Task 7 (Documentation and Final Validation)
 
 1. **Awaiting User Approval**:
-   - Present Task 5 report.
-   - Request user sign-off to proceed to Task 6 per `spec.md` Section 25 stop condition.
-2. **Task 6 Scope (`spec.md` Section 26)**:
-   - Verify that commands (`haws.bat` vs `./haws.sh`) yield identical results across Windows CMD, PowerShell, and Unix shells.
-   - Ensure arguments, TUI states, error handling, and install states have exact cross-platform parity.
+   - Present Task 6 Cross-Platform Parity report.
+   - Request user sign-off to proceed to Task 7 per `spec.md` Section 26 stop condition.
+2. **Task 7 Scope (`spec.md` Section 27)**:
+   - Update user documentation (`README.md`, docs) to describe `haws.bat` for Windows and `./haws.sh` for macOS/Linux.
+   - Remove obsolete instructions (e.g. legacy launchers or forcing Windows users to open Git Bash manually).
+   - Document explicit sync, settings draft model, and clean install/home flows.
+   - Run final complete regression suites.
+   - Stop and leave merge decision to the user (`spec.md` Section 27).
+
 
 
