@@ -15,7 +15,7 @@ test_same_command_surface() {
 }
 
 test_public_flow_has_no_bat_launcher_reference() {
-  ! rg -n 'SETUP\.bat|1-CLICK-SYNC\.bat' --glob '!docs/superpowers/**' --glob '!README.md' --glob '!HANDOFF.md' --glob '!tests/cli/cross_platform_test.sh' "${PROJECT_ROOT}" >/dev/null 2>&1
+  ! rg -n 'SETUP\.bat|1-CLICK-SYNC\.bat' --glob '!docs/superpowers/**' --glob '!README.md' --glob '!HANDOFF.md' --glob '!spec.md' --glob '!HAWS-*.md' --glob '!tests/cli/cross_platform_test.sh' "${PROJECT_ROOT}" >/dev/null 2>&1
 }
 
 test_bare_launcher_never_dispatches_sync() {

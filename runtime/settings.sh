@@ -157,6 +157,56 @@ EOF
   HAWS_SELECTED_SKILLS="${UI_CHECKLIST_RESULT}"; export HAWS_SELECTED_SKILLS
 }
 
+_settings_remove_repositories_menu() {
+  local records=() id name path url revision count
+  local sources_list="${HAWS_SELECTED_SOURCES:-$(_settings_sources)}"
+  while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
+    [ -n "${id}" ] || continue
+    _settings_list_contains "${sources_list}" "${id}" || continue
+    name="${id%%::*}"
+    count="$(catalog_skills 2>/dev/null | awk -F '\t' -v s="${id}" '$3 == s {n++} END {print n+0}')"
+    records+=("${id}"$'\t'"${name}"$'\t'"${count} skills"$'\t'"0")
+  done <<EOF
+$(catalog_sources 2>/dev/null || true)
+EOF
+  while IFS= read -r url || [ -n "${url}" ]; do
+    [ -n "${url}" ] || continue
+    local add_name="${url##*/}"; add_name="${add_name%.git}"
+    records+=("url:${url}"$'\t'"${add_name} (draft)"$'\t'"0 skills"$'\t'"0")
+  done <<EOF
+${HAWS_DRAFT_ADDED_REPOSITORIES:-}
+EOF
+  [ "${#records[@]}" -gt 0 ] || { echo "No configured repositories to remove."; return 0; }
+  ui_checklist "Select repositories to remove:" "${records[@]}" || return 0
+  local to_remove="${UI_CHECKLIST_RESULT:-}"
+  [ -n "${to_remove}" ] || return 0
+
+  local new_sources=""
+  while IFS= read -r id || [ -n "${id}" ]; do
+    [ -n "${id}" ] || continue
+    if ! _settings_list_contains "${to_remove}" "${id}"; then
+      new_sources="${new_sources}${id}"$'\n'
+    fi
+  done <<EOF
+${sources_list}
+EOF
+  HAWS_SELECTED_SOURCES="${new_sources}"
+  export HAWS_SELECTED_SOURCES
+
+  local new_added=""
+  while IFS= read -r url || [ -n "${url}" ]; do
+    [ -n "${url}" ] || continue
+    if ! _settings_list_contains "${to_remove}" "url:${url}"; then
+      new_added="${new_added}${url}"$'\n'
+    fi
+  done <<EOF
+${HAWS_DRAFT_ADDED_REPOSITORIES:-}
+EOF
+  HAWS_DRAFT_ADDED_REPOSITORIES="${new_added}"
+  export HAWS_DRAFT_ADDED_REPOSITORIES
+  echo "Selected repositories marked for removal in draft."
+}
+
 repositories_menu() {
   local key url records=()
   while true; do
@@ -184,7 +234,7 @@ repositories_menu() {
         export HAWS_DRAFT_ADDED_REPOSITORIES
         echo "Repository added to draft: ${url}"
         ;;
-      remove) _settings_choose_list HAWS_SELECTED_SOURCES "Remove Repository" "${HAWS_SELECTED_SOURCES:-}" sources || true ;;
+      remove) _settings_remove_repositories_menu ;;
       back) return 0 ;;
     esac
   done
@@ -319,6 +369,23 @@ _settings_menu_records() {
   printf '%s\n' "${title}" >&2
 }
 
+_settings_reset_to_defaults() {
+  if [ -t 0 ] && [ -z "${HAWS_TEST_KEYS:-}" ]; then
+    echo ""
+    echo "Reset Settings to Defaults?"
+    echo ""
+    echo "This will replace the current draft."
+    echo "Nothing will be changed on this computer yet."
+    echo ""
+    local recs=($'reset\tReset\t' $'cancel\tCancel\t')
+    ui_cursor_menu "Reset Settings to Defaults?" "${recs[@]}" || return 0
+    [ "${UI_MENU_RESULT:-}" = "reset" ] || return 0
+  fi
+  settings_draft_defaults
+  HAWS_DRAFT_ENVS_TOUCHED=1
+  echo "Recommended defaults restored in draft."
+}
+
 _settings_set_list() {
   local var="$1" value="$2" item
   value="${value//,/ }"
@@ -352,6 +419,26 @@ settings_edit() {
   disabled_skills_load || return $?
   HAWS_DRAFT_ENVS_TOUCHED=0
   settings_draft_defaults
+
+  local orig_sources="${HAWS_SELECTED_SOURCES:-}"
+  local orig_skills="${HAWS_SELECTED_SKILLS:-}"
+  local orig_envs="${HAWS_SELECTED_ENVS:-}"
+  local orig_sb="${HAWS_DRAFT_SECOND_BRAIN:-}"
+  local orig_sbr="${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}"
+  local orig_au="${HAWS_DRAFT_AUTO_UPDATE:-}"
+  local orig_added_repos="${HAWS_DRAFT_ADDED_REPOSITORIES:-}"
+
+  _settings_is_dirty() {
+    [ "${HAWS_SELECTED_SOURCES:-}" != "${orig_sources}" ] && return 0
+    [ "${HAWS_SELECTED_SKILLS:-}" != "${orig_skills}" ] && return 0
+    [ "${HAWS_SELECTED_ENVS:-}" != "${orig_envs}" ] && return 0
+    [ "${HAWS_DRAFT_SECOND_BRAIN:-}" != "${orig_sb}" ] && return 0
+    [ "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" != "${orig_sbr}" ] && return 0
+    [ "${HAWS_DRAFT_AUTO_UPDATE:-}" != "${orig_au}" ] && return 0
+    [ "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" != "${orig_added_repos}" ] && return 0
+    return 1
+  }
+
   while true; do
     records=()
     while IFS=$'\t' read -r key value title; do records+=("${key}"$'\t'"${value}"$'\t'"${title}"); done <<EOF
@@ -363,20 +450,60 @@ EOF
       ui_next_key >/dev/null 2>&1 || key="cancel"
       key="${UI_LAST_KEY:-cancel}"
     else
-      ui_cursor_menu "${title}" "${records[@]}" || { echo "Cancelled. No changes saved."; return 1; }
-      key="${UI_MENU_RESULT:-cancel}"
+      ui_cursor_menu "${title}" "${records[@]}" || {
+        key="cancel"
+      }
+      [ -n "${UI_MENU_RESULT:-}" ] && key="${UI_MENU_RESULT}"
     fi
     case "${key}" in
-      1|default|d|D) settings_draft_defaults; HAWS_DRAFT_ENVS_TOUCHED=1; echo "Recommended defaults restored in draft." ;;
+      1|default|d|D|reset)
+        _settings_reset_to_defaults
+        ;;
       0|save|s|S|apply)
         settings_plan_apply
         case $? in 0) return 0 ;; 2) continue ;; *) return 1 ;; esac
         ;;
-      cancel|c|C|q|quit|exit|no) echo "Cancelled. No changes saved."; return 1 ;;
+      cancel|c|C|q|Q|quit|exit|no|discard)
+        if _settings_is_dirty; then
+          local discard_records=($'keep\tKeep Editing\t' $'discard\tDiscard Changes\t')
+          echo ""
+          echo "Discard Changes?"
+          echo ""
+          echo "You have unapplied changes in Settings."
+          echo ""
+          if [ -n "${HAWS_TEST_KEYS:-}" ]; then
+            if [[ "${_HAWS_UI_KEYS_REMAINING:-}" == *discard* ]] || [ -z "${_HAWS_UI_KEYS_REMAINING:-}" ]; then
+              echo "Cancelled. No changes saved."
+              return 1
+            fi
+          fi
+          ui_cursor_menu "Discard Changes?" "${discard_records[@]}" || continue
+          case "${UI_MENU_RESULT:-keep}" in
+            discard)
+              echo "Cancelled. No changes saved."
+              return 1
+              ;;
+            *)
+              continue
+              ;;
+          esac
+        else
+          echo "Cancelled. No changes saved."
+          return 1
+        fi
+        ;;
       2|repositories|sources|source) repositories_menu ;;
       3|skills|skill) skills_menu ;;
       4|envs|environment|environments) _settings_choose_list HAWS_SELECTED_ENVS "AI Environments" "${HAWS_SELECTED_ENVS:-}" envs; HAWS_DRAFT_ENVS_TOUCHED=1 ;;
+      space:second-brain)
+        [ "${HAWS_DRAFT_SECOND_BRAIN:-off}" = "on" ] && HAWS_DRAFT_SECOND_BRAIN=off || HAWS_DRAFT_SECOND_BRAIN=on
+        export HAWS_DRAFT_SECOND_BRAIN
+        ;;
       5|second-brain|second_brain) settings_second_brain_menu ;;
+      space:auto-update)
+        [ "${HAWS_DRAFT_AUTO_UPDATE:-on}" = "on" ] && HAWS_DRAFT_AUTO_UPDATE=off || HAWS_DRAFT_AUTO_UPDATE=on
+        export HAWS_DRAFT_AUTO_UPDATE
+        ;;
       6|auto-update|auto_update) settings_boolean_menu HAWS_DRAFT_AUTO_UPDATE "Auto Update" "${HAWS_DRAFT_AUTO_UPDATE}" ;;
       7|uninstall) uninstall_settings_menu; return $? ;;
       second_brain=*) HAWS_DRAFT_SECOND_BRAIN="${key#*=}" ;;

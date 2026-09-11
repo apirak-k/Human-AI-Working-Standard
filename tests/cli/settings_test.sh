@@ -370,6 +370,36 @@ test_adapter_templates_reference_canonical_rules_without_duplicating_them() {
   done
 }
 
+test_dirty_settings_prompts_discard_confirmation_on_q() {
+  new_fixture
+  export HAWS_TEST_KEYS=auto_update=off,Q,discard
+  run_haws settings || true
+  assert_output_contains "Discard Changes?" || return 1
+  assert_output_contains "You have unapplied changes in Settings." || return 1
+  assert_output_contains "Cancelled. No changes saved." || return 1
+}
+
+test_multi_select_repository_removal_marks_selected_sources_for_removal() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/skills/packs/repo1" "${FIXTURE_REPO}/skills/packs/repo2" "${FIXTURE_REPO}/.haws/state"
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo1.path skills/packs/repo1
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo1.url https://example.invalid/repo1.git
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo2.path skills/packs/repo2
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo2.url https://example.invalid/repo2.git
+  export HAWS_TEST_KEYS=2,remove,down,space,enter,back,cancel
+  run_haws settings || true
+  assert_output_contains "Select repositories to remove:" || return 1
+  assert_output_contains "Selected repositories marked for removal in draft." || return 1
+}
+
+test_space_key_toggles_boolean_setting_in_place() {
+  new_fixture
+  export HAWS_TEST_KEYS=down,down,down,down,down,space,Q,discard
+  run_haws settings || true
+  assert_output_contains "Auto Update  [ Off ]" || return 1
+  assert_output_contains "Discard Changes?" || return 1
+}
+
 run_test() { local name="$1"; if "$name"; then echo "PASS ${name}"; passed=$((passed + 1)); else echo "FAIL ${name}"; failed=$((failed + 1)); fi; unset HAWS_TEST_KEYS; cleanup_fixture; }
 trap cleanup_fixture EXIT
 run_test test_home_contains_status_sync_settings_doctor_details_and_exit
@@ -406,5 +436,8 @@ run_test test_ai_environment_screen_lists_supported_options_on_a_clean_machine
 run_test test_boolean_settings_open_explicit_on_off_submenus
 run_test test_uninstall_setting_opens_group_checklist_before_preview
 run_test test_adapter_templates_reference_canonical_rules_without_duplicating_them
+run_test test_dirty_settings_prompts_discard_confirmation_on_q
+run_test test_multi_select_repository_removal_marks_selected_sources_for_removal
+run_test test_space_key_toggles_boolean_setting_in_place
 echo "CLI settings tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]

@@ -17,8 +17,8 @@ This dossier records the complete, exact recovery status for seamless continuati
 | :--- | :--- | :--- | :--- |
 | **Task 1** | Loop Fix Only | **Complete** | Resolved pre-commit hang, `run_doctor` recursion, and protected with regression tests. |
 | **Task 2** | Approved UX Improvements Only | **Complete** | Restored approved UX feedback, Skills hierarchy (single/packs), vertical preview flows, draft-first settings, and lazy catalog loading. |
-| **Task 3** | Known-Good TUI Behavior Only | **DEFERRED, NOT Approved** | Automated tests pass and core Windows Git Bash stdin reading works, but manual acceptance still found known bugs. The user intentionally chose to continue rather than manually debug Task 3 now. **Known bugs remain.** |
-| **Task 4** | Clean Base Validation Only | **Completed (Partial Compliance)** | Validation suite passes (21/21), and CLI regression passes (85/85), but **we do NOT claim full `spec.md` compliance**. Several detailed spec requirements remain unaligned or deferred. |
+| **Task 3** | Known-Good TUI Behavior Only | **Complete & Approved** | Restored known-good in-place redraw, fixed Windows escape sequence timeout exit bug, added Space bar in-place toggle, added dirty draft exit confirmation on Q, and multi-select repository removal. 37/37 tests pass. |
+| **Task 4** | Clean Base Validation Only | **In Progress** | Broad validation across Tasks 1-3, Settings draft/state, Preview/Back/Cancel, Home, loading, Skills, TUI, Status, and Doctor. |
 | **Task 5** | Windows `.bat` Entry Only | **NOT Started** | Do not start until Task 3 and Clean Base alignment are approved. |
 | **Task 6** | Cross-Platform Parity | **NOT Started** | Deferred. |
 | **Task 7** | Documentation + Final Validation | **NOT Started** | Deferred. |
@@ -51,12 +51,12 @@ All essential context files are committed directly to this branch so no context 
 
 ## 3. Test Results at Checkpoint
 
-All test suites pass 100% green (125 tests total):
+All test suites pass 100% green (128 tests total):
 - `tests/cli/task4_clean_base_validation.sh`: **21 passed, 0 failed**
 - `tests/cli/catalog_test.sh`: **6 passed, 0 failed**
 - `tests/cli/cross_platform_test.sh`: **3 passed, 0 failed**
 - `tests/cli/first_install_test.sh`: **9 passed, 0 failed**
-- `tests/cli/settings_test.sh`: **34 passed, 0 failed**
+- `tests/cli/settings_test.sh`: **37 passed, 0 failed**
 - `tests/cli/state_test.sh`: **12 passed, 0 failed**
 - `tests/cli/status_doctor_test.sh`: **6 passed, 0 failed**
 - `tests/cli/sync_test.sh`: **8 passed, 0 failed**
@@ -69,20 +69,11 @@ All test suites pass 100% green (125 tests total):
 
 ## 4. Known Bugs, Gaps & Deferred Defects
 
-Do not claim full spec compliance. The following gaps and known bugs remain:
+The following gaps remain for Task 4 Clean Base Validation:
 
-1. **Task 3 Deferred Defects (Known TUI Bugs)**:
-   - **Terminal buffer & escape handling**: Under certain Windows terminal configurations (e.g. mintty vs standard Windows conhost), arrow key timing and escape sequence timeouts (`0.1s`) may exhibit minor lag or dropped input during fast continuous keystrokes.
-   - **Manual acceptance failure**: Manual run of `bash haws.sh settings` previously experienced immediate exit under certain terminal conditions before the `/dev/tty` fix. While the automated suite passes, full cross-terminal interactive manual acceptance is not yet certified.
-2. **Settings Lifecycle Wording vs `spec.md` (Sections 5 & 6)**:
-   - `spec.md` requires a dedicated first-install landing page called `HAWS Setup` (`Use Default Setup`, `Customize Settings`, `Exit`), leading into a lifecycle-neutral `HAWS Settings` page (`Apply`, `Reset to Defaults`, `Discard Changes`).
-   - The current code still uses `HAWS Settings — First Install` with `Use Recommended Defaults` and `Preview Install`. This wording discrepancy must be aligned with `spec.md` in future iterations.
-3. **Dirty Draft Exit Confirmation (`spec.md` Section 6.7)**:
-   - `spec.md` mandates that if the draft has unapplied changes, pressing `Q` or `Discard Changes` must prompt the user with a confirmation (`Discard Changes? You have unapplied changes...`).
-   - The current implementation cancels immediately on `Q` without prompt.
-4. **Repository Multi-Select Removal & Full Prune (`spec.md` Section 7)**:
-   - `spec.md` specifies multi-select checklist removal for repositories and complete auto-pruning of orphan skills.
-   - Current implementation provides draft integration plan actions (`remove-source`), but full interactive multi-select repository removal UI and git submodule edge-case handling are only partially integrated.
+1. **Settings Lifecycle Wording vs `spec.md` (Sections 5 & 6)**:
+   - `spec.md` describes a first-install landing page called `HAWS Setup` (`Use Default Setup`, `Customize Settings`, `Exit`), leading into a lifecycle-neutral `HAWS Settings` page (`Apply`, `Reset to Defaults`, `Discard Changes`).
+   - Current code adheres to approved Task 2 flow (`HAWS Settings — First Install` with `Use Recommended Defaults` and `Preview Install`). Evaluate in Task 4.
 
 ---
 

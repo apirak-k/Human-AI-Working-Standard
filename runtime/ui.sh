@@ -102,6 +102,14 @@ EOF
           export UI_MENU_RESULT
           return 0
           ;;
+        space|Space|" ")
+          IFS=$'\t' read -r id label detail <<EOF
+${records[$cursor]}
+EOF
+          UI_MENU_RESULT="space:${id}"
+          export UI_MENU_RESULT
+          return 0
+          ;;
         q|Q|esc|cancel|back) return 1 ;;
         *)
           if [[ "${key}" =~ ^[1-9][0-9]*$ ]] && [ "${key}" -le "${count}" ]; then
@@ -155,11 +163,8 @@ EOF
           "[B"|"[b"|"OB"|"ob")
             cursor=$(( (cursor + 1) % count ))
             ;;
-          "")
-            printf "\033[?25h" 2>/dev/null || true
-            return 1
-            ;;
           *)
+            while read -rsn1 -t 0.02 _junk; do :; done
             continue
             ;;
         esac
@@ -167,6 +172,14 @@ EOF
         cursor=$(( (cursor - 1 + count) % count ))
       elif [[ "${raw}" == "j" || "${raw}" == "J" ]]; then
         cursor=$(( (cursor + 1) % count ))
+      elif [[ "${raw}" == " " || "${raw}" == "x" || "${raw}" == "X" ]]; then
+        IFS=$'\t' read -r id label detail <<EOF
+${records[$cursor]}
+EOF
+        UI_MENU_RESULT="space:${id}"
+        export UI_MENU_RESULT
+        printf "\033[?25h" 2>/dev/null || true
+        return 0
       elif [[ -z "${raw}" ]]; then
         IFS=$'\t' read -r id label detail <<EOF
 ${records[$cursor]}
@@ -317,11 +330,8 @@ EOF
           "[B"|"[b"|"OB"|"ob")
             cursor=$(( (cursor + 1) % total ))
             ;;
-          "")
-            cancelled=1
-            break
-            ;;
           *)
+            while read -rsn1 -t 0.02 _junk; do :; done
             continue
             ;;
         esac
