@@ -12,6 +12,9 @@ COMMAND="${1:-}"
 # command implementations remain below while the boundary is introduced.
 export HAWS_REPO_DIR="${HAWS_REPO_DIR:-${SCRIPT_DIR}}"
 export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
+if [ -r /dev/tty ]; then
+  echo "[HAWS] Loading runtime..."
+fi
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/platform.sh"
 # shellcheck disable=SC1091
@@ -34,6 +37,10 @@ export HAWS_STATE_DIR="${HAWS_STATE_DIR:-${HAWS_REPO_DIR}/.haws/state}"
 . "${SCRIPT_DIR}/runtime/health.sh"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/runtime/settings.sh"
+
+if [ -r /dev/tty ]; then
+  echo "[HAWS] Runtime ready."
+fi
 
 # Native Codex agent installation is also available without a global sync.
 run_codex_agents() {

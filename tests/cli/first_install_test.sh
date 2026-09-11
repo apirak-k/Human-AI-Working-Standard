@@ -104,6 +104,8 @@ test_first_save_apply_runs_doctor_then_reaches_home() {
   run_haws || return 1
   assert_output_contains "Doctor: Ready" || return 1
   assert_output_contains "Home" || return 1
+  assert_output_contains "Apply progress" || return 1
+  assert_output_contains "Done" || return 1
 }
 
 run_test() {
