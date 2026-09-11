@@ -14,17 +14,20 @@ The actual goal and required outcome always take priority over following rigid p
 
 ## Quick Install and Setup
 
-HAWS uses one interactive, cross-platform CLI. A bare launch opens Settings on a first install and Home after installation. No network operation starts until you choose **Save & Apply** or **Sync**.
+HAWS provides a shared, interactive command core with platform-native launchers. A bare launch opens **HAWS Setup** on a first install and **HAWS Home** after installation. No network operation starts until you choose **Apply & Install** or explicit **Sync**.
 
 ```bash
 git clone https://github.com/apirak-k/Human-AI-Working-Standard.git
 cd Human-AI-Working-Standard
 
-# Open Settings and select AI environments and skills.
-bash haws.sh settings
+# On Windows (CMD, PowerShell, or double-click haws.bat in Explorer):
+haws.bat settings
+
+# On macOS & Linux:
+./haws.sh settings
 ```
 
-Choose **Save & Apply** to persist the selected configuration and install only selected integrations. Use **Sync** later for the explicit remote update operation. **Status** and **Doctor** are read-only.
+Review and adjust your settings in the interactive TUI. Choose **Preview Install** (or **Preview Update**) to inspect all pending file links and configurations before confirming. Use **Sync** later for explicit remote synchronization. **Status** and **Doctor** are strictly read-only.
 
 ### Prerequisites
 
@@ -35,10 +38,10 @@ Choose **Save & Apply** to persist the selected configuration and install only s
 | **Python** | 3.10+ | Fast regex calculations and AST analysis |
 | **Bash** | Standard / Git Bash | Unified command engine (`haws.sh`) |
 
-### Cross-Platform Setup Details
+### Cross-Platform Launchers
 
-- **Windows 10 / 11**: Run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges are required. Use `bash haws.sh` or `bash haws.sh settings`.
-- **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
+- **Windows 10 / 11**: Use `haws.bat`. It automatically locates Git Bash / MSYS2 in standard locations (`ProgramFiles`, `scoop`, `chocolatey`, or `PATH`) and invokes the shared HAWS core. You can run it directly from Command Prompt, PowerShell, or by double-clicking `haws.bat` in Windows Explorer. No manual Git Bash path setup is required.
+- **macOS & Linux**: Use `./haws.sh` directly in your terminal (`bash` or `zsh`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
 
 ---
 
@@ -100,20 +103,26 @@ bash haws.sh brain connect <your-private-github-repo-url>
 - **Empty Remote (Machine 1)**: Automatically pushes your local second brain to the cloud.
 - **Populated Remote (Machine 2)**: Automatically pulls, merges, and syncs your brain history symmetrically.
 
-## HAWS CLI Reference (`haws.sh`)
+## HAWS CLI Reference (`haws.bat` & `./haws.sh`)
 
-| Command | Purpose |
-| :--- | :--- |
-| `bash haws.sh` | Opens Settings before first install, otherwise Home |
-| `bash haws.sh settings` | Review and edit local AI, skill, repository, and sync settings |
-| `bash haws.sh sync` | Run the guarded, explicit remote sync operation |
-| `bash haws.sh status [--details]` | Read local configuration and recorded sync health without network access |
-| `bash haws.sh doctor` | Run read-only local diagnostics without repairing configuration |
-| `bash haws.sh uninstall` | Preview and remove only HAWS-owned integrations; user data is preserved by default |
+HAWS guarantees 100% feature and behavioral parity across platforms through platform-appropriate launchers:
 
-### Managing Skills (Add & Remove)
+| Windows | macOS / Linux | Purpose |
+| :--- | :--- | :--- |
+| `haws.bat` | `./haws.sh` | Opens **HAWS Setup** on first install, otherwise **HAWS Home** |
+| `haws.bat settings` | `./haws.sh settings` | Edit Settings draft (Space toggle, multi-select repo removal, dirty draft guard) |
+| `haws.bat sync` | `./haws.sh sync` | Run explicit, guarded remote sync with lock protection |
+| `haws.bat status [--details]` | `./haws.sh status [--details]` | Read local health and configuration overview (strictly read-only) |
+| `haws.bat doctor` | `./haws.sh doctor` | Run read-only diagnostics without mutation or recursive loops |
+| `haws.bat uninstall` | `./haws.sh uninstall` | Preview and remove only HAWS-owned files; user data preserved |
 
-Use **Settings → Skills** to choose active skills and **Settings → Repositories** to review the Git submodule registry or add/remove repositories from the draft. The choice is applied only by **Save & Apply**. A custom local skill is a directory under `skills/custom/<skill-name>/` containing a valid `SKILL.md`.
+### Settings & Draft Model
+
+- **Draft-First Safety**: Changes in Settings modify a local working draft. No persistent files are written until you select **Apply Selection** and confirm via **Preview Install** or **Preview Update**.
+- **Accidental Exit Protection**: Pressing `q` or `Q` with unsaved modifications prompts `Discard Changes?` confirmation before exiting.
+- **In-Place Space Toggle**: Press `Space` directly in the Settings menu to toggle booleans (`Second Brain`, `Auto Update`) without opening submenus.
+- **Repositories & Multi-Select**: In **Settings → Repositories**, remove multiple configured repositories simultaneously with live skill counts. Removing an installed repository detaches the submodule and cleanly prunes HAWS-owned symlinks.
+- **Skills Hierarchy**: Browse **Single Skills** individually or configure **Multi-Skill Packs** with accurate `x/n active` counts and tri-state `Select All` support (`[ ]`, `[x]`, `[-]`).
 
 ---
 
@@ -143,7 +152,8 @@ Use **Settings → Skills** to choose active skills and **Settings → Repositor
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
-└── haws.sh                              # Interactive CLI: Settings, Sync, Status, Doctor, and Uninstall
+├── haws.bat                             # Windows native thin launcher (auto-locates Git Bash runtime)
+└── haws.sh                              # Shared HAWS Core CLI: Setup, Home, Settings, Sync, Doctor
 ```
 
 ---
@@ -157,7 +167,7 @@ Use **Settings → Skills** to choose active skills and **Settings → Repositor
 4. **Package & Dependency Invariant**: Lockfiles (`package-lock.json`, `poetry.lock`, `Cargo.lock`) must always be committed. Dependency vulnerability audits (`npm audit`, `pip-audit`) must pass with zero High/Critical vulnerabilities.
 5. **Git Remote Push Protection**: AI agents must **NEVER** run `git push` to GitHub or any remote repository autonomously without explicit user confirmation in chat.
 6. **Hardware Git Hooks (`.githooks/`)**:
-   - `pre-commit`: Scans staged diffs for `.env*` secrets, verifies LF normalization, and runs `haws.sh doctor`.
+   - `pre-commit`: Scans staged diffs for `.env*` secrets, plaintext credentials, verifies LF normalization, and runs fast CLI regression tests.
    - `pre-push`: Hardware-level blocker preventing unauthorized remote pushes.
 
 ---

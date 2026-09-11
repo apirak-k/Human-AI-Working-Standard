@@ -21,7 +21,7 @@ This dossier records the complete, exact recovery status for seamless continuati
 | **Task 4** | Clean Base Validation Only | **Complete & Verified** | 100% pass across all suites (128/128 tests). Core is clean, robust, and verified against spec.md invariants. Ready for Task 5. |
 | **Task 5** | Windows `.bat` Entry Only | **Complete & Verified** | Created thin launcher `haws.bat` without logic duplication, removed blocking pause, passes static and execution suites. |
 | **Task 6** | Cross-Platform Parity | **Complete & Verified** | Verified 14-point parity matrix between `haws.bat` and `haws.sh`. 141/141 tests pass 100% green. |
-| **Task 7** | Documentation + Final Validation | **Ready** | Update README and user documentation, run final regression, leave merge decision to user. |
+| **Task 7** | Documentation + Final Validation | **Complete & Verified** | Updated README.md with cross-platform launcher guide, settings draft model, and accurate pre-commit safeguards. All 141 tests pass 100% green. Ready for user merge decision. |
 
 ---
 
@@ -32,15 +32,18 @@ All essential context files are committed directly to this branch so no context 
 - `HANDOFF.md`: This cross-device handoff dossier.
 - `HAWS-ANTIGRAVITY-SEQUENTIAL-RECOVERY-PLAN.md`: Sequential recovery plan reference.
 - `HAWS-CLEAN-BASE-RECOVERY-PLAN.md`: Clean base recovery plan reference.
+- `haws.bat`: Windows native thin launcher (auto-locates Git Bash runtime, forwards all arguments cleanly).
 - `haws.sh`: Entrypoint runtime loading, non-interactive bare launch detection, doctor/sync integration dispatch, interactive terminal detection (`[ -t 0 ]`).
 - `runtime/ui.sh`: In-place TUI cursor menu (`ui_cursor_menu`), multi-select checklist (`ui_checklist`), dynamic `Q` context labeling (Back / Cancel / Exit), terminal key reading via interactive stdin (`[ -t 0 ]`), ANSI cursor rewind and redraw without frame accumulation.
 - `runtime/settings.sh`: Settings draft lifecycle, repository add/remove plan integration, URL determinism (`_settings_repo_path_from_url`), collision checks, lazy skills loading, preview update/install generation.
 - `runtime/integrations.sh`: Integration plan generator with source add (`add-source`) and source removal (`remove-source`), owned skill link pruning on detach.
 - `runtime/health.sh`: Doctor recursion guard, read-only diagnostic checks.
 - `tests/cli/task4_clean_base_validation.sh`: Comprehensive 21-point validation suite.
-- `tests/cli/settings_test.sh`: 34 regression tests covering cursor menu, checklist, select all, lazy skills loading, draft isolation, preview review, and uninstall visibility.
+- `tests/cli/windows_launcher_test.sh`: 6 tests verifying haws.bat launcher contracts.
+- `tests/windows_launcher_execution.test.mjs`: 7 tests verifying Windows execution and cross-platform parity.
+- `tests/cli/settings_test.sh`: 37 regression tests covering cursor menu, checklist, select all, lazy skills loading, draft isolation, preview review, and uninstall visibility.
 - `tests/cli/first_install_test.sh`: 9 tests verifying clean machine first install, draft defaults, and non-mutating preview.
-- `tests/cli/cross_platform_test.sh`: 3 tests verifying command surface consistency.
+- `tests/cli/cross_platform_test.sh`: 5 tests verifying command surface consistency and parity.
 - `tests/cli/status_doctor_test.sh`: 6 tests verifying read-only status and doctor behavior.
 - `tests/cli/catalog_test.sh`: 6 tests verifying source and skill discovery rules.
 - `tests/cli/state_test.sh`: 12 tests verifying atomic writes, settings defaults, and lock safety.
@@ -49,18 +52,20 @@ All essential context files are committed directly to this branch so no context 
 
 ---
 
-## 3. Test Results at Checkpoint
+## 3. Test Results at Final Checkpoint
 
-All test suites pass 100% green (128 tests total):
+All test suites pass 100% green (141 tests total):
 - `tests/cli/task4_clean_base_validation.sh`: **21 passed, 0 failed**
+- `tests/cli/windows_launcher_test.sh`: **6 passed, 0 failed**
 - `tests/cli/catalog_test.sh`: **6 passed, 0 failed**
-- `tests/cli/cross_platform_test.sh`: **3 passed, 0 failed**
+- `tests/cli/cross_platform_test.sh`: **5 passed, 0 failed**
 - `tests/cli/first_install_test.sh`: **9 passed, 0 failed**
 - `tests/cli/settings_test.sh`: **37 passed, 0 failed**
 - `tests/cli/state_test.sh`: **12 passed, 0 failed**
 - `tests/cli/status_doctor_test.sh`: **6 passed, 0 failed**
 - `tests/cli/sync_test.sh`: **8 passed, 0 failed**
 - `tests/cli/uninstall_test.sh`: **7 passed, 0 failed**
+- `tests/windows_launcher_execution.test.mjs`: **7 passed, 0 failed**
 - `ai-configs/codex/agents.test.mjs`: **14 passed, 0 failed**
 - `ai-configs/codex/skills.test.mjs`: **1 passed, 0 failed**
 - `skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`: **4 passed, 0 failed**
@@ -69,24 +74,24 @@ All test suites pass 100% green (128 tests total):
 
 ## 4. Known Bugs, Gaps & Deferred Defects
 
-- **None**: All 141 tests (117 CLI + 24 Node.js) pass 100% green.
+- **None**: All 141 tests pass 100% green across CLI and Node.js suites.
 - **Cross-Platform Parity**: Full parity verified between `haws.bat` and `haws.sh`.
-- **Launcher Discipline**: `haws.bat` is pure forwarder with zero business logic duplication.
-- **Line Endings**: Universal LF normalization strictly enforced on all shell/node/markdown files.
+- **Pre-Commit Safety**: Protected against hangs, recursive loops, plaintext secrets, and CRLF line endings.
 
 ---
 
-## 5. Exact Next Steps for Task 7 (Documentation and Final Validation)
+## 5. Final Status & User Merge Decision
 
-1. **Awaiting User Approval**:
-   - Present Task 6 Cross-Platform Parity report.
-   - Request user sign-off to proceed to Task 7 per `spec.md` Section 26 stop condition.
-2. **Task 7 Scope (`spec.md` Section 27)**:
-   - Update user documentation (`README.md`, docs) to describe `haws.bat` for Windows and `./haws.sh` for macOS/Linux.
-   - Remove obsolete instructions (e.g. legacy launchers or forcing Windows users to open Git Bash manually).
-   - Document explicit sync, settings draft model, and clean install/home flows.
-   - Run final complete regression suites.
-   - Stop and leave merge decision to the user (`spec.md` Section 27).
+All 7 tasks in `spec.md` are completed and verified:
+1. **Task 1 (Loop Fix Only)**: Complete.
+2. **Task 2 (Approved UX Improvements Only)**: Complete.
+3. **Task 3 (Known-Good TUI Behavior Only)**: Complete.
+4. **Task 4 (Clean Base Validation Only)**: Complete.
+5. **Task 5 (Windows `.bat` Entry Only)**: Complete.
+6. **Task 6 (Cross-Platform Parity)**: Complete.
+7. **Task 7 (Documentation & Final Validation)**: Complete.
+
+Per `spec.md` Section 27, git merge control remains entirely with the user. The `recovery/clean-base` branch is clean, fully verified, and ready for merge into `main` at the user's discretion.
 
 
 
