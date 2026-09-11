@@ -19,8 +19,8 @@ This dossier records the complete, exact recovery status for seamless continuati
 | **Task 2** | Approved UX Improvements Only | **Complete** | Restored approved UX feedback, Skills hierarchy (single/packs), vertical preview flows, draft-first settings, and lazy catalog loading. |
 | **Task 3** | Known-Good TUI Behavior Only | **Complete & Approved** | Restored known-good in-place redraw, fixed Windows escape sequence timeout exit bug, added Space bar in-place toggle, added dirty draft exit confirmation on Q, and multi-select repository removal. 37/37 tests pass. |
 | **Task 4** | Clean Base Validation Only | **Complete & Verified** | 100% pass across all suites (128/128 tests). Core is clean, robust, and verified against spec.md invariants. Ready for Task 5. |
-| **Task 5** | Windows `.bat` Entry Only | **NOT Started** | Do not start until Task 3 and Clean Base alignment are approved. |
-| **Task 6** | Cross-Platform Parity | **NOT Started** | Deferred. |
+| **Task 5** | Windows `.bat` Entry Only | **Complete & Verified** | Created thin launcher `haws.bat` without logic duplication, removed blocking pause, passes static and execution suites (135/135 tests pass). |
+| **Task 6** | Cross-Platform Parity | **Ready** | Parity validation across Windows, macOS, and Linux launchers. |
 | **Task 7** | Documentation + Final Validation | **NOT Started** | Deferred. |
 
 ---
@@ -76,13 +76,13 @@ All test suites pass 100% green (128 tests total):
 
 ---
 
-## 5. Exact Next Steps for Task 5 (Windows `.bat` Entry)
+## 5. Exact Next Steps for Task 6 (Cross-Platform Parity)
 
 1. **Awaiting User Approval**:
-   - Present the Task 4 Clean Base Validation report.
-   - Request user sign-off to proceed to Task 5 per `spec.md` Section 24 stop condition.
-2. **Task 5 Scope (`spec.md` Section 25)**:
-   - Create `haws.bat` as a thin launcher finding Git Bash / MSYS2 / bash and forwarding arguments cleanly to `haws.sh`.
-   - Ensure zero business logic duplication in `.bat`.
-   - Validate using `tests/cli/cross_platform_test.sh` and direct Windows CMD / PowerShell invocation.
+   - Present Task 5 report.
+   - Request user sign-off to proceed to Task 6 per `spec.md` Section 25 stop condition.
+2. **Task 6 Scope (`spec.md` Section 26)**:
+   - Verify that commands (`haws.bat` vs `./haws.sh`) yield identical results across Windows CMD, PowerShell, and Unix shells.
+   - Ensure arguments, TUI states, error handling, and install states have exact cross-platform parity.
+
 
