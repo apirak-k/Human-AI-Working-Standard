@@ -80,6 +80,48 @@ test_cursor_menu_uses_down_and_enter_to_return_stable_id() {
   [ "${UI_MENU_RESULT:-}" = second ]
 }
 
+test_cursor_menu_wraps_up_from_first_to_last_item() {
+  new_fixture
+  export HAWS_TEST_KEYS=up,enter
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  ui_cursor_menu "Test menu" $'first\tFirst\t' $'second\tSecond\t' $'third\tThird\t' >/dev/null || return 1
+  [ "${UI_MENU_RESULT:-}" = third ]
+}
+
+test_cursor_menu_wraps_down_from_last_to_first_item() {
+  new_fixture
+  export HAWS_TEST_KEYS=down,down,down,enter
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  ui_cursor_menu "Test menu" $'first\tFirst\t' $'second\tSecond\t' $'third\tThird\t' >/dev/null || return 1
+  [ "${UI_MENU_RESULT:-}" = first ]
+}
+
+test_cursor_menu_cancel_returns_nonzero() {
+  new_fixture
+  export HAWS_TEST_KEYS=cancel
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  ! ui_cursor_menu "Test menu" $'first\tFirst\t' >/dev/null 2>&1
+}
+
+test_checklist_select_all_key() {
+  new_fixture
+  export HAWS_TEST_KEYS=a,enter
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  local result
+  result="$(ui_checklist Test $'one\tOne\tdetail\t0' $'two\tTwo\tdetail\t0')"
+  printf '%s\n' "${result}" | grep -Fx "one" >/dev/null || return 1
+  printf '%s\n' "${result}" | grep -Fx "two" >/dev/null
+}
+
+test_checklist_clear_all_key() {
+  new_fixture
+  export HAWS_TEST_KEYS=c,enter
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  local result
+  result="$(ui_checklist Test $'one\tOne\tdetail\t1' $'two\tTwo\tdetail\t1')"
+  [ -z "${result:-}" ]
+}
+
 test_cursor_menu_accepts_numbered_test_seam_for_existing_fixture_flows() {
   new_fixture
   export HAWS_TEST_KEYS=2
@@ -290,6 +332,11 @@ run_test test_checklist_wraps_up_from_toggle_all_to_the_last_item
 run_test test_checklist_renders_approved_bulk_row_help_and_state_marks
 run_test test_checklist_cancel_returns_no_result
 run_test test_cursor_menu_uses_down_and_enter_to_return_stable_id
+run_test test_cursor_menu_wraps_up_from_first_to_last_item
+run_test test_cursor_menu_wraps_down_from_last_to_first_item
+run_test test_cursor_menu_cancel_returns_nonzero
+run_test test_checklist_select_all_key
+run_test test_checklist_clear_all_key
 run_test test_cursor_menu_accepts_numbered_test_seam_for_existing_fixture_flows
 run_test test_boolean_requires_explicit_on_or_off
 run_test test_settings_defers_skill_catalog_loading_until_the_user_needs_it

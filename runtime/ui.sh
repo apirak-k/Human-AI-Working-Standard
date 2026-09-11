@@ -44,82 +44,181 @@ ui_cursor_menu() {
   UI_MENU_RESULT=""
   [ "${count}" -gt 0 ] || return 1
 
-  _ui_cursor_render() {
-    local row_id row_label row_detail
+  _ui_cursor_render_row() {
+    local idx="$1" is_curr="$2"
+    local ptr="  "
+    [ "${is_curr}" -eq 1 ] && ptr="> "
+    local r_id r_label r_detail
+    IFS=$'\t' read -r r_id r_label r_detail <<EOF
+${records[$idx]}
+EOF
+    printf '\033[2K\r%s%s) %s' "${ptr}" "$((idx + 1))" "${r_label:-${r_id}}"
+    [ -n "${r_detail:-}" ] && printf '  %s' "${r_detail}"
+    printf '\n'
+  }
+
+  _ui_cursor_render_all() {
+    local r_id r_label r_detail
     echo ""
     echo "=== ${title} ==="
-    for i in "${!records[@]}"; do
-      IFS=$'\t' read -r row_id row_label row_detail <<EOF
+    for ((i=0; i<count; i++)); do
+      IFS=$'\t' read -r r_id r_label r_detail <<EOF
 ${records[$i]}
 EOF
-      [ "${i}" = "${cursor}" ] && printf '> ' || printf '  '
-      printf '%s) %s' "$((i + 1))" "${row_label:-${row_id}}"
-      [ -n "${row_detail:-}" ] && printf '  %s' "${row_detail}"
+      [ "${i}" -eq "${cursor}" ] && printf '> ' || printf '  '
+      printf '%s) %s' "$((i + 1))" "${r_label:-${r_id}}"
+      [ -n "${r_detail:-}" ] && printf '  %s' "${r_detail}"
       printf '\n'
     done
     echo ""
     echo "Up/Down Move   Enter Select   Q Back"
   }
 
-  _ui_cursor_read_key() {
-    if [ -n "${HAWS_TEST_KEYS:-}" ]; then
-      ui_next_key >/dev/null 2>&1 || return 1
-      UI_CURSOR_KEY="${UI_LAST_KEY:-}"
-      return 0
-    fi
-    local raw rest
-    IFS= read -rsn1 raw < /dev/tty || return 1
-    if [ "${raw}" = $'\x1b' ]; then
-      IFS= read -rsn2 rest < /dev/tty || true
-      case "${rest}" in '[A') UI_CURSOR_KEY=up ;; '[B') UI_CURSOR_KEY=down ;; *) UI_CURSOR_KEY=esc ;; esac
-    elif [ -z "${raw}" ]; then
-      UI_CURSOR_KEY=enter
+  if [ -n "${HAWS_TEST_KEYS:-}" ]; then
+    _ui_cursor_render_all
+    while ui_next_key >/dev/null 2>&1; do
+      key="${UI_LAST_KEY:-}"
+      case "${key}" in
+        up|k|K) cursor=$(( (cursor - 1 + count) % count )) ;;
+        down|j|J) cursor=$(( (cursor + 1) % count )) ;;
+        enter|Enter|"")
+          IFS=$'\t' read -r id label detail <<EOF
+${records[$cursor]}
+EOF
+          UI_MENU_RESULT="${id}"
+          export UI_MENU_RESULT
+          return 0
+          ;;
+        q|Q|esc|cancel|back) return 1 ;;
+        *)
+          if [[ "${key}" =~ ^[1-9][0-9]*$ ]] && [ "${key}" -le "${count}" ]; then
+            i=$((key - 1))
+            IFS=$'\t' read -r id label detail <<EOF
+${records[$i]}
+EOF
+            UI_MENU_RESULT="${id}"
+            export UI_MENU_RESULT
+            return 0
+          fi
+          for i in "${!records[@]}"; do
+            IFS=$'\t' read -r id label detail <<EOF
+${records[$i]}
+EOF
+            if [ "${key}" = "${id}" ]; then
+              UI_MENU_RESULT="${id}"
+              export UI_MENU_RESULT
+              return 0
+            fi
+          done
+          ;;
+      esac
+      [ -z "${_HAWS_UI_KEYS_REMAINING:-}" ] && break
+    done
+    return 0
+  else
+    local tty_in=""
+    if [ -r /dev/tty ]; then
+      tty_in="/dev/tty"
+    elif [ -t 0 ]; then
+      tty_in="/dev/stdin"
     else
-      UI_CURSOR_KEY="${raw}"
+      return 1
     fi
-  }
 
-  while true; do
-    _ui_cursor_render
-    _ui_cursor_read_key || return 1
-    key="${UI_CURSOR_KEY:-}"
-    case "${key}" in
-      up|k) cursor=$(( (cursor - 1 + count) % count )) ;;
-      down|j) cursor=$(( (cursor + 1) % count )) ;;
-      enter|Enter|"")
+    echo ""
+    echo "=== ${title} ==="
+    for ((i=0; i<count; i++)); do
+      local is_c=0
+      [ "${i}" -eq "${cursor}" ] && is_c=1
+      _ui_cursor_render_row "${i}" "${is_c}"
+    done
+    echo ""
+    echo "Up/Down Move   Enter Select   Q Back"
+
+    trap 'printf "\033[?25h" 2>/dev/null || true' INT TERM
+    printf "\033[?25l" 2>/dev/null || true
+
+    while true; do
+      local raw="" rest=""
+      IFS= read -rsn1 raw < "${tty_in}" || break
+
+      if [[ "${raw}" == $'\x1b' ]]; then
+        read -rsn2 -t 0.1 rest < "${tty_in}" || rest=""
+        case "${rest}" in
+          "[A"|"[a"|"OA"|"oa")
+            cursor=$(( (cursor - 1 + count) % count ))
+            ;;
+          "[B"|"[b"|"OB"|"ob")
+            cursor=$(( (cursor + 1) % count ))
+            ;;
+          "")
+            printf "\033[?25h" 2>/dev/null || true
+            return 1
+            ;;
+          *)
+            continue
+            ;;
+        esac
+      elif [[ "${raw}" == "k" || "${raw}" == "K" ]]; then
+        cursor=$(( (cursor - 1 + count) % count ))
+      elif [[ "${raw}" == "j" || "${raw}" == "J" ]]; then
+        cursor=$(( (cursor + 1) % count ))
+      elif [[ -z "${raw}" ]]; then
         IFS=$'\t' read -r id label detail <<EOF
 ${records[$cursor]}
 EOF
         UI_MENU_RESULT="${id}"
         export UI_MENU_RESULT
+        printf "\033[?25h" 2>/dev/null || true
         return 0
-        ;;
-      q|Q|esc|cancel|back) return 1 ;;
-      *)
-        if [[ "${key}" =~ ^[1-9][0-9]*$ ]] && [ "${key}" -le "${count}" ]; then
-          i=$((key - 1))
+      elif [[ "${raw}" == "q" || "${raw}" == "Q" ]]; then
+        printf "\033[?25h" 2>/dev/null || true
+        return 1
+      elif [[ "${raw}" =~ ^[1-9][0-9]*$ ]] && [ "${raw}" -le "${count}" ]; then
+        local sel_idx=$((raw - 1))
+        IFS=$'\t' read -r id label detail <<EOF
+${records[$sel_idx]}
+EOF
+        UI_MENU_RESULT="${id}"
+        export UI_MENU_RESULT
+        printf "\033[?25h" 2>/dev/null || true
+        return 0
+      else
+        for ((i=0; i<count; i++)); do
           IFS=$'\t' read -r id label detail <<EOF
 ${records[$i]}
 EOF
-          UI_MENU_RESULT="${id}"
-          export UI_MENU_RESULT
-          return 0
-        fi
-        for i in "${!records[@]}"; do
-          IFS=$'\t' read -r id label detail <<EOF
-${records[$i]}
-EOF
-          if [ "${key}" = "${id}" ]; then UI_MENU_RESULT="${id}"; export UI_MENU_RESULT; return 0; fi
+          if [ "${raw}" = "${id}" ]; then
+            UI_MENU_RESULT="${id}"
+            export UI_MENU_RESULT
+            printf "\033[?25h" 2>/dev/null || true
+            return 0
+          fi
         done
-        ;;
-    esac
-  done
+        continue
+      fi
+
+      printf "\033[%dA" "$((count + 2))"
+      for ((i=0; i<count; i++)); do
+        local is_c=0
+        [ "${i}" -eq "${cursor}" ] && is_c=1
+        _ui_cursor_render_row "${i}" "${is_c}"
+      done
+      printf '\033[2K\r\n'
+      printf '\033[2K\rUp/Down Move   Enter Select   Q Back\n'
+    done
+
+    printf "\033[?25h" 2>/dev/null || true
+  fi
 }
 
 ui_checklist() {
   local title="${1:-Select}"; shift || true
   local records=("$@") i id label detail selected key cursor=0 count="${#@}" cancelled=0
   UI_CHECKLIST_RESULT=""
+  [ "${count}" -gt 0 ] || return 0
+  local total=$((count + 1))
+
   _ui_checklist_toggle_all() {
     local next=0
     for i in "${!records[@]}"; do
@@ -130,7 +229,18 @@ EOF
     done
     for i in "${!records[@]}"; do records[$i]="${records[$i]%$'\t'*}"$'\t'"${next}"; done
   }
-  _ui_checklist_render() {
+
+  _ui_checklist_toggle_cursor() {
+    if [ "${cursor}" = 0 ]; then _ui_checklist_toggle_all; return; fi
+    local target_idx=$((cursor - 1))
+    IFS=$'\t' read -r id label detail selected <<EOF
+${records[$target_idx]}
+EOF
+    [ "${selected:-0}" = 1 ] && selected=0 || selected=1
+    records[$target_idx]="${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${selected}"
+  }
+
+  _ui_checklist_render_all() {
     local all=1 any=0 mark
     for i in "${!records[@]}"; do
       IFS=$'\t' read -r _ _ _ selected <<EOF
@@ -138,7 +248,7 @@ ${records[$i]}
 EOF
       [ "${selected:-0}" = 1 ] && any=1 || all=0
     done
-    [ "${all}" = 1 ] && mark='[x]' || { [ "${any}" = 1 ] && mark='[-]' || mark='[ ]'; }
+    [ "${all}" = 1 ] && mark='[x]' || { [ "${any}" = 1 ] && mark='[-]'; [ "${all}" = 0 ] && [ "${any}" = 0 ] && mark='[ ]'; }
     echo "=== ${title} ==="
     echo "Up/Down Move   Space Toggle   Enter Select   Q Cancel"
     [ "${cursor}" = 0 ] && printf '> %s Select All\n' "${mark}" || printf '  %s Select All\n' "${mark}"
@@ -151,44 +261,126 @@ EOF
       printf '%s (%s)\n' "${label:-${id}}" "${detail:-}"
     done
   }
-  _ui_checklist_toggle_cursor() {
-    if [ "${cursor}" = 0 ]; then _ui_checklist_toggle_all; return; fi
-    i=$((cursor - 1)); IFS=$'\t' read -r id label detail selected <<EOF
+
+  _ui_checklist_render_row() {
+    local idx="$1" is_curr="$2"
+    local ptr="  "
+    [ "${is_curr}" -eq 1 ] && ptr="> "
+    if [ "${idx}" -eq 0 ]; then
+      local all=1 any=0 mark
+      for i in "${!records[@]}"; do
+        IFS=$'\t' read -r _ _ _ selected <<EOF
 ${records[$i]}
 EOF
-    [ "${selected:-0}" = 1 ] && selected=0 || selected=1
-    records[$i]="${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${selected}"
+        [ "${selected:-0}" = 1 ] && any=1 || all=0
+      done
+      [ "${all}" = 1 ] && mark='[x]' || { [ "${any}" = 1 ] && mark='[-]'; [ "${all}" = 0 ] && [ "${any}" = 0 ] && mark='[ ]'; }
+      printf '\033[2K\r%s%s Select All\n' "${ptr}" "${mark}"
+    else
+      local real_idx=$((idx - 1))
+      local r_id r_label r_detail r_selected r_mark='[ ]'
+      IFS=$'\t' read -r r_id r_label r_detail r_selected <<EOF
+${records[$real_idx]}
+EOF
+      [ "${r_selected:-0}" = 1 ] && r_mark='[x]'
+      printf '\033[2K\r%s%s %s' "${ptr}" "${r_mark}" "${r_label:-${r_id}}"
+      [ -n "${r_detail:-}" ] && printf ' (%s)' "${r_detail}"
+      printf '\n'
+    fi
   }
+
   if [ -n "${HAWS_TEST_KEYS:-}" ]; then
-    _ui_checklist_render >&2
+    _ui_checklist_render_all >&2
     while ui_next_key >/dev/null 2>&1; do
       key="${UI_LAST_KEY:-}"
       case "${key}" in
         a|A) for i in "${!records[@]}"; do records[$i]="${records[$i]%$'\t'*}"$'\t'"1"; done ;;
         c|C|clear) for i in "${!records[@]}"; do records[$i]="${records[$i]%$'\t'*}"$'\t'"0"; done ;;
         space|Space|" ") _ui_checklist_toggle_cursor ;;
-        down|j) cursor=$(( (cursor + 1) % (count + 1) )) ;;
-        up|k) cursor=$(( (cursor - 1 + count + 1) % (count + 1) )) ;;
+        down|j) cursor=$(( (cursor + 1) % total )) ;;
+        up|k) cursor=$(( (cursor - 1 + total) % total )) ;;
         enter|Enter|"") break ;;
         cancel|q|quit) return 1 ;;
       esac
       [ -z "${_HAWS_UI_KEYS_REMAINING:-}" ] && break
     done
-    _ui_checklist_render >&2
+    _ui_checklist_render_all >&2
   else
-    while true; do
-      _ui_checklist_render
-      IFS= read -rsn1 key < /dev/tty || return 1
-      case "${key}" in
-        $'\x1b') IFS= read -rsn2 key < /dev/tty || true; [ "${key}" = '[A' ] && cursor=$(( (cursor - 1 + count + 1) % (count + 1) )); [ "${key}" = '[B' ] && cursor=$(( (cursor + 1) % (count + 1) )) ;;
-        ' '|x|X) _ui_checklist_toggle_cursor ;;
-        a|A) for i in "${!records[@]}"; do records[$i]="${records[$i]%$'\t'*}"$'\t'"1"; done ;;
-        c|C) for i in "${!records[@]}"; do records[$i]="${records[$i]%$'\t'*}"$'\t'"0"; done ;;
-        '') break ;;
-        q|Q) cancelled=1; break ;;
-      esac
+    local tty_in=""
+    if [ -r /dev/tty ]; then
+      tty_in="/dev/tty"
+    elif [ -t 0 ]; then
+      tty_in="/dev/stdin"
+    else
+      return 1
+    fi
+
+    echo "=== ${title} ===" >&2
+    echo "Up/Down Move   Space Toggle   Enter Select   Q Cancel" >&2
+    for ((i=0; i<total; i++)); do
+      local is_c=0
+      [ "${i}" -eq "${cursor}" ] && is_c=1
+      _ui_checklist_render_row "${i}" "${is_c}" >&2
     done
+
+    trap 'printf "\033[?25h" >&2 2>/dev/null || true' INT TERM
+    printf "\033[?25l" >&2 2>/dev/null || true
+
+    while true; do
+      local raw="" rest=""
+      IFS= read -rsn1 raw < "${tty_in}" || break
+
+      if [[ "${raw}" == $'\x1b' ]]; then
+        read -rsn2 -t 0.1 rest < "${tty_in}" || rest=""
+        case "${rest}" in
+          "[A"|"[a"|"OA"|"oa")
+            cursor=$(( (cursor - 1 + total) % total ))
+            ;;
+          "[B"|"[b"|"OB"|"ob")
+            cursor=$(( (cursor + 1) % total ))
+            ;;
+          "")
+            cancelled=1
+            break
+            ;;
+          *)
+            continue
+            ;;
+        esac
+      elif [[ "${raw}" == "k" || "${raw}" == "K" ]]; then
+        cursor=$(( (cursor - 1 + total) % total ))
+      elif [[ "${raw}" == "j" || "${raw}" == "J" ]]; then
+        cursor=$(( (cursor + 1) % total ))
+      elif [[ "${raw}" == " " || "${raw}" == "x" || "${raw}" == "X" ]]; then
+        _ui_checklist_toggle_cursor
+      elif [[ "${raw}" == "a" || "${raw}" == "A" ]]; then
+        for ((j=0; j<count; j++)); do
+          records[$j]="${records[$j]%$'\t'*}"$'\t'"1"
+        done
+      elif [[ "${raw}" == "c" || "${raw}" == "C" ]]; then
+        for ((j=0; j<count; j++)); do
+          records[$j]="${records[$j]%$'\t'*}"$'\t'"0"
+        done
+      elif [[ -z "${raw}" ]]; then
+        break
+      elif [[ "${raw}" == "q" || "${raw}" == "Q" ]]; then
+        cancelled=1
+        break
+      else
+        continue
+      fi
+
+      printf "\033[%dA" "${total}" >&2
+      for ((i=0; i<total; i++)); do
+        local is_c=0
+        [ "${i}" -eq "${cursor}" ] && is_c=1
+        _ui_checklist_render_row "${i}" "${is_c}" >&2
+      done
+    done
+
+    printf "\033[?25h" >&2 2>/dev/null || true
   fi
+
   [ "${cancelled}" = 0 ] || return 1
   for i in "${!records[@]}"; do
     IFS=$'\t' read -r id _ _ selected <<EOF
