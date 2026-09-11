@@ -287,7 +287,7 @@ EOF
         down|j) cursor=$(( (cursor + 1) % total )) ;;
         up|k) cursor=$(( (cursor - 1 + total) % total )) ;;
         enter|Enter|"") break ;;
-        cancel|q|quit) return 1 ;;
+        cancel|q|Q|quit) return 1 ;;
       esac
       [ -z "${_HAWS_UI_KEYS_REMAINING:-}" ] && break
     done

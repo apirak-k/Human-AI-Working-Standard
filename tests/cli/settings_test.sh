@@ -72,6 +72,30 @@ test_checklist_cancel_returns_no_result() {
   [ -z "${UI_CHECKLIST_RESULT:-}" ]
 }
 
+test_checklist_uppercase_q_matches_lowercase_q() {
+  new_fixture
+  export HAWS_TEST_KEYS=Q
+  . "${PROJECT_ROOT}/runtime/ui.sh"
+  UI_CHECKLIST_RESULT=stale
+  if ui_checklist Test $'one\tOne\tdetail\t1' >"${OUTPUT_FILE}" 2>&1; then return 1; fi
+  [ -z "${UI_CHECKLIST_RESULT:-}" ]
+}
+
+test_removed_repository_is_carried_into_apply_plan() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/skills/packs/repo" "${FIXTURE_REPO}/.haws/state"
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo.path skills/packs/repo
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo.url https://example.invalid/repo.git
+  load_state_api
+  . "${PROJECT_ROOT}/runtime/catalog.sh"
+  . "${PROJECT_ROOT}/runtime/integrations.sh"
+  local plan
+  export HAWS_INTEGRATION_PLAN="${FIXTURE_REPO}/.haws/state/integrations.plan"
+  plan="$(integration_plan 'repo::skills/packs/repo' '')"
+  grep -F 'remove-source' "${HAWS_INTEGRATION_PLAN}" >/dev/null
+  grep -F $'\tskills/packs/repo\t' "${HAWS_INTEGRATION_PLAN}" >/dev/null
+}
+
 test_cursor_menu_uses_down_and_enter_to_return_stable_id() {
   new_fixture
   export HAWS_TEST_KEYS=down,enter
@@ -354,6 +378,8 @@ run_test test_checklist_starts_at_visible_toggle_all_and_selects_every_item
 run_test test_checklist_wraps_up_from_toggle_all_to_the_last_item
 run_test test_checklist_renders_approved_bulk_row_help_and_state_marks
 run_test test_checklist_cancel_returns_no_result
+run_test test_checklist_uppercase_q_matches_lowercase_q
+run_test test_removed_repository_is_carried_into_apply_plan
 run_test test_cursor_menu_uses_down_and_enter_to_return_stable_id
 run_test test_cursor_menu_wraps_up_from_first_to_last_item
 run_test test_cursor_menu_wraps_down_from_last_to_first_item

@@ -51,6 +51,20 @@ integration_plan() {
   : > "${output}" || return 1
   local repo source_row source_id path url revision source_dir env skill_row skill_id display source_skill entrypoint active destination template
   repo="$(_integration_repo)"
+  # Removing a source is a first-class draft operation. Keep it in the plan so
+  # preview can describe it and apply can detach only HAWS-managed submodules.
+  if [ -n "${old_selection}" ]; then
+    while IFS= read -r source_row || [ -n "${source_row}" ]; do
+      [ -n "${source_row}" ] || continue
+      IFS=$'\t' read -r source_id path url revision <<EOF
+${source_row}
+EOF
+      [ -n "${new_selection}" ] && _integration_source_selected "${source_id}" "${new_selection}" && continue
+      printf 'remove-source\tsources\t%s\t%s\tremoved from Settings draft\n' "${source_id}" "${path}" >> "${output}"
+    done <<EOF
+$(catalog_sources 2>/dev/null || true)
+EOF
+  fi
   while IFS= read -r source_row || [ -n "${source_row}" ]; do
     [ -n "${source_row}" ] || continue
     IFS="	" read -r source_id path url revision <<EOF
@@ -112,10 +126,44 @@ _integration_pointer_apply() {
 }
 
 integration_apply() {
-  local plan="${1:-}" action group source destination reason source_dir
+  local plan="${1:-}" action group source destination reason source_dir record record_source
   [ -f "${plan}" ] || return 1
   while IFS="	" read -r action group source destination reason || [ -n "${action}" ]; do
     case "${action}" in
+      add-source)
+        [ ! -e "$(_integration_repo)/${destination}" ] && [ ! -L "$(_integration_repo)/${destination}" ] || {
+          echo "Blocked: repository path collision: ${destination}" >&2; return 2;
+        }
+        git -C "$(_integration_repo)" submodule add --depth 1 "${source}" "${destination}" || return 1
+        ;;
+      remove-source)
+        source_dir="${destination}"
+        # This only targets paths registered as HAWS Git submodules. It never
+        # removes arbitrary user-owned clones outside the repository root.
+        git -C "$(_integration_repo)" submodule deinit -f -- "${source_dir}" >/dev/null 2>&1 || true
+        git -C "$(_integration_repo)" rm -f -- "${source_dir}" >/dev/null 2>&1 || true
+        # Remove only proven HAWS-owned links whose source belonged to the
+        # detached source. User-owned or modified targets remain untouched.
+        while IFS= read -r record || [ -n "${record}" ]; do
+          [ -n "${record}" ] || continue
+          IFS=$'\t' read -r _ _ _ record_source _ <<EOF
+${record}
+EOF
+          case "${record_source}" in
+            "$(_integration_repo)/${source_dir}"/*)
+              if ownership_verify "${record}"; then
+                IFS=$'\t' read -r _ _ target _ _ <<EOF
+${record}
+EOF
+                rm -f -- "${target}" 2>/dev/null || true
+                [ ! -e "${target}" ] && [ ! -L "${target}" ] && _ownership_remove_record "${record}" || true
+              fi
+              ;;
+          esac
+        done <<EOF
+$(ownership_list skills 2>/dev/null || true)
+EOF
+        ;;
       initialize)
         source_dir="${destination}"
         git -C "$(_integration_repo)" submodule update --init --depth 1 "${source_dir}" || return 1

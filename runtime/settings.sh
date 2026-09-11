@@ -22,6 +22,14 @@ _settings_detected_envs() {
 _settings_active_skills() { catalog_skills 2>/dev/null | awk -F '	' '$5 == 1 {print $1}'; }
 _settings_sources() { catalog_sources 2>/dev/null | cut -f1; }
 
+_settings_repo_path_from_url() {
+  local url="${1%/}" name
+  name="${url##*/}"; name="${name%.git}"
+  name="$(printf '%s' "${name}" | tr -cs '[:alnum:]._-' '-')"
+  [ -n "${name}" ] || return 1
+  printf 'skills/packs/%s\n' "${name}"
+}
+
 settings_ensure_skills_draft() {
   [ "${HAWS_SKILLS_DRAFT_LOADED:-0}" = 1 ] && return 0
   echo "Loading skills catalog (this can take a moment)..."
@@ -162,7 +170,17 @@ repositories_menu() {
         ui_next_key >/dev/null 2>&1 || continue
         url="${UI_LAST_KEY:-}"
         case "${url}" in q|Q|cancel|quit|"") continue ;; esac
+        local add_path existing_url
+        add_path="$(_settings_repo_path_from_url "${url}")" || { echo "Invalid repository URL identity."; continue; }
+        existing_url="$(catalog_sources 2>/dev/null | awk -F '\t' -v u="${url}" '$3 == u {print u; exit}')"
+        if [ -n "${existing_url}" ] || printf '%s\n' "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" | grep -Fx -- "${url}" >/dev/null 2>&1; then
+          echo "Repository already exists in draft: ${url}"; continue
+        fi
+        if [ -e "${HAWS_REPO_DIR:-.}/${add_path}" ] || [ -L "${HAWS_REPO_DIR:-.}/${add_path}" ]; then
+          echo "Repository path collision: ${add_path}; no changes made."; continue
+        fi
         HAWS_DRAFT_ADDED_REPOSITORIES="${HAWS_DRAFT_ADDED_REPOSITORIES:-}${url}"$'\n'
+        HAWS_DRAFT_ADDED_PATHS="${HAWS_DRAFT_ADDED_PATHS:-}${add_path}"$'\n'
         export HAWS_DRAFT_ADDED_REPOSITORIES
         echo "Repository added to draft: ${url}"
         ;;
@@ -375,11 +393,20 @@ EOF
 }
 
 settings_plan_apply() {
-  local state plan integration old_envs env
+  local state plan integration old_envs env old_sources
   state="$(_haws_state_dir)"; mkdir -p "${state}" || return 1
   settings_ensure_skills_draft || return 1
   plan="${state}/settings.plan"; integration="${state}/integrations.plan"
-  HAWS_INTEGRATION_PLAN="${integration}" integration_plan "" "${HAWS_SELECTED_SOURCES:-}" >/dev/null || return 1
+  old_sources="$(_settings_sources)"
+  HAWS_INTEGRATION_PLAN="${integration}" integration_plan "${old_sources}" "${HAWS_SELECTED_SOURCES:-}" >/dev/null || return 1
+  while IFS= read -r url || [ -n "${url}" ]; do
+    [ -n "${url}" ] || continue
+    local add_path
+    add_path="$(_settings_repo_path_from_url "${url}")" || return 1
+    printf 'add-source\tsources\t%s\t%s\tnew repository from Settings draft\n' "${url}" "${add_path}" >> "${integration}"
+  done <<EOF
+${HAWS_DRAFT_ADDED_REPOSITORIES:-}
+EOF
   {
     printf 'setting\tsecond_brain\t%s\n' "${HAWS_DRAFT_SECOND_BRAIN:-off}"
     [ -z "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ] || printf 'setting\tsecond_brain_remote\t%s\n' "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"
