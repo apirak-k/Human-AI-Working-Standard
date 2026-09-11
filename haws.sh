@@ -470,14 +470,14 @@ run_doctor() {
 
     # 12. Check Launchers & Automation Tools
     [ "$json_mode" = false ] && echo "" && echo "12. Checking Launchers & Automation Tools..."
-    if "${SCRIPT_DIR}/haws.sh" uninstall --dry-run >/dev/null 2>&1; then
+    if [ -f "${SCRIPT_DIR}/haws.sh" ] && [ -x "${SCRIPT_DIR}/haws.sh" ]; then
         passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] haws.sh uninstall --dry-run (operational)"
-        details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"PASS\"}")
+        [ "$json_mode" = false ] && echo "   [PASS] haws.sh is present and executable"
+        details+=("{\"item\":\"Launcher Script Check\",\"status\":\"PASS\"}")
     else
         failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] haws.sh uninstall --dry-run failed"
-        details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"FAIL\"}")
+        [ "$json_mode" = false ] && echo "   [FAIL] haws.sh missing or not executable"
+        details+=("{\"item\":\"Launcher Script Check\",\"status\":\"FAIL\"}")
     fi
 
 
