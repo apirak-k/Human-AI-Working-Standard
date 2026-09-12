@@ -134,7 +134,7 @@ test_repo_url_deterministic_path() {
 
 test_repo_duplicate_rejection_in_draft() {
   new_fixture
-  export HAWS_TEST_KEYS=2,add,https://example.invalid/repo.git,add,https://example.invalid/repo.git,cancel,cancel
+  export HAWS_TEST_KEYS=2,add,https://github.com/example/repo.git,add,https://github.com/example/repo.git,cancel,cancel
   run_haws settings || true
   assert_output_contains "Repository already exists in draft:" || return 1
 }

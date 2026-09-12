@@ -400,6 +400,32 @@ test_space_key_toggles_boolean_setting_in_place() {
   assert_output_contains "Discard Changes?" || return 1
 }
 
+test_add_repository_accepts_valid_github_url() {
+  new_fixture
+  export HAWS_TEST_KEYS=2,add,https://github.com/owner/valid-repo.git,back,Q,discard
+  run_haws settings || true
+  assert_output_contains "Repository added to draft: https://github.com/owner/valid-repo.git" || return 1
+  assert_output_contains "Discard Changes?" || return 1
+}
+
+test_add_repository_rejects_invalid_arbitrary_text() {
+  new_fixture
+  export HAWS_TEST_KEYS=2,add,invalid-repo-text,back,cancel
+  run_haws settings || true
+  assert_output_contains "Invalid GitHub repository URL: invalid-repo-text" || return 1
+  ! grep -F "Repository added to draft:" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+}
+
+test_add_repository_rejected_input_does_not_mutate_draft() {
+  new_fixture
+  export HAWS_TEST_KEYS=2,add,https://notgithub.com/bad/repo.git,back,cancel
+  run_haws settings || true
+  assert_output_contains "Invalid GitHub repository URL: https://notgithub.com/bad/repo.git" || return 1
+  ! grep -F "Repository added to draft:" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  assert_output_contains "Cancelled. No changes saved." || return 1
+  ! grep -F "Discard Changes?" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+}
+
 run_test() { local name="$1"; if "$name"; then echo "PASS ${name}"; passed=$((passed + 1)); else echo "FAIL ${name}"; failed=$((failed + 1)); fi; unset HAWS_TEST_KEYS; cleanup_fixture; }
 trap cleanup_fixture EXIT
 run_test test_home_contains_status_sync_settings_doctor_details_and_exit
@@ -439,5 +465,8 @@ run_test test_adapter_templates_reference_canonical_rules_without_duplicating_th
 run_test test_dirty_settings_prompts_discard_confirmation_on_q
 run_test test_multi_select_repository_removal_marks_selected_sources_for_removal
 run_test test_space_key_toggles_boolean_setting_in_place
+run_test test_add_repository_accepts_valid_github_url
+run_test test_add_repository_rejects_invalid_arbitrary_text
+run_test test_add_repository_rejected_input_does_not_mutate_draft
 echo "CLI settings tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]

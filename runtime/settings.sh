@@ -22,8 +22,25 @@ _settings_detected_envs() {
 _settings_active_skills() { catalog_skills 2>/dev/null | awk -F '	' '$5 == 1 {print $1}'; }
 _settings_sources() { catalog_sources 2>/dev/null | cut -f1; }
 
+_settings_is_valid_github_url() {
+  local url="${1:-}"
+  url="${url%/}"
+  local regex='^(https?://(www\.)?github\.com/|git@github\.com:|ssh://git@github\.com/)[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(\.git)?$'
+  [[ "${url}" =~ ${regex} ]] || return 1
+  local path_part="${url#*github.com[:/]}"
+  path_part="${path_part%/}"
+  local owner="${path_part%%/*}"
+  local repo="${path_part##*/}"
+  repo="${repo%.git}"
+  [ -n "${owner}" ] && [ -n "${repo}" ] || return 1
+  [ "${owner}" != "." ] && [ "${owner}" != ".." ] || return 1
+  [ "${repo}" != "." ] && [ "${repo}" != ".." ] || return 1
+  return 0
+}
+
 _settings_repo_path_from_url() {
   local url="${1%/}" name
+  _settings_is_valid_github_url "${url}" || return 1
   name="${url##*/}"; name="${name%.git}"
   name="$(printf '%s' "${name}" | tr -cs '[:alnum:]._-' '-')"
   [ -n "${name}" ] || return 1
@@ -220,6 +237,11 @@ repositories_menu() {
         ui_next_key >/dev/null 2>&1 || continue
         url="${UI_LAST_KEY:-}"
         case "${url}" in q|Q|cancel|quit|"") continue ;; esac
+        if ! _settings_is_valid_github_url "${url}"; then
+          echo "Invalid GitHub repository URL: ${url}"
+          continue
+        fi
+        url="${url%/}"
         local add_path existing_url
         add_path="$(_settings_repo_path_from_url "${url}")" || { echo "Invalid repository URL identity."; continue; }
         existing_url="$(catalog_sources 2>/dev/null | awk -F '\t' -v u="${url}" '$3 == u {print u; exit}')"
