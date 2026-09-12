@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMMAND="${1:-sync}"
+COMMAND="${1:-menu}"
 
 # Native Codex agent installation is also available without a global sync.
 run_codex_agents() {
@@ -1200,11 +1200,15 @@ interactive_checklist() {
         render_row "$i" "$is_c"
     done
 
-    if [ -t 0 ]; then
-        printf "\033[?25l" 2>/dev/null || true
-        while true; do
+    local interactive_terminal=0
+    [ -t 0 ] && interactive_terminal=1
+    [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25l" 2>/dev/null || true
+    while true; do
             local key=""
-            IFS= read -rsn1 key || break
+            if ! IFS= read -rsn1 key; then
+                cancelled=1
+                break
+            fi
             if [[ "${key}" == $'\x1b' ]]; then
                 local rest=""
                 read -rsn2 -t 0.1 rest || rest=""
@@ -1242,15 +1246,16 @@ interactive_checklist() {
                 break
             fi
 
-            printf "\033[%dA" "${total}"
-            for ((i=0; i<total; i++)); do
-                local is_c=0
-                [ "$i" -eq "$cursor" ] && is_c=1
-                render_row "$i" "$is_c"
-            done
-        done
-        printf "\033[?25h" 2>/dev/null || true
-    fi
+            if [ "${interactive_terminal}" -eq 1 ]; then
+                printf "\033[%dA" "${total}"
+                for ((i=0; i<total; i++)); do
+                    local is_c=0
+                    [ "$i" -eq "$cursor" ] && is_c=1
+                    render_row "$i" "$is_c"
+                done
+            fi
+    done
+    [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25h" 2>/dev/null || true
 
     echo ""
     if [ "$cancelled" -eq 1 ]; then
@@ -1677,7 +1682,7 @@ run_configure_skills() {
                 configure_repo_skills "${sel_pack_dir}" "${sel_pack_name}"
             fi
 
-        elif [ "${sub_choice}" = "0" ] || [[ "${sub_choice}" =~ ^(q|quit|back|b)$ ]]; then
+        elif [ "${sub_choice}" = "0" ] || [[ "${sub_choice,,}" =~ ^(q|quit|back|b)$ ]]; then
             break
         fi
     done
@@ -2524,7 +2529,103 @@ run_setup() {
     run_doctor
 }
 
+run_main_menu() {
+    local items=(
+        "Skills"
+        "Repositories"
+        "Second Brain"
+        "Sync"
+        "Status"
+        "Doctor"
+        "Uninstall"
+        "Exit"
+    )
+    local cursor=0
+    local count=${#items[@]}
+    local interactive_terminal=0
+    [ -t 0 ] && [ -t 1 ] && interactive_terminal=1
+
+    render_main_menu() {
+        echo ""
+        echo "============================================================="
+        echo "                       HAWS — Main Menu"
+        echo "============================================================="
+        local i
+        for ((i=0; i<count; i++)); do
+            if [ "${i}" -eq "${cursor}" ]; then
+                printf "> %s\n" "${items[$i]}"
+            else
+                printf "  %s\n" "${items[$i]}"
+            fi
+        done
+        echo ""
+        echo "Controls: Up/Down Move | Enter Select | Q Exit"
+    }
+
+    run_menu_action() {
+        local status=0
+        bash "${SCRIPT_DIR}/haws.sh" "$@" || status=$?
+        if [ "${status}" -ne 0 ]; then
+            echo "  [ERROR] Action failed (exit ${status})."
+        fi
+    }
+
+    render_main_menu
+    while true; do
+        local key=""
+        if ! IFS= read -rsn1 key; then
+            return 0
+        fi
+        if [[ "${key}" == $'\x1b' ]]; then
+            local rest=""
+            read -rsn2 -t 0.1 rest || rest=""
+            case "${rest}" in
+                "[A") cursor=$(( (cursor - 1 + count) % count )) ;;
+                "[B") cursor=$(( (cursor + 1) % count )) ;;
+            esac
+            [ "${interactive_terminal}" -eq 1 ] && printf "\033[H\033[2J"
+            render_main_menu
+            continue
+        fi
+        case "${key}" in
+            q|Q)
+                return 0
+                ;;
+            k|K)
+                cursor=$(( (cursor - 1 + count) % count ))
+                [ "${interactive_terminal}" -eq 1 ] && printf "\033[H\033[2J"
+                render_main_menu
+                continue
+                ;;
+            j|J)
+                cursor=$(( (cursor + 1) % count ))
+                [ "${interactive_terminal}" -eq 1 ] && printf "\033[H\033[2J"
+                render_main_menu
+                continue
+                ;;
+            "") ;;
+            *) continue ;;
+        esac
+
+        case "${cursor}" in
+            0) run_menu_action skills ;;
+            1) run_menu_action kit list ;;
+            2) run_menu_action user status ;;
+            3) run_menu_action sync ;;
+            4) run_menu_action status ;;
+            5) run_menu_action doctor ;;
+            6) run_menu_action uninstall ;;
+            7) return 0 ;;
+        esac
+        render_main_menu
+    done
+}
+
 case "${COMMAND}" in
+    menu|interactive)
+        shift || true
+        run_main_menu
+        ;;
     codex-agents)
         shift || true
         run_codex_agents "$@"
@@ -2573,7 +2674,7 @@ case "${COMMAND}" in
         fi
         ;;
     *)
-        echo "Usage: ./haws.sh [setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents] [--clean]"
+        echo "Usage: ./haws.sh [menu|setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents] [--clean]"
         echo "  codex-agents [install|check|uninstall] [--dry-run] Native Codex roles only (no network sync)"
         echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
