@@ -17,11 +17,11 @@ This dossier records the complete, exact recovery status for seamless continuati
 | :--- | :--- | :--- | :--- |
 | **Task 1** | Loop Fix Only | **Complete** | Resolved pre-commit hang, `run_doctor` recursion, and protected with regression tests. |
 | **Task 2** | Approved UX Improvements Only | **Complete** | Restored approved UX feedback, Skills hierarchy (single/packs), vertical preview flows, draft-first settings, and lazy catalog loading. |
-| **Task 3** | Known-Good TUI Behavior Only | **Complete & Approved** | Restored known-good in-place redraw, fixed Windows escape sequence timeout exit bug, added Space bar in-place toggle, added dirty draft exit confirmation on Q, and multi-select repository removal. 37/37 tests pass. |
-| **Task 4** | Clean Base Validation Only | **Complete & Verified** | 100% pass across all suites (128/128 tests). Core is clean, robust, and verified against spec.md invariants. Ready for Task 5. |
-| **Task 5** | Windows `.bat` Entry Only | **Complete & Verified** | Created thin launcher `haws.bat` without logic duplication, removed blocking pause, passes static and execution suites. |
-| **Task 6** | Cross-Platform Parity | **Complete & Verified** | Verified 14-point parity matrix between `haws.bat` and `haws.sh`. 141/141 tests pass 100% green. |
-| **Task 7** | Documentation + Final Validation | **Complete & Verified** | Updated README.md with cross-platform launcher guide, settings draft model, and accurate pre-commit safeguards. All 141 tests pass 100% green. Ready for user merge decision. |
+| **Task 3** | Known-Good TUI Behavior Only | **NOT Approved** | Known implementation/spec mismatches remain. |
+| **Task 4** | Clean Base Validation Only | **Validation Completed (Caveat)** | Automated validation completed, but passing tests do NOT prove full spec compliance because some current tests encode outdated behavior. |
+| **Task 5** | Windows `.bat` Entry Only | **Implemented (Not Approved)** | Implemented but not fully reviewed/approved. |
+| **Task 6** | Cross-Platform Parity | **Implemented (Not Approved)** | Implemented but not fully reviewed/approved. |
+| **Task 7** | Documentation + Final Validation | **Implemented (Not Approved)** | Implemented but not fully reviewed/approved. |
 
 ---
 
@@ -52,9 +52,9 @@ All essential context files are committed directly to this branch so no context 
 
 ---
 
-## 3. Test Results at Final Checkpoint
+## 3. Test Results at Checkpoint
 
-All test suites pass 100% green (141 tests total):
+Automated test suites currently pass (141 tests total), but passing tests do NOT prove full spec compliance because some current tests encode outdated behavior:
 - `tests/cli/task4_clean_base_validation.sh`: **21 passed, 0 failed**
 - `tests/cli/windows_launcher_test.sh`: **6 passed, 0 failed**
 - `tests/cli/catalog_test.sh`: **6 passed, 0 failed**
@@ -74,24 +74,30 @@ All test suites pass 100% green (141 tests total):
 
 ## 4. Known Bugs, Gaps & Deferred Defects
 
-- **None**: All 141 tests pass 100% green across CLI and Node.js suites.
-- **Cross-Platform Parity**: Full parity verified between `haws.bat` and `haws.sh`.
-- **Pre-Commit Safety**: Protected against hangs, recursive loops, plaintext secrets, and CRLF line endings.
+Do not claim full spec compliance. The following known issues and limitations remain:
+
+- **Task 3 Known Issues**:
+  - Add Repository does not yet reliably enforce valid GitHub URL input.
+  - Remove Repository still has UX/data representation issues.
+  - Real-terminal TUI frame accumulation/redraw behavior is not accepted.
+  - Settings wording/flow still differs from spec.
+  - AI Environments behavior still needs verification against the detected-only selection rule.
+  - Multi-provider skill identity remains a known limitation.
+- **Test Inaccuracies**: Some existing automated tests encode outdated behavior, masking spec divergence.
+- **Review Deficits**: Tasks 5, 6, and 7 are implemented but have not been fully reviewed and approved.
 
 ---
 
-## 5. Final Status & User Merge Decision
+## 5. Final Status & Branch Readiness
 
-All 7 tasks in `spec.md` are completed and verified:
+Current task breakdown:
 1. **Task 1 (Loop Fix Only)**: Complete.
 2. **Task 2 (Approved UX Improvements Only)**: Complete.
-3. **Task 3 (Known-Good TUI Behavior Only)**: Complete.
-4. **Task 4 (Clean Base Validation Only)**: Complete.
-5. **Task 5 (Windows `.bat` Entry Only)**: Complete.
-6. **Task 6 (Cross-Platform Parity)**: Complete.
-7. **Task 7 (Documentation & Final Validation)**: Complete.
+3. **Task 3 (Known-Good TUI Behavior Only)**: NOT approved. Known implementation/spec mismatches remain.
+4. **Task 4 (Clean Base Validation Only)**: Automated validation completed, but passing tests do NOT prove full spec compliance because some current tests encode outdated behavior.
+5. **Task 5 (Windows `.bat` Entry Only)**: Implemented but not fully reviewed/approved.
+6. **Task 6 (Cross-Platform Parity)**: Implemented but not fully reviewed/approved.
+7. **Task 7 (Documentation & Final Validation)**: Implemented but not fully reviewed/approved.
 
-Per `spec.md` Section 27, git merge control remains entirely with the user. The `recovery/clean-base` branch is clean, fully verified, and ready for merge into `main` at the user's discretion.
-
-
-
+**Branch Status**:
+The branch is **NOT ready to merge**. Outstanding implementation/spec mismatches in Task 3 and unverified behaviors must be addressed, and full review/approval is required before any merge into `main` can occur.
