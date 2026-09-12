@@ -389,7 +389,29 @@ test_multi_select_repository_removal_marks_selected_sources_for_removal() {
   export HAWS_TEST_KEYS=2,remove,down,space,enter,back,cancel
   run_haws settings || true
   assert_output_contains "Select repositories to remove:" || return 1
+  assert_output_contains "repo1 (0 skills)" || return 1
+  assert_output_contains "repo2 (0 skills)" || return 1
+  ! grep -F "repo1::skills/packs/repo1 (" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  ! grep -F "repo2::skills/packs/repo2 (" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  ! grep -F "skills/packs/repo1 (" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  ! grep -F "skills/packs/repo2 (" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
   assert_output_contains "Selected repositories marked for removal in draft." || return 1
+  [ "$(git -C "${FIXTURE_REPO}" config -f .gitmodules --get submodule.repo1.url)" = "https://example.invalid/repo1.git" ] || return 1
+}
+
+test_remove_repository_ui_shows_readable_names_and_counts_without_internal_ids() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/skills/packs/my-pack" "${FIXTURE_REPO}/.haws/state"
+  git -C "${FIXTURE_REPO}" config -f .gitmodules 'submodule.skills/packs/my-pack.path' skills/packs/my-pack
+  git -C "${FIXTURE_REPO}" config -f .gitmodules 'submodule.skills/packs/my-pack.url' https://github.com/my-org/my-pack.git
+  mkdir -p "${FIXTURE_REPO}/skills/packs/my-pack/skill-one"
+  printf '# Skill One\n' > "${FIXTURE_REPO}/skills/packs/my-pack/skill-one/SKILL.md"
+  export HAWS_TEST_KEYS=2,remove,cancel,cancel
+  run_haws settings || true
+  assert_output_contains "Select repositories to remove:" || return 1
+  assert_output_contains "my-org/my-pack (1 skill)" || return 1
+  ! grep -F "skills/packs/my-pack::skills/packs/my-pack" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  ! grep -F "skills/packs/my-pack (" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
 }
 
 test_space_key_toggles_boolean_setting_in_place() {
@@ -464,6 +486,7 @@ run_test test_uninstall_setting_opens_group_checklist_before_preview
 run_test test_adapter_templates_reference_canonical_rules_without_duplicating_them
 run_test test_dirty_settings_prompts_discard_confirmation_on_q
 run_test test_multi_select_repository_removal_marks_selected_sources_for_removal
+run_test test_remove_repository_ui_shows_readable_names_and_counts_without_internal_ids
 run_test test_space_key_toggles_boolean_setting_in_place
 run_test test_add_repository_accepts_valid_github_url
 run_test test_add_repository_rejects_invalid_arbitrary_text

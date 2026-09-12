@@ -175,21 +175,46 @@ EOF
 }
 
 _settings_remove_repositories_menu() {
-  local records=() id name path url revision count
+  local records=() id path url revision count
   local sources_list="${HAWS_SELECTED_SOURCES:-$(_settings_sources)}"
   while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
     [ -n "${id}" ] || continue
     _settings_list_contains "${sources_list}" "${id}" || continue
-    name="${id%%::*}"
+    local repo_label=""
+    if [ -n "${url}" ] && [ "${url}" != "-" ]; then
+      if _settings_is_valid_github_url "${url}"; then
+        local clean_url="${url%/}"
+        clean_url="${clean_url%.git}"
+        repo_label="${clean_url#*github.com[:/]}"
+      else
+        repo_label="${url##*/}"
+        repo_label="${repo_label%.git}"
+      fi
+    fi
+    if [ -z "${repo_label}" ] || [ "${repo_label}" = "-" ]; then
+      repo_label="${path##*/}"
+    fi
+    [ -n "${repo_label}" ] || repo_label="${id##*/}"
+    repo_label="${repo_label##*::}"
     count="$(catalog_skills 2>/dev/null | awk -F '\t' -v s="${id}" '$3 == s {n++} END {print n+0}')"
-    records+=("${id}"$'\t'"${name}"$'\t'"${count} skills"$'\t'"0")
+    local count_detail="${count} skills"
+    [ "${count}" -eq 1 ] && count_detail="1 skill"
+    records+=("${id}"$'\t'"${repo_label}"$'\t'"${count_detail}"$'\t'"0")
   done <<EOF
 $(catalog_sources 2>/dev/null || true)
 EOF
   while IFS= read -r url || [ -n "${url}" ]; do
     [ -n "${url}" ] || continue
-    local add_name="${url##*/}"; add_name="${add_name%.git}"
-    records+=("url:${url}"$'\t'"${add_name} (draft)"$'\t'"0 skills"$'\t'"0")
+    local add_label=""
+    if _settings_is_valid_github_url "${url}"; then
+      local clean_url="${url%/}"
+      clean_url="${clean_url%.git}"
+      add_label="${clean_url#*github.com[:/]}"
+    else
+      add_label="${url##*/}"
+      add_label="${add_label%.git}"
+    fi
+    records+=("url:${url}"$'\t'"${add_label} (draft)"$'\t'"0 skills"$'\t'"0")
   done <<EOF
 ${HAWS_DRAFT_ADDED_REPOSITORIES:-}
 EOF
