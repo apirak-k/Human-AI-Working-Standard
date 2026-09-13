@@ -7,6 +7,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMAND="${1:-menu}"
+BARE_LAUNCH="${HAWS_BARE_LAUNCH:-0}"
+[ "$#" -eq 0 ] && BARE_LAUNCH=1
 
 # Native Codex agent installation is also available without a global sync.
 run_codex_agents() {
@@ -1470,8 +1472,10 @@ interactive_menu() {
     local item_states=()
     local total="$count"
 
-    if [ "${mode}" = "checklist" ]; then
-        total=$((count + 1))
+    if [ "${mode}" = "checklist" ] || [ "${mode}" = "settings" ]; then
+        if [ "${mode}" = "checklist" ]; then
+            total=$((count + 1))
+        fi
         for item in "${items[@]}"; do
             local n="${item%%|*}"
             local rest="${item#*|}"
@@ -1481,6 +1485,8 @@ interactive_menu() {
             item_details+=("$d")
             item_states+=("$s")
         done
+    elif [ "${mode}" = "menu" ]; then
+        item_names=("${items[@]}")
     else
         item_names=("${items[@]}")
     fi
@@ -1524,6 +1530,13 @@ interactive_menu() {
                 fi
                 printf "\033[2K\r%s%s %b%-26s\033[0m \033[90m(%s)\033[0m\n" "${ptr}" "${mark}" "${color}" "${item_names[$real_idx]}" "${item_details[$real_idx]}"
             fi
+        elif [ "${mode}" = "settings" ]; then
+            local state_mark=""
+            case "${item_states[$idx]}" in
+                on) state_mark=" [ On ]" ;;
+                off) state_mark=" [ Off ]" ;;
+            esac
+            printf "\033[2K\r%s%s%s\n" "${ptr}" "${item_names[$idx]}" "${state_mark}"
         else
             printf "\033[2K\r%s%s\n" "${ptr}" "${item_names[$idx]}"
         fi
@@ -1533,6 +1546,9 @@ interactive_menu() {
     if [ "${mode}" = "checklist" ]; then
         echo "=== ${title} ==="
         echo "Controls: [↑/↓] Navigate | [Space] Toggle | [Enter] Confirm & Save | [q] Cancel"
+    elif [ "${mode}" = "settings" ]; then
+        echo "=== ${title} ==="
+        echo "Controls: Up/Down Move | Enter Select | Space Toggle | Q Back"
     else
         echo "============================================================="
         echo "                       ${title}"
@@ -1545,15 +1561,21 @@ interactive_menu() {
         [ "$i" -eq "$cursor" ] && is_c=1
         render_row "$i" "$is_c"
     done
-    if [ "${mode}" = "menu" ]; then
+    if [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
         echo ""
-        echo "Controls: Up/Down Move | Enter Select | Q Exit"
+        if [ "${mode}" = "settings" ]; then
+            echo "Controls: Up/Down Move | Enter Select | Space Toggle | Q Back"
+        else
+            echo "Controls: Up/Down Move | Enter Select | Q Exit"
+        fi
     fi
 
     local interactive_terminal=0
     [ -t 0 ] && [ -t 1 ] && interactive_terminal=1
     local redraw_rows="${total}"
-    [ "${mode}" = "menu" ] && redraw_rows=$((total + 2))
+    if [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
+        redraw_rows=$((total + 2))
+    fi
     [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25l" 2>/dev/null || true
     while true; do
         local key=""
@@ -1572,8 +1594,14 @@ interactive_menu() {
             cursor=$(( (cursor - 1 + total) % total ))
         elif [[ "${key}" == "j" || "${key}" == "J" ]]; then
             cursor=$(( (cursor + 1) % total ))
-        elif [ "${mode}" = "checklist" ] && [[ "${key}" == " " || "${key}" == "x" || "${key}" == "X" ]]; then
-            if [ "$cursor" -eq 0 ]; then
+        elif [[ "${key}" == " " || "${key}" == "x" || "${key}" == "X" ]] && \
+            { [ "${mode}" = "checklist" ] || [ "${mode}" = "settings" ]; }; then
+            if [ "${mode}" = "settings" ]; then
+                case "${item_states[$cursor]}" in
+                    on) item_states[$cursor]=off ;;
+                    off) item_states[$cursor]=on ;;
+                esac
+            elif [ "$cursor" -eq 0 ]; then
                 local any_unsel=0
                 for ((j=0; j<count; j++)); do
                     [ "${item_states[$j]}" -eq 0 ] && any_unsel=1 && break
@@ -1601,7 +1629,7 @@ interactive_menu() {
         if [ "${interactive_terminal}" -eq 1 ]; then
             printf "\033[%dA" "${redraw_rows}"
         fi
-        if [ "${interactive_terminal}" -eq 1 ] || [ "${mode}" = "menu" ]; then
+        if [ "${interactive_terminal}" -eq 1 ] || [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
             for ((i=0; i<total; i++)); do
                 local is_c=0
                 [ "$i" -eq "$cursor" ] && is_c=1
@@ -1610,6 +1638,9 @@ interactive_menu() {
             if [ "${mode}" = "menu" ]; then
                 echo ""
                 echo "Controls: Up/Down Move | Enter Select | Q Exit"
+            elif [ "${mode}" = "settings" ]; then
+                echo ""
+                echo "Controls: Up/Down Move | Enter Select | Space Toggle | Q Back"
             fi
         fi
     done
@@ -1625,6 +1656,12 @@ interactive_menu() {
         for ((i=0; i<count; i++)); do
             CHECKLIST_RESULTS["${item_names[$i]}"]="${item_states[$i]}"
         done
+    elif [ "${mode}" = "settings" ]; then
+        declare -gA INTERACTIVE_MENU_STATES=()
+        for ((i=0; i<count; i++)); do
+            INTERACTIVE_MENU_STATES["${item_names[$i]}"]="${item_states[$i]}"
+        done
+        INTERACTIVE_MENU_SELECTION="${cursor}"
     else
         INTERACTIVE_MENU_SELECTION="${cursor}"
     fi
@@ -2825,74 +2862,461 @@ run_uninstall() {
     echo "================================================================"
 }
 
-run_setup() {
-    echo "================================================================"
-    echo "           HAWS Automated Setup & First-Time Installation"
-    echo "================================================================"
-    echo ""
+install_is_complete() {
+    [ -s "$(_haws_state_dir)/install.complete" ] || [ -s "${HOME}/.haws_manifest" ]
+}
 
-    # Question 1: Skills First
-    echo "[Question 1/2] Skills Configuration:"
-    echo "  Do you want to install standard KIT skills or configure them manually?"
-    echo "  1) Standard HAWS Kit  (Recommended — 127 curated skills & packs) [Default]"
-    echo "  2) Customize Skills   (Select specific packs or toggle skills)"
-    echo ""
-    local skill_choice="1"
-    if [ -t 0 ]; then
-        read -r -p "Select [1-2] (Default: 1): " skill_choice || skill_choice="1"
-        skill_choice="$(echo "${skill_choice}" | tr -d ' \r\n')"
-        [ -z "${skill_choice}" ] && skill_choice="1"
+_haws_all_environments() {
+    printf '%s\n' claude gemini cursor copilot codex
+}
+
+_haws_environment_label() {
+    case "${1:-}" in
+        claude) echo "Claude Code" ;;
+        gemini) echo "Google Antigravity" ;;
+        cursor) echo "Cursor" ;;
+        copilot) echo "GitHub Copilot" ;;
+        codex) echo "OpenAI Codex" ;;
+        *) echo "${1:-Unknown}" ;;
+    esac
+}
+
+_haws_toggle_label() {
+    case "${1:-}" in
+        on) echo "On" ;;
+        off) echo "Off" ;;
+        *) echo "${1:-Unknown}" ;;
+    esac
+}
+
+_haws_detected_environments() {
+    local environment
+    while IFS= read -r environment; do
+        case "${environment}" in
+            claude) [ -d "${HOME}/.claude" ] || continue ;;
+            gemini) [ -d "${HOME}/.gemini" ] || continue ;;
+            cursor) {
+                [ -d "${HOME}/.cursor" ] || [ -f "${HOME}/.cursorrules" ]
+            } || continue ;;
+            copilot) {
+                [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/.config/github-copilot" ]
+            } || continue ;;
+            codex) {
+                [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]
+            } || continue ;;
+        esac
+        printf '%s\n' "${environment}"
+    done < <(_haws_all_environments)
+}
+
+_settings_list_contains() {
+    local list="${1:-}"
+    local wanted="${2:-}"
+    local value
+    while IFS= read -r value || [ -n "${value}" ]; do
+        [ "${value}" = "${wanted}" ] && return 0
+    done <<< "${list}"
+    return 1
+}
+
+_settings_list_signature() {
+    printf '%s\n' "${1:-}" | sed '/^[[:space:]]*$/d' | sort
+}
+
+settings_draft_load() {
+    settings_load || return $?
+    disabled_environments_load
+    HAWS_PERSIST_SECOND_BRAIN="${HAWS_SECOND_BRAIN_ENABLED}"
+    HAWS_PERSIST_SECOND_BRAIN_REMOTE="${HAWS_SECOND_BRAIN_REMOTE}"
+    HAWS_PERSIST_AUTO_UPDATE="${HAWS_AUTO_UPDATE}"
+    HAWS_PERSIST_ENVIRONMENTS=""
+    local environment
+    while IFS= read -r environment; do
+        [ -n "${DISABLED_ENVIRONMENTS[${environment}]:-}" ] && continue
+        HAWS_PERSIST_ENVIRONMENTS+="${environment}"$'\n'
+    done < <(_haws_detected_environments)
+    HAWS_DRAFT_SECOND_BRAIN="${HAWS_PERSIST_SECOND_BRAIN}"
+    HAWS_DRAFT_SECOND_BRAIN_REMOTE="${HAWS_PERSIST_SECOND_BRAIN_REMOTE}"
+    HAWS_DRAFT_AUTO_UPDATE="${HAWS_PERSIST_AUTO_UPDATE}"
+    HAWS_DRAFT_ENVIRONMENTS="${HAWS_PERSIST_ENVIRONMENTS}"
+    HAWS_DRAFT_ENVIRONMENTS_TOUCHED=0
+    HAWS_DRAFT_PLAN=""
+    export HAWS_PERSIST_SECOND_BRAIN HAWS_PERSIST_SECOND_BRAIN_REMOTE \
+        HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
+        HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
+        HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
+        HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN
+}
+
+settings_draft_discard() {
+    local state="$(_haws_state_dir)"
+    rm -f -- "${state}/settings.plan" "${state}/apply.result"
+    rmdir -- "${state}" 2>/dev/null || true
+    rmdir -- "$(dirname "${state}")" 2>/dev/null || true
+    unset HAWS_PERSIST_SECOND_BRAIN HAWS_PERSIST_SECOND_BRAIN_REMOTE \
+        HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
+        HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
+        HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
+        HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN \
+        HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE
+}
+
+_settings_draft_is_dirty() {
+    [ "${HAWS_DRAFT_SECOND_BRAIN:-}" != "${HAWS_PERSIST_SECOND_BRAIN:-}" ] && return 0
+    [ "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" != "${HAWS_PERSIST_SECOND_BRAIN_REMOTE:-}" ] && return 0
+    [ "${HAWS_DRAFT_AUTO_UPDATE:-}" != "${HAWS_PERSIST_AUTO_UPDATE:-}" ] && return 0
+    [ "$( _settings_list_signature "${HAWS_DRAFT_ENVIRONMENTS:-}" )" != \
+        "$( _settings_list_signature "${HAWS_PERSIST_ENVIRONMENTS:-}" )" ]
+}
+
+settings_draft_reset() {
+    echo "Reset Settings to Defaults?"
+    echo "This will replace the current draft. Nothing will change on this computer yet."
+    if ! interactive_menu menu "Reset Settings to Defaults?" "Reset" "Cancel"; then
+        echo "Reset cancelled."
+        return 1
+    fi
+    [ "${INTERACTIVE_MENU_SELECTION}" -eq 0 ] || {
+        echo "Reset cancelled."
+        return 1
+    }
+    HAWS_DRAFT_SECOND_BRAIN="off"
+    HAWS_DRAFT_SECOND_BRAIN_REMOTE=""
+    HAWS_DRAFT_AUTO_UPDATE="on"
+    HAWS_DRAFT_ENVIRONMENTS="$(_haws_detected_environments)"
+    HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
+    export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
+        HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
+        HAWS_DRAFT_ENVIRONMENTS_TOUCHED
+    echo "The draft now contains default values. Nothing has changed on this computer yet."
+    return 0
+}
+
+settings_page() {
+    local environment_count=0
+    local environment
+    while IFS= read -r environment; do
+        [ -n "${environment}" ] && environment_count=$((environment_count + 1))
+    done <<< "${HAWS_DRAFT_ENVIRONMENTS:-}"
+    local items=(
+        "Repositories|Existing repository sources|-"
+        "Skills|Existing Single Skills and Multi-Skill Packs|-"
+        "AI Environments|${environment_count} selected|-"
+        "Second Brain Remote|Toggle remote participation|${HAWS_DRAFT_SECOND_BRAIN:-off}"
+        "Auto Update|Toggle remote update work during explicit Sync|${HAWS_DRAFT_AUTO_UPDATE:-on}"
+        "Apply|Accept the draft for preview|-"
+        "Reset to Defaults|Replace the current draft|-"
+        "Discard Changes|Return without saving|-"
+    )
+    if interactive_menu settings "HAWS Settings" "${items[@]}"; then
+        HAWS_DRAFT_SECOND_BRAIN="${INTERACTIVE_MENU_STATES[Second Brain Remote]:-${HAWS_DRAFT_SECOND_BRAIN}}"
+        HAWS_DRAFT_AUTO_UPDATE="${INTERACTIVE_MENU_STATES[Auto Update]:-${HAWS_DRAFT_AUTO_UPDATE}}"
+        export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_AUTO_UPDATE
+        case "${INTERACTIVE_MENU_SELECTION}" in
+            0|1|2)
+                echo "This Settings draft row is preserved for the next catalog batch."
+                return 2
+                ;;
+            3|4)
+                return 2
+                ;;
+            5)
+                return 0
+                ;;
+            6)
+                settings_draft_reset || true
+                return 2
+                ;;
+            7)
+                echo "Cancelled. No changes saved."
+                return 1
+                ;;
+        esac
     fi
 
-    if [ "${skill_choice}" = "2" ]; then
-        echo ""
-        echo "  [*] Launching Interactive Skill Configurator..."
-        run_configure_skills
-    else
-        echo ""
-        echo "  [*] Initializing Standard HAWS Kit submodules, please wait..."
-        git -C "${SCRIPT_DIR}" submodule update --init --recursive 2>/dev/null || true
-        echo "  [✓] Standard HAWS Kit submodules verified & ready."
-    fi
-    echo ""
-
-    # Question 2: Second Brain Second
-    echo "[Question 2/2] Second Brain (Personal Knowledge & Preferences):"
-    echo "  Do you want to connect Second Brain to a Private GitHub repository?"
-    echo "  y) Yes — Connect Private GitHub Cloud (e.g. git@github.com:username/my-brain.git)"
-    echo "  n) No  — Use Local-Only mode on this machine [Default]"
-    echo ""
-    local brain_choice="n"
-    if [ -t 0 ]; then
-        read -r -p "Connect to Private GitHub? (y/N): " brain_choice || brain_choice="n"
-        brain_choice="$(echo "${brain_choice}" | tr -d ' \r\n')"
-    fi
-
-    if [ "${brain_choice}" = "y" ] || [ "${brain_choice}" = "Y" ]; then
-        echo ""
-        local repo_url=""
-        read -r -p "Enter Private GitHub Repo URL: " repo_url || repo_url=""
-        repo_url="$(echo "${repo_url}" | tr -d ' \r\n')"
-        if [ -n "${repo_url}" ]; then
-            run_user connect "${repo_url}"
-        else
-            echo "  [INFO] No URL entered. Second Brain remains in Local-Only mode."
-            run_user status
+    if _settings_draft_is_dirty; then
+        echo "Discard Changes?"
+        echo "You have unapplied changes in Settings."
+        if interactive_menu menu "Discard Changes?" "Keep Editing" "Discard Changes"; then
+            [ "${INTERACTIVE_MENU_SELECTION}" -eq 0 ] && return 2
+            echo "Cancelled. No changes saved."
+            return 1
         fi
-    else
-        echo "  [*] Setting up Second Brain in Local-Only mode..."
-        run_user status
+        echo "Cancelled. No changes saved."
+        return 1
     fi
-    echo ""
+    echo "Back to caller."
+    return 1
+}
 
-    echo "[Step 3/5] Linking Skills, Commands, and Agent Profiles..."
-    run_sync "$@"
+settings_plan_build() {
+    local state="$(_haws_state_dir)"
+    local plan="${state}/settings.plan"
+    local temporary="${state}/settings.plan.stage.$$"
+    local action_kind="Install"
+    local changed=1
+    if install_is_complete; then
+        action_kind="Update"
+        changed=0
+        _settings_draft_is_dirty && changed=1
+    fi
+    mkdir -p "${state}" || return 1
+    {
+        printf 'setting\tsecond_brain\t%s\n' "${HAWS_DRAFT_SECOND_BRAIN:-off}"
+        [ -z "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ] ||
+            printf 'setting\tsecond_brain_remote\t%s\n' "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"
+        printf 'setting\tauto_update\t%s\n' "${HAWS_DRAFT_AUTO_UPDATE:-on}"
+        if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
+            while IFS= read -r environment; do
+                [ -n "${environment}" ] || continue
+                if _settings_list_contains "${HAWS_DRAFT_ENVIRONMENTS:-}" "${environment}"; then
+                    printf 'environment\t%s\tenabled\n' "${environment}"
+                else
+                    printf 'environment\t%s\tdisabled\n' "${environment}"
+                fi
+            done < <(_haws_all_environments)
+        fi
+        if [ "${changed}" -eq 1 ]; then
+            printf 'integration\t%s\told HAWS integration\n' "${action_kind,,}"
+        fi
+    } > "${temporary}" || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    _haws_state_replace "${temporary}" "${plan}"
+    local result=$?
+    rm -f -- "${temporary}"
+    [ "${result}" -eq 0 ] || return "${result}"
+    HAWS_PLAN_KIND="${action_kind}"
+    HAWS_PLAN_CHANGED="${changed}"
+    HAWS_PLAN_FILE="${plan}"
+    export HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE
+}
+
+settings_preview() {
+    local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}"
     echo ""
-    echo "[Step 4/5] Configuring HAWS Git Safety Hooks..."
-    run_hooks install
+    if [ "${HAWS_PLAN_CHANGED:-1}" -eq 0 ]; then
+        echo "No settings have changed."
+        if interactive_menu menu "${title}" "Back to Settings" "Back to Home"; then
+            [ "${INTERACTIVE_MENU_SELECTION}" -eq 0 ] && return 2
+            return 1
+        fi
+        return 1
+    fi
+    echo "No changes have been applied yet."
     echo ""
-    echo "[Step 5/5] Running Diagnostic Verification..."
-    run_doctor
+    echo "Repositories"
+    echo "  Default"
+    echo ""
+    echo "Skills"
+    echo "  Default"
+    echo ""
+    echo "AI Environments"
+    local environment
+    local printed_environment=0
+    while IFS= read -r environment; do
+        [ -n "${environment}" ] || continue
+        echo "  $(_haws_environment_label "${environment}")"
+        printed_environment=1
+    done <<< "${HAWS_DRAFT_ENVIRONMENTS:-}"
+    [ "${printed_environment}" -eq 1 ] || echo "  None detected"
+    echo ""
+    echo "Second Brain Remote"
+    echo "  $(_haws_toggle_label "${HAWS_DRAFT_SECOND_BRAIN:-off}")"
+    echo ""
+    echo "Auto Update"
+    echo "  $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE:-on}")"
+    if interactive_menu menu "${title}" \
+        "${HAWS_PLAN_KIND:-Install}" "Back to Settings" "Cancel"; then
+        case "${INTERACTIVE_MENU_SELECTION}" in
+            0) return 0 ;;
+            1) return 2 ;;
+            *) return 1 ;;
+        esac
+    fi
+    return 1
+}
+
+settings_apply_final() {
+    local plan="${HAWS_PLAN_FILE:-$(_haws_state_dir)/settings.plan}"
+    local state="$(_haws_state_dir)"
+    [ -f "${plan}" ] || return 1
+    settings_save "${HAWS_DRAFT_SECOND_BRAIN:-off}" \
+        "${HAWS_DRAFT_AUTO_UPDATE:-on}" "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" || return 1
+    if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
+        local disabled=()
+        local environment
+        while IFS= read -r environment; do
+            _settings_list_contains "${HAWS_DRAFT_ENVIRONMENTS:-}" "${environment}" ||
+                disabled+=("${environment}")
+        done < <(_haws_all_environments)
+        if [ "${#disabled[@]}" -eq 0 ]; then
+            disabled_environments_save_if_changed --all-enabled || return 1
+        else
+            disabled_environments_save_if_changed "${disabled[@]}" || return 1
+        fi
+    fi
+    printf 'settings\tcompleted\n' > "${state}/apply.result"
+    echo "Completed: settings"
+    if [ "${HAWS_TEST_FAIL_AFTER_SETTINGS:-0}" = 1 ]; then
+        echo "Partial failure"
+        echo "Remaining: integration"
+        return 3
+    fi
+
+    local action key value rest
+    while IFS=$'\t' read -r action key value rest || [ -n "${action:-}" ]; do
+        [ -n "${action:-}" ] || continue
+        case "${action}" in
+            setting|environment) ;;
+            initialize|pointer|skill-link|integration|add-source|remove-source)
+                if [ "${HAWS_TEST_NO_INTEGRATION:-0}" = 1 ]; then
+                    echo "Skipped: ${action} (test fixture)"
+                elif ! run_sync; then
+                    echo "Partial failure"
+                    echo "Remaining: ${action}"
+                    return 3
+                fi
+                printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
+                echo "Completed: ${action}"
+                ;;
+            *)
+                echo "Partial failure"
+                echo "Completed: settings"
+                echo "Remaining: ${action}"
+                return 3
+                ;;
+        esac
+    done < "${plan}"
+    local marker_temporary="${state}/install.complete.stage.$$"
+    printf 'schema=1\tcompleted_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker_temporary}" || return 1
+    _haws_state_replace "${marker_temporary}" "${state}/install.complete"
+    local result=$?
+    rm -f -- "${marker_temporary}"
+    [ "${result}" -eq 0 ] || return "${result}"
+    echo "Installation state completed."
+    return 0
+}
+
+settings_flow_run() {
+    local start="${1:-settings}"
+    local result
+    while true; do
+        if [ "${start}" = settings ]; then
+            if settings_page; then
+                :
+            else
+                result=$?
+                [ "${result}" -eq 2 ] && continue
+                settings_draft_discard
+                return 1
+            fi
+        fi
+        settings_plan_build || return 1
+        if settings_preview; then
+            settings_apply_final
+            result=$?
+            if [ "${result}" -eq 0 ]; then
+                settings_draft_discard
+                return 0
+            fi
+            [ "${result}" -eq 3 ] && return 3
+            return 1
+        else
+            result=$?
+            if [ "${result}" -eq 2 ]; then
+                start=settings
+                continue
+            fi
+            settings_draft_discard
+            echo "Cancelled. No changes saved."
+            return 1
+        fi
+    done
+}
+
+setup_run() {
+    local result
+    while true; do
+        echo ""
+        echo "No changes have been made to this computer."
+        echo ""
+        echo "Default Setup"
+        echo "Repositories        Default"
+        echo "Skills              Default"
+        echo "AI Environments     Default"
+        echo "Second Brain Remote Off"
+        echo "Auto Update         On"
+        if interactive_menu menu "HAWS Setup" "Use Default Setup" "Customize Settings" "Exit"; then
+            case "${INTERACTIVE_MENU_SELECTION}" in
+                0)
+                    settings_draft_load || return 1
+                    if settings_flow_run preview; then
+                        home_run
+                        return $?
+                    fi
+                    result=$?
+                    [ "${result}" -eq 3 ] && return 3
+                    ;;
+                1)
+                    settings_draft_load || return 1
+                    if settings_flow_run settings; then
+                        home_run
+                        return $?
+                    fi
+                    result=$?
+                    [ "${result}" -eq 3 ] && return 3
+                    ;;
+                *)
+                    return 0
+                    ;;
+            esac
+        else
+            return 0
+        fi
+    done
+}
+
+run_setup() { setup_run "$@"; }
+
+home_run() {
+    local result
+    settings_load || return $?
+    while true; do
+        echo ""
+        echo "Status: Installed"
+        echo "Second Brain Remote: $(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
+        echo "Auto Update: $(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
+        if interactive_menu menu "HAWS Home" "Sync" "Settings" "Doctor" "Status Details" "Uninstall" "Exit"; then
+            case "${INTERACTIVE_MENU_SELECTION}" in
+                0) run_sync ;;
+                1)
+                    settings_draft_load || return 1
+                    if settings_flow_run settings; then
+                        settings_load || return $?
+                    else
+                        result=$?
+                        [ "${result}" -eq 3 ] && return 3
+                    fi
+                    ;;
+                2) run_doctor ;;
+                3) run_status ;;
+                4) run_uninstall ;;
+                *) return 0 ;;
+            esac
+        else
+            return 0
+        fi
+    done
+}
+
+run_lifecycle() {
+    if install_is_complete; then
+        home_run
+    else
+        setup_run
+    fi
 }
 
 run_main_menu() {
@@ -2936,7 +3360,22 @@ if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ]; then
 case "${COMMAND}" in
     menu|interactive)
         shift || true
-        run_main_menu
+        if [ "${BARE_LAUNCH}" = 1 ]; then
+            run_lifecycle
+        else
+            run_main_menu
+        fi
+        ;;
+    settings|configure)
+        shift || true
+        settings_draft_load || exit $?
+        settings_flow_run settings
+        result=$?
+        if [ "${result}" -eq 0 ]; then
+            home_run
+            result=$?
+        fi
+        [ "${result}" -eq 3 ] && exit 3
         ;;
     codex-agents)
         shift || true

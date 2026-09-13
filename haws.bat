@@ -38,6 +38,7 @@ if not defined BASH_CMD (
 
 cd /d "%HAWS_DIR%"
 if "%~1"=="" (
+    set "HAWS_BARE_LAUNCH=1"
     "%BASH_CMD%" "%HAWS_SCRIPT%" menu
 ) else (
     "%BASH_CMD%" "%HAWS_SCRIPT%" %*

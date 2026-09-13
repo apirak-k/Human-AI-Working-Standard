@@ -138,7 +138,7 @@ test("real launcher and haws.sh bare q exit without mutating fixture HOME", { sk
     });
     assert.equal(result.error, undefined);
     assert.equal(result.status, 0);
-    assert.match(result.stdout, /HAWS — Main Menu/);
+    assert.match(result.stdout, /HAWS Setup/);
     assert.equal(existsSync(path.join(home, ".haws_manifest")), false);
   } finally {
     rmSync(home, { recursive: true, force: true });

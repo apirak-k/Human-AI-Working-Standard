@@ -63,3 +63,13 @@ Task 2: implementation complete and reviewed; commit checkpoint follows. Next: B
 - Red evidence: the new state suite initially failed all 9 tests because the state APIs were absent from the old `haws.sh` path.
 - Green evidence: Batch 2 state suite `13/13`; Batch 1 launcher/menu suite `8/8`; Windows launcher suite `7/7`; Codex-agent regression `14/14`; `bash -n` and `git diff --check` passed.
 - Self-review found no new runtime module, network operation, second renderer, or unbounded lock recovery. Physical Windows acceptance and human acceptance remain `[Unverified]` for the final end-to-end gate. No reference checkout was edited; no merge or push was performed.
+
+## Task 4 / Batch 3 completion
+
+- Added Setup/Home lifecycle controllers and draft/preview/final APIs to the old `haws.sh` engine. Bare launch now selects Setup until measured completion state exists, then Home; explicit `haws.sh menu` still opens the accepted old main menu.
+- Setup presents `Use Default Setup`, `Customize Settings`, and `Exit`. Settings remains lifecycle-neutral, uses the shared old-derived menu reader/redraw path, supports draft-only Auto Update and Second Brain toggles, requires confirmation for Reset to Defaults, and keeps Apply separate from final Install/Update.
+- Preview uses exact lifecycle vocabulary: `Preview Install` or `Preview Update`, `Install`/`Update`, `Back to Settings`, and `Cancel`. No-change Update exposes only `Back to Settings` and `Back to Home`. Home routes explicit Sync, Settings, Doctor, Status Details, Uninstall, and Exit.
+- Final application persists settings before integration and records per-action progress. Injected failure reports `Partial failure`, `Completed: settings`, and `Remaining: integration` without claiming atomicity; successful fixture installation writes the completion marker, after which bare launch enters Home.
+- Red evidence: the first lifecycle run had 10 failing route tests because Setup/Home/draft/Preview were absent; after the settings-engine fix, old Skills regression was restored from 7/8 to 8/8.
+- Green evidence: lifecycle suite `12/12`; launcher/menu `8/8`; local state `13/13`; Windows launcher `7/7`; Codex-agent regression `14/14`; `bash -n` and `git diff --check` passed.
+- Self-review confirmed no second raw-key loop or full-screen clear, draft cancellation preserves existing settings/environment bytes, and Home does not auto-run Sync or Doctor. Physical Explorer verification and human acceptance remain `[Unverified]`; no reference checkout was edited and no merge or push was performed.
