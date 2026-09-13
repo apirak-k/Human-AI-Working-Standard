@@ -192,6 +192,81 @@ test_first_install_creates_empty_environment_state_file() {
     ! grep -E '^[[:space:]]*[^#[:space:]]' "${disabled_file}" >/dev/null 2>&1
 }
 
+test_second_brain_remote_empty_does_not_persist() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}${down}${down} ${down}${down}\nq"
+    run_haws_input_with_env "${input}" 'HAWS_TEST_NO_INTEGRATION=1' || true
+    assert_output_contains 'remote URL' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    if [ -f "${FIXTURE_PROJECT}/.haws/state/settings.tsv" ]; then
+        ! grep -F $'second_brain\ton' "${FIXTURE_PROJECT}/.haws/state/settings.tsv" >/dev/null 2>&1 || return 1
+    fi
+}
+
+test_second_brain_remote_invalid_does_not_persist() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}${down}${down} ${down}${down}\nnot-a-remote\nq"
+    run_haws_input_with_env "${input}" 'HAWS_TEST_NO_INTEGRATION=1' || true
+    assert_output_contains 'Invalid remote URL' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    if [ -f "${FIXTURE_PROJECT}/.haws/state/settings.tsv" ]; then
+        ! grep -F $'second_brain\ton' "${FIXTURE_PROJECT}/.haws/state/settings.tsv" >/dev/null 2>&1 || return 1
+    fi
+}
+
+test_second_brain_remote_unreachable_does_not_persist() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}${down}${down} ${down}${down}\nfile://${FIXTURE_ROOT}/missing.git\n\nq"
+    run_haws_input_with_env "${input}" 'HAWS_TEST_NO_INTEGRATION=1' || true
+    assert_output_contains 'Remote validation failed' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+}
+
+test_second_brain_remote_access_is_deferred_until_final_apply() {
+    local real_git
+    real_git="$(command -v git)"
+    local fake_bin="${FIXTURE_ROOT}/fake-bin"
+    local git_log="${FIXTURE_ROOT}/git-calls.log"
+    mkdir -p "${fake_bin}"
+    printf '%s\n' \
+        '#!/usr/bin/env bash' \
+        'if [ "${1:-}" = ls-remote ]; then' \
+        '    printf "ls-remote\\n" >> "${GIT_CALL_LOG}"' \
+        'fi' \
+        'exec "${HAWS_REAL_GIT}" "$@"' > "${fake_bin}/git"
+    chmod +x "${fake_bin}/git"
+
+    local down=$'\033[B'
+    local toggle_input="${down}\n"
+    toggle_input+="${down}${down}${down} q"
+    local old_path="${PATH}"
+    PATH="${fake_bin}:${old_path}"
+    run_haws_input_with_env "${toggle_input}" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git}" || true
+    PATH="${old_path}"
+    [ ! -s "${git_log}" ] || return 1
+
+    git init --bare --quiet "${FIXTURE_ROOT}/remote.git" || return 1
+    local remote="file://${FIXTURE_ROOT}/remote.git"
+    local apply_input="${down}\n"
+    apply_input+="${down}${down}${down} ${down}${down}\n${remote}\n\nq"
+    PATH="${fake_bin}:${old_path}"
+    run_haws_input_with_env "${apply_input}" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
+    PATH="${old_path}"
+    [ "$(wc -l < "${git_log}" | tr -d ' ')" = 1 ] || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
+        $'second_brain_remote\tfile://' || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" $'second_brain\ton' || return 1
+
+    PATH="${fake_bin}:${old_path}"
+    run_haws_input_with_env $'\nq' "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
+    PATH="${old_path}"
+    [ "$(wc -l < "${git_log}" | tr -d ' ')" = 2 ]
+}
+
 test_successful_install_records_completion_and_next_launch_home() {
     run_haws_input_with_env $'\n\n' 'HAWS_TEST_NO_INTEGRATION=1' || return 1
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/install.complete" 'schema=1' || return 1
@@ -228,6 +303,10 @@ run_test test_unchanged_preview_update_offers_only_back_routes
 run_test test_draft_cancel_preserves_existing_state_bytes
 run_test test_partial_failure_reports_completed_and_remaining_actions
 run_test test_first_install_creates_empty_environment_state_file
+run_test test_second_brain_remote_empty_does_not_persist
+run_test test_second_brain_remote_invalid_does_not_persist
+run_test test_second_brain_remote_unreachable_does_not_persist
+run_test test_second_brain_remote_access_is_deferred_until_final_apply
 run_test test_successful_install_records_completion_and_next_launch_home
 
 echo "CLI settings-flow tests: ${passed} passed, ${failed} failed"

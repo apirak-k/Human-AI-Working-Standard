@@ -594,6 +594,17 @@ _haws_remote_is_valid() {
     esac
 }
 
+_haws_remote_access_check() {
+    local remote="${1:-}"
+    _haws_remote_is_valid "${remote}" || return 2
+    [ -n "${remote}" ] || return 1
+    [ "${HAWS_VALIDATED_REMOTE:-}" = "${remote}" ] && return 0
+    command -v timeout >/dev/null 2>&1 || return 1
+    timeout 5 git ls-remote --heads "${remote}" HEAD >/dev/null 2>&1 || return 1
+    HAWS_VALIDATED_REMOTE="${remote}"
+    export HAWS_VALIDATED_REMOTE
+}
+
 settings_load() {
     local file="$(_haws_state_dir)/settings.tsv"
     settings_defaults
@@ -897,6 +908,14 @@ run_sync() {
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
     done
     shift || true
+    settings_load || return $?
+    if [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; then
+        if [ -z "${HAWS_SECOND_BRAIN_REMOTE:-}" ] ||
+            ! _haws_remote_access_check "${HAWS_SECOND_BRAIN_REMOTE}"; then
+            echo "Remote validation failed. Sync aborted."
+            return 1
+        fi
+    fi
     echo "=== HAWS Universal Command Engine (All-in-One Sync) ==="
     echo ""
 
@@ -3012,6 +3031,37 @@ settings_draft_reset() {
     return 0
 }
 
+_settings_collect_second_brain_remote() {
+    [ "${HAWS_DRAFT_SECOND_BRAIN:-off}" = on ] || return 0
+    [ -n "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ] && return 0
+
+    echo "Second Brain Remote URL (draft only)"
+    local remote=""
+    if ! read -r -p "Enter remote URL (blank cancels): " remote; then
+        [ -n "${remote}" ] || remote=""
+    fi
+    remote="${remote%$'\r'}"
+    case "${remote}" in
+        q|Q) remote="" ;;
+    esac
+    if [ -z "${remote}" ]; then
+        echo "Cannot enable Second Brain Remote without a remote URL. No changes saved."
+        HAWS_DRAFT_SECOND_BRAIN="off"
+        export HAWS_DRAFT_SECOND_BRAIN
+        return 1
+    fi
+    if ! _haws_remote_is_valid "${remote}"; then
+        echo "Invalid remote URL. No changes saved."
+        HAWS_DRAFT_SECOND_BRAIN="off"
+        export HAWS_DRAFT_SECOND_BRAIN
+        return 1
+    fi
+    HAWS_DRAFT_SECOND_BRAIN_REMOTE="${remote}"
+    export HAWS_DRAFT_SECOND_BRAIN_REMOTE
+    echo "Remote URL saved in draft; it will be applied only after Preview and Apply."
+    return 0
+}
+
 settings_page() {
     local environment_count=0
     local environment
@@ -3041,6 +3091,7 @@ settings_page() {
                 return 2
                 ;;
             5)
+                _settings_collect_second_brain_remote || return 2
                 return 0
                 ;;
             6)
@@ -3163,6 +3214,20 @@ settings_apply_final() {
     local state="$(_haws_state_dir)"
     local environment_file="${HAWS_DISABLED_ENVIRONMENTS_FILE:-$(_haws_compat_file environments.disabled)}"
     [ -f "${plan}" ] || return 1
+    if [ "${HAWS_DRAFT_SECOND_BRAIN:-off}" = on ]; then
+        if [ -z "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ]; then
+            echo "Cannot enable Second Brain Remote without a remote URL. No changes saved."
+            return 1
+        fi
+        if ! _haws_remote_is_valid "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"; then
+            echo "Invalid remote URL. No changes saved."
+            return 1
+        fi
+        if ! _haws_remote_access_check "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"; then
+            echo "Remote validation failed. No changes saved."
+            return 1
+        fi
+    fi
     settings_save "${HAWS_DRAFT_SECOND_BRAIN:-off}" \
         "${HAWS_DRAFT_AUTO_UPDATE:-on}" "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" || return 1
     if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
