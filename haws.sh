@@ -440,7 +440,7 @@ EOF
     fi
 }
 
-declare -A DISABLED_SKILLS
+declare -gA DISABLED_SKILLS
 
 extract_skill_name() {
     local sfile="$1"
@@ -902,6 +902,185 @@ save_disabled_skills() {
     } > "${dfile}"
 }
 
+_catalog_repo_dir() {
+    printf '%s\n' "${HAWS_REPO_DIR:-${SCRIPT_DIR}}"
+}
+
+_catalog_gitmodules() {
+    printf '%s/.gitmodules\n' "$(_catalog_repo_dir)"
+}
+
+_catalog_source_id() {
+    printf '%s::%s\n' "$1" "${2#./}"
+}
+
+_catalog_source_url() {
+    local name="$1"
+    git -C "$(_catalog_repo_dir)" config --file "$(_catalog_gitmodules)" \
+        --get "submodule.${name}.url" 2>/dev/null || printf '%s\n' -
+}
+
+_catalog_source_revision() {
+    local path="$1"
+    local repo="$(_catalog_repo_dir)"
+    if [ -e "${repo}/${path}/.git" ]; then
+        git -C "${repo}/${path}" rev-parse --verify HEAD 2>/dev/null && return 0
+    fi
+    if [ -e "${repo}/.git" ]; then
+        git -C "${repo}" rev-parse --verify "HEAD:${path}" 2>/dev/null && return 0
+    fi
+    printf '%s\n' uninitialized
+}
+
+catalog_sources() {
+    local repo="$(_catalog_repo_dir)"
+    local gitmodules="$(_catalog_gitmodules)"
+    local record key name path source_id url revision
+    [ -f "${gitmodules}" ] || return 0
+    while IFS= read -r -d '' record; do
+        key="${record%%$'\n'*}"
+        path="${record#*$'\n'}"
+        case "${key}" in
+            submodule.*.path)
+                name="${key#submodule.}"
+                name="${name%.path}"
+                path="${path#./}"
+                source_id="$(_catalog_source_id "${name}" "${path}")"
+                url="$(_catalog_source_url "${name}")"
+                revision="$(_catalog_source_revision "${path}")"
+                printf '%s\t%s\t%s\t%s\n' \
+                    "${source_id}" "${path}" "${url}" "${revision}"
+                ;;
+        esac
+    done < <(git -C "${repo}" config --null --file "${gitmodules}" \
+        --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
+}
+
+_catalog_source_fields() {
+    local wanted="$1"
+    local row source_id path url revision
+    while IFS= read -r row || [ -n "${row}" ]; do
+        [ -n "${row}" ] || continue
+        IFS=$'\t' read -r source_id path url revision <<< "${row}"
+        if [ "${source_id}" = "${wanted}" ]; then
+            printf '%s\t%s\t%s\n' "${path}" "${url}" "${revision}"
+            return 0
+        fi
+    done < <(catalog_sources)
+    return 1
+}
+
+_catalog_is_disabled() {
+    local skill_id="$1"
+    local display_name="$2"
+    local entrypoint="$3"
+    local file line
+    for file in \
+        "${SCRIPT_DIR}/skills/skills.disabled" \
+        "${SCRIPT_DIR}/skills.disabled" \
+        "${SCRIPT_DIR}/config/skills.disabled"; do
+        [ -f "${file}" ] || continue
+        while IFS= read -r line || [ -n "${line}" ]; do
+            line="${line%$'\r'}"
+            line="${line%%#*}"
+            line="${line#${line%%[![:space:]]*}}"
+            line="${line%${line##*[![:space:]]}}"
+            case "${line}" in
+                "${skill_id}"|"${display_name}"|"${entrypoint}")
+                    return 0
+                    ;;
+            esac
+        done < "${file}"
+    done
+    return 1
+}
+
+catalog_skills() {
+    local row source_id path url revision source_dir skill_file entrypoint
+    local display_name skill_id active
+    while IFS= read -r row || [ -n "${row}" ]; do
+        [ -n "${row}" ] || continue
+        IFS=$'\t' read -r source_id path url revision <<< "${row}"
+        source_dir="$(_catalog_repo_dir)/${path}"
+        [ -d "${source_dir}" ] || continue
+        while IFS= read -r -d '' skill_file; do
+            [ -s "${skill_file}" ] || continue
+            entrypoint="${skill_file#${source_dir}/}"
+            display_name="$(extract_skill_name "${skill_file}")"
+            skill_id="${source_id}::${entrypoint}"
+            active=1
+            _catalog_is_disabled "${skill_id}" "${display_name}" "${entrypoint}" && active=0
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "${skill_id}" "${display_name}" "${source_id}" "${entrypoint}" "${active}"
+        done < <(find "${source_dir}" -type f \
+            \( -name SKILL.md -o -name skill.md \) -print0 2>/dev/null | sort -z)
+    done < <(catalog_sources)
+}
+
+catalog_validate_url() {
+    local url="${1:-}"
+    url="${url%/}"
+    [ -n "${url}" ] || return 1
+    [[ "${url}" != *[[:cntrl:]]* ]] || return 1
+    if [ "${HAWS_TEST_ALLOW_LOCAL_SOURCES:-0}" = 1 ]; then
+        case "${url}" in
+            file://*|/*|[A-Za-z]:[\\/]*) return 0 ;;
+        esac
+    fi
+    [[ "${url}" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?$ ]] || return 1
+    local path_part="${url#https://github.com/}"
+    local owner="${path_part%%/*}"
+    local repository="${path_part##*/}"
+    repository="${repository%.git}"
+    [ "${owner}" != "." ] && [ "${owner}" != ".." ] || return 1
+    [ "${repository}" != "." ] && [ "${repository}" != ".." ] || return 1
+}
+
+catalog_validate_destination() {
+    local destination="${1:-}"
+    local repo="$(_catalog_repo_dir)"
+    case "${destination}" in
+        skills/packs/*|skills/standalone/*) ;;
+        *) return 1 ;;
+    esac
+    case "/${destination}/" in
+        */../*|*/./*) return 1 ;;
+    esac
+    local name="${destination##*/}"
+    [[ "${name}" =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
+    [ "${name}" != "." ] && [ "${name}" != ".." ] || return 1
+    [ ! -e "${repo}/${destination}" ] && [ ! -L "${repo}/${destination}" ]
+}
+
+_legacy_skill_is_disabled() {
+    local skill_path="$1"
+    local skill_name="$2"
+    local repo="$(_catalog_repo_dir)"
+    local skill_file="${skill_path}"
+    local source_id source_path source_url source_revision entrypoint
+
+    [ -n "${DISABLED_SKILLS["${skill_name}"]:-}" ] && return 0
+    if [ -d "${skill_path}" ]; then
+        if [ -f "${skill_path}/SKILL.md" ]; then
+            skill_file="${skill_path}/SKILL.md"
+        elif [ -f "${skill_path}/skill.md" ]; then
+            skill_file="${skill_path}/skill.md"
+        fi
+    fi
+    while IFS=$'\t' read -r source_id source_path source_url source_revision ||
+        [ -n "${source_id}" ]; do
+        [ -n "${source_id}" ] || continue
+        case "${skill_file}" in
+            "${repo}/${source_path}"/*)
+                entrypoint="${skill_file#${repo}/${source_path}/}"
+                _catalog_is_disabled "${source_id}::${entrypoint}" \
+                    "${skill_name}" "${entrypoint}" && return 0
+                ;;
+        esac
+    done < <(catalog_sources)
+    return 1
+}
+
 run_sync() {
     local CLEAN_UNMANAGED=false
     for opt in "$@"; do
@@ -1198,7 +1377,7 @@ run_sync() {
             [ -z "${skill_name}" ] && skill_name="$(basename "${skill_dir}")"
 
             # Check dynamic disabled list
-            [ -n "${DISABLED_SKILLS[${skill_name}]:-}" ] && continue
+            _legacy_skill_is_disabled "${skill_file}" "${skill_name}" && continue
 
             # Filter rules per user specification:
             [[ "${skill_dir}" =~ \.openclaw ]] && continue
@@ -1257,7 +1436,7 @@ run_sync() {
             for cdir in "${SOURCE_DIR}/skills/custom"/*; do
                 [ ! -d "$cdir" ] && continue
                 local cname="$(basename "$cdir")"
-                [ -n "${DISABLED_SKILLS[$cname]:-}" ] && continue
+                _legacy_skill_is_disabled "${cdir}" "${cname}" && continue
                 local win_cdir="$cdir"
                 command -v cygpath &>/dev/null && win_cdir="$(cygpath -m "$cdir")"
                 seen_dirs["$win_cdir"]=1
@@ -1281,7 +1460,7 @@ run_sync() {
             [ -z "${sname}" ] && sname="$(basename "${sdir}")"
 
             # Check if disabled
-            [ -n "${DISABLED_SKILLS[$sname]:-}" ] && continue
+            _legacy_skill_is_disabled "${f}" "${sname}" && continue
             [[ "${sname}" == "pi-planning-with-files" ]] && continue
             [[ "${sname}" =~ ^planning-with-files- ]] && continue
             [[ "${sname}" == "design-taste-frontend-v1" ]] && continue
@@ -2962,6 +3141,119 @@ _settings_list_signature() {
     printf '%s\n' "${1:-}" | sed '/^[[:space:]]*$/d' | sort
 }
 
+_settings_url_identity() {
+    local url="$1"
+    url="${url%/}"
+    case "${url}" in
+        https://github.com/*) url="${url%.git}" ;;
+    esac
+    printf '%s\n' "${url}"
+}
+
+_settings_source_path_from_url() {
+    local url="$1"
+    local name="${url##*/}"
+    name="${name%.git}"
+    printf 'skills/packs/%s\n' "${name}"
+}
+
+_settings_list_without() {
+    local list="$1"
+    local unwanted="$2"
+    local value
+    while IFS= read -r value || [ -n "${value}" ]; do
+        [ -n "${value}" ] || continue
+        [ "${value}" = "${unwanted}" ] || printf '%s\n' "${value}"
+    done <<< "${list}"
+}
+
+_settings_source_path_taken() {
+    local wanted="$1"
+    local row source_id path url revision
+    while IFS= read -r row || [ -n "${row}" ]; do
+        [ -n "${row}" ] || continue
+        IFS=$'\t' read -r source_id path url revision <<< "${row}"
+        [ "${path}" = "${wanted}" ] && return 0
+    done < <(catalog_sources)
+    _settings_list_contains "${HAWS_DRAFT_ADDED_PATHS:-}" "${wanted}"
+}
+
+settings_draft_add_source() {
+    local url="${1:-}"
+    local identity existing existing_identity destination
+    catalog_validate_url "${url}" || {
+        echo "Invalid GitHub repository URL: ${url}"
+        return 1
+    }
+    url="${url%/}"
+    identity="$(_settings_url_identity "${url}")"
+    while IFS= read -r existing || [ -n "${existing}" ]; do
+        [ -n "${existing}" ] || continue
+        existing_identity="$(_settings_url_identity "${existing}")"
+        if [ "${existing_identity}" = "${identity}" ]; then
+            echo "Repository already exists in draft: ${url}"
+            return 1
+        fi
+    done < <(catalog_sources | cut -f3)
+    while IFS= read -r existing || [ -n "${existing}" ]; do
+        [ -n "${existing}" ] || continue
+        existing_identity="$(_settings_url_identity "${existing}")"
+        if [ "${existing_identity}" = "${identity}" ]; then
+            echo "Repository already exists in draft: ${url}"
+            return 1
+        fi
+    done <<< "${HAWS_DRAFT_ADDED_REPOSITORIES:-}"
+
+    destination="$(_settings_source_path_from_url "${url}")"
+    if _settings_source_path_taken "${destination}" || \
+        ! catalog_validate_destination "${destination}"; then
+        echo "Repository path collision: ${destination}; no changes made."
+        return 1
+    fi
+    HAWS_DRAFT_ADDED_REPOSITORIES="${HAWS_DRAFT_ADDED_REPOSITORIES:-}${url}"$'\n'
+    HAWS_DRAFT_ADDED_PATHS="${HAWS_DRAFT_ADDED_PATHS:-}${destination}"$'\n'
+    export HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS
+    echo "Repository added to draft: ${url}"
+}
+
+settings_draft_remove_source() {
+    local wanted="${1:-}"
+    local current="${HAWS_DRAFT_SOURCES:-}"
+    if _settings_list_contains "${current}" "${wanted}"; then
+        HAWS_DRAFT_SOURCES="$(_settings_list_without "${current}" "${wanted}")"
+        export HAWS_DRAFT_SOURCES
+        echo "Repository marked for removal in draft: ${wanted}"
+        return 0
+    fi
+    case "${wanted}" in
+        url:*) wanted="${wanted#url:}" ;;
+        *) return 1 ;;
+    esac
+    local new_urls="" new_paths="" url path
+    while IFS=$'\t' read -r url path || [ -n "${url}" ]; do
+        [ -n "${url}" ] || continue
+        if [ "${url}" != "${wanted}" ]; then
+            new_urls="${new_urls}${url}"$'\n'
+            new_paths="${new_paths}${path}"$'\n'
+        fi
+    done < <(paste -d $'\t' \
+        <(printf '%s\n' "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" | sed '/^$/d') \
+        <(printf '%s\n' "${HAWS_DRAFT_ADDED_PATHS:-}" | sed '/^$/d'))
+    HAWS_DRAFT_ADDED_REPOSITORIES="${new_urls}"
+    HAWS_DRAFT_ADDED_PATHS="${new_paths}"
+    export HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS
+    echo "Repository removed from draft: ${wanted}"
+}
+
+_settings_ensure_skill_draft() {
+    [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && return 0
+    load_disabled_skills
+    HAWS_DRAFT_SKILLS="$(catalog_skills | awk -F '\t' '$5 == 1 {print $1}')"
+    HAWS_DRAFT_SKILLS_LOADED=1
+    HAWS_PERSIST_SKILLS="${HAWS_DRAFT_SKILLS}"
+    export HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
+}
+
 settings_draft_load() {
     settings_load || return $?
     disabled_environments_load
@@ -2980,11 +3272,20 @@ settings_draft_load() {
     HAWS_DRAFT_ENVIRONMENTS="${HAWS_PERSIST_ENVIRONMENTS}"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=0
     HAWS_DRAFT_PLAN=""
+    HAWS_PERSIST_SOURCES="$(catalog_sources | cut -f1)"
+    HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES}"
+    HAWS_DRAFT_ADDED_REPOSITORIES=""
+    HAWS_DRAFT_ADDED_PATHS=""
+    HAWS_DRAFT_SKILLS=""
+    HAWS_DRAFT_SKILLS_LOADED=0
     export HAWS_PERSIST_SECOND_BRAIN HAWS_PERSIST_SECOND_BRAIN_REMOTE \
         HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
         HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
         HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN
+    export HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
+        HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
+        HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
 }
 
 settings_draft_discard() {
@@ -2997,10 +3298,21 @@ settings_draft_discard() {
         HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
         HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN \
+        HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
+        HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
+        HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED \
         HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE
 }
 
 _settings_draft_is_dirty() {
+    [ "$( _settings_list_signature "${HAWS_DRAFT_SOURCES:-}" )" != \
+        "$( _settings_list_signature "${HAWS_PERSIST_SOURCES:-}" )" ] && return 0
+    [ -n "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" ] && return 0
+    if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && \
+        [ "$( _settings_list_signature "${HAWS_DRAFT_SKILLS:-}" )" != \
+          "$( _settings_list_signature "${HAWS_PERSIST_SKILLS:-}" )" ]; then
+        return 0
+    fi
     [ "${HAWS_DRAFT_SECOND_BRAIN:-}" != "${HAWS_PERSIST_SECOND_BRAIN:-}" ] && return 0
     [ "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" != "${HAWS_PERSIST_SECOND_BRAIN_REMOTE:-}" ] && return 0
     [ "${HAWS_DRAFT_AUTO_UPDATE:-}" != "${HAWS_PERSIST_AUTO_UPDATE:-}" ] && return 0
@@ -3024,9 +3336,16 @@ settings_draft_reset() {
     HAWS_DRAFT_AUTO_UPDATE="on"
     HAWS_DRAFT_ENVIRONMENTS="$(_haws_detected_environments)"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
+    HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES:-}"
+    HAWS_DRAFT_ADDED_REPOSITORIES=""
+    HAWS_DRAFT_ADDED_PATHS=""
+    HAWS_DRAFT_SKILLS=""
+    HAWS_DRAFT_SKILLS_LOADED=0
     export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
-        HAWS_DRAFT_ENVIRONMENTS_TOUCHED
+        HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_SOURCES \
+        HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
+        HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
     echo "The draft now contains default values. Nothing has changed on this computer yet."
     return 0
 }
@@ -3062,6 +3381,215 @@ _settings_collect_second_brain_remote() {
     return 0
 }
 
+_settings_skill_selector() {
+    local title="$1"
+    local rows="$2"
+    local wanted_source="${3:-}"
+    local source_id entrypoint id display active source_count
+    local detail label source_path skill_file
+    local items=() ids=()
+    local -A source_counts=() display_counts=()
+
+    while IFS=$'\t' read -r id display source_id entrypoint active || [ -n "${id}" ]; do
+        [ -n "${id}" ] || continue
+        source_counts["${source_id}"]=$(( ${source_counts[${source_id}]:-0} + 1 ))
+        display_counts["${display}"]=$(( ${display_counts[${display}]:-0} + 1 ))
+    done <<< "${rows}"
+
+    while IFS=$'\t' read -r id display source_id entrypoint active || [ -n "${id}" ]; do
+        [ -n "${id}" ] || continue
+        source_count="${source_counts[${source_id}]:-0}"
+        if [ -n "${wanted_source}" ]; then
+            [ "${source_id}" = "${wanted_source}" ] || continue
+        else
+            [ "${source_count}" -eq 1 ] || continue
+        fi
+        label="${display}"
+        if [ "${display_counts[${display}]:-0}" -gt 1 ]; then
+            label="${display} [${source_id}::${entrypoint}]"
+        fi
+        source_path="$(_catalog_source_fields "${source_id}" 2>/dev/null | cut -f1)"
+        skill_file="$(_catalog_repo_dir)/${source_path}/${entrypoint}"
+        detail="$(extract_skill_desc "${skill_file}")"
+        [ -n "${detail}" ] || detail="${source_id}"
+        active=0
+        _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${id}" && active=1
+        items+=("${label}|${detail}|${active}")
+        ids+=("${id}")
+    done <<< "${rows}"
+
+    [ "${#items[@]}" -gt 0 ] || {
+        echo "  [INFO] No skills found for this selection."
+        return 0
+    }
+    declare -A CHECKLIST_RESULTS=()
+    if ! interactive_checklist "${title}" "${items[@]}"; then
+        echo "  [INFO] Configuration cancelled. No changes saved."
+        return 1
+    fi
+    local selected="${HAWS_DRAFT_SKILLS:-}"
+    local i
+    for ((i=0; i<${#ids[@]}; i++)); do
+        if [ "${CHECKLIST_RESULTS[${items[$i]%%|*}]:-0}" -eq 1 ]; then
+            _settings_list_contains "${selected}" "${ids[$i]}" || \
+                selected="${selected}${ids[$i]}"$'\n'
+        else
+            selected="$(_settings_list_without "${selected}" "${ids[$i]}")"
+        fi
+    done
+    HAWS_DRAFT_SKILLS="${selected}"
+    export HAWS_DRAFT_SKILLS
+}
+
+settings_skills_page() {
+    _settings_ensure_skill_draft || return 1
+    local rows="$(catalog_skills)"
+    local id display source_id entrypoint active source_count
+    local single_total=0 single_active=0
+    local pack_total=0
+    local pack_ids=() pack_names=()
+    local -A source_counts=() pack_name_counts=() seen_sources=()
+
+    while IFS=$'\t' read -r id display source_id entrypoint active || [ -n "${id}" ]; do
+        [ -n "${id}" ] || continue
+        source_counts["${source_id}"]=$(( ${source_counts[${source_id}]:-0} + 1 ))
+    done <<< "${rows}"
+    while IFS=$'\t' read -r id display source_id entrypoint active || [ -n "${id}" ]; do
+        [ -n "${id}" ] || continue
+        source_count="${source_counts[${source_id}]:-0}"
+        if [ "${source_count}" -eq 1 ]; then
+            single_total=$((single_total + 1))
+            _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${id}" && \
+                single_active=$((single_active + 1))
+        elif [ -z "${seen_sources[${source_id}]:-}" ]; then
+            seen_sources["${source_id}"]=1
+            pack_ids+=("${source_id}")
+            local pack_name="${source_id##*/}"
+            pack_names+=("${pack_name}")
+            pack_name_counts["${pack_name}"]=$(( ${pack_name_counts[${pack_name}]:-0} + 1 ))
+            pack_total=$((pack_total + 1))
+        fi
+    done <<< "${rows}"
+
+    while true; do
+        echo ""
+        echo "============================================================="
+        echo "             Configure Active Skills (Enable / Disable)"
+        echo "============================================================="
+        printf "  Single Skills\n     Status: [Active: %d / %d skills]\n" \
+            "${single_active}" "${single_total}"
+        echo "  Multi-Skill Packs"
+        echo "     Status: [${pack_total} pack(s)]"
+        echo ""
+        if interactive_menu menu "Configure Active Skills (Enable / Disable)" \
+            "Single Skills" "Multi-Skill Packs" "Back to Settings"; then
+            case "${INTERACTIVE_MENU_SELECTION}" in
+                0)
+                    _settings_skill_selector "Configure Single Skills" "${rows}" || true
+                    ;;
+                1)
+                    local pack_items=() i pack_label
+                    for ((i=0; i<${#pack_ids[@]}; i++)); do
+                        pack_label="${pack_names[$i]}"
+                        if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
+                            pack_label="${pack_label} [${pack_ids[$i]}]"
+                        fi
+                        pack_items+=("${pack_label}")
+                    done
+                    pack_items+=("Back to Settings")
+                    if interactive_menu menu "Select a Skill Pack to configure" \
+                        "${pack_items[@]}"; then
+                        [ "${INTERACTIVE_MENU_SELECTION}" -lt "${#pack_ids[@]}" ] || continue
+                        _settings_skill_selector \
+                            "Configure Skills in ${pack_names[$INTERACTIVE_MENU_SELECTION]}" \
+                            "${rows}" "${pack_ids[$INTERACTIVE_MENU_SELECTION]}" || true
+                    fi
+                    ;;
+                *) return 0 ;;
+            esac
+        else
+            return 0
+        fi
+    done
+}
+
+_settings_repository_remove_page() {
+    local rows="$(catalog_sources)"
+    local id path url revision name type label
+    local items=() ids=()
+    local -A name_counts=()
+
+    while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
+        [ -n "${id}" ] || continue
+        name="${path##*/}"
+        name_counts["${name}"]=$(( ${name_counts[${name}]:-0} + 1 ))
+    done <<< "${rows}"
+    while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
+        [ -n "${id}" ] || continue
+        name="${path##*/}"
+        type=PACK
+        [[ "${path}" == skills/standalone/* ]] && type=SINGLE
+        label="${name}"
+        [ "${name_counts[${name}]:-0}" -gt 1 ] && label="${name} [${id}]"
+        items+=("${label}|[${type}] ${path}|0")
+        ids+=("${id}")
+    done <<< "${rows}"
+
+    while IFS=$'\t' read -r url path || [ -n "${url}" ]; do
+        [ -n "${url}" ] || continue
+        name="${url##*/}"
+        name="${name%.git}"
+        items+=("${name} (draft)|${path}|0")
+        ids+=("url:${url}")
+    done < <(paste -d $'\t' \
+        <(printf '%s\n' "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" | sed '/^$/d') \
+        <(printf '%s\n' "${HAWS_DRAFT_ADDED_PATHS:-}" | sed '/^$/d'))
+
+    [ "${#items[@]}" -gt 0 ] || {
+        echo "  No external git repositories currently installed."
+        return 0
+    }
+    declare -A CHECKLIST_RESULTS=()
+    if ! interactive_checklist "Select Repositories to REMOVE" "${items[@]}"; then
+        echo "  [INFO] Removal cancelled. Kept all repositories."
+        return 0
+    fi
+    local i
+    for ((i=0; i<${#ids[@]}; i++)); do
+        [ "${CHECKLIST_RESULTS[${items[$i]%%|*}]:-0}" -eq 1 ] || continue
+        settings_draft_remove_source "${ids[$i]}" || true
+    done
+}
+
+settings_repositories_page() {
+    local url
+    while true; do
+        if ! interactive_menu menu "Repositories" \
+            "Add Git Repository" "Remove Git Repository" "Back to Settings"; then
+            return 0
+        fi
+        case "${INTERACTIVE_MENU_SELECTION}" in
+            0)
+                echo ""
+                echo "============================================================="
+                echo "                 Add Git Repository"
+                echo "============================================================="
+                echo "Enter external Git repository URLs to add as submodules."
+                read -r -p "Enter Git Repository URL (or 'c' to cancel): " url || url=""
+                url="${url%$'\r'}"
+                case "${url}" in
+                    ""|c|C|cancel|Cancel|q|Q) continue ;;
+                esac
+                settings_draft_add_source "${url}" || true
+                ;;
+            1)
+                _settings_repository_remove_page || true
+                ;;
+            *) return 0 ;;
+        esac
+    done
+}
+
 settings_page() {
     local environment_count=0
     local environment
@@ -3083,7 +3611,15 @@ settings_page() {
         HAWS_DRAFT_AUTO_UPDATE="${INTERACTIVE_MENU_STATES[Auto Update]:-${HAWS_DRAFT_AUTO_UPDATE}}"
         export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_AUTO_UPDATE
         case "${INTERACTIVE_MENU_SELECTION}" in
-            0|1|2)
+            0)
+                settings_repositories_page || true
+                return 2
+                ;;
+            1)
+                settings_skills_page || true
+                return 2
+                ;;
+            2)
                 echo "This Settings draft row is preserved for the next catalog batch."
                 return 2
                 ;;
@@ -3126,6 +3662,7 @@ settings_plan_build() {
     local temporary="${state}/settings.plan.stage.$$"
     local action_kind="Install"
     local changed=1
+    local source_id path url revision add_url add_path
     if install_is_complete; then
         action_kind="Update"
         changed=0
@@ -3147,6 +3684,18 @@ settings_plan_build() {
                 fi
             done < <(_haws_all_environments)
         fi
+        while IFS=$'\t' read -r source_id path url revision || [ -n "${source_id}" ]; do
+            [ -n "${source_id}" ] || continue
+            if ! _settings_list_contains "${HAWS_DRAFT_SOURCES:-}" "${source_id}"; then
+                printf 'remove-source\tsources\t%s\t%s\n' "${source_id}" "${path}"
+            fi
+        done < <(catalog_sources)
+        while IFS=$'\t' read -r add_url add_path || [ -n "${add_url}" ]; do
+            [ -n "${add_url}" ] || continue
+            printf 'add-source\tsources\t%s\t%s\n' "${add_url}" "${add_path}"
+        done < <(paste -d $'\t' \
+            <(printf '%s\n' "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" | sed '/^$/d') \
+            <(printf '%s\n' "${HAWS_DRAFT_ADDED_PATHS:-}" | sed '/^$/d'))
         if [ "${changed}" -eq 1 ]; then
             printf 'integration\t%s\told HAWS integration\n' "${action_kind,,}"
         fi
@@ -3166,6 +3715,7 @@ settings_plan_build() {
 
 settings_preview() {
     local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}"
+    _settings_ensure_skill_draft || return 1
     echo ""
     if [ "${HAWS_PLAN_CHANGED:-1}" -eq 0 ]; then
         echo "No settings have changed."
@@ -3178,10 +3728,38 @@ settings_preview() {
     echo "No changes have been applied yet."
     echo ""
     echo "Repositories"
-    echo "  Default"
+    local source_rows source_id path url revision printed_source=0
+    source_rows="$(catalog_sources)"
+    while IFS=$'\t' read -r source_id path url revision || [ -n "${source_id}" ]; do
+        [ -n "${source_id}" ] || continue
+        if _settings_list_contains "${HAWS_DRAFT_SOURCES:-}" "${source_id}"; then
+            echo "  ${path}"
+        else
+            echo "  - ${path}"
+        fi
+        printed_source=1
+    done <<< "${source_rows}"
+    local add_url add_path
+    while IFS=$'\t' read -r add_url add_path || [ -n "${add_url}" ]; do
+        [ -n "${add_url}" ] || continue
+        echo "  + ${add_path} (${add_url})"
+        printed_source=1
+    done < <(paste -d $'\t' \
+        <(printf '%s\n' "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" | sed '/^$/d') \
+        <(printf '%s\n' "${HAWS_DRAFT_ADDED_PATHS:-}" | sed '/^$/d'))
+    [ "${printed_source}" -eq 1 ] || echo "  Default"
     echo ""
     echo "Skills"
-    echo "  Default"
+    local skill_rows skill_id skill_display skill_source_id entrypoint active printed_skill=0
+    skill_rows="$(catalog_skills)"
+    while IFS=$'\t' read -r skill_id skill_display skill_source_id entrypoint active ||
+        [ -n "${skill_id}" ]; do
+        [ -n "${skill_id}" ] || continue
+        _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}" || continue
+        echo "  ${skill_display} [${skill_source_id}::${entrypoint}]"
+        printed_skill=1
+    done <<< "${skill_rows}"
+    [ "${printed_skill}" -eq 1 ] || echo "  Default"
     echo ""
     echo "AI Environments"
     local environment
@@ -3207,6 +3785,115 @@ settings_preview() {
         esac
     fi
     return 1
+}
+
+settings_apply_repository_action() {
+    local action="${1:-}"
+    local source_url="${2:-}"
+    local destination="${3:-}"
+    local repo="$(_catalog_repo_dir)"
+    local source_id path url revision status
+
+    case "${action}" in
+        add-source)
+            catalog_validate_url "${source_url}" || {
+                echo "Blocked: invalid repository URL: ${source_url}"
+                return 1
+            }
+            catalog_validate_destination "${destination}" || {
+                echo "Blocked: repository destination is unsafe or occupied: ${destination}"
+                return 1
+            }
+            while IFS=$'\t' read -r source_id path url revision || [ -n "${source_id}" ]; do
+                [ -n "${source_id}" ] || continue
+                [ "${path}" = "${destination}" ] || continue
+                echo "Blocked: repository destination is already registered: ${destination}"
+                return 1
+            done < <(catalog_sources)
+            git -C "${repo}" submodule add "${source_url}" "${destination}" || {
+                echo "Blocked: could not add repository: ${source_url}"
+                return 1
+            }
+            echo "Repository added: ${destination}"
+            ;;
+        remove-source)
+            source_id="${source_url}"
+            _catalog_source_fields "${source_id}" >/dev/null || {
+                echo "Blocked: repository source is no longer registered: ${source_id}"
+                return 1
+            }
+            IFS=$'\t' read -r path url revision <<< "$(_catalog_source_fields "${source_id}")"
+            [ -z "${destination}" ] || [ "${destination}" = "${path}" ] || {
+                echo "Blocked: repository destination changed: ${path}"
+                return 1
+            }
+            case "${path}" in
+                skills/packs/*|skills/standalone/*) ;;
+                *)
+                    echo "Blocked: refusing to remove repository outside the HAWS skill roots: ${path}"
+                    return 1
+                    ;;
+            esac
+            case "/${path}/" in
+                */../*|*/./*)
+                    echo "Blocked: unsafe repository destination: ${path}"
+                    return 1
+                    ;;
+            esac
+            if ! git -C "${repo}" ls-files --stage -- "${path}" |
+                awk '$1 == "160000" {found=1} END {exit found ? 0 : 1}'; then
+                echo "Blocked: repository is not a registered submodule: ${path}"
+                return 1
+            fi
+            if [ -d "${repo}/${path}" ]; then
+                if ! status="$(git -C "${repo}/${path}" status --porcelain --untracked-files=all 2>/dev/null)"; then
+                    echo "Blocked: could not inspect repository: ${path}"
+                    return 1
+                fi
+                if [ -n "${status}" ]; then
+                    echo "Blocked: repository has local changes: ${path}"
+                    return 2
+                fi
+            fi
+            git -C "${repo}" submodule deinit -f -- "${path}" || {
+                echo "Blocked: could not deinitialize repository: ${path}"
+                return 1
+            }
+            git -C "${repo}" rm -f -- "${path}" || {
+                echo "Blocked: could not remove repository from Git: ${path}"
+                return 1
+            }
+            echo "Repository removed: ${path}"
+            ;;
+        *)
+            echo "Blocked: unknown repository action: ${action}"
+            return 1
+            ;;
+    esac
+}
+
+settings_apply_skill_draft() {
+    [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] || return 0
+    local destination="${SCRIPT_DIR}/skills/skills.disabled"
+    local temporary="${destination}.stage.$$"
+    local skill_id display source_id entrypoint active
+    mkdir -p "$(dirname "${destination}")" || return 1
+    {
+        echo "# HAWS Disabled Skills (source-aware)"
+        while IFS=$'\t' read -r skill_id display source_id entrypoint active ||
+            [ -n "${skill_id}" ]; do
+            [ -n "${skill_id}" ] || continue
+            _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}" ||
+                printf '%s\n' "${skill_id}"
+        done < <(catalog_skills)
+    } > "${temporary}" || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    _haws_state_replace "${temporary}" "${destination}"
+    local result=$?
+    rm -f -- "${temporary}"
+    return "${result}"
 }
 
 settings_apply_final() {
@@ -3245,6 +3932,11 @@ settings_apply_final() {
     elif [ "${HAWS_PLAN_KIND:-Install}" = Install ] && [ ! -e "${environment_file}" ]; then
         disabled_environments_save_if_changed --all-enabled || return 1
     fi
+    if ! settings_apply_skill_draft; then
+        echo "Partial failure"
+        echo "Remaining: skills"
+        return 3
+    fi
     printf 'settings\tcompleted\n' > "${state}/apply.result"
     echo "Completed: settings"
     if [ "${HAWS_TEST_FAIL_AFTER_SETTINGS:-0}" = 1 ]; then
@@ -3258,7 +3950,16 @@ settings_apply_final() {
         [ -n "${action:-}" ] || continue
         case "${action}" in
             setting|environment) ;;
-            initialize|pointer|skill-link|integration|add-source|remove-source)
+            add-source|remove-source)
+                if ! settings_apply_repository_action "${action}" "${value}" "${rest}"; then
+                    echo "Partial failure"
+                    echo "Remaining: ${action}"
+                    return 3
+                fi
+                printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
+                echo "Completed: ${action}"
+                ;;
+            initialize|pointer|skill-link|integration)
                 if [ "${HAWS_TEST_NO_INTEGRATION:-0}" = 1 ]; then
                     echo "Skipped: ${action} (test fixture)"
                 elif ! run_sync; then

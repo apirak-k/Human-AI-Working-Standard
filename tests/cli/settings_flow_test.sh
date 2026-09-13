@@ -75,6 +75,28 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     assert_output_not_contains 'HAWS Settings — First Install'
 }
 
+test_settings_repositories_route_keeps_old_actions() {
+    local down=$'\033[B'
+    run_haws_input "${down}\n\nq" || true
+    assert_output_contains 'HAWS Settings' || return 1
+    assert_output_contains 'Repositories' || return 1
+    assert_output_contains 'Add Git Repository' || return 1
+    assert_output_contains 'Remove Git Repository' || return 1
+    assert_output_contains 'Back to Settings' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.gitmodules"
+}
+
+test_settings_skills_route_keeps_old_single_pack_labels() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}\nq"
+    run_haws_input "${input}" || true
+    assert_output_contains 'Configure Active Skills' || return 1
+    assert_output_contains 'Single Skills' || return 1
+    assert_output_contains 'Multi-Skill Packs' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/skills.disabled"
+}
+
 test_settings_apply_reaches_preview_without_persisting() {
     local down=$'\033[B'
     local input="${down}\n"
@@ -294,6 +316,8 @@ trap cleanup_fixture EXIT
 run_test test_first_use_opens_setup_without_mutation
 run_test test_default_setup_reaches_preview_install_before_cancel
 run_test test_customize_setup_reaches_lifecycle_neutral_settings
+run_test test_settings_repositories_route_keeps_old_actions
+run_test test_settings_skills_route_keeps_old_single_pack_labels
 run_test test_settings_apply_reaches_preview_without_persisting
 run_test test_preview_back_to_settings_preserves_draft
 run_test test_preview_cancel_discards_draft_and_returns_to_setup
