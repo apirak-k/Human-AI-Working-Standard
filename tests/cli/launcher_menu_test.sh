@@ -74,6 +74,13 @@ test_arrow_space_enter_updates_only_fixture() {
     assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest"
 }
 
+test_skills_pack_q_returns_to_category_menu() {
+    grep -q '^run_main_menu()' "${FIXTURE_PROJECT}/haws.sh" || return 1
+    printf '\n2\nq' | HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" menu >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ "$(grep -c 'Configure Active Skills' "${OUTPUT_FILE}")" -eq 1 ] || return 1
+    assert_output_contains 'HAWS — Main Menu'
+}
+
 test_checklist_eof_cancels_without_saving() {
     grep -q '^run_main_menu()' "${FIXTURE_PROJECT}/haws.sh" || return 1
     printf '\n1\n\033[B ' | HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" menu >"${OUTPUT_FILE}" 2>&1 || return 1
@@ -98,6 +105,7 @@ run_test test_bare_q_shows_menu_without_home_mutation
 run_test test_bare_eof_exits_without_home_mutation
 run_test test_skills_keeps_old_categories_and_controls
 run_test test_arrow_space_enter_updates_only_fixture
+run_test test_skills_pack_q_returns_to_category_menu
 run_test test_checklist_eof_cancels_without_saving
 run_test test_exit_selection_does_not_dispatch_an_action
 

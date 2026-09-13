@@ -2076,11 +2076,15 @@ run_configure_skills() {
             echo "   0) Back"
             echo ""
             local p_idx=""
-            read -r -p "Select pack [0-${#pack_names[@]}] (default: 0): " p_idx || p_idx="0"
+            if ! read -r -p "Select pack [0-${#pack_names[@]}] (default: 0): " p_idx; then
+                [ -n "${p_idx}" ] || p_idx="0"
+            fi
             p_idx="$(echo "${p_idx}" | tr -d ' \r\n')"
             [ -z "${p_idx}" ] && p_idx="0"
 
-            if [[ "${p_idx}" =~ ^[1-9][0-9]*$ ]] && [ "${p_idx}" -le "${#pack_names[@]}" ]; then
+            if [[ "${p_idx,,}" =~ ^(q|quit|back|b)$ ]]; then
+                break
+            elif [[ "${p_idx}" =~ ^[1-9][0-9]*$ ]] && [ "${p_idx}" -le "${#pack_names[@]}" ]; then
                 local sel_pack_dir="${pack_repos[$((p_idx - 1))]}"
                 local sel_pack_name="${pack_names[$((p_idx - 1))]}"
                 echo ""
