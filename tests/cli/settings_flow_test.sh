@@ -185,6 +185,13 @@ test_partial_failure_reports_completed_and_remaining_actions() {
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete"
 }
 
+test_first_install_creates_empty_environment_state_file() {
+    run_haws_input_with_env $'\n\n' 'HAWS_TEST_NO_INTEGRATION=1' || return 1
+    local disabled_file="${FIXTURE_PROJECT}/ai-configs/environments.disabled"
+    [ -f "${disabled_file}" ] || return 1
+    ! grep -E '^[[:space:]]*[^#[:space:]]' "${disabled_file}" >/dev/null 2>&1
+}
+
 test_successful_install_records_completion_and_next_launch_home() {
     run_haws_input_with_env $'\n\n' 'HAWS_TEST_NO_INTEGRATION=1' || return 1
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/install.complete" 'schema=1' || return 1
@@ -220,6 +227,7 @@ run_test test_completed_install_opens_home_without_sync_or_doctor
 run_test test_unchanged_preview_update_offers_only_back_routes
 run_test test_draft_cancel_preserves_existing_state_bytes
 run_test test_partial_failure_reports_completed_and_remaining_actions
+run_test test_first_install_creates_empty_environment_state_file
 run_test test_successful_install_records_completion_and_next_launch_home
 
 echo "CLI settings-flow tests: ${passed} passed, ${failed} failed"

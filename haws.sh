@@ -707,10 +707,11 @@ disabled_environments_save_if_changed() {
     local dfile="${HAWS_DISABLED_ENVIRONMENTS_FILE:-$(_haws_compat_file environments.disabled)}"
     local state="$(_haws_state_dir)"
     local temporary="${state}/environments.disabled.stage.$$"
-    local desired_signature current_signature env
+    local desired_signature current_signature env create_empty=0
     local desired=()
 
     if [ "${1:-}" = --all-enabled ]; then
+        create_empty=1
         shift
     elif [ "$#" -gt 0 ]; then
         desired=("$@")
@@ -727,10 +728,12 @@ disabled_environments_save_if_changed() {
             sed '/^$/d' | sort)"
     fi
     if [ "${desired_signature}" = "${current_signature}" ]; then
-        return 0
+        if [ "${create_empty}" -ne 1 ] || [ -e "${dfile}" ]; then
+            return 0
+        fi
     fi
     [ "${#desired[@]}" -gt 0 ] || {
-        [ -f "${dfile}" ] || return 0
+        [ -f "${dfile}" ] || [ "${create_empty}" -eq 1 ] || return 0
     }
     mkdir -p "${state}" "$(dirname "${dfile}")" || return 1
     {
@@ -3141,6 +3144,7 @@ settings_preview() {
 settings_apply_final() {
     local plan="${HAWS_PLAN_FILE:-$(_haws_state_dir)/settings.plan}"
     local state="$(_haws_state_dir)"
+    local environment_file="${HAWS_DISABLED_ENVIRONMENTS_FILE:-$(_haws_compat_file environments.disabled)}"
     [ -f "${plan}" ] || return 1
     settings_save "${HAWS_DRAFT_SECOND_BRAIN:-off}" \
         "${HAWS_DRAFT_AUTO_UPDATE:-on}" "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" || return 1
@@ -3156,6 +3160,8 @@ settings_apply_final() {
         else
             disabled_environments_save_if_changed "${disabled[@]}" || return 1
         fi
+    elif [ "${HAWS_PLAN_KIND:-Install}" = Install ] && [ ! -e "${environment_file}" ]; then
+        disabled_environments_save_if_changed --all-enabled || return 1
     fi
     printf 'settings\tcompleted\n' > "${state}/apply.result"
     echo "Completed: settings"
