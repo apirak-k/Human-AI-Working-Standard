@@ -14,20 +14,21 @@ The actual goal and required outcome always take priority over following rigid p
 
 ## Quick Install and Setup
 
-HAWS provides a shared, interactive command core with platform-native launchers. A bare launch opens **HAWS Setup** on a first install and **HAWS Home** after installation. No network operation starts until you choose **Apply & Install** or explicit **Sync**.
+HAWS provides a shared, interactive command core with platform-native launchers. A bare launch opens **HAWS Setup** on a first install and **HAWS Home** after installation. No network operation starts until you confirm **Install** or **Update** after Preview, or explicitly choose **Sync**.
 
 ```bash
 git clone https://github.com/apirak-k/Human-AI-Working-Standard.git
 cd Human-AI-Working-Standard
 
 # On Windows (CMD, PowerShell, or double-click haws.bat in Explorer):
+haws.bat
 haws.bat settings
 
 # On macOS & Linux:
 ./haws.sh settings
 ```
 
-Review and adjust your settings in the interactive TUI. Choose **Preview Install** (or **Preview Update**) to inspect all pending file links and configurations before confirming. Use **Sync** later for explicit remote synchronization. **Status** and **Doctor** are strictly read-only.
+On a first install, the launcher opens **HAWS Setup**, where you can choose **Use Default Setup** or **Customize Settings**. After installation, a bare launch opens **HAWS Home**. Settings edits remain a draft: choose **Apply**, review **Preview Install** or **Preview Update**, then confirm with **Install** or **Update**. **Sync** is always explicit; bare launch never auto-syncs or auto-runs Doctor. **Status** is read-only and **Doctor** is diagnostic/read-only.
 
 ### Prerequisites
 
@@ -40,8 +41,8 @@ Review and adjust your settings in the interactive TUI. Choose **Preview Install
 
 ### Cross-Platform Launchers
 
-- **Windows 10 / 11**: Use `haws.bat`. It automatically locates Git Bash / MSYS2 in standard locations (`ProgramFiles`, `scoop`, `chocolatey`, or `PATH`) and invokes the shared HAWS core. You can run it directly from Command Prompt, PowerShell, or by double-clicking `haws.bat` in Windows Explorer. No manual Git Bash path setup is required.
-- **macOS & Linux**: Use `./haws.sh` directly in your terminal (`bash` or `zsh`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
+- **Windows 10 / 11**: Use `haws.bat`. It locates Git Bash, starts a login shell, and forwards to the shared `haws.sh` core. Run it from Command Prompt, PowerShell, or by double-clicking it in Windows Explorer.
+- **macOS & Linux**: Use `./haws.sh` directly in a terminal (`bash` or `zsh`). This is the native launcher for the same shared HAWS behavior/core.
 
 ---
 
@@ -105,7 +106,7 @@ bash haws.sh brain connect <your-private-github-repo-url>
 
 ## HAWS CLI Reference (`haws.bat` & `./haws.sh`)
 
-HAWS guarantees 100% feature and behavioral parity across platforms through platform-appropriate launchers:
+HAWS uses platform-appropriate launchers over one shared behavior/core. The Windows launcher is verified in this workspace; direct macOS/Linux execution remains subject to platform validation.
 
 | Windows | macOS / Linux | Purpose |
 | :--- | :--- | :--- |
@@ -118,7 +119,7 @@ HAWS guarantees 100% feature and behavioral parity across platforms through plat
 
 ### Settings & Draft Model
 
-- **Draft-First Safety**: Changes in Settings modify a local working draft. No persistent files are written until you select **Apply Selection** and confirm via **Preview Install** or **Preview Update**.
+- **Draft-First Safety**: Changes in Settings modify a local working draft. **Apply** moves the draft to Preview; no persistent installation changes occur until **Install** or **Update** is confirmed.
 - **Accidental Exit Protection**: Pressing `q` or `Q` with unsaved modifications prompts `Discard Changes?` confirmation before exiting.
 - **In-Place Space Toggle**: Press `Space` directly in the Settings menu to toggle booleans (`Second Brain`, `Auto Update`) without opening submenus.
 - **Repositories & Multi-Select**: In **Settings → Repositories**, remove multiple configured repositories simultaneously with live skill counts. Removing an installed repository detaches the submodule and cleanly prunes HAWS-owned symlinks.
@@ -224,4 +225,4 @@ When instructions or information conflict, always resolve in this order:
 3. **HAWS (`core/HAWS.md`)**
 4. **Confirmed Project Specific requirements**
 5. **Applicable Work Instructions (`core/WORK_INSTRUCTIONS.md`)**
-6. **[Second Brain HANDOFF](secondbrain/PROJECT/HANDOFF.md)** as a description of current work state
+6. **[Current Project State](PROJECT_STATE.md)** as the single source of live recovery status; Second Brain handoffs are historical context only

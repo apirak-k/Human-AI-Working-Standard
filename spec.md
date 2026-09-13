@@ -1164,27 +1164,11 @@ Removing a repository source from HAWS must never mean deleting the remote GitHu
 
 # 20. CURRENT EXECUTION STATUS
 
-At the time this specification was created:
-
-```text
-Task 1 — Loop Fix Only                         DONE
-Task 2 — Approved UX Improvements Only        DONE
-Task 3 — Known-Good TUI Behavior Only         IN PROGRESS / PAUSED FOR SPEC
-Task 4 — Clean Base Validation Only            NOT STARTED
-Task 5 — Windows .bat Entry Only               NOT STARTED
-Task 6 — Cross-Platform Parity                 NOT STARTED
-Task 7 — Documentation + Final Validation      NOT STARTED
-```
-
-The Settings specification has now been reviewed and closed/approved.
-
-Therefore, when resuming implementation from the current branch:
-
-- do not casually redo Task 1,
-- do not casually redo Task 2,
-- resume Task 3 against this authoritative spec,
-- if validation shows Task 1/2 behavior regressed, report it as a regression and fix only with explicit scope discipline,
-- do not start Task 4 until Task 3 is approved by the user.
+Live task status is maintained only in [PROJECT_STATE.md](PROJECT_STATE.md).
+This specification is the product and execution contract; do not duplicate
+changing branch, test, or acceptance status here. If this contract conflicts
+with the live state, the contract governs product requirements and
+`PROJECT_STATE.md` governs the current checkpoint.
 
 ---
 

@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
+import path from "node:path";
 
 const isWindows = os.platform() === "win32";
 const gitBash = "C:\\Program Files\\Git\\bin\\bash.exe";
@@ -23,6 +25,29 @@ test("haws.bat execution and cross-platform parity suite", { skip: !isWindows },
     });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /HAWS is non-interactive/);
+  });
+
+  await t.test("bare launch reaches the shared Setup TUI without an interactive parent-shell hang", () => {
+    const fixture = mkdtempSync(path.join(os.tmpdir(), "haws-launcher-"));
+    try {
+      const res = spawnSync("cmd.exe", ["/c", "haws.bat"], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        timeout: 5000,
+        env: {
+          ...process.env,
+          HOME: path.join(fixture, "home"),
+          HAWS_REPO_DIR: path.join(fixture, "repo"),
+          HAWS_STATE_DIR: path.join(fixture, "repo", ".haws", "state"),
+          HAWS_TEST_KEYS: "cancel",
+        },
+      });
+      assert.equal(res.error, undefined);
+      assert.equal(res.status, 1);
+      assert.match(res.stdout, /HAWS Setup/);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 
   await t.test("forwards subcommands cleanly to haws.sh", () => {

@@ -4,6 +4,17 @@
 
 _HAWS_UI_KEYS_REMAINING="${HAWS_TEST_KEYS:-}"
 
+ui_clear() {
+  local fd="${1:-1}"
+  [ -n "${HAWS_TEST_KEYS:-}" ] && return 0
+  [ -t 0 ] || return 0
+  if [ "${fd}" = "2" ]; then
+    [ -t 2 ] && printf '\033[H\033[2J' >&2
+  else
+    [ -t 1 ] && printf '\033[H\033[2J'
+  fi
+}
+
 ui_next_key() {
   local key=""
   if [ -n "${HAWS_TEST_KEYS:-}" ]; then
@@ -222,12 +233,18 @@ ui_checklist() {
   _ui_checklist_toggle_all() {
     local next=0
     for i in "${!records[@]}"; do
-      IFS=$'\t' read -r _ _ _ selected <<EOF
+      IFS=$'\t' read -r _ _ detail selected <<EOF
 ${records[$i]}
 EOF
-      [ "${selected:-0}" = 0 ] && { next=1; break; }
+      [ "${detail:-}" = "Not detected" ] && continue
+    [ "${selected:-0}" = 0 ] && { next=1; break; }
     done
-    for i in "${!records[@]}"; do records[$i]="${records[$i]%$'\t'*}"$'\t'"${next}"; done
+    for i in "${!records[@]}"; do
+      IFS=$'\t' read -r _ _ detail _ <<EOF
+${records[$i]}
+EOF
+    [ "${detail:-}" = "Not detected" ] || records[$i]="${records[$i]%$'\t'*}"$'\t'"${next}"
+    done
   }
 
   _ui_checklist_toggle_cursor() {
@@ -236,6 +253,7 @@ EOF
     IFS=$'\t' read -r id label detail selected <<EOF
 ${records[$target_idx]}
 EOF
+    [ "${detail:-}" = "Not detected" ] && return 0
     [ "${selected:-0}" = 1 ] && selected=0 || selected=1
     records[$target_idx]="${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${selected}"
   }
@@ -294,7 +312,12 @@ EOF
     while ui_next_key >/dev/null 2>&1; do
       key="${UI_LAST_KEY:-}"
       case "${key}" in
-        a|A) for i in "${!records[@]}"; do records[$i]="${records[$i]%$'\t'*}"$'\t'"1"; done ;;
+        a|A) for i in "${!records[@]}"; do
+          IFS=$'\t' read -r _ _ detail _ <<EOF
+${records[$i]}
+EOF
+          [ "${detail:-}" = "Not detected" ] || records[$i]="${records[$i]%$'\t'*}"$'\t'"1"
+        done ;;
         c|C|clear) for i in "${!records[@]}"; do records[$i]="${records[$i]%$'\t'*}"$'\t'"0"; done ;;
         space|Space|" ") _ui_checklist_toggle_cursor ;;
         down|j) cursor=$(( (cursor + 1) % total )) ;;
@@ -394,15 +417,15 @@ ui_boolean() {
 }
 
 ui_review() {
-  local plan="${1:-}" key apply_label="Apply Update" cancel_label="Cancel Update" is_installed=0
+  ui_clear
+  local plan="${1:-}" key apply_label="Update" cancel_label="Cancel" is_installed=0
   if type install_is_complete >/dev/null 2>&1; then
     install_is_complete && is_installed=1
   elif [ -s "$(_haws_state_dir 2>/dev/null)/install.complete" ] || [ -s "${HOME}/.haws_manifest" ]; then
     is_installed=1
   fi
   if [ "${is_installed}" -eq 0 ]; then
-    apply_label="Install HAWS"
-    cancel_label="Cancel Setup"
+    apply_label="Install"
   fi
   echo "Current settings:"
   echo "  Not changed values remain unchanged."

@@ -16,6 +16,7 @@ test_home_contains_status_sync_settings_doctor_details_and_exit() {
   assert_output_contains "Sync Now" || return 1
   assert_output_contains "Status Details" || return 1
   assert_output_contains "Exit" || return 1
+  ! grep -F "HAWS Status" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
 }
 
 test_checklist_supports_space_select_all_clear_all_and_enter() {
@@ -157,14 +158,31 @@ test_cursor_menu_renders_without_numeric_prefixes() {
   printf '%s\n' "${out}" | grep -F "Second Label" >/dev/null 2>&1 || return 1
 }
 
+test_fixture_navigation_emits_no_terminal_clear_sequence() {
+  new_fixture
+  export HAWS_TEST_KEYS=2,back,cancel
+  run_haws settings || true
+  ! LC_ALL=C grep -a $'\033[H\033[2J' "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
+test_nested_skills_back_returns_to_skills_menu() {
+  new_fixture
+  export HAWS_TEST_KEYS=3,single,Q,Q,cancel
+  run_haws settings || true
+  assert_output_contains "HAWS Settings — Skills" || return 1
+  assert_output_contains "HAWS Settings" || return 1
+}
+
 test_settings_lifecycle_labels_on_first_install() {
   new_fixture
   export HAWS_TEST_KEYS=cancel
   run_haws settings || true
-  assert_output_contains "HAWS Settings — First Install" || return 1
-  assert_output_contains "Use Recommended Defaults" || return 1
-  assert_output_contains "Preview Install" || return 1
-  assert_output_contains "Cancel Setup" || return 1
+  assert_output_contains "HAWS Settings" || return 1
+  assert_output_contains "Apply" || return 1
+  assert_output_contains "Discard Changes" || return 1
+  ! grep -F "HAWS Settings — First Install" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  ! grep -F "Use Recommended Defaults" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  ! grep -F "Cancel Setup" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
   ! grep -F "Uninstall HAWS" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
 }
 
@@ -196,7 +214,7 @@ test_settings_defers_skill_catalog_loading_until_the_user_needs_it() {
 test_review_precedes_every_mutation() {
   new_fixture
   mkdir -p "${FIXTURE_HOME}/.claude"
-  export HAWS_TEST_KEYS=save
+  export HAWS_TEST_KEYS=customize,save
   run_haws || return 1
   assert_output_contains "Settings review" || return 1
   assert_output_contains "Review planned changes:" || return 1
@@ -249,15 +267,15 @@ test_installed_settings_keeps_every_spec_action_and_adds_uninstall() {
   printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > "${FIXTURE_REPO}/.haws/state/settings.tsv"
   export HAWS_TEST_KEYS=cancel
   run_haws settings || true
-  assert_output_contains "Preview Update" || return 1
-  assert_output_contains "Restore Recommended Defaults" || return 1
+  assert_output_contains "HAWS Settings" || return 1
+  assert_output_contains "Reset to Defaults" || return 1
   assert_output_contains "Repositories" || return 1
   assert_output_contains "Skills" || return 1
   assert_output_contains "AI Environments" || return 1
   assert_output_contains "Second Brain Remote" || return 1
   assert_output_contains "Auto Update" || return 1
   assert_output_contains "Uninstall HAWS" || return 1
-  assert_output_contains "Cancel Update"
+  assert_output_contains "Discard Changes"
 }
 
 test_preview_update_shows_review_actions_and_not_changed_safeguards() {
@@ -272,9 +290,9 @@ test_preview_update_shows_review_actions_and_not_changed_safeguards() {
   assert_output_contains "Preview Update" || return 1
   assert_output_contains "Current settings:" || return 1
   assert_output_contains "Not changed" || return 1
-  assert_output_contains "Apply Update" || return 1
+  assert_output_contains "Update" || return 1
   assert_output_contains "Back to Settings" || return 1
-  assert_output_contains "Cancel Update" || return 1
+  assert_output_contains "Cancel" || return 1
   after="$(sha256sum "${FIXTURE_REPO}/.haws/state/install.complete" | awk '{print $1}')"
   [ "${before}" = "${after}" ] || return 1
 }
@@ -448,6 +466,39 @@ test_add_repository_rejected_input_does_not_mutate_draft() {
   ! grep -F "Discard Changes?" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
 }
 
+test_add_repository_rejects_github_url_without_owner_or_repo() {
+  new_fixture
+  export HAWS_TEST_KEYS=2,add,https://github.com/owner,back,cancel
+  run_haws settings || true
+  assert_output_contains "Invalid GitHub repository URL: https://github.com/owner" || return 1
+  ! grep -F "Repository added to draft:" "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
+test_add_repository_rejects_duplicate_url_in_draft() {
+  new_fixture
+  export HAWS_TEST_KEYS=2,add,https://github.com/owner/repo.git,add,https://github.com/owner/repo.git,back,Q,discard
+  run_haws settings || true
+  assert_output_contains "Repository already exists in draft" || return 1
+}
+
+test_not_detected_ai_cannot_enter_active_draft() {
+  new_fixture
+  export HAWS_TEST_KEYS=4,down,down,space,enter,Q,discard
+  run_haws settings || true
+  assert_output_contains "Gemini" || return 1
+  assert_output_contains "Not detected" || return 1
+  ! grep -F "> [x] Gemini (Not detected)" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  [ ! -d "${FIXTURE_REPO}/.haws/state" ]
+}
+
+test_add_repository_rejects_non_https_github_url() {
+  new_fixture
+  export HAWS_TEST_KEYS=2,add,git@github.com:owner/repo.git,back,cancel
+  run_haws settings || true
+  assert_output_contains "Invalid GitHub repository URL: git@github.com:owner/repo.git" || return 1
+  ! grep -F "Repository added to draft:" "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
 run_test() { local name="$1"; if "$name"; then echo "PASS ${name}"; passed=$((passed + 1)); else echo "FAIL ${name}"; failed=$((failed + 1)); fi; unset HAWS_TEST_KEYS; cleanup_fixture; }
 trap cleanup_fixture EXIT
 run_test test_home_contains_status_sync_settings_doctor_details_and_exit
@@ -465,6 +516,8 @@ run_test test_cursor_menu_cancel_returns_nonzero
 run_test test_checklist_select_all_key
 run_test test_checklist_clear_all_key
 run_test test_cursor_menu_renders_without_numeric_prefixes
+run_test test_fixture_navigation_emits_no_terminal_clear_sequence
+run_test test_nested_skills_back_returns_to_skills_menu
 run_test test_settings_lifecycle_labels_on_first_install
 run_test test_cursor_menu_accepts_numbered_test_seam_for_existing_fixture_flows
 run_test test_boolean_requires_explicit_on_or_off
@@ -491,5 +544,9 @@ run_test test_space_key_toggles_boolean_setting_in_place
 run_test test_add_repository_accepts_valid_github_url
 run_test test_add_repository_rejects_invalid_arbitrary_text
 run_test test_add_repository_rejected_input_does_not_mutate_draft
+run_test test_add_repository_rejects_github_url_without_owner_or_repo
+run_test test_add_repository_rejects_duplicate_url_in_draft
+run_test test_not_detected_ai_cannot_enter_active_draft
+run_test test_add_repository_rejects_non_https_github_url
 echo "CLI settings tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]

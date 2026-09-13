@@ -25,7 +25,7 @@ _settings_sources() { catalog_sources 2>/dev/null | cut -f1; }
 _settings_is_valid_github_url() {
   local url="${1:-}"
   url="${url%/}"
-  local regex='^(https?://(www\.)?github\.com/|git@github\.com:|ssh://git@github\.com/)[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(\.git)?$'
+  local regex='^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(\.git)?$'
   [[ "${url}" =~ ${regex} ]] || return 1
   local path_part="${url#*github.com[:/]}"
   path_part="${path_part%/}"
@@ -114,6 +114,7 @@ EOF
       ;;
   esac
   [ "${#records[@]}" -gt 0 ] || { echo "No selectable ${type}."; return 1; }
+  ui_clear 2
   ui_checklist "${title}" "${records[@]}" || return 1
   printf -v "${target}" '%s' "${UI_CHECKLIST_RESULT}"
   export "${target}"
@@ -152,10 +153,12 @@ EOF
 $(catalog_skills 2>/dev/null || true)
 EOF
   records+=($'back\tBack to Skills\t')
+  ui_clear
   while true; do
     ui_cursor_menu "HAWS Settings — Multi-Skill Packs" "${records[@]}" || return 0
     key="${UI_MENU_RESULT:-back}"; [ "${key}" = back ] && return 0
     _settings_choose_pack "${key}" || true
+    ui_clear
     current="${HAWS_SELECTED_SKILLS:-}"
   done
 }
@@ -170,6 +173,7 @@ _settings_choose_pack() {
 $(catalog_skills 2>/dev/null || true)
 EOF
   [ "${#records[@]}" -gt 0 ] || return 1
+  ui_clear 2
   ui_checklist "Configure Skills in ${pack}" "${records[@]}" || return 1
   HAWS_SELECTED_SKILLS="${UI_CHECKLIST_RESULT}"; export HAWS_SELECTED_SKILLS
 }
@@ -219,6 +223,7 @@ EOF
 ${HAWS_DRAFT_ADDED_REPOSITORIES:-}
 EOF
   [ "${#records[@]}" -gt 0 ] || { echo "No configured repositories to remove."; return 0; }
+  ui_clear 2
   ui_checklist "Select repositories to remove:" "${records[@]}" || return 0
   local to_remove="${UI_CHECKLIST_RESULT:-}"
   [ -n "${to_remove}" ] || return 0
@@ -251,6 +256,7 @@ EOF
 
 repositories_menu() {
   local key url records=()
+  ui_clear
   while true; do
     records=($'add\tAdd Repository\t' $'remove\tRemove Repository\t' $'back\tBack to Settings\t')
     ui_cursor_menu "HAWS Settings — Repositories" "${records[@]}" || return 0
@@ -290,6 +296,7 @@ repositories_menu() {
 skills_menu() {
   local key records=() single_count pack_count
   settings_ensure_skills_draft || return 1
+  ui_clear
   while true; do
     single_count="$(_settings_skill_counts "${HAWS_SELECTED_SKILLS:-}" single)"
     pack_count="$(_settings_skill_counts "${HAWS_SELECTED_SKILLS:-}" packs)"
@@ -297,8 +304,8 @@ skills_menu() {
     ui_cursor_menu "HAWS Settings — Skills" "${records[@]}" || return 0
     key="${UI_MENU_RESULT:-back}"
     case "${key}" in
-      1|single) _settings_choose_list HAWS_SELECTED_SKILLS "Single Skills" "${HAWS_SELECTED_SKILLS:-}" skills-single || true ;;
-      2|packs) multi_skill_packs_menu ;;
+      1|single) _settings_choose_list HAWS_SELECTED_SKILLS "Single Skills" "${HAWS_SELECTED_SKILLS:-}" skills-single || true; ui_clear ;;
+      2|packs) multi_skill_packs_menu; ui_clear ;;
       back) return 0 ;;
     esac
   done
@@ -306,6 +313,7 @@ skills_menu() {
 
 settings_boolean_menu() {
   local target="$1" title="$2" current="$3" key value
+  ui_clear
   while true; do
     ui_cursor_menu "${title}" $'on\tOn\t' $'off\tOff\t' $'back\tBack to Settings\t' || return 0
     key="${UI_MENU_RESULT:-back}"
@@ -322,6 +330,7 @@ settings_boolean_menu() {
 
 settings_second_brain_menu() {
   local key value
+  ui_clear
   ui_cursor_menu "Second Brain Remote" $'on\tOn\t' $'off\tOff\t' $'back\tBack to Settings\t' || return 0
   key="${UI_MENU_RESULT:-back}"
   case "${key}" in
@@ -355,6 +364,7 @@ uninstall_settings_menu() {
     $'hooks\tGit hooks\tHAWS hooks\t1'
     $'metadata\tHAWS metadata\tLocal ownership records\t1'
   )
+  ui_clear 2
   ui_checklist "Uninstall groups" "${records[@]}" || return 1
   while IFS= read -r id || [ -n "${id}" ]; do
     [ -n "${id}" ] || continue
@@ -391,11 +401,12 @@ _settings_menu_records() {
   skill_count="$(printf '%s\n' "${HAWS_SELECTED_SKILLS:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
   env_count="$(printf '%s\n' "${HAWS_SELECTED_ENVS:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
   if [ "${mode}" = first-install ]; then
-    title="HAWS Settings — First Install"
-    printf '%s\t%s\t%s\n' default "Use Recommended Defaults" ""
+    printf '%s\n' "HAWS Setup" >&2
+    title="HAWS Settings"
+    printf '%s\t%s\t%s\n' default "Use Default Setup" ""
   else
     title="HAWS Settings"
-    printf '%s\t%s\t%s\n' default "Restore Recommended Defaults" ""
+    printf '%s\t%s\t%s\n' default "Reset to Defaults" ""
   fi
   printf '%s\t%s\t%s\n' repositories "Repositories" "${source_count} sources"
   printf '%s\t%s\t%s\n' skills "Skills" "${skill_count} active"
@@ -403,21 +414,22 @@ _settings_menu_records() {
   printf '%s\t%s\t%s\n' second-brain "Second Brain Remote" "[ ${HAWS_DRAFT_SECOND_BRAIN^} ]"
   printf '%s\t%s\t%s\n' auto-update "Auto Update" "[ ${HAWS_DRAFT_AUTO_UPDATE^} ]"
   if [ "${mode}" = first-install ]; then
-    printf '%s\t%s\t%s\n' save "Preview Install" ""
+    printf '%s\t%s\t%s\n' save "Apply" ""
   else
-    printf '%s\t%s\t%s\n' save "Preview Update" ""
+    printf '%s\t%s\t%s\n' save "Apply" ""
     install_is_complete && printf '%s\t%s\t%s\n' uninstall "Uninstall HAWS" ""
   fi
   if [ "${mode}" = first-install ]; then
-    printf '%s\t%s\t%s\n' cancel "Cancel Setup" ""
+    printf '%s\t%s\t%s\n' cancel "Discard Changes" ""
   else
-    printf '%s\t%s\t%s\n' cancel "Cancel Update" ""
+    printf '%s\t%s\t%s\n' cancel "Discard Changes" ""
   fi
   printf '%s\n' "${title}" >&2
 }
 
 _settings_reset_to_defaults() {
   if [ -t 0 ] && [ -z "${HAWS_TEST_KEYS:-}" ]; then
+    ui_clear
     echo ""
     echo "Reset Settings to Defaults?"
     echo ""
@@ -430,7 +442,7 @@ _settings_reset_to_defaults() {
   fi
   settings_draft_defaults
   HAWS_DRAFT_ENVS_TOUCHED=1
-  echo "Recommended defaults restored in draft."
+  echo "Default setup restored in draft."
 }
 
 _settings_set_list() {
@@ -487,12 +499,13 @@ settings_edit() {
   }
 
   while true; do
+    ui_clear
     records=()
     while IFS=$'\t' read -r key value title; do records+=("${key}"$'\t'"${value}"$'\t'"${title}"); done <<EOF
 $(_settings_menu_records "${mode}")
 EOF
     title="HAWS Settings"
-    [ "${mode}" = first-install ] && title="HAWS Settings — First Install"
+    title="HAWS Settings"
     if [ -n "${HAWS_TEST_KEYS:-}" ] && [[ "${_HAWS_UI_KEYS_REMAINING:-}" == *=* ]]; then
       ui_next_key >/dev/null 2>&1 || key="cancel"
       key="${UI_LAST_KEY:-cancel}"
@@ -513,6 +526,7 @@ EOF
       cancel|c|C|q|Q|quit|exit|no|discard)
         if _settings_is_dirty; then
           local discard_records=($'keep\tKeep Editing\t' $'discard\tDiscard Changes\t')
+          ui_clear
           echo ""
           echo "Discard Changes?"
           echo ""
@@ -599,6 +613,11 @@ EOF
     echo "No changes detected"
     return 0
   fi
+  if [ -s "${state}/install.complete" ]; then
+    echo "Preview Update"
+  else
+    echo "Preview Install"
+  fi
   echo "Settings review"
   echo "Current -> Draft"
   printf '  Second Brain Remote: %s -> %s\n' "${HAWS_SECOND_BRAIN_ENABLED:-off}" "${HAWS_DRAFT_SECOND_BRAIN:-off}"
@@ -676,11 +695,30 @@ EOF
   home_run
 }
 
+_home_summary() {
+  local last="none"
+  if type _health_last_sync >/dev/null 2>&1; then
+    last="$(_health_last_sync)"
+  fi
+  echo "Status: Ready"
+  if [ "${last}" = "none" ]; then
+    echo "Last Sync: none"
+  else
+    IFS=$'\t' read -r _ _ result _ _ <<EOF
+${last}
+EOF
+    echo "Last Sync: ${result:-unknown}"
+  fi
+  echo "Second Brain Remote: ${HAWS_SECOND_BRAIN_ENABLED:-off}"
+  echo "Auto Update: ${HAWS_AUTO_UPDATE:-on}"
+}
+
 home_run() {
   local key records=()
   settings_load || return $?
+  ui_clear
   while true; do
-    status_run
+    _home_summary
     echo ""
     records=($'sync\tSync Now\t' $'settings\tSettings\t' $'doctor\tDoctor\t' $'details\tStatus Details\t' $'exit\tExit\t')
     if [ -n "${HAWS_TEST_KEYS:-}" ] && [[ "${_HAWS_UI_KEYS_REMAINING:-}" == *=* ]]; then
@@ -692,7 +730,7 @@ home_run() {
     fi
     case "${key}" in
       sync) sync_run || true ;;
-      settings) settings_run || true ;;
+      settings) settings_run || true; ui_clear ;;
       doctor) doctor_run || true ;;
       details|status) status_run --details ;;
       exit|q|quit|cancel|"") return 0 ;;
@@ -701,14 +739,38 @@ home_run() {
   done
 }
 
+_settings_setup_landing() {
+  local key
+  ui_cursor_menu "HAWS Setup" \
+    $'default\tUse Default Setup\t' \
+    $'customize\tCustomize Settings\t' \
+    $'exit\tExit\t' || return 1
+  key="${UI_MENU_RESULT:-exit}"
+  case "${key}" in
+    default)
+      settings_load || return $?
+      disabled_envs_load || return $?
+      disabled_skills_load || return $?
+      settings_draft_defaults
+      settings_plan_apply
+      ;;
+    customize) settings_edit first-install ;;
+    *) return 1 ;;
+  esac
+}
+
 settings_run() {
   local mode="${1:-}"
-  if [ -z "${mode}" ] || [ "${mode}" = "settings" ]; then
+  if [ -z "${mode}" ]; then
     if install_is_complete; then
       mode="settings"
     else
       mode="first-install"
     fi
+  fi
+  if [ "${mode}" = "first-install" ]; then
+    _settings_setup_landing
+    return $?
   fi
   settings_edit "${mode}"
 }

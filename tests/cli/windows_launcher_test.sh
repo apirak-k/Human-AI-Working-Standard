@@ -36,8 +36,17 @@ test_bat_missing_runtime_error_message() {
 }
 
 test_bat_forwards_arguments_and_propagates_exit() {
-  grep -F '"%BASH_CMD%" "%HAWS_SCRIPT%" %*' "${BAT_PATH}" >/dev/null 2>&1 || return 1
+  grep -F '"%BASH_CMD%" --login "%HAWS_SCRIPT%" %*' "${BAT_PATH}" >/dev/null 2>&1 || return 1
   grep -F "exit /b %HAWS_EXIT%" "${BAT_PATH}" >/dev/null 2>&1 || return 1
+}
+
+test_bat_starts_git_bash_login_shell() {
+  grep -F '"%BASH_CMD%" --login "%HAWS_SCRIPT%" %*' "${BAT_PATH}" >/dev/null 2>&1
+}
+
+test_bat_starts_bare_launch_as_interactive_shell() {
+  grep -F 'if "%~1"==""' "${BAT_PATH}" >/dev/null 2>&1 || return 1
+  grep -F '"%BASH_CMD%" --login "%HAWS_SCRIPT%" interactive' "${BAT_PATH}" >/dev/null 2>&1 || return 1
 }
 
 run_test() { local name="$1"; if "$name"; then echo "PASS ${name}"; passed=$((passed + 1)); else echo "FAIL ${name}"; failed=$((failed + 1)); fi; cleanup_fixture; }
@@ -49,6 +58,8 @@ run_test test_bat_contains_no_blocking_pause
 run_test test_bat_probes_standard_git_bash_locations
 run_test test_bat_missing_runtime_error_message
 run_test test_bat_forwards_arguments_and_propagates_exit
+run_test test_bat_starts_git_bash_login_shell
+run_test test_bat_starts_bare_launch_as_interactive_shell
 
 echo "CLI Windows launcher tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]

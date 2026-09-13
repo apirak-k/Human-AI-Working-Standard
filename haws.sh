@@ -2992,22 +2992,38 @@ run_setup() {
     done
 }
 
+run_interactive_entry() {
+    if install_is_complete; then
+        home_run
+    else
+        settings_run first-install
+    fi
+}
+
+print_noninteractive_guidance() {
+    echo "HAWS is non-interactive. Use ./haws.sh settings (or one of: sync, status, doctor, uninstall)."
+}
+
 if [ -z "${COMMAND}" ]; then
     # A bare non-interactive launch must be safe and useful: it may not begin
     # sync or any other mutation merely because stdin is unavailable.
     if [ -n "${HAWS_TEST_KEYS:-}" ] || [ -t 0 ]; then
-        if install_is_complete; then
-            home_run
-        else
-            settings_run first-install
-        fi
+        run_interactive_entry
         exit $?
     fi
-    echo "HAWS is non-interactive. Use ./haws.sh settings (or one of: sync, status, doctor, uninstall)."
+    print_noninteractive_guidance
     exit 0
 fi
 
 case "${COMMAND}" in
+    interactive)
+        shift || true
+        if [ -n "${HAWS_TEST_KEYS:-}" ] || [ -t 0 ]; then
+            run_interactive_entry
+        else
+            print_noninteractive_guidance
+        fi
+        ;;
     codex-agents)
         shift || true
         run_codex_agents "$@"

@@ -7,9 +7,9 @@ failed=0
 
 test_bare_first_launch_opens_default_populated_settings_without_git_calls() {
   new_fixture
-  export HAWS_TEST_KEYS=cancel
+  export HAWS_TEST_KEYS=customize,cancel
   run_haws || true
-  assert_output_contains "First Install" || return 1
+  assert_output_contains "HAWS Setup" || return 1
   assert_output_contains "Second Brain Remote" || return 1
   assert_output_contains "[ Off ]" || return 1
   [ ! -d "${FIXTURE_REPO}/.haws/state" ] || return 1
@@ -18,29 +18,41 @@ test_bare_first_launch_opens_default_populated_settings_without_git_calls() {
 
 test_first_install_settings_shows_every_spec_action_except_uninstall() {
   new_fixture
-  export HAWS_TEST_KEYS=cancel
+  export HAWS_TEST_KEYS=customize,cancel
   run_haws || true
-  assert_output_contains "Use Recommended Defaults" || return 1
+  assert_output_contains "Use Default Setup" || return 1
   assert_output_contains "Repositories" || return 1
   assert_output_contains "Skills" || return 1
   assert_output_contains "AI Environments" || return 1
   assert_output_contains "Second Brain" || return 1
   assert_output_contains "Auto Update" || return 1
-  assert_output_contains "Preview Install" || return 1
-  assert_output_contains "Cancel Setup" || return 1
+  assert_output_contains "Apply" || return 1
+  assert_output_contains "Discard Changes" || return 1
+  ! grep -F "Use Recommended Defaults" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  ! grep -F "Cancel Setup" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
   ! grep -F "Uninstall HAWS" "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
 test_first_install_uses_approved_settings_labels() {
   new_fixture
-  export HAWS_TEST_KEYS=cancel
+  export HAWS_TEST_KEYS=customize,cancel
   run_haws || true
   assert_output_contains "Repositories" || return 1
   assert_output_contains "sources" || return 1
   assert_output_contains "Second Brain Remote" || return 1
-  assert_output_contains "Preview Install" || return 1
-  assert_output_contains "Use Recommended Defaults" || return 1
-  assert_output_contains "Cancel Setup" || return 1
+  assert_output_contains "Apply" || return 1
+  assert_output_contains "Use Default Setup" || return 1
+  assert_output_contains "Discard Changes" || return 1
+}
+
+test_first_install_has_separate_setup_landing_choices() {
+  new_fixture
+  export HAWS_TEST_KEYS=cancel
+  run_haws || true
+  assert_output_contains "HAWS Setup" || return 1
+  assert_output_contains "Use Default Setup" || return 1
+  assert_output_contains "Customize Settings" || return 1
+  ! grep -F "=== HAWS Settings ===" "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
 test_legacy_manifest_is_not_misclassified_as_first_install() {
@@ -56,15 +68,15 @@ test_default_setup_only_resets_the_draft() {
   new_fixture
   export HAWS_TEST_KEYS=default,cancel
   run_haws || true
-  assert_output_contains "Recommended defaults restored in draft." || return 1
-  [ ! -d "${FIXTURE_REPO}/.haws/state" ] || return 1
+  [ ! -e "${FIXTURE_REPO}/.haws/state/install.complete" ] || return 1
   [ ! -e "${FIXTURE_HOME}/.haws_manifest" ] || return 1
+  [ ! -s "${CALL_LOG}" ] || return 1
 }
 
 test_cancel_leaves_state_and_integrations_unchanged() {
   new_fixture
   mkdir -p "${FIXTURE_HOME}/.claude"
-  export HAWS_TEST_KEYS=cancel
+  export HAWS_TEST_KEYS=customize,cancel
   run_haws || true
   [ ! -e "${FIXTURE_HOME}/.claude/CLAUDE.md" ] || return 1
   [ ! -e "${FIXTURE_REPO}/.haws/state/install.complete" ] || return 1
@@ -92,7 +104,7 @@ EOF
 test_first_save_apply_configures_only_selected_environments() {
   new_fixture
   mkdir -p "${FIXTURE_HOME}/.claude" "${FIXTURE_HOME}/.gemini"
-  export HAWS_TEST_KEYS=envs=claude,save
+  export HAWS_TEST_KEYS=customize,envs=claude,save
   run_haws || return 1
   [ -f "${FIXTURE_HOME}/.claude/CLAUDE.md" ] || return 1
   [ ! -e "${FIXTURE_HOME}/.gemini/GEMINI.md" ] || return 1
@@ -102,7 +114,7 @@ test_first_save_apply_configures_only_selected_environments() {
 test_first_save_apply_runs_doctor_then_reaches_home() {
   new_fixture
   mkdir -p "${FIXTURE_HOME}/.claude"
-  export HAWS_TEST_KEYS=save
+  export HAWS_TEST_KEYS=customize,save
   run_haws || return 1
   assert_output_contains "Doctor: Ready" || return 1
   assert_output_contains "Home" || return 1
@@ -120,6 +132,7 @@ trap cleanup_fixture EXIT
 run_test test_bare_first_launch_opens_default_populated_settings_without_git_calls
 run_test test_first_install_settings_shows_every_spec_action_except_uninstall
 run_test test_first_install_uses_approved_settings_labels
+run_test test_first_install_has_separate_setup_landing_choices
 run_test test_legacy_manifest_is_not_misclassified_as_first_install
 run_test test_default_setup_only_resets_the_draft
 run_test test_cancel_leaves_state_and_integrations_unchanged

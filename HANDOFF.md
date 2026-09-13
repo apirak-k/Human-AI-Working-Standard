@@ -1,5 +1,9 @@
 # HAWS Recovery & Cross-Device Handoff Dossier
 
+> **Current status authority:** [PROJECT_STATE.md](PROJECT_STATE.md).
+> **Product and execution contract:** [spec.md](spec.md).
+> The checkpoint details below are a historical snapshot from 2026-09-11, not current status. Do not use them to select a branch, task, or merge decision.
+
 **Date**: 2026-09-11  
 **Branch**: `recovery/clean-base`  
 **Current HEAD**: `858ccb4` (prior to this final checkpoint commit)  

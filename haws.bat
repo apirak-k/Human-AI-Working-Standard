@@ -46,7 +46,11 @@ if not defined BASH_CMD (
 
 REM Forward all arguments directly to shared haws.sh core
 cd /d "%HAWS_DIR%"
-"%BASH_CMD%" "%HAWS_SCRIPT%" %*
+if "%~1"=="" (
+    "%BASH_CMD%" --login "%HAWS_SCRIPT%" interactive
+) else (
+    "%BASH_CMD%" --login "%HAWS_SCRIPT%" %*
+)
 set "HAWS_EXIT=%ERRORLEVEL%"
 
 exit /b %HAWS_EXIT%
