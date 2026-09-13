@@ -1,4 +1,40 @@
-# HAWS Master Timeline & Comprehensive Audit Dossier (From `cceb211` to Present)
+# Current old-base Implementation Checkpoint
+
+**Implementation worktree:** `codex/old-base-selected-improvements`
+**Current commit:** `83a1cc0` (`docs: align README with old-base launcher flow`)
+**Previous feature commit:** `0a7d35e` (`feat: add evidence-based health and owned uninstall`)
+**Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
+**Integration:** No merge and no push.
+
+## Confirmed decisions
+
+- Windows uses `haws.bat`; macOS/Linux use `haws.sh`.
+- The old menu and shared cursor/raw-key interaction engine remain in use.
+- Settings keeps draft state until final Install/Update confirmation.
+- Sync uses bounded, measured results and preserves the current branch.
+- Status/Doctor are read-only. Uninstall uses ownership and fingerprint checks.
+- Adapter audit found no selected adapter delta; both adapter/reference trees match.
+
+## Executed verification
+
+- CLI aggregate: 84/84 passed in the Batch 6 pre-commit gate.
+- Batch 5 sync: 12/12 passed.
+- Batch 6 Status/Doctor: 7/7 passed.
+- Batch 6 Uninstall: 10/10 passed.
+- Windows launcher: 9 passed, 1 privilege-dependent symlink case skipped as `[Unverified]`.
+- Codex agent adapter tests: 14/14 passed.
+- `bash -n haws.sh` and `git diff --check`: passed.
+
+## `[Unverified]` and remaining work
+
+- Physical Explorer launch and complete human Windows menu acceptance.
+- External authenticated remotes and host-specific link privileges.
+- Final documentation alignment in `spec.md` and this handoff's historical claims.
+- Merge into `main` and push require separate user authorization.
+
+The dossier below is historical evidence. Its older diagnostic counts and “current head” references are not current implementation claims.
+
+# Historical HAWS Master Timeline & Comprehensive Audit Dossier (From `cceb211` to Present)
 
 > **Audit Baseline Commit**: `cceb211` (Point where 39 original user requirements were reviewed and mapped)  
 > **Previous Head Commit**: `6f54cce` (`feat(lifecycle): add clean uninstaller, commit-msg hook, and notification dispatcher`)  
@@ -181,4 +217,3 @@ When OpenAI Codex / GitHub Copilot resumes work in this environment:
 
 3. **Autonomous Push Restriction**:
    - NEVER execute `git push` autonomously. Always ask for human approval first.
-
