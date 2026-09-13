@@ -25,6 +25,25 @@
 - Codex agent adapter tests: 14/14 passed.
 - `bash -n haws.sh` and `git diff --check`: passed.
 
+## Batch 7 — Adapter audit (2026-09-13)
+
+Scope was limited to `codex/old-base-selected-improvements` versus the unchanged `.worktrees/codex-haws-bootstrap` reference. The seven files below are byte-identical in both trees; SHA-256 evidence is recorded to make the no-change result reproducible.
+
+| Adapter file | Decision | Old-base SHA-256 | Bootstrap SHA-256 |
+| :--- | :--- | :--- | :--- |
+| `ai-configs/claude/CLAUDE.md.template` | KEEP | `2c97db4f35f6c5f4d0f3406f6be8eb7ee985d0b81853fcce5484e631f5286a6d` | `2c97db4f35f6c5f4d0f3406f6be8eb7ee985d0b81853fcce5484e631f5286a6d` |
+| `ai-configs/codex/agents.mjs` | KEEP | `56e279191002d6745bbe465ec7fd8522c7ee149080c57c2e6443d409af8854fc` | `56e279191002d6745bbe465ec7fd8522c7ee149080c57c2e6443d409af8854fc` |
+| `ai-configs/codex/AGENTS.override.md.template` | KEEP | `4848cce848791661cfbe61f64627e7c29e8cfffc6459581e47bd6682e5cf7694` | `4848cce848791661cfbe61f64627e7c29e8cfffc6459581e47bd6682e5cf7694` |
+| `ai-configs/codex/agents.test.mjs` | KEEP | `991d22e0d1e440741c4559b7dd0647fd19a3e271937fa812d10f4a7c797395e6` | `991d22e0d1e440741c4559b7dd0647fd19a3e271937fa812d10f4a7c797395e6` |
+| `ai-configs/copilot/copilot-instructions.md.template` | KEEP | `a8c4733a4011f586ce3e4919cf674d125a58692d65c4f0fd1eeb4641ee8b7a72` | `a8c4733a4011f586ce3e4919cf674d125a58692d65c4f0fd1eeb4641ee8b7a72` |
+| `ai-configs/cursor/haws.mdc.template` | KEEP | `7ee267fa4b2092ae47f715e69770da17ffa48113a776390e4c77a0ab198afad8` | `7ee267fa4b2092ae47f715e69770da17ffa48113a776390e4c77a0ab198afad8` |
+| `ai-configs/gemini/GEMINI.md.template` | KEEP | `930d1a3db44a9b080831958a74a957e63b8eaf20385296bfc0a7710a0e7bf790` | `930d1a3db44a9b080831958a74a957e63b8eaf20385296bfc0a7710a0e7bf790` |
+
+- CHANGE: none; no selected adapter delta exists in the permitted comparison.
+- REJECT: adding or porting `ai-configs/codex/skills.mjs`, `ai-configs/codex/skills.test.mjs`, or `tests/cli/adapters_test.sh`; none exists in either compared tree, and inventing adapter code would violate the Ponytail constraint.
+- Verification: `node --test ai-configs/codex/agents.test.mjs` passed 14/14 with exit code 0. No other adapter test files exist in this worktree.
+- The five pre-existing dirty skill submodules were preserved; no submodule content was changed. Physical Windows checks remain `[Unverified]`.
+
 ## `[Unverified]` and remaining work
 
 - Physical Explorer launch and complete human Windows menu acceptance.
