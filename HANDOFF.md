@@ -1,8 +1,8 @@
 # Current old-base Implementation Checkpoint
 
 **Implementation worktree:** `codex/old-base-selected-improvements`
-**Previous committed checkpoint:** `2dfcb87497af08ca9a799c81cb90a3ba7c5be509` (`docs: record old-base adapter audit`)
-**Current checkpoint:** Batch 8 final documentation and evidence review
+**Previous committed checkpoint:** `5d600e3` (`docs: record old-base HAWS behavior and evidence`)
+**Current checkpoint:** Post-Batch 8 interaction repair — automated verification complete
 **Previous feature commit:** `0a7d35e` (`feat: add evidence-based health and owned uninstall`)
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
 **Integration:** No merge and no push.
@@ -15,14 +15,23 @@
 - Sync uses bounded, measured results and preserves the current branch.
 - Status/Doctor are read-only. Uninstall uses ownership and fingerprint checks.
 - Adapter audit found no selected adapter delta; both adapter/reference trees match.
+- Main-menu Skills category and pack selectors use the shared cursor interaction
+  engine; numeric shortcuts remain accepted for compatibility.
+- Selectable rows expose short action descriptions, and actions report their
+  start and completion/failure state.
 
 ## Executed verification
 
-- Final CLI aggregate: 84/84 passed on 2026-09-13.
+- Earlier Batch 8 CLI aggregate: 84/84 passed on 2026-09-13.
+- Current CLI aggregate: 91/91 passed on 2026-09-14.
+- Current launcher/menu tests: 12/12 passed.
+- Current settings-flow tests: 23/23 passed.
 - Batch 5 sync: 12/12 passed.
 - Batch 6 Status/Doctor: 7/7 passed.
 - Batch 6 Uninstall: 10/10 passed.
-- Windows launcher: 9 passed, 1 privilege-dependent symlink case skipped as `[Unverified]`.
+- Earlier Windows launcher result: 9 passed, 1 privilege-dependent symlink case skipped as `[Unverified]`.
+- Latest Node aggregate: 25 passed and 1 `[Unverified]` file-symlink skip.
+- Direct `haws.bat` checks for `help`, `--help`, and `-h` each exited 0.
 - Codex agent adapter tests: 14/14 passed.
 - `bash -n haws.sh` and `git diff --check`: passed.
 
@@ -98,6 +107,32 @@ Scope was limited to `codex/old-base-selected-improvements` versus the unchanged
 - Batch 8 documentation is committed in this checkpoint after final diff review.
 - Do not infer physical Windows acceptance from these automated results.
 - Stop here; no later batch is started by this checkpoint.
+
+## Post-Batch 8 interaction repair (2026-09-14)
+
+- Root cause: the main-menu Skills route still used line-based numeric prompts
+  for category and pack selection, unlike the shared cursor menu used by the
+  other interactive routes.
+- Change: both selectors now reuse `interactive_menu`; the common menu also
+  accepts numeric shortcuts so existing input remains compatible.
+- Change: `haws.sh` now handles `help`, `--help`, and `-h` with exit code 0.
+- Change: `haws.bat` launches through a Bash wrapper that establishes the
+  required POSIX utility path before delegating to `haws.sh`.
+- Change: Settings now exposes `all active (default)` before the lazy Skills
+  draft is loaded, replaces the AI Environments placeholder with an actionable
+  checklist, and reports catalog loading/ready status.
+- Change: main-menu actions and long-running catalog/preview operations report
+  visible start, progress, completion, or failure status.
+- Regression evidence: launcher/menu tests 12/12; settings-flow tests 23/23,
+  including opening Skills without edits and leaving without a false discard
+  prompt; full CLI aggregate 91/91; Node aggregate 25 passed and 1
+  `[Unverified]` skip.
+- Direct `haws.bat --help` exited 0; the three shell help aliases also passed.
+- No submodule content was changed or staged. Physical Explorer launch,
+  physical key behavior, and host-specific link privileges remain
+  `[Unverified]`.
+- The current interaction repair remains uncommitted; no commit, merge, push,
+  reset, worktree switch, or submodule modification was performed.
 
 ## `[Unverified]` and remaining work
 

@@ -3,7 +3,7 @@
 **Status:** Current implementation contract for the old-base selected worktree  
 **Implementation worktree:** `codex/old-base-selected-improvements`  
 **Reference checkout:** `.worktrees/codex-haws-bootstrap`  
-**Last automated verification:** 2026-09-13 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
+**Last automated verification:** 2026-09-14 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
 **Language:** English
 
 This specification describes behavior implemented in the old-base worktree. It
@@ -30,6 +30,11 @@ The implementation keeps the old terminal interaction engine:
 - `Q`/`q` leaves the current selector.
 - Cursor movement and redraw happen on the existing menu surface.
 - No replacement full-screen renderer is introduced.
+- Main-menu Skills category and pack selectors use the same shared cursor
+  controls; numeric shortcuts remain accepted for compatibility.
+- Selectable menu rows provide a short action description.
+- Actions show a visible start/completion or failure result; catalog-backed
+  routes show a loading/ready status before presenting their selector.
 
 Primary routes:
 
@@ -40,6 +45,8 @@ Setup -> Customize Settings -> Apply -> Preview Install -> Install -> Home
 Later launch -> HAWS Home
 Home -> Sync | Settings | Doctor | Status Details | Uninstall | Exit
 Settings -> Apply -> Preview Install/Update -> Install/Update -> Home
+Settings -> Skills -> Single Skills | Multi-Skill Packs -> Settings
+Settings -> AI Environments -> detected-environment checklist -> Settings
 ```
 
 Cancel and Back preserve or discard draft state according to the existing old
@@ -65,6 +72,11 @@ menu route. Final Install/Update is the first point where the draft persists.
 - Duplicate URL and destination collisions are rejected before mutation.
 - Source identity remains in catalog state.
 - Legacy single-skill and multi-skill-pack organization remains visible.
+- Before the Skills draft is loaded, Settings displays `all active (default)`.
+- Opening Skills loads the catalog with visible progress and leaves without a
+  discard prompt when no edit was made.
+- AI Environments opens an actionable enable/disable checklist for detected
+  environments; changes remain draft-only until final Apply.
 - Disabled source-aware skills are not linked by legacy sync consumers.
 - Reference and implementation submodules remain separate from this contract.
 
@@ -105,21 +117,27 @@ menu route. Final Install/Update is the first point where the draft persists.
 
 ## 8. Evidence
 
-Final automated verification executed on 2026-09-13:
+Final automated verification executed on 2026-09-14:
 
-- `bash -n haws.sh && bash tests/cli/run.sh` under Git Bash exited 0: 84/84
-  CLI tests passed (9 + 14 + 19 + 6 + 7 + 12 + 7 + 10).
+- `bash -n haws.sh && bash tests/cli/run.sh` under Git Bash exited 0: 91/91
+  CLI tests passed (12 + 14 + 23 + 6 + 7 + 12 + 7 + 10).
 - `node --test ai-configs/codex/agents.test.mjs
-  tests/windows_launcher_execution.test.mjs` exited 0: 23 passed and 1
+  tests/windows_launcher_execution.test.mjs` exited 0: 25 passed and 1
   skipped. The Codex adapter suite passed 14/14; the Windows launcher suite
-  passed 9/10, with the file-symlink capability skipped as `[Unverified]`.
+  passed 11/12, with the file-symlink capability skipped as `[Unverified]`.
+- `haws.bat` `help`, `--help`, and `-h` each exited 0 in a direct launcher
+  check.
+- Focused interaction regressions passed: launcher/menu 12/12 and
+  settings-flow 23/23, including action status, skill loading, the actionable
+  AI Environments selector, `all active (default)`, and false-discard coverage.
 - `ai-configs/codex/skills.test.mjs` and `tests/cli/adapters_test.sh` are not
   present in either compared adapter tree; no placeholder tests were created.
 - `git diff --check` passed after the documentation update.
 
 These results are automated evidence, not physical Windows verification or
-human acceptance. No production code or submodule content was changed in
-Batch 8.
+human acceptance. Batch 8 itself was documentation-only; the post-Batch 8
+interaction repair is the scoped `haws.sh` change recorded in this contract.
+No adapter or submodule content was changed.
 
 ## 9. Remaining acceptance
 

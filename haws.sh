@@ -1663,6 +1663,7 @@ _sync_interrupt() {
 
 sync_run() {
     local target_count=0 target row source_id status=0
+    echo "  [*] Preparing synchronization..."
     if [ "${1:-}" = --recover-lock ]; then
         sync_lock_release --recover
         return $?
@@ -2310,7 +2311,13 @@ interactive_menu() {
             item_states+=("$s")
         done
     elif [ "${mode}" = "menu" ]; then
-        item_names=("${items[@]}")
+        for item in "${items[@]}"; do
+            local n="${item%%|*}"
+            local d=""
+            [[ "${item}" == *"|"* ]] && d="${item#*|}"
+            item_names+=("${n}")
+            item_details+=("${d}")
+        done
     else
         item_names=("${items[@]}")
     fi
@@ -2356,13 +2363,25 @@ interactive_menu() {
             fi
         elif [ "${mode}" = "settings" ]; then
             local state_mark=""
+            local detail="${item_details[$idx]:-}"
             case "${item_states[$idx]}" in
                 on) state_mark=" [ On ]" ;;
                 off) state_mark=" [ Off ]" ;;
             esac
-            printf "\033[2K\r%s%s%s\n" "${ptr}" "${item_names[$idx]}" "${state_mark}"
+            if [ -n "${detail}" ]; then
+                printf "\033[2K\r%s%s%s \033[90m— %s\033[0m\n" \
+                    "${ptr}" "${item_names[$idx]}" "${state_mark}" "${detail}"
+            else
+                printf "\033[2K\r%s%s%s\n" "${ptr}" "${item_names[$idx]}" "${state_mark}"
+            fi
         else
-            printf "\033[2K\r%s%s\n" "${ptr}" "${item_names[$idx]}"
+            local detail="${item_details[$idx]:-}"
+            if [ -n "${detail}" ]; then
+                printf "\033[2K\r%s%s \033[90m— %s\033[0m\n" \
+                    "${ptr}" "${item_names[$idx]}" "${detail}"
+            else
+                printf "\033[2K\r%s%s\n" "${ptr}" "${item_names[$idx]}"
+            fi
         fi
     }
 
@@ -2372,7 +2391,7 @@ interactive_menu() {
         echo "Controls: [↑/↓] Navigate | [Space] Toggle | [Enter] Confirm & Save | [q] Cancel"
     elif [ "${mode}" = "settings" ]; then
         echo "=== ${title} ==="
-        echo "Controls: Up/Down Move | Enter Select | Space Toggle | Q Back"
+        echo "Controls: Up/Down Move | Enter Select/Toggle | Space Toggle | Q Back"
     else
         echo "============================================================="
         echo "                       ${title}"
@@ -2388,7 +2407,7 @@ interactive_menu() {
     if [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
         echo ""
         if [ "${mode}" = "settings" ]; then
-            echo "Controls: Up/Down Move | Enter Select | Space Toggle | Q Back"
+            echo "Controls: Up/Down Move | Enter Select/Toggle | Space Toggle | Q Back"
         else
             echo "Controls: Up/Down Move | Enter Select | Q Exit"
         fi
@@ -2418,6 +2437,16 @@ interactive_menu() {
             cursor=$(( (cursor - 1 + total) % total ))
         elif [[ "${key}" == "j" || "${key}" == "J" ]]; then
             cursor=$(( (cursor + 1) % total ))
+        elif [ "${mode}" = "menu" ] && [[ "${key}" =~ ^[0-9]$ ]]; then
+            local numeric_index
+            if [ "${key}" = 0 ]; then
+                numeric_index=$((total - 1))
+            else
+                numeric_index=$((key - 1))
+            fi
+            if [ "${numeric_index}" -ge 0 ] && [ "${numeric_index}" -lt "${total}" ]; then
+                cursor="${numeric_index}"
+            fi
         elif [[ "${key}" == " " || "${key}" == "x" || "${key}" == "X" ]] && \
             { [ "${mode}" = "checklist" ] || [ "${mode}" = "settings" ]; }; then
             if [ "${mode}" = "settings" ]; then
@@ -2444,7 +2473,15 @@ interactive_menu() {
                 fi
             fi
         elif [[ "${key}" == "" ]]; then
-            break
+            if [ "${mode}" = "settings" ] && \
+                { [ "${item_states[$cursor]}" = on ] || [ "${item_states[$cursor]}" = off ]; }; then
+                case "${item_states[$cursor]}" in
+                    on) item_states[$cursor]=off ;;
+                    off) item_states[$cursor]=on ;;
+                esac
+            else
+                break
+            fi
         elif [[ "${key}" == "q" || "${key}" == "Q" ]]; then
             cancelled=1
             break
@@ -2464,7 +2501,7 @@ interactive_menu() {
                 echo "Controls: Up/Down Move | Enter Select | Q Exit"
             elif [ "${mode}" = "settings" ]; then
                 echo ""
-                echo "Controls: Up/Down Move | Enter Select | Space Toggle | Q Back"
+                echo "Controls: Up/Down Move | Enter Select/Toggle | Space Toggle | Q Back"
             fi
         fi
     done
@@ -2755,7 +2792,7 @@ configure_repo_skills() {
 
 run_configure_skills() {
     load_disabled_skills
-    printf "  [*] Scanning skills catalog, please wait...\r"
+    echo "  [*] Scanning skills catalog, please wait..."
     local single_total=0
     local single_names=()
     local single_files=()
@@ -2841,9 +2878,6 @@ run_configure_skills() {
         done
 
         echo ""
-        echo "============================================================="
-        echo "             Configure Active Skills (Enable / Disable)"
-        echo "============================================================="
         echo "Select skill category to configure:"
         printf "  1) Single Skills\n     Status: [Active: %d / %d skills]\n" "${single_active}" "${single_total}"
         echo "  2) Multi-Skill Packs"
@@ -2854,12 +2888,15 @@ run_configure_skills() {
         echo "  0) Back to Main Menu"
         echo ""
 
-        local sub_choice="0"
-        read -r -p "Enter selection [0-2] (default: 0): " sub_choice || sub_choice="0"
-        sub_choice="$(echo "${sub_choice}" | tr -d ' \r\n')"
-        [ -z "${sub_choice}" ] && sub_choice="0"
-
-        if [ "${sub_choice}" = "1" ]; then
+        local category_items=(
+            "Single Skills|Configure individual skills"
+            "Multi-Skill Packs|Configure skills by pack"
+            "Back to Main Menu|Return to the main menu"
+        )
+        if interactive_menu menu "Configure Active Skills (Enable / Disable)" \
+            "${category_items[@]}"; then
+            case "${INTERACTIVE_MENU_SELECTION}" in
+            0)
             echo ""
             echo "  [*] Loading Single Skills checklist..."
             local chk_items=()
@@ -2888,7 +2925,8 @@ run_configure_skills() {
                 echo "  [INFO] Configuration cancelled. No changes saved."
             fi
 
-        elif [ "${sub_choice}" = "2" ]; then
+            ;;
+        1)
             echo ""
             echo "Select a Skill Pack to configure:"
             for ((i=0; i<${#pack_names[@]}; i++)); do
@@ -2896,24 +2934,28 @@ run_configure_skills() {
             done
             echo "   0) Back"
             echo ""
-            local p_idx=""
-            if ! read -r -p "Select pack [0-${#pack_names[@]}] (default: 0): " p_idx; then
-                [ -n "${p_idx}" ] || p_idx="0"
-            fi
-            p_idx="$(echo "${p_idx}" | tr -d ' \r\n')"
-            [ -z "${p_idx}" ] && p_idx="0"
-
-            if [[ "${p_idx,,}" =~ ^(q|quit|back|b)$ ]]; then
+            local pack_items=()
+            for pack_name in "${pack_names[@]}"; do
+                pack_items+=("${pack_name}|Configure skills in this pack")
+            done
+            pack_items+=("Back to Main Menu|Return to the skill categories")
+            if ! interactive_menu menu "Select a Skill Pack to configure" \
+                "${pack_items[@]}"; then
                 break
-            elif [[ "${p_idx}" =~ ^[1-9][0-9]*$ ]] && [ "${p_idx}" -le "${#pack_names[@]}" ]; then
-                local sel_pack_dir="${pack_repos[$((p_idx - 1))]}"
-                local sel_pack_name="${pack_names[$((p_idx - 1))]}"
+            elif [ "${INTERACTIVE_MENU_SELECTION}" -lt "${#pack_names[@]}" ]; then
+                local sel_pack_dir="${pack_repos[${INTERACTIVE_MENU_SELECTION}]}"
+                local sel_pack_name="${pack_names[${INTERACTIVE_MENU_SELECTION}]}"
                 echo ""
                 echo "  [*] Loading skills for ${sel_pack_name}, please wait..."
                 configure_repo_skills "${sel_pack_dir}" "${sel_pack_name}"
             fi
 
-        elif [ "${sub_choice}" = "0" ] || [[ "${sub_choice,,}" =~ ^(q|quit|back|b)$ ]]; then
+            ;;
+        *)
+            break
+            ;;
+            esac
+        else
             break
         fi
     done
@@ -3773,6 +3815,7 @@ uninstall_run() {
     done
 
     local plan
+    echo "  [*] Building uninstall preview..."
     if [ -n "$requested" ]; then
         plan="$(uninstall_plan "$requested")" || return $?
     else
@@ -4394,9 +4437,46 @@ _settings_skill_selector() {
     export HAWS_DRAFT_SKILLS
 }
 
+settings_environments_page() {
+    local environment label active
+    local items=() environments=()
+    while IFS= read -r environment; do
+        [ -n "${environment}" ] || continue
+        label="$(_haws_environment_label "${environment}")"
+        active=0
+        _settings_list_contains "${HAWS_DRAFT_ENVIRONMENTS:-}" "${environment}" && active=1
+        items+=("${label}|${environment}|${active}")
+        environments+=("${environment}")
+    done < <(_haws_detected_environments)
+
+    if [ "${#items[@]}" -eq 0 ]; then
+        echo "  [INFO] No AI environments detected on this machine."
+        return 0
+    fi
+
+    declare -A CHECKLIST_RESULTS=()
+    if ! interactive_checklist "Configure AI Environments (Enable / Disable)" "${items[@]}"; then
+        echo "  [INFO] Environment configuration cancelled. No changes saved."
+        return 1
+    fi
+
+    local selected="" i
+    for ((i=0; i<${#environments[@]}; i++)); do
+        if [ "${CHECKLIST_RESULTS[${items[$i]%%|*}]:-0}" -eq 1 ]; then
+            selected="${selected}${environments[$i]}"$'\n'
+        fi
+    done
+    HAWS_DRAFT_ENVIRONMENTS="${selected}"
+    HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
+    export HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED
+    echo "AI environment draft updated; it will be applied only after Preview and Apply."
+}
+
 settings_skills_page() {
+    echo "  [*] Loading skills catalog, please wait..."
     _settings_ensure_skill_draft || return 1
     local rows="$(catalog_skills)"
+    echo "  [✓] Skills catalog ready."
     local id display source_id entrypoint active source_count
     local single_total=0 single_active=0
     local pack_total=0
@@ -4435,7 +4515,9 @@ settings_skills_page() {
         echo "     Status: [${pack_total} pack(s)]"
         echo ""
         if interactive_menu menu "Configure Active Skills (Enable / Disable)" \
-            "Single Skills" "Multi-Skill Packs" "Back to Settings"; then
+            "Single Skills|Configure individual skills" \
+            "Multi-Skill Packs|Configure skills by pack" \
+            "Back to Settings|Return without changing the draft"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0)
                     _settings_skill_selector "Configure Single Skills" "${rows}" || true
@@ -4447,9 +4529,9 @@ settings_skills_page() {
                         if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
                             pack_label="${pack_label} [${pack_ids[$i]}]"
                         fi
-                        pack_items+=("${pack_label}")
+                        pack_items+=("${pack_label}|Configure skills in this pack")
                     done
-                    pack_items+=("Back to Settings")
+                    pack_items+=("Back to Settings|Return to the settings menu")
                     if interactive_menu menu "Select a Skill Pack to configure" \
                         "${pack_items[@]}"; then
                         [ "${INTERACTIVE_MENU_SELECTION}" -lt "${#pack_ids[@]}" ] || continue
@@ -4518,7 +4600,9 @@ settings_repositories_page() {
     local url
     while true; do
         if ! interactive_menu menu "Repositories" \
-            "Add Git Repository" "Remove Git Repository" "Back to Settings"; then
+            "Add Git Repository|Add a repository to the draft" \
+            "Remove Git Repository|Remove a repository from the draft" \
+            "Back to Settings|Return without changing the draft"; then
             return 0
         fi
         case "${INTERACTIVE_MENU_SELECTION}" in
@@ -4549,9 +4633,11 @@ settings_page() {
     while IFS= read -r environment; do
         [ -n "${environment}" ] && environment_count=$((environment_count + 1))
     done <<< "${HAWS_DRAFT_ENVIRONMENTS:-}"
+    local skills_detail="all active (default)"
+    [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && skills_detail="draft selection loaded"
     local items=(
         "Repositories|Existing repository sources|-"
-        "Skills|Existing Single Skills and Multi-Skill Packs|-"
+        "Skills|${skills_detail}|-"
         "AI Environments|${environment_count} selected|-"
         "Second Brain Remote|Toggle remote participation|${HAWS_DRAFT_SECOND_BRAIN:-off}"
         "Auto Update|Toggle remote update work during explicit Sync|${HAWS_DRAFT_AUTO_UPDATE:-on}"
@@ -4573,7 +4659,7 @@ settings_page() {
                 return 2
                 ;;
             2)
-                echo "This Settings draft row is preserved for the next catalog batch."
+                settings_environments_page || true
                 return 2
                 ;;
             3|4)
@@ -4668,11 +4754,20 @@ settings_plan_build() {
 
 settings_preview() {
     local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}"
+    local skills_was_loaded="${HAWS_DRAFT_SKILLS_LOADED:-0}"
+    if [ "${skills_was_loaded}" != 1 ]; then
+        echo "  [*] Loading skills catalog, please wait..."
+    fi
     _settings_ensure_skill_draft || return 1
+    if [ "${skills_was_loaded}" != 1 ]; then
+        echo "  [✓] Skills catalog ready."
+    fi
     echo ""
     if [ "${HAWS_PLAN_CHANGED:-1}" -eq 0 ]; then
         echo "No settings have changed."
-        if interactive_menu menu "${title}" "Back to Settings" "Back to Home"; then
+        if interactive_menu menu "${title}" \
+            "Back to Settings|Review or edit the draft" \
+            "Back to Home|Leave the settings flow"; then
             [ "${INTERACTIVE_MENU_SELECTION}" -eq 0 ] && return 2
             return 1
         fi
@@ -4730,7 +4825,9 @@ settings_preview() {
     echo "Auto Update"
     echo "  $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE:-on}")"
     if interactive_menu menu "${title}" \
-        "${HAWS_PLAN_KIND:-Install}" "Back to Settings" "Cancel"; then
+        "${HAWS_PLAN_KIND:-Install}|Apply this plan" \
+        "Back to Settings|Review or edit the draft" \
+        "Cancel|Discard the draft and leave"; then
         case "${INTERACTIVE_MENU_SELECTION}" in
             0) return 0 ;;
             1) return 2 ;;
@@ -4863,11 +4960,14 @@ settings_apply_final() {
             echo "Invalid remote URL. No changes saved."
             return 1
         fi
+        echo "  [*] Checking Second Brain Remote access (timeout: 5s)..."
         if ! _haws_remote_access_check "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"; then
-            echo "Remote validation failed. No changes saved."
+            echo "  [!] Remote validation failed. No changes saved."
             return 1
         fi
+        echo "  [✓] Second Brain Remote access verified."
     fi
+    echo "  [*] Applying settings draft..."
     settings_save "${HAWS_DRAFT_SECOND_BRAIN:-off}" \
         "${HAWS_DRAFT_AUTO_UPDATE:-on}" "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" || return 1
     if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
@@ -4990,7 +5090,10 @@ setup_run() {
         echo "AI Environments     Default"
         echo "Second Brain Remote Off"
         echo "Auto Update         On"
-        if interactive_menu menu "HAWS Setup" "Use Default Setup" "Customize Settings" "Exit"; then
+        if interactive_menu menu "HAWS Setup" \
+            "Use Default Setup|Preview the standard HAWS setup" \
+            "Customize Settings|Edit settings before preview" \
+            "Exit|Leave setup without changes"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0)
                     settings_draft_load || return 1
@@ -5030,7 +5133,13 @@ home_run() {
         echo "Status: Installed"
         echo "Second Brain Remote: $(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
         echo "Auto Update: $(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
-        if interactive_menu menu "HAWS Home" "Sync" "Settings" "Doctor" "Status Details" "Uninstall" "Exit"; then
+        if interactive_menu menu "HAWS Home" \
+            "Sync|Run explicit synchronization" \
+            "Settings|Edit the HAWS settings draft" \
+            "Doctor|Run read-only diagnostics" \
+            "Status Details|Show current health details" \
+            "Uninstall|Preview removal of HAWS-owned items" \
+            "Exit|Leave HAWS Home"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0) run_sync ;;
                 1)
@@ -5063,21 +5172,26 @@ run_lifecycle() {
 
 run_main_menu() {
     local items=(
-        "Skills"
-        "Repositories"
-        "Second Brain"
-        "Sync"
-        "Status"
-        "Doctor"
-        "Uninstall"
-        "Exit"
+        "Skills|Configure active skills"
+        "Repositories|Manage repository sources"
+        "Second Brain|View Second Brain status"
+        "Sync|Run explicit synchronization"
+        "Status|Show current HAWS status"
+        "Doctor|Run read-only diagnostics"
+        "Uninstall|Preview removal of HAWS-owned items"
+        "Exit|Leave the main menu"
     )
 
     run_menu_action() {
+        local action="${1:-action}"
+        shift || true
         local status=0
+        echo "  [*] Starting ${action}..."
         bash "${SCRIPT_DIR}/haws.sh" "$@" || status=$?
         if [ "${status}" -ne 0 ]; then
             echo "  [ERROR] Action failed (exit ${status})."
+        else
+            echo "  [✓] ${action} completed."
         fi
     }
 
@@ -5086,13 +5200,13 @@ run_main_menu() {
             return 0
         fi
         case "${INTERACTIVE_MENU_SELECTION}" in
-            0) run_menu_action skills ;;
-            1) run_menu_action kit list ;;
-            2) run_menu_action user status ;;
-            3) run_menu_action sync ;;
-            4) run_menu_action status ;;
-            5) run_menu_action doctor ;;
-            6) run_menu_action uninstall ;;
+            0) run_menu_action "Skills" skills ;;
+            1) run_menu_action "Repositories" kit list ;;
+            2) run_menu_action "Second Brain" user status ;;
+            3) run_menu_action "Sync" sync ;;
+            4) run_menu_action "Status" status ;;
+            5) run_menu_action "Doctor" doctor ;;
+            6) run_menu_action "Uninstall" uninstall ;;
             7) return 0 ;;
         esac
     done
@@ -5100,6 +5214,9 @@ run_main_menu() {
 
 if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ]; then
 case "${COMMAND}" in
+    help|--help|-h)
+        echo "Usage: ./haws.sh [menu|setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents] [--clean]"
+        ;;
     menu|interactive)
         shift || true
         if [ "${BARE_LAUNCH}" = 1 ]; then

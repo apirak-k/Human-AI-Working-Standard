@@ -21,6 +21,14 @@ Double-click **`haws.bat`** in the HAWS repository root. It locates Git Bash and
 - After installation, launch opens **HAWS Home**.
 - Use `Up`/`Down` to move, `Enter` to select, `Space` for checklist items, and `Q` to leave a menu.
 - Setup, Sync, Doctor, and Uninstall run only after the matching menu action. Launch does not auto-sync or auto-run Doctor.
+- Selectable rows include a short action description, and actions report when
+  they start and complete.
+- Skills and AI Environments show an explicit loading/result state. If the
+  Skills draft has not been loaded, Settings shows `all active (default)`.
+
+The main-menu Skills category and pack selectors use the same Up/Down/Enter
+controls as the other interactive menus. Numeric shortcuts remain accepted for
+compatibility.
 
 `haws.bat` is the Windows launcher. macOS and Linux use `./haws.sh`; the shared shell engine keeps behavior and state semantics aligned without requiring one launcher file for every OS.
 
@@ -30,7 +38,7 @@ are recorded below.
 
 ### Old-base verification checkpoint
 
-Executed on 2026-09-13 in the old-base worktree with Git Bash 5.3.15 and Node.js
+Executed on 2026-09-14 in the old-base worktree with Git Bash 5.3.15 and Node.js
 v22.14.0:
 
 ```bash
@@ -38,9 +46,14 @@ bash -n haws.sh && bash tests/cli/run.sh
 node --test ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
 ```
 
-- CLI aggregate: 84/84 passed; the command exited 0.
-- Node suites: 23 passed and 1 skipped; the command exited 0. The skipped case
+- CLI aggregate: 91/91 passed; the command exited 0.
+- Node suites: 25 passed and 1 skipped; the command exited 0. The skipped case
   requires Windows file-symlink privilege and remains `[Unverified]`.
+- `haws.bat` `help`, `--help`, and `-h` each exited 0 in the direct launcher
+  check.
+- Settings-flow coverage includes the actionable AI Environments selector and
+  verifies that opening Skills without edits does not show a false discard
+  prompt.
 - `ai-configs/codex/skills.test.mjs` is not present, so no unmeasured adapter
   coverage is claimed.
 

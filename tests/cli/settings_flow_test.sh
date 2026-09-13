@@ -72,6 +72,9 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     assert_output_contains 'Auto Update' || return 1
     assert_output_contains 'Apply' || return 1
     assert_output_contains 'Discard Changes' || return 1
+    assert_output_contains 'Existing repository sources' || return 1
+    assert_output_contains 'all active (default)' || return 1
+    assert_output_contains 'Accept the draft for preview' || return 1
     assert_output_not_contains 'HAWS Settings — First Install'
 }
 
@@ -97,6 +100,46 @@ test_settings_skills_route_keeps_old_single_pack_labels() {
     assert_file_not_exists "${FIXTURE_PROJECT}/skills.disabled"
 }
 
+test_settings_skills_without_edits_has_no_false_discard_prompt() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}\nq"
+    input+="q"
+    run_haws_input "${input}" || true
+    assert_output_not_contains 'Discard Changes?' || return 1
+    assert_output_not_contains 'You have unapplied changes in Settings.'
+}
+
+test_settings_skills_shows_catalog_loading_status() {
+    local down=$'\033[B'
+    local input="${down}\n${down}\nqq"
+    run_haws_input "${input}" || true
+    assert_output_contains '[*] Loading skills catalog, please wait...' || return 1
+    assert_output_contains '[✓] Skills catalog ready.'
+}
+
+test_settings_ai_environments_opens_an_actionable_selector() {
+    mkdir -p "${FIXTURE_HOME}/.claude" "${FIXTURE_HOME}/.codex" || return 1
+    local down=$'\033[B'
+    local input="${down}\n${down}${down}\n"
+    input+="${down} \n"
+    input+="qq"
+    run_haws_input "${input}" || true
+    assert_output_contains 'Configure AI Environments' || return 1
+    assert_output_contains 'Claude Code' || return 1
+    assert_output_contains 'OpenAI Codex' || return 1
+    assert_output_not_contains 'This Settings draft row is preserved for the next catalog batch.'
+}
+
+test_settings_enter_toggles_auto_update_and_reaches_preview() {
+    local down=$'\033[B'
+    local input="${down}${down}${down}${down}\n"
+    input+="${down}\nq"
+    run_haws_input "${input}" settings || true
+    assert_output_contains 'HAWS — Preview Install' || return 1
+    assert_output_contains 'Auto Update [ Off ]' || return 1
+}
+
 test_settings_apply_reaches_preview_without_persisting() {
     local down=$'\033[B'
     local input="${down}\n"
@@ -104,6 +147,8 @@ test_settings_apply_reaches_preview_without_persisting() {
     run_haws_input "${input}" || return 1
     assert_output_contains 'HAWS Settings' || return 1
     assert_output_contains 'HAWS — Preview Install' || return 1
+    assert_output_contains '[*] Loading skills catalog, please wait...' || return 1
+    assert_output_contains '[✓] Skills catalog ready.' || return 1
     assert_output_contains 'Install' || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv" || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete"
@@ -340,6 +385,10 @@ run_test test_default_setup_reaches_preview_install_before_cancel
 run_test test_customize_setup_reaches_lifecycle_neutral_settings
 run_test test_settings_repositories_route_keeps_old_actions
 run_test test_settings_skills_route_keeps_old_single_pack_labels
+run_test test_settings_skills_without_edits_has_no_false_discard_prompt
+run_test test_settings_skills_shows_catalog_loading_status
+run_test test_settings_ai_environments_opens_an_actionable_selector
+run_test test_settings_enter_toggles_auto_update_and_reaches_preview
 run_test test_settings_apply_reaches_preview_without_persisting
 run_test test_preview_back_to_settings_preserves_draft
 run_test test_preview_cancel_discards_draft_and_returns_to_setup
