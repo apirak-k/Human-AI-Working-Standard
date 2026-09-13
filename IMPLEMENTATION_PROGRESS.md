@@ -54,3 +54,12 @@ Task 2: implementation complete and reviewed; commit checkpoint follows. Next: B
 - Green evidence after the correction: `bash -n haws.sh` plus CLI `8/8`, Windows launcher `7/7`, Codex-agent regression `14/14`, and `git diff --check` all passed.
 - PTY runtime check exercised Down then q and observed cursor hide/restore, relative row movement, and per-row clearing; the source audit found no full-screen clear sequence in `haws.sh`.
 - Self-review found no new dependency, renderer/input duplication, dead main-menu renderer, or changes outside the implementation worktree. Physical Explorer acceptance remains `[Unverified]` and no merge or push was performed.
+
+## Task 3 / Batch 2 completion
+
+- Added the smallest local-state boundary to the old `haws.sh`: settings TSV load/save, compatible AI-environment disabled-file load/save, ownership records, and atomic sync-lock acquire/release.
+- Preserved the existing `skills.disabled` loader/saver and added a legacy-named loader alias; no replacement or migration rewrote that file. Empty `ai-configs/environments.disabled` leaves every environment enabled.
+- Settings and ownership files use complete temporary files followed by rename. A disposable pre-rename failure leaves the previous settings file byte-for-byte intact and removes the stage file. Unchanged disabled-environment selections compare parsed entries and leave original bytes unchanged, including CRLF.
+- Red evidence: the new state suite initially failed all 9 tests because the state APIs were absent from the old `haws.sh` path.
+- Green evidence: Batch 2 state suite `13/13`; Batch 1 launcher/menu suite `8/8`; Windows launcher suite `7/7`; Codex-agent regression `14/14`; `bash -n` and `git diff --check` passed.
+- Self-review found no new runtime module, network operation, second renderer, or unbounded lock recovery. Physical Windows acceptance and human acceptance remain `[Unverified]` for the final end-to-end gate. No reference checkout was edited; no merge or push was performed.

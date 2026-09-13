@@ -519,6 +519,334 @@ extract_skill_desc() {
     echo "$sdesc"
 }
 
+_haws_state_dir() {
+    if [ -n "${HAWS_STATE_DIR:-}" ]; then
+        printf '%s\n' "${HAWS_STATE_DIR}"
+    else
+        printf '%s/.haws/state\n' "${SCRIPT_DIR}"
+    fi
+}
+
+_haws_compat_file() {
+    local filename="$1"
+    local candidate
+    for candidate in \
+        "${SCRIPT_DIR}/ai-configs/${filename}" \
+        "${SCRIPT_DIR}/config/${filename}" \
+        "${SCRIPT_DIR}/${filename}"; do
+        if [ -f "${candidate}" ]; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+    done
+    printf '%s/ai-configs/%s\n' "${SCRIPT_DIR}" "${filename}"
+}
+
+_haws_sha256() {
+    local path="$1"
+    [ -f "${path}" ] || return 0
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "${path}" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "${path}" | awk '{print $1}'
+    else
+        cksum "${path}" | awk '{print $1 ":" $2}'
+    fi
+}
+
+_haws_state_replace() {
+    local temporary="$1"
+    local destination="$2"
+    [ -f "${temporary}" ] || return 1
+    mkdir -p "$(dirname "${destination}")" || return 1
+    # Redirection has closed the complete temporary file before this rename.
+    if [ "${HAWS_TEST_FAIL_BEFORE_RENAME:-0}" = 1 ] || \
+        [ "${HAWS_TEST_FAIL_BEFORE_SETTINGS_RENAME:-0}" = 1 ]; then
+        return 70
+    fi
+    mv -f -- "${temporary}" "${destination}"
+}
+
+settings_defaults() {
+    HAWS_SECOND_BRAIN_ENABLED="off"
+    HAWS_SECOND_BRAIN_REMOTE=""
+    HAWS_AUTO_UPDATE="on"
+    SECOND_BRAIN_ENABLED="off"
+    AUTO_UPDATE="on"
+    export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE \
+        HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+}
+
+_haws_setting_is_toggle() {
+    [ "${1:-}" = on ] || [ "${1:-}" = off ]
+}
+
+settings_load() {
+    local file="$(_haws_state_dir)/settings.tsv"
+    settings_defaults
+    [ -f "${file}" ] || return 0
+
+    local key value extra
+    while IFS=$'\t' read -r key value extra || [ -n "${key:-}" ]; do
+        [ -n "${key:-}" ] || continue
+        case "${key}" in
+            schema_version)
+                [ "${value}" = 1 ] && [ -z "${extra:-}" ] || return 2
+                ;;
+            second_brain|second_brain_enabled)
+                _haws_setting_is_toggle "${value}" && [ -z "${extra:-}" ] || return 2
+                HAWS_SECOND_BRAIN_ENABLED="${value}"
+                SECOND_BRAIN_ENABLED="${value}"
+                ;;
+            second_brain_remote)
+                [ -z "${extra:-}" ] || return 2
+                HAWS_SECOND_BRAIN_REMOTE="${value}"
+                ;;
+            auto_update)
+                _haws_setting_is_toggle "${value}" && [ -z "${extra:-}" ] || return 2
+                HAWS_AUTO_UPDATE="${value}"
+                AUTO_UPDATE="${value}"
+                ;;
+            *)
+                return 2
+                ;;
+        esac
+    done < "${file}"
+    export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE \
+        HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+}
+
+settings_save() {
+    local second_brain auto_update second_brain_remote
+    case "${1:-}" in
+        second_brain|second_brain_enabled|auto_update|second_brain_remote)
+            local setting_name="$1"
+            local setting_value="${2:-}"
+            settings_load || return $?
+            case "${setting_name}" in
+                second_brain|second_brain_enabled)
+                    second_brain="${setting_value}"
+                    auto_update="${HAWS_AUTO_UPDATE}"
+                    second_brain_remote="${HAWS_SECOND_BRAIN_REMOTE}"
+                    ;;
+                auto_update)
+                    second_brain="${HAWS_SECOND_BRAIN_ENABLED}"
+                    auto_update="${setting_value}"
+                    second_brain_remote="${HAWS_SECOND_BRAIN_REMOTE}"
+                    ;;
+                second_brain_remote)
+                    second_brain="${HAWS_SECOND_BRAIN_ENABLED}"
+                    auto_update="${HAWS_AUTO_UPDATE}"
+                    second_brain_remote="${setting_value}"
+                    ;;
+            esac
+            ;;
+        *)
+            second_brain="${1:-${HAWS_SECOND_BRAIN_ENABLED:-off}}"
+            auto_update="${2:-${HAWS_AUTO_UPDATE:-on}}"
+            if [ "$#" -ge 3 ]; then
+                second_brain_remote="$3"
+            else
+                second_brain_remote="${HAWS_SECOND_BRAIN_REMOTE:-}"
+            fi
+            ;;
+    esac
+    _haws_setting_is_toggle "${second_brain}" || return 2
+    _haws_setting_is_toggle "${auto_update}" || return 2
+
+    local state="$(_haws_state_dir)"
+    local file="${state}/settings.tsv"
+    local temporary="${state}/settings.stage.$$"
+    mkdir -p "${state}" || return 1
+    {
+        printf 'schema_version\t1\n'
+        printf 'second_brain\t%s\n' "${second_brain}"
+        [ -z "${second_brain_remote}" ] ||
+            printf 'second_brain_remote\t%s\n' "${second_brain_remote}"
+        printf 'auto_update\t%s\n' "${auto_update}"
+    } > "${temporary}" || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    _haws_state_replace "${temporary}" "${file}"
+    local result=$?
+    rm -f -- "${temporary}"
+    [ "${result}" -eq 0 ] || return "${result}"
+    HAWS_SECOND_BRAIN_ENABLED="${second_brain}"
+    HAWS_SECOND_BRAIN_REMOTE="${second_brain_remote}"
+    HAWS_AUTO_UPDATE="${auto_update}"
+    SECOND_BRAIN_ENABLED="${second_brain}"
+    AUTO_UPDATE="${auto_update}"
+    export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE \
+        HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+}
+
+disabled_environments_load() {
+    declare -gA DISABLED_ENVIRONMENTS=()
+    declare -gA DISABLED_ENVS=()
+    local dfile="$(_haws_compat_file environments.disabled)"
+    local line
+    if [ -f "${dfile}" ]; then
+        while IFS= read -r line || [ -n "${line}" ]; do
+            line="${line%$'\r'}"
+            line="${line%%#*}"
+            line="${line#${line%%[![:space:]]*}}"
+            line="${line%${line##*[![:space:]]}}"
+            [ -n "${line}" ] || continue
+            DISABLED_ENVIRONMENTS["${line}"]=1
+            DISABLED_ENVS["${line}"]=1
+        done < "${dfile}"
+    fi
+    HAWS_DISABLED_ENVIRONMENTS_FILE="${dfile}"
+    export HAWS_DISABLED_ENVIRONMENTS_FILE
+}
+
+disabled_environments_save_if_changed() {
+    local dfile="${HAWS_DISABLED_ENVIRONMENTS_FILE:-$(_haws_compat_file environments.disabled)}"
+    local state="$(_haws_state_dir)"
+    local temporary="${state}/environments.disabled.stage.$$"
+    local desired_signature current_signature env
+    local desired=()
+
+    if [ "${1:-}" = --all-enabled ]; then
+        shift
+    elif [ "$#" -gt 0 ]; then
+        desired=("$@")
+    else
+        for env in "${!DISABLED_ENVIRONMENTS[@]}"; do
+            desired+=("${env}")
+        done
+    fi
+    desired_signature="$(printf '%s\n' "${desired[@]}" | sed '/^$/d' | sort)"
+    current_signature=""
+    if [ -f "${dfile}" ]; then
+        current_signature="$(sed -e 's/\r$//' -e 's/#.*//' "${dfile}" |
+            sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' |
+            sed '/^$/d' | sort)"
+    fi
+    if [ "${desired_signature}" = "${current_signature}" ]; then
+        return 0
+    fi
+    [ "${#desired[@]}" -gt 0 ] || {
+        [ -f "${dfile}" ] || return 0
+    }
+    mkdir -p "${state}" "$(dirname "${dfile}")" || return 1
+    {
+        printf '# HAWS Disabled AI Environments\n'
+        printf '# Environments listed here will not receive global pointers or linked skills\n'
+        printf '%s\n' "${desired[@]}" | sed '/^$/d' | sort
+    } > "${temporary}" || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    _haws_state_replace "${temporary}" "${dfile}"
+    local result=$?
+    rm -f -- "${temporary}"
+    [ "${result}" -eq 0 ] || return "${result}"
+    disabled_environments_load
+}
+
+# Keep the naming used by later state consumers without replacing the old
+# skills.disabled implementation below.
+disabled_envs_load() { disabled_environments_load "$@"; }
+disabled_envs_save() { disabled_environments_save_if_changed "$@"; }
+
+ownership_record() {
+    local group="${1:-}" kind="${2:-}" path="${3:-}"
+    local source="${4:-}" fingerprint="${5:-}"
+    [ -n "${group}" ] && [ -n "${kind}" ] && [ -n "${path}" ] || return 2
+    local state="$(_haws_state_dir)"
+    local file="${state}/ownership.tsv"
+    local temporary="${state}/ownership.stage.$$"
+    mkdir -p "${state}" || return 1
+    awk -F $'\t' -v OFS=$'\t' -v group="${group}" -v kind="${kind}" \
+        -v path="${path}" -v source="${source}" -v fingerprint="${fingerprint}" '
+        $1 == group && $2 == kind && $3 == path {
+            if (!found) print group, kind, path, source, fingerprint
+            found = 1
+            next
+        }
+        { print }
+        END {
+            if (!found) print group, kind, path, source, fingerprint
+        }
+    ' "${file}" 2>/dev/null > "${temporary}" || {
+        if [ -f "${file}" ]; then
+            rm -f -- "${temporary}"
+            return 1
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\n' \
+            "${group}" "${kind}" "${path}" "${source}" "${fingerprint}" > "${temporary}" || {
+            rm -f -- "${temporary}"
+            return 1
+        }
+    }
+    _haws_state_replace "${temporary}" "${file}"
+    local result=$?
+    rm -f -- "${temporary}"
+    return "${result}"
+}
+
+ownership_list() {
+    local group="${1:-}"
+    local file="$(_haws_state_dir)/ownership.tsv"
+    [ -f "${file}" ] || return 0
+    if [ -n "${group}" ]; then
+        awk -F $'\t' -v group="${group}" '$1 == group' "${file}"
+    else
+        cat -- "${file}"
+    fi
+}
+
+sync_lock_acquire() {
+    local state="$(_haws_state_dir)"
+    local lock="${state}/sync.lock"
+    local pid timestamp
+    mkdir -p "${state}" || return 1
+    if mkdir "${lock}" 2>/dev/null; then
+        printf '%s\n' "$$" > "${lock}/pid"
+        date +%s > "${lock}/timestamp"
+        return 0
+    fi
+    pid="$(cat "${lock}/pid" 2>/dev/null || true)"
+    timestamp="$(cat "${lock}/timestamp" 2>/dev/null || true)"
+    if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+        echo "Blocked: sync already running (pid ${pid})" >&2
+        return 1
+    fi
+    echo "Blocked: stale sync lock (pid ${pid:-unknown}, timestamp ${timestamp:-unknown}); run sync_lock_release --recover after review" >&2
+    return 2
+}
+
+sync_lock_release() {
+    local lock="$(_haws_state_dir)/sync.lock"
+    local owner="${1:-}"
+    local pid
+    [ -d "${lock}" ] || return 0
+    pid="$(cat "${lock}/pid" 2>/dev/null || true)"
+    if [ "${owner}" = --recover ] || [ "${owner}" = recover ]; then
+        if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            echo "Blocked: refusing to recover live sync lock (pid ${pid})" >&2
+            return 1
+        fi
+    elif [ "${pid}" != "$$" ]; then
+        echo "Blocked: sync lock is owned by pid ${pid:-unknown}" >&2
+        return 1
+    fi
+    rm -f -- "${lock}/pid" "${lock}/timestamp" && rmdir -- "${lock}"
+}
+
+state_init() {
+    local state="$(_haws_state_dir)"
+    mkdir -p "${state}" || return 1
+    settings_load || return $?
+    if [ ! -f "${state}/settings.tsv" ]; then
+        settings_save || return $?
+    fi
+    disabled_environments_load
+    load_disabled_skills
+}
+
 load_disabled_skills() {
     DISABLED_SKILLS=()
     local dfile="${SCRIPT_DIR}/skills.disabled"
@@ -530,6 +858,8 @@ load_disabled_skills() {
         done < "${dfile}"
     fi
 }
+
+disabled_skills_load() { load_disabled_skills "$@"; }
 
 save_disabled_skills() {
     local dfile="${SCRIPT_DIR}/skills.disabled"
@@ -2602,6 +2932,7 @@ run_main_menu() {
     done
 }
 
+if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ]; then
 case "${COMMAND}" in
     menu|interactive)
         shift || true
@@ -2669,3 +3000,4 @@ case "${COMMAND}" in
         exit 1
         ;;
 esac
+fi
