@@ -14,16 +14,20 @@ The actual goal and required outcome always take priority over following rigid p
 
 ## Quick Install and Setup
 
-### Windows 1-Click Launchers (Zero Terminal Needed)
-If you are on Windows, you don't even need to open a terminal or type any commands:
-* **`1-CLICK-SYNC.bat`** : **Double-click in Windows File Explorer** — Smart 1-click launcher: automatically launches interactive Setup on first run (Kit selection & hooks), and performs seamless auto-update, sync, and doctor diagnostics on subsequent runs!
-* **`SETUP.bat`** : **Double-click in Windows File Explorer** to launch interactive Skill Kit configuration anytime (select standard kit, prune existing packs, or add custom Git links).
-* **`2nd-BRAIN-TOGGLE.bat`** : **Double-click in Windows File Explorer** to connect or toggle your Second Brain cloud sync between Local-Only and Cloud mode.
+### Windows launcher
+Double-click **`haws.bat`** in the HAWS repository root. It locates Git Bash and opens the shared old-style HAWS menu.
+
+- First launch opens **HAWS Setup**.
+- After installation, launch opens **HAWS Home**.
+- Use `Up`/`Down` to move, `Enter` to select, `Space` for checklist items, and `Q` to leave a menu.
+- Setup, Sync, Doctor, and Uninstall run only after the matching menu action. Launch does not auto-sync or auto-run Doctor.
+
+`haws.bat` is the Windows launcher. macOS and Linux use `./haws.sh`; the shared shell engine keeps behavior and state semantics aligned without requiring one launcher file for every OS.
 
 ---
 
 ### Command Line Setup (All Platforms)
-Install and sync HAWS across your detected AI environments (**Google Antigravity**, **Claude Code**, **Cursor**, and **Codex / Copilot**) with a single command:
+Run the shared command engine from Git Bash, macOS, or Linux:
 
 
 ```bash
@@ -31,16 +35,11 @@ Install and sync HAWS across your detected AI environments (**Google Antigravity
 git clone https://github.com/apirak-k/Human-AI-Working-Standard.git
 cd Human-AI-Working-Standard
 
-# 2. Run setup (initializes Second Brain, submodules, links skills, installs git hooks, runs diagnostics)
+# 2. Open the first-use Setup flow
 bash haws.sh setup
 ```
 
-The automated `setup` script executes 5 steps in under 60 seconds:
-1. **Initializes Second Brain**: Creates an independent `secondbrain/` Git repository to keep personal notes separate from the public framework.
-2. **Initializes Submodules**: Clones external skill packs (`superpowers`, `agent-skills`, `anthropics-skills`, `mattpocock-skills`) and tool submodules (`ponytail`).
-3. **Links Skills**: Connects skills into Google Antigravity (`~/.gemini/config/skills.json`) and Claude Code (`~/.claude/skills/`).
-4. **Installs Hardware Git Hooks**: Sets up `.githooks/pre-commit` and `.githooks/pre-push` to block unverified code, secret leaks, and accidental remote pushes.
-5. **Runs Diagnostics**: Executes the 10-axis doctor suite (38 verification checks) to confirm everything is set up correctly.
+Setup edits a draft, shows a Preview, and writes state only after `Install` or `Update` confirmation. Later launches open Home, where `Sync`, `Settings`, `Doctor`, `Status Details`, and `Uninstall` are explicit actions.
 
 ### Prerequisites
 
@@ -53,7 +52,7 @@ The automated `setup` script executes 5 steps in under 60 seconds:
 
 ### Cross-Platform Setup Details
 
-- **Windows 10 / 11**: Double-click `1-CLICK-SYNC.bat` or run inside **Git Bash** (`C:\Program Files\Git\bin\bash.exe`). No administrator privileges required. Antigravity uses declarative JSON mapping (`skills.json`) to prevent NTFS junction issues; Claude Code uses safe junctions; Cursor and Codex/Copilot use dedicated configuration adapters.
+- **Windows 10 / 11**: Double-click `haws.bat`. It delegates to Git Bash and preserves the shared menu behavior. No administrator privileges are required for the launcher; Windows link capabilities depend on the host and are reported as `[Unverified]` when unavailable. Antigravity uses declarative JSON mapping (`skills.json`); Claude Code, Cursor, Copilot, and Codex use their existing adapters.
 - **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
 
 ---
@@ -111,16 +110,13 @@ bash haws.sh brain connect <your-private-github-repo-url>
 - **Empty Remote (Machine 1)**: Automatically pushes your local second brain to the cloud.
 - **Populated Remote (Machine 2)**: Automatically pulls, merges, and syncs your brain history symmetrically.
 
-### Windows 1-Click Cloud Toggle (`2nd-BRAIN-TOGGLE.bat`)
-Double-click `2nd-BRAIN-TOGGLE.bat` in Windows File Explorer:
-- If offline: prompts for your private GitHub URL and connects.
-- If online: displays a safety guard prompt before returning to Local-Only mode.
+### Windows actions
+Use `haws.bat`, then choose the matching Home action:
 
-### Windows 1-Click Clean Uninstaller (`UNINSTALL.bat`)
-Double-click `UNINSTALL.bat` in Windows File Explorer:
-- Generates an instant dry-run inspection preview of all active pointers and skills.
-- Detaches global AI configuration pointers, linked skills, and Git hooks on confirmation.
-- Strictly preserves local project files and Second Brain data.
+- `Sync` performs explicit synchronization.
+- `Settings` edits a draft and requires Preview plus final confirmation.
+- `Doctor` reports executed checks without repairing or syncing.
+- `Uninstall` shows a preview and removes only matching HAWS-owned items after confirmation.
 
 ---
 
@@ -128,10 +124,10 @@ Double-click `UNINSTALL.bat` in Windows File Explorer:
 
 | Command | Purpose |
 | :--- | :--- |
-| `bash haws.sh setup` | First-time setup: initializes Second Brain, submodules, skill links, git hooks, and doctor check |
+| `bash haws.sh setup` | First-use Setup flow with draft, Preview, and final Install/Update confirmation |
 | `bash haws.sh sync` | Two-way Second Brain sync, pulls upstream framework, updates submodules, and verifies links |
-| `bash haws.sh status` | Instant skill count, token budget, and sync health check (< 0.2s) |
-| `bash haws.sh doctor` | Comprehensive 12-axis system diagnostic suite |
+| `bash haws.sh status` | Read-only current health summary and measured last-sync result |
+| `bash haws.sh doctor` | Read-only evidence-based diagnostic report (`--json` supported) |
 | `bash haws.sh uninstall` | Safely detach HAWS pointers, skills, and hooks without deleting user data (`--dry-run` supported) |
 | `bash haws.sh kit setup` | Interactive skill kit selector (Review/prune existing packs or add new Git links) |
 | `bash haws.sh kit add <url> [name]` | Add external skill pack submodule with merge protection |
@@ -189,10 +185,11 @@ HAWS organizes skills into two main tiers:
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
-├── haws.sh                              # Standalone Universal CLI Engine (12-axis diagnostics)
-├── 1-CLICK-SYNC.bat                     # Windows 1-Click Complete System Sync & Health Check
-├── 2nd-BRAIN-TOGGLE.bat                 # Windows 1-Click File Explorer Cloud Toggle
-└── UNINSTALL.bat                        # Windows 1-Click Reversible Clean Uninstaller
+├── haws.sh                              # Shared CLI command engine
+├── haws.bat                             # Windows launcher for the shared engine
+├── 1-CLICK-SYNC.bat                     # Legacy convenience launcher
+├── 2nd-BRAIN-TOGGLE.bat                 # Legacy convenience launcher
+└── UNINSTALL.bat                        # Legacy convenience launcher
 ```
 
 ---
@@ -219,7 +216,7 @@ Located at `skills/custom/keyboard-layout-fixer/`:
 - **Case 3 (Inverted CapsLock English)**: `hELLO wORLD` -> `Hello World`
 - **Case 4 (CapsLock Active on EN Layout typing Thai)**: `FDFD` -> `ดกดก`, `GRNHV` -> `เพื้อ` (without shifted vowel/tone mark distortion)
 - **Safety Guard (Acronym Bypass)**: Common English acronyms (`API`, `SQL`, `HTML`, `README`, `JSON`, `URL`, etc.) are detected and preserved without conversion.
-- Automated tests pass 100%: `node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`
+- Focused keyboard-layout-fixer test: `node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`
 
 ---
 
