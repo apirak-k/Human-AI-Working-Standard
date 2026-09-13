@@ -24,6 +24,29 @@ Double-click **`haws.bat`** in the HAWS repository root. It locates Git Bash and
 
 `haws.bat` is the Windows launcher. macOS and Linux use `./haws.sh`; the shared shell engine keeps behavior and state semantics aligned without requiring one launcher file for every OS.
 
+The physical Explorer launch and full Windows menu walkthrough remain
+`[Unverified]` at this checkpoint. Automated launcher coverage and CLI results
+are recorded below.
+
+### Old-base verification checkpoint
+
+Executed on 2026-09-13 in the old-base worktree with Git Bash 5.3.15 and Node.js
+v22.14.0:
+
+```bash
+bash -n haws.sh && bash tests/cli/run.sh
+node --test ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
+```
+
+- CLI aggregate: 84/84 passed; the command exited 0.
+- Node suites: 23 passed and 1 skipped; the command exited 0. The skipped case
+  requires Windows file-symlink privilege and remains `[Unverified]`.
+- `ai-configs/codex/skills.test.mjs` is not present, so no unmeasured adapter
+  coverage is claimed.
+
+These automated results do not constitute physical Windows verification or
+human acceptance.
+
 ---
 
 ### Command Line Setup (All Platforms)
@@ -236,7 +259,7 @@ During long-running autonomous workflows (`/goal`, deep refactoring, comprehensi
 ```bash
 curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -d "chat_id=${TELEGRAM_CHAT_ID}" \
-  -d "text=*[HAWS TASK COMPLETE]* All 37 diagnostics passed (100% green)." \
+  -d "text=HAWS automated verification completed; review the recorded evidence." \
   -d "parse_mode=Markdown"
 ```
 
@@ -245,7 +268,7 @@ curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" 
 curl -H "Title: HAWS Task Complete" \
      -H "Priority: high" \
      -H "Tags: white_check_mark,rocket" \
-     -d "Diagnostics passed 100%. Ready for your review." \
+     -d "Automated checks completed; review the current evidence checkpoint." \
      https://ntfy.sh/<your-secret-topic>
 ```
 

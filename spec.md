@@ -3,6 +3,7 @@
 **Status:** Current implementation contract for the old-base selected worktree  
 **Implementation worktree:** `codex/old-base-selected-improvements`  
 **Reference checkout:** `.worktrees/codex-haws-bootstrap`  
+**Last automated verification:** 2026-09-13 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
 **Language:** English
 
 This specification describes behavior implemented in the old-base worktree. It
@@ -104,29 +105,29 @@ menu route. Final Install/Update is the first point where the draft persists.
 
 ## 8. Evidence
 
-Confirmed automated evidence at the current checkpoint:
+Final automated verification executed on 2026-09-13:
 
-- Batch 1 launcher/menu: 9/9.
-- Local state: 14/14.
-- Settings flow: 19/19.
-- Repository/catalog: 6/6 and 7/7.
-- Batch 5 sync: 12/12.
-- Batch 6 Status/Doctor: 7/7.
-- Batch 6 Uninstall: 10/10.
-- Codex agent adapter tests: 14/14.
-- Windows launcher: 9 passed; 1 symlink capability case skipped as
-  `[Unverified]`.
-- `bash -n haws.sh` and `git diff --check`: passed.
+- `bash -n haws.sh && bash tests/cli/run.sh` under Git Bash exited 0: 84/84
+  CLI tests passed (9 + 14 + 19 + 6 + 7 + 12 + 7 + 10).
+- `node --test ai-configs/codex/agents.test.mjs
+  tests/windows_launcher_execution.test.mjs` exited 0: 23 passed and 1
+  skipped. The Codex adapter suite passed 14/14; the Windows launcher suite
+  passed 9/10, with the file-symlink capability skipped as `[Unverified]`.
+- `ai-configs/codex/skills.test.mjs` and `tests/cli/adapters_test.sh` are not
+  present in either compared adapter tree; no placeholder tests were created.
+- `git diff --check` passed after the documentation update.
 
-These results are automated evidence, not human acceptance.
+These results are automated evidence, not physical Windows verification or
+human acceptance. No production code or submodule content was changed in
+Batch 8.
 
 ## 9. Remaining acceptance
 
-- Launch `haws.bat` by double-clicking from Explorer.
-- Exercise Setup, Settings, Preview, Back, Cancel, Install/Update, Home,
-  Sync, Status, Doctor, and Uninstall on a disposable Windows fixture.
+- `[Unverified]` Launch `haws.bat` by double-clicking from Explorer.
+- `[Unverified]` Exercise Setup, Settings, Preview, Back, Cancel, Install/Update,
+  Home, Sync, Status, Doctor, and Uninstall on a disposable Windows fixture.
 - Record actual terminal cursor behavior and any rejected route.
-- Test external authenticated remotes separately.
+- `[Unverified]` Test external authenticated remotes separately.
 - Keep old-base, current, and reference checkouts until the user authorizes
   merge or retirement.
 

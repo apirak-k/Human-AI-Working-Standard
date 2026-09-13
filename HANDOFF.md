@@ -1,7 +1,8 @@
 # Current old-base Implementation Checkpoint
 
 **Implementation worktree:** `codex/old-base-selected-improvements`
-**Current commit:** `83a1cc0` (`docs: align README with old-base launcher flow`)
+**Previous committed checkpoint:** `2dfcb87497af08ca9a799c81cb90a3ba7c5be509` (`docs: record old-base adapter audit`)
+**Current checkpoint:** Batch 8 final documentation and evidence review
 **Previous feature commit:** `0a7d35e` (`feat: add evidence-based health and owned uninstall`)
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
 **Integration:** No merge and no push.
@@ -17,7 +18,7 @@
 
 ## Executed verification
 
-- CLI aggregate: 84/84 passed in the Batch 6 pre-commit gate.
+- Final CLI aggregate: 84/84 passed on 2026-09-13.
 - Batch 5 sync: 12/12 passed.
 - Batch 6 Status/Doctor: 7/7 passed.
 - Batch 6 Uninstall: 10/10 passed.
@@ -44,14 +45,72 @@ Scope was limited to `codex/old-base-selected-improvements` versus the unchanged
 - Verification: `node --test ai-configs/codex/agents.test.mjs` passed 14/14 with exit code 0. No other adapter test files exist in this worktree.
 - The five pre-existing dirty skill submodules were preserved; no submodule content was changed. Physical Windows checks remain `[Unverified]`.
 
+## Batch 8 — Final verification and documentation checkpoint (2026-09-13)
+
+### Confirmed decisions
+
+- Windows entry remains `haws.bat`; macOS/Linux entry remains `./haws.sh`.
+- The old terminal interaction engine and explicit Home actions remain the
+  documented behavior.
+- Automated evidence, physical Windows verification, and human acceptance are
+  recorded as separate categories.
+
+### Implemented changes
+
+- Documentation only: `spec.md`, `README.md`, and this `HANDOFF.md`.
+- No production code, adapter source, or dirty submodule content was changed.
+- Batch 7 remains a verified no-change adapter result; absent adapter test files
+  were not invented.
+
+### Executed automated verification
+
+- `bash -n haws.sh && bash tests/cli/run.sh` under Git Bash exited 0: 84/84
+  CLI tests passed (9 + 14 + 19 + 6 + 7 + 12 + 7 + 10).
+- `node --test ai-configs/codex/agents.test.mjs
+  tests/windows_launcher_execution.test.mjs` exited 0: 23 passed and 1
+  skipped. The 14 Codex adapter tests passed; the Windows launcher tests had
+  9 passes and 1 `[Unverified]` file-symlink skip.
+- `git diff --check` passed after the documentation update.
+
+### Executed physical Windows verification
+
+- None in this checkpoint. Explorer launch, full menu traversal, and physical
+  link capability remain `[Unverified]`.
+
+### Human acceptance
+
+- No human acceptance claim is recorded; automated green output is not human
+  acceptance.
+
+### Unverified areas
+
+- Physical Windows acceptance and host-specific link privileges.
+- External authenticated remotes and any manual failure-recovery observations.
+
+### Preserved reference checkouts
+
+- `.worktrees/codex-haws-bootstrap` remained unchanged in its adapter tree.
+- The recovery/clean-base checkout was not touched.
+- The five pre-existing dirty skill submodules remain unstaged and preserved.
+
+### Remaining risks and exact resume point
+
+- Batch 8 documentation is committed in this checkpoint after final diff review.
+- Do not infer physical Windows acceptance from these automated results.
+- Stop here; no later batch is started by this checkpoint.
+
 ## `[Unverified]` and remaining work
 
 - Physical Explorer launch and complete human Windows menu acceptance.
 - External authenticated remotes and host-specific link privileges.
-- Final documentation alignment in `spec.md` and this handoff's historical claims.
+- Final documentation alignment is recorded above; historical dossier claims
+  below are not current verification evidence.
 - Merge into `main` and push require separate user authorization.
 
 The dossier below is historical evidence. Its older diagnostic counts and “current head” references are not current implementation claims.
+
+> Historical provenance only: the following timeline and diagnostics were not
+> rerun in Batch 8. Use the current evidence sections above for status.
 
 # Historical HAWS Master Timeline & Comprehensive Audit Dossier (From `cceb211` to Present)
 
