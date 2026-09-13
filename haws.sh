@@ -19,7 +19,211 @@ run_codex_agents() {
     node "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$@"
 }
 
+
+_health_repo() {
+    local repo
+    repo="$(printenv HAWS_REPO_DIR 2>/dev/null || true)"
+    [ -n "$repo" ] || repo="$SCRIPT_DIR"
+    printf '%s\n' "$repo"
+}
+
+_health_state() {
+    _haws_state_dir
+}
+
+_health_add() {
+    local level="$1"
+    local check="$2"
+    local detail="$3"
+    HAWS_HEALTH_FINDINGS="$HAWS_HEALTH_FINDINGS$level"$'\t'"$check"$'\t'"$detail"$'\n'
+}
+
+_health_env_path() {
+    case "$1" in
+        claude) printf '%s/.claude\n' "$HOME" ;;
+        gemini) printf '%s/.gemini\n' "$HOME" ;;
+        agents) printf '%s/.agents\n' "$HOME" ;;
+        *) printf '%s/.%s\n' "$HOME" "$1" ;;
+    esac
+}
+
+health_classify() {
+    if printf '%s' "$HAWS_HEALTH_FINDINGS" | grep -q $'^Blocked\t'; then
+        printf '%s\n' Blocked
+    elif printf '%s' "$HAWS_HEALTH_FINDINGS" | grep -q $'^Attention\t'; then
+        printf '%s\n' Attention
+    else
+        printf '%s\n' Ready
+    fi
+}
+
+_health_collect() {
+    HAWS_HEALTH_FINDINGS=""
+    if settings_load; then
+        _health_add Ready Settings "settings.tsv parsed successfully"
+    else
+        _health_add Blocked Settings "settings.tsv could not be parsed"
+    fi
+    if disabled_environments_load; then
+        _health_add Ready "AI Environments" "environments.disabled parsed successfully"
+    else
+        _health_add Blocked "AI Environments" "environments.disabled could not be parsed"
+    fi
+    if load_disabled_skills; then
+        _health_add Ready Skills "skills.disabled parsed successfully"
+    else
+        _health_add Blocked Skills "skills.disabled could not be parsed"
+    fi
+
+    local env env_path
+    for env in claude gemini agents; do
+        env_path="$(_health_env_path "$env")"
+        if [ -n "${DISABLED_ENVS[$env]-}" ]; then
+            _health_add Ready "AI Environments" "$env disabled by local configuration"
+        elif [ -d "$env_path" ]; then
+            _health_add Ready "AI Environments" "$env directory detected at $env_path"
+        else
+            _health_add Ready "AI Environments" "$env not detected"
+        fi
+    done
+
+    local kind path source fingerprint verify_status
+    while IFS=$'\t' read -r kind path source fingerprint _ ||
+        [ -n "$kind" ]; do
+        [ -n "$kind" ] || continue
+        if ownership_verify "$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"; then
+            _health_add Ready "AI Environment ownership" "$kind $path matches its recorded fingerprint"
+        else
+            verify_status="$?"
+            if [ "$verify_status" -eq 2 ]; then
+                _health_add Blocked "AI Environment ownership" "$kind $path is dirty or unsafe"
+            else
+                _health_add Attention "AI Environment ownership" "$kind $path differs from its recorded fingerprint"
+            fi
+        fi
+    done < <(ownership_list environments)
+
+    local repo="$(_health_repo)"
+    local source_rows=0
+    local source_id source_path source_url source_revision
+    while IFS=$'\t' read -r source_id source_path source_url source_revision _ ||
+        [ -n "$source_id" ]; do
+        [ -n "$source_id" ] || continue
+        source_rows=1
+        if [ -d "$repo/$source_path" ]; then
+            _health_add Ready Sources "$source_id available at $source_path ($source_revision)"
+        else
+            _health_add Attention Sources "$source_id missing at $source_path"
+        fi
+    done < <(catalog_sources)
+    [ "$source_rows" -eq 1 ] ||
+        _health_add Ready Sources "no registered sources"
+
+    local skill_rows=0
+    local skill_id display skill_source entrypoint active source_fields
+    local skill_source_path
+    while IFS=$'\t' read -r skill_id display skill_source entrypoint active _ ||
+        [ -n "$skill_id" ]; do
+        [ -n "$skill_id" ] || continue
+        [ "$active" = 1 ] || continue
+        skill_rows=1
+        source_fields="$(_catalog_source_fields "$skill_source" 2>/dev/null || true)"
+        skill_source_path="${source_fields%%$'\t'*}"
+        if [ -s "$repo/$skill_source_path/$entrypoint" ]; then
+            _health_add Ready Skills "$display entrypoint is present"
+        else
+            _health_add Blocked Skills "$display entrypoint is missing"
+        fi
+    done < <(catalog_skills)
+    [ "$skill_rows" -eq 1 ] ||
+        _health_add Ready Skills "no active skills"
+
+    return 0
+}
+
+_health_last_sync() {
+    local state="$(_health_state)"
+    local file="$state/sync-state.tsv"
+    [ -f "$file" ] || {
+        printf '%s\n' Unknown
+        return 0
+    }
+    local result
+    result="$(tail -n 1 "$file" 2>/dev/null | awk -F $'\t' '{print $3}')"
+    [ -n "$result" ] || result=Unknown
+    printf '%s\n' "$result"
+}
+
+_health_print_details() {
+    local section="$1"
+    local level check detail
+    printf '%s\n' "$section"
+    while IFS=$'\t' read -r level check detail _ || [ -n "$level" ]; do
+        [ "$check" = "$section" ] || continue
+        printf '%s\t%s\t%s\n' "$level" "$check" "$detail"
+    done <<< "$HAWS_HEALTH_FINDINGS"
+}
+
+status_run() {
+    local details=0 arg
+    for arg in "$@"; do
+        [ "$arg" = --details ] && details=1
+    done
+    _health_collect
+    local overall
+    overall="$(health_classify)"
+    printf '%s\n' "HAWS Status"
+    printf 'Overall: %s\n' "$overall"
+    printf 'Last sync: %s\n' "$(_health_last_sync)"
+    printf 'Second Brain: %s\n' "$HAWS_SECOND_BRAIN_ENABLED"
+    printf 'Auto Update: %s\n' "$HAWS_AUTO_UPDATE"
+    if [ "$details" -eq 1 ]; then
+        _health_print_details "AI Environments"
+        _health_print_details Sources
+        _health_print_details Skills
+    fi
+    return 0
+}
+
+doctor_run() {
+    local json=0 arg
+    for arg in "$@"; do
+        [ "$arg" = --json ] && json=1
+    done
+    _health_collect
+    local repo hook_path
+    repo="$(_health_repo)"
+    if hook_path="$(git -C "$repo" config --get core.hooksPath 2>/dev/null)"; then
+        if [ -z "$hook_path" ]; then
+            _health_add Ready Hooks "core.hooksPath is not configured"
+        elif [ -d "$repo/$hook_path" ] || [ -d "$hook_path" ]; then
+            _health_add Ready Hooks "core.hooksPath points to $hook_path"
+        else
+            _health_add Attention Hooks "core.hooksPath points to missing $hook_path"
+        fi
+    else
+        _health_add Ready Hooks "core.hooksPath is not configured"
+    fi
+    local overall
+    overall="$(health_classify)"
+    if [ "$json" -eq 1 ]; then
+        printf '{"status":"%s"}\n' "$overall"
+    else
+        printf '%s\n' "HAWS Doctor"
+        printf 'Overall: %s\n' "$overall"
+        printf '%s' "$HAWS_HEALTH_FINDINGS"
+    fi
+    [ "$overall" != Blocked ]
+}
+
 run_status() {
+    status_run "$@"
+}
+
+run_doctor() {
+    doctor_run "$@"
+}
+legacy_run_status() {
     local gemini_dir="${HOME}/.gemini/config/skills"
     local claude_dir="${HOME}/.claude/skills"
     local codex_dir="${HOME}/.agents/skills"
@@ -127,7 +331,7 @@ print(len(unique_skills))
     fi
 }
 
-run_doctor() {
+legacy_run_doctor() {
     local json_mode=false
     if [ "${1:-}" = "--json" ]; then
         json_mode=true
@@ -3264,7 +3468,350 @@ run_hooks() {
     esac
 }
 
+
+_uninstall_native_path() {
+    local path="$1"
+    case "$path" in
+        [A-Za-z]:[\\/]*)
+            if command -v cygpath >/dev/null 2>&1; then
+                cygpath -u -- "$path"
+            else
+                printf '%s\n' "$path"
+            fi
+            ;;
+        *) printf '%s\n' "$path" ;;
+    esac
+}
+
+canonical_path() {
+    local path
+    path="$(_uninstall_native_path "$1")"
+    if command -v realpath >/dev/null 2>&1; then
+        realpath -m -- "$path" 2>/dev/null && return 0
+    fi
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        readlink -f -- "$path" 2>/dev/null && return 0
+    fi
+    case "$path" in
+        /*) printf '%s\n' "$path" ;;
+        *) printf '%s/%s\n' "$PWD" "$path" ;;
+    esac
+}
+
+_ownership_path_safe() {
+    local path="$(_uninstall_native_path "$1")"
+    local repo="$(_health_repo)"
+    local state="$(_health_state)"
+    [ -n "$path" ] || return 1
+    [ "$path" != / ] && [ "$path" != "$HOME" ] &&
+        [ "$path" != "$repo" ] && [ "$path" != "$state" ] || return 1
+    case "$path" in
+        *"/../"*|*"/./"*|../*|./*) return 1 ;;
+    esac
+    local parent home_root repo_root state_root
+    parent="$(canonical_path "$(dirname "$path")" 2>/dev/null || true)"
+    home_root="$(canonical_path "$HOME" 2>/dev/null || true)"
+    repo_root="$(canonical_path "$repo" 2>/dev/null || true)"
+    state_root="$(canonical_path "$state" 2>/dev/null || true)"
+    [ -n "$parent" ] && [ -n "$home_root" ] && [ -n "$repo_root" ] || return 1
+    case "$parent" in
+        "$state_root"|"$state_root"/*) return 1 ;;
+        "$home_root"|"$home_root"/*|"$repo_root"|"$repo_root"/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+ownership_verify() {
+    local record="$1"
+    local kind path source fingerprint extra
+    IFS=$'\t' read -r kind path source fingerprint extra <<< "$record"
+    [ -n "$kind" ] && [ -n "$path" ] || return 1
+    local actual="$(_uninstall_native_path "$path")"
+    _ownership_path_safe "$actual" || return 3
+
+    case "$kind" in
+        symlink|junction|directory-link)
+            [ -L "$actual" ] || return 1
+            local current current_path source_path current_canonical source_canonical
+            current="$(readlink "$actual" 2>/dev/null || true)"
+            [ -n "$current" ] || return 1
+            current_path="$current"
+            source_path="$source"
+            case "$current_path" in
+                /*|[A-Za-z]:[\\/]*) ;;
+                *) current_path="$(dirname "$actual")/$current_path" ;;
+            esac
+            case "$source_path" in
+                /*|[A-Za-z]:[\\/]*) ;;
+                *) source_path="$(dirname "$actual")/$source_path" ;;
+            esac
+            current_path="$(_uninstall_native_path "$current_path")"
+            source_path="$(_uninstall_native_path "$source_path")"
+            current_canonical="$(canonical_path "$current_path" 2>/dev/null || true)"
+            source_canonical="$(canonical_path "$source_path" 2>/dev/null || true)"
+            if [ "$current" != "$source" ] &&
+                [ "$current_path" != "$source_path" ] &&
+                { [ -z "$source_canonical" ] || [ "$current_canonical" != "$source_canonical" ]; }; then
+                return 1
+            fi
+            [ -n "$fingerprint" ] || return 1
+            [ "$fingerprint" = "$current" ] ||
+                [ "$fingerprint" = "$current_path" ] ||
+                [ "$fingerprint" = "$current_canonical" ] ||
+                [ "$fingerprint" = "$source_canonical" ]
+            ;;
+        generated-file|file|hardlink)
+            [ -f "$actual" ] && [ ! -L "$actual" ] || return 1
+            [ -n "$fingerprint" ] || return 1
+            [ "$(_haws_sha256 "$actual")" = "$fingerprint" ]
+            ;;
+        repository)
+            [ -d "$actual" ] && [ ! -L "$actual" ] || return 1
+            git -C "$actual" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+            local head repo_status
+            repo_status="$(git -C "$actual" status --porcelain --untracked-files=all 2>/dev/null || true)"
+            [ -z "$repo_status" ] || return 2
+            head="$(git -C "$actual" rev-parse HEAD 2>/dev/null || true)"
+            [ -n "$head" ] && [ "$head" = "$fingerprint" ] || return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+_uninstall_group_name() {
+    case "$1" in
+        pointer|pointers|environment|environments) printf '%s\n' environments ;;
+        skill|skills) printf '%s\n' skills ;;
+        agent|agents) printf '%s\n' agents ;;
+        hook|hooks) printf '%s\n' hooks ;;
+        metadata|meta) printf '%s\n' metadata ;;
+        repository|repositories|source|sources) printf '%s\n' repositories ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
+uninstall_plan() {
+    local temp_dir
+    temp_dir="$(printenv TMPDIR 2>/dev/null || true)"
+    [ -n "$temp_dir" ] || temp_dir=/tmp
+    local plan
+    plan="$(mktemp "$temp_dir/haws-uninstall-plan.XXXXXX")" || return 1
+    local requested=""
+    local group record_group row
+    [ "$#" -gt 0 ] && requested="$1"
+    [ -n "$requested" ] || requested="environments,skills,agents,hooks,metadata"
+
+    while IFS= read -r group || [ -n "$group" ]; do
+        [ -n "$group" ] || continue
+        group="$(_uninstall_group_name "$group")"
+        case "$group" in
+            environments)
+                for record_group in environments pointers; do
+                    while IFS= read -r row || [ -n "$row" ]; do
+                        [ -n "$row" ] || continue
+                        printf 'remove\t%s\n' "$row" >> "$plan"
+                    done < <(ownership_list "$record_group")
+                done
+                ;;
+            *)
+                while IFS= read -r row || [ -n "$row" ]; do
+                    [ -n "$row" ] || continue
+                    printf 'remove\t%s\n' "$row" >> "$plan"
+                done < <(ownership_list "$group")
+                ;;
+        esac
+    done < <(printf '%s\n' "$requested" | tr ',' '\n')
+    printf '%s\n' "$plan"
+}
+
+uninstall_preview() {
+    local plan="$1"
+    [ -f "$plan" ] || return 2
+    printf '%s\n' "Uninstall preview"
+    local action group kind path source fingerprint extra record verify_record verify_status
+    while IFS=$'\t' read -r action group kind path source fingerprint extra ||
+        [ -n "$action" ]; do
+        [ "$action" = remove ] || continue
+        verify_record="$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
+        if ownership_verify "$verify_record"; then
+            printf 'Remove: %s %s %s\n' "$group" "$kind" "$path"
+        else
+            verify_status="$?"
+            if [ "$verify_status" -eq 2 ]; then
+                printf 'Blocked: %s %s %s (repository is dirty)\n' "$group" "$kind" "$path"
+            else
+                printf 'Preserved: %s %s %s (type or fingerprint changed)\n' \
+                    "$group" "$kind" "$path"
+            fi
+        fi
+    done < "$plan"
+}
+
+_ownership_remove_record() {
+    local record="$1"
+    local group kind path source fingerprint extra
+    IFS=$'\t' read -r group kind path source fingerprint extra <<< "$record"
+    local state="$(_health_state)"
+    local file="$state/ownership.tsv"
+    local temporary="$state/ownership.stage.$$"
+    [ -f "$file" ] || return 0
+    awk -F $'\t' -v group="$group" -v kind="$kind" -v path="$path" '
+        $1 == group && $2 == kind && $3 == path { next }
+        { print }
+    ' "$file" > "$temporary" || return 1
+    _haws_state_replace "$temporary" "$file"
+    local result="$?"
+    rm -f -- "$temporary"
+    return "$result"
+}
+
+_uninstall_remove_path() {
+    local kind="$1"
+    local path="$(_uninstall_native_path "$2")"
+    _ownership_path_safe "$path" || return 1
+    case "$kind" in
+        symlink|junction|directory-link)
+            if [ -d "$path" ] && [ -L "$path" ] &&
+                command -v cmd.exe >/dev/null 2>&1 &&
+                command -v cygpath >/dev/null 2>&1; then
+                local windows_path
+                windows_path="$(cygpath -w "$path")"
+                MSYS_NO_PATHCONV=1 cmd.exe /c rmdir /s /q "$windows_path" >/dev/null 2>&1 || return 1
+            else
+                rm -f -- "$path" || return 1
+            fi
+            ;;
+        generated-file|file|hardlink)
+            rm -f -- "$path" || return 1
+            ;;
+        repository)
+            rm -rf -- "$path" || return 1
+            ;;
+        *) return 1 ;;
+    esac
+    [ ! -e "$path" ] && [ ! -L "$path" ]
+}
+
+uninstall_apply() {
+    local plan="$1"
+    [ -f "$plan" ] || return 2
+    local status=0
+    local processed=0
+    local threshold
+    threshold="$(printenv HAWS_TEST_UNINSTALL_INTERRUPT_AFTER 2>/dev/null || true)"
+    local interrupted=0
+    _uninstall_interrupt() { interrupted=1; }
+    trap _uninstall_interrupt INT TERM
+    local action group kind path source fingerprint extra record verify_record verify_status
+    while IFS=$'\t' read -r action group kind path source fingerprint extra ||
+        [ -n "$action" ]; do
+        [ "$action" = remove ] || continue
+        if [ "$interrupted" -eq 1 ]; then
+            printf '%s\n' "Interrupted: remaining ownership records were preserved"
+            status=130
+            break
+        fi
+        if [ -n "$threshold" ] && [ "$threshold" -eq "$threshold" ] &&
+            [ "$processed" -ge "$threshold" ]; then
+            printf '%s\n' "Interrupted: remaining ownership records were preserved"
+            status=130
+            break
+        fi
+        record="$group"$'\t'"$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
+        verify_record="$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
+        if ownership_verify "$verify_record"; then
+            if _uninstall_remove_path "$kind" "$path"; then
+                _ownership_remove_record "$record" || status=1
+                printf 'Removed: %s %s %s\n' "$group" "$kind" "$path"
+            else
+                printf 'Preserved: %s %s %s (removal failed)\n' "$group" "$kind" "$path"
+                status=1
+            fi
+        else
+            verify_status="$?"
+            if [ "$verify_status" -eq 2 ]; then
+                printf 'Blocked: %s %s %s (repository is dirty)\n' "$group" "$kind" "$path"
+                status=1
+            else
+                printf 'Preserved: %s %s %s (type or fingerprint changed)\n' \
+                    "$group" "$kind" "$path"
+            fi
+        fi
+        processed=$((processed + 1))
+    done < "$plan"
+    trap - INT TERM
+    return "$status"
+}
+
+uninstall_run() {
+    local dry_run=0 confirmed=0
+    local requested="" arg
+    while [ "$#" -gt 0 ]; do
+        arg="$1"
+        shift
+        case "$arg" in
+            --dry-run|--preview) dry_run=1 ;;
+            --yes|-y) confirmed=1 ;;
+            --help|-h)
+                printf '%s\n' "Usage: haws.sh uninstall [groups] [--dry-run] [--yes]"
+                return 0
+                ;;
+            *)
+                if [[ "$arg" == -* ]]; then
+                    printf 'Unknown uninstall option: %s\n' "$arg" >&2
+                    return 2
+                fi
+                if [ -n "$requested" ]; then
+                    requested="$requested,$arg"
+                else
+                    requested="$arg"
+                fi
+                ;;
+        esac
+    done
+
+    local plan
+    if [ -n "$requested" ]; then
+        plan="$(uninstall_plan "$requested")" || return $?
+    else
+        plan="$(uninstall_plan)" || return $?
+    fi
+    uninstall_preview "$plan" || return $?
+    if [ "$dry_run" -eq 1 ]; then
+        rm -f -- "$plan"
+        return 0
+    fi
+
+    if [ "$confirmed" -eq 0 ]; then
+        local test_keys confirmation
+        test_keys="$(printenv HAWS_TEST_KEYS 2>/dev/null || true)"
+        if [ -n "$test_keys" ]; then
+            confirmation="$test_keys"
+        else
+            read -r -p "Apply this uninstall plan? (y/N): " confirmation || confirmation=""
+        fi
+        case "$confirmation" in
+            y|Y|yes|YES|Yes|confirm|CONFIRM|apply|APPLY) confirmed=1 ;;
+            *) printf '%s\n' "Uninstall cancelled"; return 0 ;;
+        esac
+    fi
+    [ "$confirmed" -eq 1 ] || return 0
+    local result
+    if uninstall_apply "$plan"; then
+        result=0
+    else
+        result="$?"
+    fi
+    rm -f -- "$plan"
+    return "$result"
+}
+
 run_uninstall() {
+    uninstall_run "$@"
+}
+legacy_run_uninstall() {
     local dry_run=false
     local force_yes=false
 
@@ -4577,7 +5124,8 @@ case "${COMMAND}" in
         run_codex_agents "$@"
         ;;
     status|health|check)
-        run_status
+        shift || true
+        run_status "$@"
         ;;
     doctor|test)
         shift || true

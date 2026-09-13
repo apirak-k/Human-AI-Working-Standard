@@ -1,7 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -41,6 +51,63 @@ function launcherEnv(root, extra = {}) {
     ProgramData: root,
     ...extra,
   };
+}
+
+function runWindowsUninstall({ link, source, keep, unrelated, kind, root }) {
+  const gitBash = path.join(
+    process.env.ProgramFiles ?? "C:\\Program Files",
+    "Git",
+    "bin",
+    "bash.exe",
+  );
+  const shellScript = [
+    "set -eu",
+    'project="$(cygpath -u -- "$HAWS_PROJECT_ROOT")"',
+    'home="$(cygpath -u -- "$HAWS_TEST_HOME")"',
+    'state="$(cygpath -u -- "$HAWS_TEST_STATE")"',
+    'link="$(cygpath -u -- "$HAWS_TEST_LINK")"',
+    'source_path="$(cygpath -u -- "$HAWS_TEST_SOURCE")"',
+    'keep_path="$(cygpath -u -- "$HAWS_TEST_KEEP")"',
+    'unrelated_path="$(cygpath -u -- "$HAWS_TEST_UNRELATED")"',
+    'export HOME="$home" HAWS_REPO_DIR="$project" HAWS_STATE_DIR="$state" HAWS_SOURCE_ONLY=1',
+    '. "$project/haws.sh"',
+    "unset HAWS_SOURCE_ONLY",
+    'if [ "$HAWS_TEST_KIND" != generated-file ]; then',
+    '  link_target="$(readlink "$link" 2>/dev/null || true)"',
+    '  if [ -z "$link_target" ] || ! [ -L "$link" ]; then',
+    '    echo "[Unverified] Windows link type is not executable by Git Bash" >&2',
+    "    exit 77",
+    "  fi",
+    "fi",
+    'if [ "$HAWS_TEST_KIND" = generated-file ]; then',
+    '  fingerprint="$(_haws_sha256 "$link")"',
+    "else",
+    '  fingerprint="$(canonical_path "$source_path")"',
+    "fi",
+    'ownership_record skills "$HAWS_TEST_KIND" "$link" "$source_path" "$fingerprint"',
+    'plan="$(uninstall_plan skills)"',
+    'uninstall_apply "$plan"',
+    '! [ -e "$link" ] && ! [ -L "$link" ]',
+    '[ -f "$keep_path" ]',
+    '[ -f "$unrelated_path" ]',
+  ].join("\n");
+  return spawnSync(gitBash, ["-lc", shellScript], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      HAWS_PROJECT_ROOT: projectRoot,
+      HAWS_TEST_HOME: path.join(root, "home"),
+      HAWS_TEST_STATE: path.join(root, "state"),
+      HAWS_TEST_LINK: link,
+      HAWS_TEST_SOURCE: source,
+      HAWS_TEST_KEEP: keep,
+      HAWS_TEST_UNRELATED: unrelated,
+      HAWS_TEST_KIND: kind,
+    },
+    timeout: 10000,
+    windowsHide: true,
+  });
 }
 
 test("haws.bat exists", { skip: !isWindows }, () => {
@@ -142,5 +209,121 @@ test("real launcher and haws.sh bare q exit without mutating fixture HOME", { sk
     assert.equal(existsSync(path.join(home, ".haws_manifest")), false);
   } finally {
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("Windows generated-file ownership is removed without touching its source", { skip: !isWindows }, () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "haws-batch6-windows-"));
+  const home = path.join(root, "home", ".claude");
+  const source = path.join(root, "source.txt");
+  const link = path.join(home, "managed.txt");
+  const keep = source;
+  const unrelated = path.join(home, "unrelated.txt");
+  try {
+    writeFileSync(source, "source\n", "utf8");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(link, "managed\n", "utf8");
+    writeFileSync(unrelated, "unrelated\n", "utf8");
+    const result = runWindowsUninstall({
+      root,
+      link,
+      source,
+      keep,
+      unrelated,
+      kind: "generated-file",
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stdout + "\n" + result.stderr);
+    assert.equal(existsSync(link), false);
+    assert.equal(existsSync(source), true);
+    assert.equal(existsSync(unrelated), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows junction ownership removes only the junction when executable", { skip: !isWindows }, (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "haws-batch6-windows-"));
+  const target = path.join(root, "junction-target");
+  const link = path.join(root, "home", ".claude", "junction");
+  const source = target;
+  const keep = path.join(target, "keep.txt");
+  const unrelated = path.join(root, "home", ".claude", "unrelated.txt");
+  try {
+    mkdirSync(target, { recursive: true });
+    mkdirSync(path.dirname(link), { recursive: true });
+    writeFileSync(keep, "target\n", "utf8");
+    writeFileSync(unrelated, "unrelated\n", "utf8");
+    try {
+      symlinkSync(target, link, "junction");
+    } catch {
+      t.skip("[Unverified] junction creation requires Windows link privilege");
+      return;
+    }
+    if (!lstatSync(link).isSymbolicLink()) {
+      t.skip("[Unverified] junction was not created as a link");
+      return;
+    }
+    const result = runWindowsUninstall({
+      root,
+      link,
+      source,
+      keep,
+      unrelated,
+      kind: "junction",
+    });
+    if (result.status === 77) {
+      t.skip(result.stderr.trim() || "[Unverified] Git Bash could not execute junction");
+      return;
+    }
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stdout + "\n" + result.stderr);
+    assert.equal(existsSync(link), false);
+    assert.equal(existsSync(keep), true);
+    assert.equal(existsSync(unrelated), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows file symlink ownership removes only the symlink when executable", { skip: !isWindows }, (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "haws-batch6-windows-"));
+  const source = path.join(root, "source.txt");
+  const link = path.join(root, "home", ".claude", "symlink");
+  const keep = source;
+  const unrelated = path.join(root, "home", ".claude", "unrelated.txt");
+  try {
+    mkdirSync(path.dirname(link), { recursive: true });
+    writeFileSync(source, "source\n", "utf8");
+    writeFileSync(unrelated, "unrelated\n", "utf8");
+    try {
+      symlinkSync(source, link, "file");
+    } catch {
+      t.skip("[Unverified] file symlink creation requires Windows link privilege");
+      return;
+    }
+    if (!lstatSync(link).isSymbolicLink()) {
+      t.skip("[Unverified] file symlink was not created as a link");
+      return;
+    }
+    const result = runWindowsUninstall({
+      root,
+      link,
+      source,
+      keep,
+      unrelated,
+      kind: "symlink",
+    });
+    if (result.status === 77) {
+      t.skip(result.stderr.trim() || "[Unverified] Git Bash could not execute symlink");
+      return;
+    }
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stdout + "\n" + result.stderr);
+    assert.equal(existsSync(link), false);
+    assert.equal(existsSync(keep), true);
+    assert.equal(existsSync(unrelated), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
