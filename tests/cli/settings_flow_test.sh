@@ -256,9 +256,11 @@ test_second_brain_remote_access_is_deferred_until_final_apply() {
     mkdir -p "${fake_bin}"
     printf '%s\n' \
         '#!/usr/bin/env bash' \
-        'if [ "${1:-}" = ls-remote ]; then' \
-        '    printf "ls-remote\\n" >> "${GIT_CALL_LOG}"' \
-        'fi' \
+        'for arg in "$@"; do' \
+        '    case "${arg}" in' \
+        '        ls-remote|pull) printf "%s\\n" "${arg}" >> "${GIT_CALL_LOG}"; break ;;' \
+        '    esac' \
+        'done' \
         'exec "${HAWS_REAL_GIT}" "$@"' > "${fake_bin}/git"
     chmod +x "${fake_bin}/git"
 
@@ -273,6 +275,18 @@ test_second_brain_remote_access_is_deferred_until_final_apply() {
 
     git init --bare --quiet "${FIXTURE_ROOT}/remote.git" || return 1
     local remote="file://${FIXTURE_ROOT}/remote.git"
+    mkdir -p "${FIXTURE_PROJECT}/secondbrain"
+    git -C "${FIXTURE_PROJECT}/secondbrain" init --quiet || return 1
+    git -C "${FIXTURE_PROJECT}/secondbrain" checkout --quiet -b main || return 1
+    git -C "${FIXTURE_PROJECT}/secondbrain" config user.name HAWS-Test
+    git -C "${FIXTURE_PROJECT}/secondbrain" config user.email test@example.invalid
+    printf '# Preferences\n' > "${FIXTURE_PROJECT}/secondbrain/USER_PREFERENCES.md"
+    printf '# Anti-patterns\n' > "${FIXTURE_PROJECT}/secondbrain/ANTI_PATTERNS.md"
+    git -C "${FIXTURE_PROJECT}/secondbrain" add . || return 1
+    git -C "${FIXTURE_PROJECT}/secondbrain" commit --quiet -m baseline || return 1
+    git -C "${FIXTURE_PROJECT}/secondbrain" remote add origin "${remote}" || return 1
+    git -C "${FIXTURE_PROJECT}/secondbrain" push --quiet -u origin main || return 1
+    git --git-dir="${FIXTURE_ROOT}/remote.git" symbolic-ref HEAD refs/heads/main || return 1
     local apply_input="${down}\n"
     apply_input+="${down}${down}${down} ${down}${down}\n${remote}\n\nq"
     PATH="${fake_bin}:${old_path}"
@@ -286,7 +300,8 @@ test_second_brain_remote_access_is_deferred_until_final_apply() {
     PATH="${fake_bin}:${old_path}"
     run_haws_input_with_env $'\nq' "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
     PATH="${old_path}"
-    [ "$(wc -l < "${git_log}" | tr -d ' ')" = 2 ]
+    [ "$(wc -l < "${git_log}" | tr -d ' ')" = 2 ] || return 1
+    tail -n 1 "${git_log}" | grep -Fx pull >/dev/null
 }
 
 test_successful_install_records_completion_and_next_launch_home() {
@@ -312,6 +327,13 @@ run_test() {
 }
 
 trap cleanup_fixture EXIT
+
+if [ -n "${HAWS_SETTINGS_TEST_ONLY:-}" ]; then
+    run_test "${HAWS_SETTINGS_TEST_ONLY}"
+    echo "CLI settings-flow tests: ${passed} passed, ${failed} failed"
+    [ "${failed}" -eq 0 ]
+    exit
+fi
 
 run_test test_first_use_opens_setup_without_mutation
 run_test test_default_setup_reaches_preview_install_before_cancel

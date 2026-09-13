@@ -1081,54 +1081,455 @@ _legacy_skill_is_disabled() {
     return 1
 }
 
+run_with_deadline() {
+    local seconds="${1:-}"
+    shift || true
+    case "${seconds}" in
+        ''|*[!0-9]*|0) return 2 ;;
+    esac
+    [ "$#" -gt 0 ] || return 2
+
+    local command_type
+    command_type="$(type -t "${1}" 2>/dev/null || true)"
+    if [ "${command_type}" != function ] && command -v timeout >/dev/null 2>&1; then
+        local timeout_status=0
+        if timeout --version >/dev/null 2>&1; then
+            if timeout --foreground "${seconds}s" "$@"; then
+                timeout_status=0
+            else
+                timeout_status=$?
+            fi
+            case "${timeout_status}" in
+                124|137) return 124 ;;
+                *) return "${timeout_status}" ;;
+            esac
+        fi
+    fi
+
+    "$@" &
+    local child="$!"
+    local deadline=$(( $(date +%s) + seconds ))
+    while kill -0 "${child}" >/dev/null 2>&1; do
+        if [ "$(date +%s)" -ge "${deadline}" ]; then
+            kill -TERM "${child}" >/dev/null 2>&1 || true
+            sleep 0.1 || true
+            kill -KILL "${child}" >/dev/null 2>&1 || true
+            wait "${child}" >/dev/null 2>&1 || true
+            return 124
+        fi
+        sleep 0.1 || true
+    done
+    local wait_status=0
+    if wait "${child}"; then
+        wait_status=0
+    else
+        wait_status=$?
+    fi
+    return "${wait_status}"
+}
+
+_sync_timeout_seconds() {
+    local configured="${HAWS_SYNC_TIMEOUT_SECONDS:-30}"
+    case "${configured}" in
+        ''|*[!0-9]*|0) printf '%s\n' 30 ;;
+        *) printf '%s\n' "${configured}" ;;
+    esac
+}
+
+sync_result_write() {
+    local target="${1:-}" result="${2:-}" revision="${3:--}" detail="${4:-}"
+    [ -n "${target}" ] && [ -n "${result}" ] || return 2
+    local state="$(_haws_state_dir)"
+    local file="${state}/sync-state.tsv"
+    local temporary="${state}/sync-state.stage.$$"
+    mkdir -p "${state}" || return 1
+    if [ -f "${file}" ]; then
+        cp -- "${file}" "${temporary}" || return 1
+    else
+        : > "${temporary}" || return 1
+    fi
+    detail="${detail//$'\t'/ }"
+    detail="${detail//$'\n'/ }"
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${target}" "${result}" \
+        "${revision}" "${detail}" >> "${temporary}" || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    local replace_status=0
+    if _haws_state_replace "${temporary}" "${file}"; then
+        replace_status=0
+    else
+        replace_status=$?
+    fi
+    rm -f -- "${temporary}"
+    return "${replace_status}"
+}
+
+_sync_source_path() {
+    local fields source_path
+    fields="$(_catalog_source_fields "${1:-}" 2>/dev/null || true)"
+    [ -n "${fields}" ] || return 1
+    source_path="${fields%%$'\t'*}"
+    case "${source_path}" in
+        ''|/*|[A-Za-z]:[\\/]*|*/../*|../*|*/./*|./*) return 1 ;;
+    esac
+    printf '%s\n' "${source_path}"
+}
+
+_sync_candidate_ref() {
+    local safe
+    safe="$(printf '%s' "${1:-target}" | tr -c 'A-Za-z0-9' '-')"
+    printf 'refs/haws-sync/%s-%s\n' "$$" "${safe:0:80}"
+}
+
+_sync_candidate_cleanup() {
+    git -C "$1" update-ref -d "$2" >/dev/null 2>&1 || true
+}
+
+source_preflight() {
+    local source_id="${1:-}"
+    local source_path source_dir status skill_source skill_active has_active=0
+    source_path="$(_sync_source_path "${source_id}")" || return 4
+    source_dir="$(_catalog_repo_dir)/${source_path}"
+    [ -d "${source_dir}" ] || return 4
+    git -C "${source_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 4
+    if ! status="$(git -C "${source_dir}" status --porcelain --untracked-files=all 2>/dev/null)"; then
+        return 4
+    fi
+    [ -z "${status}" ] || return 2
+    while IFS=$'\t' read -r _ _ skill_source _ skill_active || [ -n "${skill_source:-}" ]; do
+        if [ "${skill_source:-}" = "${source_id}" ] && [ "${skill_active:-0}" = 1 ]; then
+            has_active=1
+            break
+        fi
+    done < <(catalog_skills 2>/dev/null || true)
+    [ "${has_active}" -eq 1 ] || return 3
+    return 0
+}
+
+source_candidate_validate() {
+    local source_id="${1:-}" revision="${2:-}"
+    local source_path source_dir skill_id display skill_source entrypoint active
+    local found=0 candidate_content
+    [ -n "${source_id}" ] && [ -n "${revision}" ] || return 2
+    source_path="$(_sync_source_path "${source_id}")" || return 1
+    source_dir="$(_catalog_repo_dir)/${source_path}"
+    [ -d "${source_dir}" ] || return 1
+    while IFS=$'\t' read -r skill_id display skill_source entrypoint active ||
+        [ -n "${skill_id:-}" ]; do
+        [ "${skill_source:-}" = "${source_id}" ] && [ "${active:-0}" = 1 ] || continue
+        found=1
+        git -C "${source_dir}" cat-file -e "${revision}:${entrypoint}" >/dev/null 2>&1 || return 1
+        candidate_content="$(git -C "${source_dir}" show "${revision}:${entrypoint}" 2>/dev/null || true)"
+        [ -n "${candidate_content//[[:space:]]/}" ] || return 1
+    done < <(catalog_skills 2>/dev/null || true)
+    [ "${found}" -eq 1 ]
+}
+
+_sync_root_preflight() {
+    local repo="$(_catalog_repo_dir)" status
+    git -C "${repo}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 4
+    if ! status="$(git -C "${repo}" status --porcelain --untracked-files=all 2>/dev/null)"; then
+        return 4
+    fi
+    [ -z "${status}" ] || return 2
+    return 0
+}
+
+_sync_root_candidate_validate() {
+    local repo="$(_catalog_repo_dir)" revision="${1:-}" size
+    [ -n "${revision}" ] || return 2
+    size="$(git -C "${repo}" cat-file -s "${revision}:haws.sh" 2>/dev/null || true)"
+    [ "${size:-0}" -gt 0 ]
+}
+
+sync_target() {
+    local target="${1:-}" source_dir source_path candidate_ref candidate_revision
+    local preflight_status fetch_status current final timeout_seconds activation_status=0
+    local fetch_remote=origin fetch_source=HEAD current_branch
+    [ -n "${target}" ] || return 2
+    if [ "${HAWS_AUTO_UPDATE:-${AUTO_UPDATE:-on}}" != on ]; then
+        sync_result_write "${target}" skipped - "Auto Update is disabled" || return 1
+        echo "${target}: skipped (Auto Update is disabled)"
+        return 0
+    fi
+
+    if [ "${target}" = haws ]; then
+        source_dir="$(_catalog_repo_dir)"
+        current_branch="$(git -C "${source_dir}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+        [ -n "${current_branch}" ] || {
+            sync_result_write "${target}" blocked - "HAWS checkout is detached" || true
+            echo "${target}: blocked (detached checkout)"
+            return 1
+        }
+        fetch_remote="$(git -C "${source_dir}" config --get "branch.${current_branch}.remote" 2>/dev/null || true)"
+        fetch_source="$(git -C "${source_dir}" config --get "branch.${current_branch}.merge" 2>/dev/null || true)"
+        [ -n "${fetch_remote}" ] && [ -n "${fetch_source}" ] || {
+            sync_result_write "${target}" failed - "HAWS branch has no tracked remote" || true
+            echo "${target}: failed (no tracked remote)"
+            return 1
+        }
+        if _sync_root_preflight; then
+            preflight_status=0
+        else
+            preflight_status=$?
+        fi
+    else
+        source_path="$(_sync_source_path "${target}")" || {
+            sync_result_write "${target}" failed - "source is not registered" || true
+            echo "${target}: failed (source is not registered)"
+            return 1
+        }
+        source_dir="$(_catalog_repo_dir)/${source_path}"
+        if source_preflight "${target}"; then
+            preflight_status=0
+        else
+            preflight_status=$?
+        fi
+    fi
+
+    case "${preflight_status}" in
+        2)
+            sync_result_write "${target}" blocked - "source has staged, unstaged, or untracked changes" || return 1
+            echo "${target}: blocked (local changes)"
+            return 1
+            ;;
+        3)
+            sync_result_write "${target}" skipped - "source has no active skills" || return 1
+            echo "${target}: skipped (no active skills)"
+            return 0
+            ;;
+        4)
+            sync_result_write "${target}" failed - "source checkout is unavailable" || return 1
+            echo "${target}: failed (source checkout is unavailable)"
+            return 1
+            ;;
+        0) ;;
+        *)
+            sync_result_write "${target}" failed - "source preflight failed" || return 1
+            echo "${target}: failed (source preflight failed)"
+            return 1
+            ;;
+    esac
+
+    candidate_ref="$(_sync_candidate_ref "${target}")"
+    timeout_seconds="$(_sync_timeout_seconds)"
+    if run_with_deadline "${timeout_seconds}" git -C "${source_dir}" fetch --quiet "${fetch_remote}" "+${fetch_source}:${candidate_ref}"; then
+        fetch_status=0
+    else
+        fetch_status=$?
+    fi
+    candidate_revision="$(git -C "${source_dir}" rev-parse --verify "${candidate_ref}" 2>/dev/null || true)"
+    if [ "${fetch_status}" -eq 124 ]; then
+        _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+        sync_result_write "${target}" timeout - "remote fetch exceeded ${timeout_seconds}s" || return 1
+        echo "${target}: timeout"
+        return 1
+    fi
+    if [ "${fetch_status}" -ne 0 ] || [ -z "${candidate_revision}" ]; then
+        _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+        sync_result_write "${target}" failed - "remote candidate could not be fetched" || return 1
+        echo "${target}: failed (remote candidate could not be fetched)"
+        return 1
+    fi
+
+    if [ "${target}" = haws ]; then
+        if _sync_root_candidate_validate "${candidate_revision}"; then
+            :
+        else
+            _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+            sync_result_write "${target}" failed "${candidate_revision}" "candidate validation failed" || return 1
+            echo "${target}: failed (candidate validation)"
+            return 1
+        fi
+    elif source_candidate_validate "${target}" "${candidate_revision}"; then
+        :
+    else
+        _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+        sync_result_write "${target}" failed "${candidate_revision}" "candidate validation failed" || return 1
+        echo "${target}: failed (candidate validation)"
+        return 1
+    fi
+
+    current="$(git -C "${source_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
+    if [ -z "${current}" ]; then
+        _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+        sync_result_write "${target}" failed "${candidate_revision}" "current revision could not be read" || return 1
+        echo "${target}: failed (current revision could not be read)"
+        return 1
+    fi
+    if [ "${current}" != "${candidate_revision}" ]; then
+        if [ "${target}" = haws ]; then
+            git -C "${source_dir}" merge --ff-only "${candidate_revision}" >/dev/null 2>&1 || activation_status=$?
+        else
+            git -C "${source_dir}" checkout --detach "${candidate_revision}" >/dev/null 2>&1 || activation_status=$?
+        fi
+        if [ "${activation_status}" -eq 0 ]; then
+            :
+        else
+            _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+            sync_result_write "${target}" failed "${candidate_revision}" "candidate activation failed" || return 1
+            echo "${target}: failed (candidate activation)"
+            return 1
+        fi
+    fi
+    final="$(git -C "${source_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
+    _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+    if [ "${final}" = "${candidate_revision}" ]; then
+        if [ "${current}" = "${candidate_revision}" ]; then
+            sync_result_write "${target}" up-to-date "${candidate_revision}" "final HEAD equals candidate" || return 1
+            echo "${target}: up-to-date"
+        else
+            sync_result_write "${target}" updated "${candidate_revision}" "final HEAD equals candidate" || return 1
+            echo "${target}: updated"
+        fi
+        return 0
+    fi
+    sync_result_write "${target}" failed "${candidate_revision}" "final HEAD did not equal candidate" || return 1
+    echo "${target}: failed (final HEAD did not equal candidate)"
+    return 1
+}
+
+sync_second_brain_target() {
+    local brain_dir="${SCRIPT_DIR}/secondbrain"
+    local current remote_head final before status timeout_seconds
+    [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ] || {
+        sync_result_write secondbrain skipped - "Second Brain is disabled" || return 1
+        echo "secondbrain: skipped (disabled)"
+        return 0
+    }
+    [ -d "${brain_dir}/.git" ] || {
+        sync_result_write secondbrain failed - "Second Brain checkout is unavailable" || return 1
+        echo "secondbrain: failed (checkout is unavailable)"
+        return 1
+    }
+    if ! status="$(git -C "${brain_dir}" status --porcelain --untracked-files=all 2>/dev/null)"; then
+        sync_result_write secondbrain failed - "Second Brain checkout could not be inspected" || return 1
+        echo "secondbrain: failed (checkout could not be inspected)"
+        return 1
+    fi
+    [ -z "${status}" ] || {
+        sync_result_write secondbrain blocked - "Second Brain has local changes" || return 1
+        echo "secondbrain: blocked (local changes)"
+        return 1
+    }
+    git -C "${brain_dir}" remote get-url origin >/dev/null 2>&1 || {
+        sync_result_write secondbrain skipped - "Second Brain is local-only" || return 1
+        echo "secondbrain: skipped (local-only)"
+        return 0
+    }
+    current="$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
+    timeout_seconds="$(_sync_timeout_seconds)"
+    if run_with_deadline "${timeout_seconds}" run_user sync; then
+        :
+    else
+        local sync_status=$?
+        if [ "${sync_status}" -eq 124 ]; then
+            sync_result_write secondbrain timeout - "remote sync exceeded ${timeout_seconds}s" || return 1
+            echo "secondbrain: timeout"
+        else
+            sync_result_write secondbrain failed - "remote sync failed" || return 1
+            echo "secondbrain: failed (remote sync)"
+        fi
+        return 1
+    fi
+    final="$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
+    remote_head="$(git -C "${brain_dir}" rev-parse --verify refs/remotes/origin/main 2>/dev/null || true)"
+    [ -n "${remote_head}" ] && [ "${final}" = "${remote_head}" ] || {
+        sync_result_write secondbrain failed "${final:--}" "final HEAD did not equal origin/main" || return 1
+        echo "secondbrain: failed (final HEAD did not equal origin/main)"
+        return 1
+    }
+    if [ "${final}" = "${current}" ]; then
+        sync_result_write secondbrain up-to-date "${final}" "final HEAD equals origin/main" || return 1
+        echo "secondbrain: up-to-date"
+    else
+        sync_result_write secondbrain updated "${final}" "final HEAD equals origin/main" || return 1
+        echo "secondbrain: updated"
+    fi
+    return 0
+}
+
+_sync_interrupt() {
+    sync_lock_release >/dev/null 2>&1 || true
+    HAWS_SYNC_LOCK_ACQUIRED=0
+    exit 130
+}
+
+sync_run() {
+    local target_count=0 target row source_id status=0
+    if [ "${1:-}" = --recover-lock ]; then
+        sync_lock_release --recover
+        return $?
+    fi
+    state_init || return $?
+    trap _sync_interrupt INT TERM
+    if sync_lock_acquire; then
+        :
+    else
+        local lock_status=$?
+        trap - INT TERM
+        return "${lock_status}"
+    fi
+    HAWS_SYNC_LOCK_ACQUIRED=1
+    export HAWS_SYNC_LOCK_ACQUIRED
+    trap 'if [ "${HAWS_SYNC_LOCK_ACQUIRED:-0}" -eq 1 ]; then sync_lock_release >/dev/null 2>&1 || true; HAWS_SYNC_LOCK_ACQUIRED=0; fi' EXIT
+    if settings_load; then
+        :
+    else
+        local settings_status=$?
+        sync_lock_release >/dev/null 2>&1 || true
+        HAWS_SYNC_LOCK_ACQUIRED=0
+        trap - EXIT INT TERM
+        return "${settings_status}"
+    fi
+    if [ -n "${HAWS_TEST_SYNC_DELAY:-}" ]; then
+        sleep "${HAWS_TEST_SYNC_DELAY}"
+    fi
+
+    echo "=== HAWS Universal Command Engine (All-in-One Sync) ==="
+    echo ""
+    if [ "${HAWS_AUTO_UPDATE:-on}" != on ]; then
+        echo "Auto Update: Disabled"
+        echo "Explicit local synchronization remains available."
+    fi
+    if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
+        target_count=$((target_count + 1))
+        sync_target haws || status=1
+    fi
+    while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
+        [ -n "${source_id:-}" ] || continue
+        target_count=$((target_count + 1))
+        sync_target "${source_id}" || status=1
+    done < <(catalog_sources 2>/dev/null || true)
+    if [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; then
+        target_count=$((target_count + 1))
+        sync_second_brain_target || status=1
+    fi
+    [ "${target_count}" -gt 0 ] || echo "No remote targets enabled"
+
+    if sync_lock_release; then
+        :
+    else
+        status=1
+    fi
+    HAWS_SYNC_LOCK_ACQUIRED=0
+    trap - EXIT INT TERM
+    return "${status}"
+}
+
 run_sync() {
     local CLEAN_UNMANAGED=false
     for opt in "$@"; do
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
     done
     shift || true
-    settings_load || return $?
-    if [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; then
-        if [ -z "${HAWS_SECOND_BRAIN_REMOTE:-}" ] ||
-            ! _haws_remote_access_check "${HAWS_SECOND_BRAIN_REMOTE}"; then
-            echo "Remote validation failed. Sync aborted."
-            return 1
-        fi
-    fi
-    echo "=== HAWS Universal Command Engine (All-in-One Sync) ==="
-    echo ""
+    local sync_status=0
+    sync_run "$@" || sync_status=$?
 
     local SOURCE_DIR="${SCRIPT_DIR}"
     load_disabled_skills
-
-    # 0. Sync Personal Second Brain if connected
-    echo "--- Step 0: Syncing Personal Second Brain ---"
-    run_user sync
-    echo ""
-
-    # 1. Check Git Remote
-    if [ -d "${SOURCE_DIR}/.git" ]; then
-        echo "--- Step 1: Checking Remote Repository ---"
-        git -C "${SOURCE_DIR}" fetch --quiet origin main 2>/dev/null || true
-        local INCOMING_COMMITS
-        INCOMING_COMMITS=$(git -C "${SOURCE_DIR}" rev-list HEAD..origin/main --count 2>/dev/null || echo 0)
-        if [ "${INCOMING_COMMITS}" -gt 0 ]; then
-            echo "  [*] Remote updates detected (${INCOMING_COMMITS} new commits). Pulling..."
-            git -C "${SOURCE_DIR}" pull --quiet || true
-            echo "  [✓] Repository updated to latest commit."
-        else
-            echo "  [✓] Local repository is up to date."
-        fi
-        echo ""
-    fi
-
-    # 2. Sync Submodules
-    if [ -f "${SOURCE_DIR}/.gitmodules" ]; then
-        echo "--- Step 2: Syncing Embedded Skill Submodules ---"
-        git -C "${SOURCE_DIR}" submodule update --init --recursive --quiet 2>/dev/null || true
-        echo "  [✓] Embedded submodules ready."
-        echo ""
-    fi
 
     # 3. Detect AI Environments
     echo "--- Step 3: Detecting AI Environments ---"
@@ -1633,8 +2034,13 @@ EOF
     run_status
     echo ""
     echo "================================================================"
-    echo "  [✓] HAWS Universal Sync Completed Successfully."
+    if [ "${sync_status}" -eq 0 ]; then
+        echo "  [✓] HAWS Universal Sync Completed Successfully."
+    else
+        echo "  [!] HAWS Universal Sync completed with target issues."
+    fi
     echo "================================================================"
+    return "${sync_status}"
 }
 
 run_edit_gitmodules() {
