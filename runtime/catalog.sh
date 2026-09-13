@@ -79,33 +79,39 @@ catalog_sources() {
 }
 
 _catalog_skill_display_name() {
-  local skill_file="$1" fallback="${2:-}" line value
-  [ -f "${skill_file}" ] || { printf '%s\n' "${fallback}"; return 0; }
-  while IFS= read -r line || [ -n "${line}" ]; do
-    case "${line}" in
-      name:*)
-        value="${line#name:}"
-        value="${value%%#*}"
-        value="${value#${value%%[![:space:]]*}}"
-        value="${value%${value##*[![:space:]]}}"
-        value="${value#\"}"; value="${value%\"}"
-        value="${value#\'}"; value="${value%\'}"
-        value="${value%$'\r'}"
-        [ -n "${value}" ] && { printf '%s\n' "${value}"; return 0; }
-        ;;
-      [[:space:]]name:*)
-        value="${line#*:}"
-        value="${value%%#*}"
-        value="${value#${value%%[![:space:]]*}}"
-        value="${value%${value##*[![:space:]]}}"
-        value="${value#\"}"; value="${value%\"}"
-        value="${value#\'}"; value="${value%\'}"
-        value="${value%$'\r'}"
-        [ -n "${value}" ] && { printf '%s\n' "${value}"; return 0; }
-        ;;
-    esac
-  done < "${skill_file}"
-  printf '%s\n' "${fallback}"
+  local skill_file="$1" fallback="${2:-}" line value target="${3:-}"
+  local res="${fallback}"
+  if [ -f "${skill_file}" ]; then
+    while IFS= read -r line || [ -n "${line}" ]; do
+      case "${line}" in
+        name:*)
+          value="${line#name:}"
+          value="${value%%#*}"
+          value="${value#${value%%[![:space:]]*}}"
+          value="${value%${value##*[![:space:]]}}"
+          value="${value#\"}"; value="${value%\"}"
+          value="${value#\'}"; value="${value%\'}"
+          value="${value%$'\r'}"
+          if [ -n "${value}" ]; then res="${value}"; break; fi
+          ;;
+        [[:space:]]name:*)
+          value="${line#*:}"
+          value="${value%%#*}"
+          value="${value#${value%%[![:space:]]*}}"
+          value="${value%${value##*[![:space:]]}}"
+          value="${value#\"}"; value="${value%\"}"
+          value="${value#\'}"; value="${value%\'}"
+          value="${value%$'\r'}"
+          if [ -n "${value}" ]; then res="${value}"; break; fi
+          ;;
+      esac
+    done < "${skill_file}"
+  fi
+  if [ -n "${target}" ]; then
+    printf -v "${target}" '%s' "${res}"
+  else
+    printf '%s\n' "${res}"
+  fi
 }
 
 _catalog_disabled_file() {
@@ -139,8 +145,29 @@ _catalog_is_disabled() {
   return 1
 }
 
+_catalog_is_disabled_str() {
+  local content="$1" skill_id="$2" display_name="$3" entrypoint="$4" line
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line%$'\r'}"
+    line="${line%%#*}"
+    line="${line#${line%%[![:space:]]*}}"
+    line="${line%${line##*[![:space:]]}}"
+    case "${line}" in
+      "${skill_id}"|"${display_name}"|"${entrypoint}") return 0 ;;
+    esac
+  done <<EOF
+${content}
+EOF
+  return 1
+}
+
 catalog_skills() {
   local source_row source_id path url revision source_dir skill_file entrypoint skill_dir display_name skill_id active
+  local disabled_file disabled_content=""
+  disabled_file="$(_catalog_disabled_file 2>/dev/null || true)"
+  if [ -n "${disabled_file}" ] && [ -f "${disabled_file}" ]; then
+    disabled_content="$(<"${disabled_file}")"
+  fi
   while IFS= read -r source_row || [ -n "${source_row}" ]; do
     [ -n "${source_row}" ] || continue
     IFS="$(printf '\t')" read -r source_id path url revision <<EOF
@@ -152,11 +179,13 @@ EOF
       [ -s "${skill_file}" ] || continue
       entrypoint="${skill_file#${source_dir}/}"
       skill_dir="${entrypoint%/SKILL.md}"
-      display_name="$(_catalog_skill_display_name "${skill_file}" "${skill_dir##*/}")"
+      _catalog_skill_display_name "${skill_file}" "${skill_dir##*/}" display_name
       skill_id="${source_id}::${entrypoint}"
       active=1
-      if _catalog_is_disabled "${skill_id}" "${display_name}" "${entrypoint}"; then
-        active=0
+      if [ -n "${disabled_content}" ]; then
+        if _catalog_is_disabled_str "${disabled_content}" "${skill_id}" "${display_name}" "${entrypoint}"; then
+          active=0
+        fi
       fi
       printf '%s\t%s\t%s\t%s\t%s\n' "${skill_id}" "${display_name}" "${source_id}" "${entrypoint}" "${active}"
     done < <(find "${source_dir}" -type f -name SKILL.md -print0 2>/dev/null)

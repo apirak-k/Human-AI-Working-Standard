@@ -51,6 +51,19 @@ integration_plan() {
   : > "${output}" || return 1
   local repo source_row source_id path url revision source_dir env skill_row skill_id display source_skill entrypoint active destination template
   repo="$(_integration_repo)"
+  local sources_raw s_var s_path
+  sources_raw="$(catalog_sources 2>/dev/null || true)"
+  while IFS= read -r source_row || [ -n "${source_row}" ]; do
+    [ -n "${source_row}" ] || continue
+    IFS=$'\t' read -r source_id path url revision <<EOF
+${source_row}
+EOF
+    s_var="SRC_PATH_${source_id//[^a-zA-Z0-9_]/_}"
+    printf -v "${s_var}" '%s' "${path}"
+  done <<EOF
+${sources_raw}
+EOF
+
   # Removing a source is a first-class draft operation. Keep it in the plan so
   # preview can describe it and apply can detach only HAWS-managed submodules.
   if [ -n "${old_selection}" ]; then
@@ -62,7 +75,7 @@ EOF
       [ -n "${new_selection}" ] && _integration_source_selected "${source_id}" "${new_selection}" && continue
       printf 'remove-source\tsources\t%s\t%s\tremoved from Settings draft\n' "${source_id}" "${path}" >> "${output}"
     done <<EOF
-$(catalog_sources 2>/dev/null || true)
+${sources_raw}
 EOF
   fi
   while IFS= read -r source_row || [ -n "${source_row}" ]; do
@@ -77,7 +90,7 @@ EOF
       continue
     fi
   done <<EOF
-$(catalog_sources 2>/dev/null || true)
+${sources_raw}
 EOF
   for env in claude gemini cursor copilot codex; do
     _integration_env_selected "${env}" || continue
@@ -91,7 +104,10 @@ EOF
 ${skill_row}
 EOF
     [ "${active}" = 1 ] || continue
-    source_skill="${repo}/$(_catalog_source_fields "${source_id}" 2>/dev/null | cut -f1)/${entrypoint%/SKILL.md}"
+    s_var="SRC_PATH_${source_id//[^a-zA-Z0-9_]/_}"
+    s_path="${!s_var:-}"
+    [ -n "${s_path}" ] || s_path="$(_catalog_source_fields "${source_id}" 2>/dev/null | cut -f1)"
+    source_skill="${repo}/${s_path}/${entrypoint%/SKILL.md}"
     for env in claude gemini codex; do
       _integration_env_selected "${env}" || continue
       case "${env}" in

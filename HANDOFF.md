@@ -4,6 +4,46 @@
 > **Product and execution contract:** [spec.md](spec.md).
 > The checkpoint details below are a historical snapshot from 2026-09-11, not current status. Do not use them to select a branch, task, or merge decision.
 
+## Current AGY Handoff Continuation (2026-09-13)
+
+Continue only on `recovery/clean-base`. The existing worktree changes were
+preserved. No reset, merge, push, worktree switch, or old-base Batch 7/8 work
+was performed or started.
+
+The requested scope is limited to three recovery fixes:
+
+1. `haws.sh` help aliases (`help`, `--help`, `-h`) must exit 0.
+2. `runtime/settings.sh` must display `all active (default)` while the skills draft is still unloaded.
+3. Opening Skills without edits must not create a false `Discard Changes?` prompt.
+
+Root-cause findings:
+
+- The shared dispatcher had no help case, so all help aliases fell through to the unknown-command branch and exited 1.
+- Lazy settings initialization intentionally leaves `HAWS_SELECTED_SKILLS` empty until Skills or Preview is opened; the menu treated that lazy sentinel as zero active skills.
+- `settings_edit` captured an empty `orig_skills` before lazy loading; `settings_ensure_skills_draft` then populated the draft and the dirty check incorrectly saw a change.
+
+Implemented and tested changes:
+
+- Added one shared help dispatcher case returning exit 0.
+- Added the smallest lazy-display branch and synchronized the original skills baseline after catalog materialization.
+- Added regression coverage for all three behaviors. Existing performance changes in the four runtime files remain intact.
+
+Fresh evidence:
+
+- RED: settings regression run reported `47 passed, 2 failed`; the new Windows help check reported `8 passed, 1 failed` because help returned 1.
+- `tests/cli/run.sh`: exit 0; catalog 6, cross-platform 5, first-install 10, settings 49, state 12, status/doctor 6, sync 8, uninstall 7, and Windows launcher 8 passed (111 total).
+- `node --test tests/windows_launcher_execution.test.mjs`: exit 0; 10 passed, 0 failed.
+- `.\haws.bat --help`: shared usage printed; PowerShell `$LASTEXITCODE` was 0.
+
+Platform limits remain explicit: direct macOS/Linux execution and native TTY
+behavior are [Unverified]; physical Windows Explorer double-click behavior and
+native interactive-console/TUI behavior outside the executed launcher checks
+are [Unverified].
+
+`CODEX_HANDOFF.md` was inspected and remains preserved as an untracked artifact.
+The next and only delivery action for this handoff is the requested commit after
+the final checks. Stop there; do not begin old-base batches.
+
 **Date**: 2026-09-11  
 **Branch**: `recovery/clean-base`  
 **Current HEAD**: `858ccb4` (prior to this final checkpoint commit)  

@@ -2,14 +2,14 @@
 
 **Status authority:** This is the single source of truth for the current HAWS recovery state.
 **Product contract:** [spec.md](spec.md) defines the approved product behavior.
-**Last inspected:** 2026-09-12 (Asia/Bangkok), read-only repository audit.
+**Last inspected:** 2026-09-13 (Asia/Bangkok), current recovery continuation validation.
 
 ## Current Git State
 
 - Working branch: `recovery/clean-base`
-- HEAD: `b8752cf` — `fix(settings): improve repository removal labels`
-- Remote relationship: three local commits ahead of `origin/recovery/clean-base`
-- Uncommitted candidate work: `runtime/settings.sh` and `runtime/ui.sh`; terminal clearing between interactive surfaces was verified by the Task 3 fixture suites and an isolated Git Bash TTY trial on 2026-09-12. Task 3 user acceptance was recorded on 2026-09-12.
+- Recovery checkpoint base: `1a4430f` — `chore(checkpoint): save verified recovery state before performance optimization`
+- The current continuation preserves the existing performance changes in `runtime/catalog.sh`, `runtime/health.sh`, `runtime/integrations.sh`, and `runtime/settings.sh`, and adds only the targeted help/settings fixes plus their regression coverage and this evidence update.
+- `CODEX_HANDOFF.md` was inspected and remains preserved as an untracked handoff artifact; it is outside the requested commit scope.
 - No merge to `main` and no push is authorized by this state document.
 
 ## Recovery Tasks 1–7
@@ -31,6 +31,32 @@
 - Settings remain draft-only until the reviewed Install/Update action.
 - Bare launch must not auto-sync or auto-run Doctor.
 - Do not merge or push without the user's explicit authorization.
+
+## Current AGY Handoff Continuation (2026-09-13)
+
+Scope is limited to `recovery/clean-base` recovery only. No reset, merge, push,
+worktree switch, or old-base Batch 7/8 work was performed or started.
+
+Targeted fixes:
+
+- `haws.sh`: `help`, `--help`, and `-h` now print the shared usage text and exit 0.
+- `runtime/settings.sh`: an unloaded skills draft now displays `all active (default)` rather than `0 active`.
+- `runtime/settings.sh`: lazy skills loading synchronizes the original skills baseline, preventing a false `Discard Changes?` prompt when Skills is opened and left unchanged.
+
+TDD evidence:
+
+- RED: the new settings regressions failed while the existing settings checks passed (`47 passed, 2 failed`); the new launcher help check failed because the aliases returned exit 1.
+- GREEN: `tests/cli/run.sh` exited 0 with catalog 6, cross-platform 5, first-install 10, settings 49, state 12, status/doctor 6, sync 8, uninstall 7, and Windows launcher 8 tests passed (111 total).
+- GREEN: `node --test tests/windows_launcher_execution.test.mjs` exited 0 (`10` tests passed, `0` failed).
+- GREEN: `.\haws.bat --help` printed the shared usage text and returned `$LASTEXITCODE = 0`.
+
+Platform limits:
+
+- Direct macOS/Linux execution and native macOS/Linux TTY behavior: [Unverified].
+- Physical Windows Explorer double-click behavior and native interactive-console/TUI behavior outside the executed launcher checks: [Unverified].
+
+The requested commit boundary is this validated change set only. No later
+recovery batch is in scope.
 
 ## Task 3 Subtask 5 Evidence (2026-09-12)
 

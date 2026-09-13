@@ -211,6 +211,30 @@ test_settings_defers_skill_catalog_loading_until_the_user_needs_it() {
   ! grep -F "Loading skills catalog (this can take a moment)..." "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
+test_settings_shows_all_active_default_before_skills_load() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/skills/packs/repo/skill-one"
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo.path skills/packs/repo
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo.url https://example.invalid/repo.git
+  printf 'name: Skill One\n' > "${FIXTURE_REPO}/skills/packs/repo/skill-one/SKILL.md"
+  export HAWS_TEST_KEYS=cancel
+  run_haws settings || true
+  assert_output_contains "Skills  all active (default)" || return 1
+  ! grep -F "Loading skills catalog (this can take a moment)..." "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
+test_opening_skills_without_edits_does_not_prompt_discard() {
+  new_fixture
+  mkdir -p "${FIXTURE_REPO}/skills/packs/repo/skill-one"
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo.path skills/packs/repo
+  git -C "${FIXTURE_REPO}" config -f .gitmodules submodule.repo.url https://example.invalid/repo.git
+  printf 'name: Skill One\n' > "${FIXTURE_REPO}/skills/packs/repo/skill-one/SKILL.md"
+  export HAWS_TEST_KEYS=3,single,Q,Q,cancel
+  run_haws settings || true
+  ! grep -F "Discard Changes?" "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+  assert_output_contains "Cancelled. No changes saved." || return 1
+}
+
 test_review_precedes_every_mutation() {
   new_fixture
   mkdir -p "${FIXTURE_HOME}/.claude"
@@ -522,6 +546,8 @@ run_test test_settings_lifecycle_labels_on_first_install
 run_test test_cursor_menu_accepts_numbered_test_seam_for_existing_fixture_flows
 run_test test_boolean_requires_explicit_on_or_off
 run_test test_settings_defers_skill_catalog_loading_until_the_user_needs_it
+run_test test_settings_shows_all_active_default_before_skills_load
+run_test test_opening_skills_without_edits_does_not_prompt_discard
 run_test test_review_precedes_every_mutation
 run_test test_later_save_apply_does_not_fetch_existing_sources
 run_test test_unrelated_setting_change_preserves_environment_disabled_bytes

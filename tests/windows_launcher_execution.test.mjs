@@ -9,6 +9,17 @@ const isWindows = os.platform() === "win32";
 const gitBash = "C:\\Program Files\\Git\\bin\\bash.exe";
 
 test("haws.bat execution and cross-platform parity suite", { skip: !isWindows }, async (t) => {
+  await t.test("help aliases exit with 0 and print usage", () => {
+    for (const command of ["help", "--help", "-h"]) {
+      const res = spawnSync("cmd.exe", ["/c", "haws.bat", command], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+      });
+      assert.equal(res.status, 0, `${command} should exit successfully`);
+      assert.match(res.stdout, /Usage: \.\/haws\.sh/);
+    }
+  });
+
   await t.test("unknown command exits with 1 and prints usage", () => {
     const res = spawnSync("cmd.exe", ["/c", "haws.bat", "unknown"], {
       cwd: process.cwd(),

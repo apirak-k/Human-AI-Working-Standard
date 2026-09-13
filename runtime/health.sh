@@ -76,34 +76,44 @@ _health_collect() {
     fi
   done
 
+  local sources_raw
+  sources_raw="$(catalog_sources 2>/dev/null || true)"
+  local s_var
   while IFS= read -r row || [ -n "${row}" ]; do
     [ -n "${row}" ] || continue
     IFS=$'\t' read -r source_id source_path url revision <<EOF
 ${row}
 EOF
+    s_var="SRC_PATH_${source_id//[^a-zA-Z0-9_]/_}"
+    printf -v "${s_var}" '%s' "${source_path}"
     if [ -d "$(_health_repo)/${source_path}" ]; then
       _health_add Ready "source:${source_id}" "source available" "No action"
     else
       _health_add Attention "source:${source_id}" "source checkout missing" "Run haws.sh sync"
     fi
   done <<EOF
-$(catalog_sources 2>/dev/null || true)
+${sources_raw}
 EOF
 
+  local skills_raw
+  skills_raw="$(catalog_skills 2>/dev/null || true)"
+  HAWS_HEALTH_SKILLS_DATA="${skills_raw}"
   while IFS= read -r row || [ -n "${row}" ]; do
     [ -n "${row}" ] || continue
     IFS=$'\t' read -r skill_id display source_id_row entrypoint active <<EOF
 ${row}
 EOF
     [ "${active}" = 1 ] || continue
-    path="$(_catalog_source_fields "${source_id_row}" 2>/dev/null | cut -f1 || true)"
+    s_var="SRC_PATH_${source_id_row//[^a-zA-Z0-9_]/_}"
+    path="${!s_var:-}"
+    [ -n "${path}" ] || path="$(_catalog_source_fields "${source_id_row}" 2>/dev/null | cut -f1 || true)"
     if [ -s "$(_health_repo)/${path}/${entrypoint}" ]; then
       _health_add Ready "skill:${skill_id}" "active entrypoint usable" "No action"
     else
       _health_add Blocked "skill:${skill_id}" "active entrypoint missing or empty" "Run haws.sh settings or sync"
     fi
   done <<EOF
-$(catalog_skills 2>/dev/null || true)
+${skills_raw}
 EOF
 }
 
@@ -120,8 +130,13 @@ status_run() {
   settings_load || true
   env_count=0; for row in claude gemini cursor copilot codex; do _health_env_detected "${row}" && env_count=$((env_count + 1)); done
   source_count="$(catalog_sources 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ')"
-  active_count="$(catalog_skills 2>/dev/null | awk -F $'\t' '$5 == 1 {n++} END {print n+0}')"
-  disabled_count="$(catalog_skills 2>/dev/null | awk -F $'\t' '$5 != 1 {n++} END {print n+0}')"
+  read -r active_count disabled_count <<EOF
+$(printf '%s\n' "${HAWS_HEALTH_SKILLS_DATA:-}" | awk -F $'\t' '
+  $5 == 1 {act++}
+  $5 != 1 && NF >= 5 {dis++}
+  END {print (act+0), (dis+0)}
+')
+EOF
   echo "HAWS Status"
   echo "Overall: ${classification}"
   last="$(_health_last_sync)"

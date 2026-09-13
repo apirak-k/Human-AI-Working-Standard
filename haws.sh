@@ -3016,6 +3016,15 @@ if [ -z "${COMMAND}" ]; then
 fi
 
 case "${COMMAND}" in
+    help|--help|-h)
+        echo "Usage: ./haws.sh [sync|status|doctor|settings|uninstall]"
+        echo "  sync            Guarded per-target remote sync"
+        echo "  status [--details] Read-only local health overview"
+        echo "  doctor          Read-only local diagnosis"
+        echo "  settings        Edit local Settings"
+        echo "  uninstall       Preview and remove HAWS-owned integrations"
+        exit 0
+        ;;
     interactive)
         shift || true
         if [ -n "${HAWS_TEST_KEYS:-}" ] || [ -t 0 ]; then

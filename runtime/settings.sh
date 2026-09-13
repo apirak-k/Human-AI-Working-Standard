@@ -52,6 +52,7 @@ settings_ensure_skills_draft() {
   echo "Loading skills catalog (this can take a moment)..."
   HAWS_SELECTED_SKILLS="$(_settings_active_skills)"
   HAWS_SKILLS_DRAFT_LOADED=1
+  [ -z "${orig_skills:-}" ] && orig_skills="${HAWS_SELECTED_SKILLS}"
   export HAWS_SELECTED_SKILLS HAWS_SKILLS_DRAFT_LOADED
 }
 
@@ -99,18 +100,44 @@ $(catalog_sources 2>/dev/null || true)
 EOF
       ;;
     skills|skills-single)
-      while IFS=$'\t' read -r id label _ detail active; do
-        [ -n "${id}" ] || continue
-        if [ "${type}" != skills ]; then
-          local source_count
-          source_count="$(catalog_skills 2>/dev/null | awk -F '\t' -v wanted="${_}" '$3 == wanted {n++} END {print n+0}')"
-          [ "${type}" = skills-single ] && [ "${source_count}" -eq 1 ] || continue
-        fi
-        _settings_list_contains "${current}" "${id}" && active=1 || active=0
-        records+=("${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${active}")
-      done <<EOF
-$(catalog_skills 2>/dev/null || true)
+      local raw_skills
+      raw_skills="$(catalog_skills 2>/dev/null || true)"
+      if [ "${type}" = skills-single ]; then
+        while IFS=$'\t' read -r id label detail active; do
+          [ -n "${id}" ] || continue
+          records+=("${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${active}")
+        done < <(printf '%s\n' "${raw_skills}" | awk -F '\t' -v cur="${current}" '
+          BEGIN {
+            gsub(/\r/, "", cur)
+            n_cur = split(cur, cur_arr, "\n")
+            for (i = 1; i <= n_cur; i++) if (cur_arr[i] != "") enabled_set[cur_arr[i]] = 1
+          }
+          NF >= 5 {
+            id = $1; lbl = $2; src = $3; det = $4
+            src_count[src]++
+            items[++num_items] = id
+            item_lbl[num_items] = lbl
+            item_src[num_items] = src
+            item_det[num_items] = det
+          }
+          END {
+            for (i = 1; i <= num_items; i++) {
+              if (src_count[item_src[i]] == 1) {
+                act = (items[i] in enabled_set) ? 1 : 0
+                printf "%s\t%s\t%s\t%d\n", items[i], item_lbl[i], item_det[i], act
+              }
+            }
+          }
+        ')
+      else
+        while IFS=$'\t' read -r id label _ detail active; do
+          [ -n "${id}" ] || continue
+          _settings_list_contains "${current}" "${id}" && active=1 || active=0
+          records+=("${id}"$'\t'"${label}"$'\t'"${detail}"$'\t'"${active}")
+        done <<EOF
+${raw_skills}
 EOF
+      fi
       ;;
   esac
   [ "${#records[@]}" -gt 0 ] || { echo "No selectable ${type}."; return 1; }
@@ -121,37 +148,70 @@ EOF
 }
 
 _settings_skill_counts() {
-  local current="$1" source filter="$2" id label source_id detail active total=0 enabled=0
-  while IFS=$'\t' read -r id label source_id detail active; do
-    [ -n "${id}" ] || continue
-    source="$(catalog_skills 2>/dev/null | awk -F '\t' -v wanted="${source_id}" '$3 == wanted {n++} END {print n+0}')"
-    [ "${filter}" = single ] && [ "${source}" -ne 1 ] && continue
-    [ "${filter}" = packs ] && [ "${source}" -le 1 ] && continue
-    total=$((total + 1))
-    _settings_list_contains "${current}" "${id}" && enabled=$((enabled + 1))
-  done <<EOF
-$(catalog_skills 2>/dev/null || true)
-EOF
-  printf '%s / %s active' "${enabled}" "${total}"
+  local current="$1" filter="$2"
+  local raw_skills
+  raw_skills="$(catalog_skills 2>/dev/null || true)"
+  [ -n "${raw_skills}" ] || { printf '0 / 0 active'; return 0; }
+  printf '%s\n' "${raw_skills}" | awk -F '\t' -v cur="${current}" -v f="${filter}" '
+    BEGIN {
+      gsub(/\r/, "", cur)
+      n_cur = split(cur, cur_arr, "\n")
+      for (i = 1; i <= n_cur; i++) if (cur_arr[i] != "") enabled_set[cur_arr[i]] = 1
+    }
+    NF >= 5 {
+      id = $1; src = $3
+      src_count[src]++
+      items[NR] = id; item_src[NR] = src
+      total_items = NR
+    }
+    END {
+      tot = 0; act = 0
+      for (i = 1; i <= total_items; i++) {
+        c = src_count[item_src[i]]
+        if (f == "single" && c != 1) continue
+        if (f == "packs" && c <= 1) continue
+        tot++
+        if (items[i] in enabled_set) act++
+      }
+      printf "%d / %d active", act, tot
+    }
+  '
 }
 
 multi_skill_packs_menu() {
-  local current="${HAWS_SELECTED_SKILLS:-}" key id label source_id detail active count records=()
-  declare -A seen=()
-  while IFS=$'\t' read -r id label source_id detail active; do
-    [ -n "${id}" ] || continue
-    [ -n "${seen[${source_id}]:-}" ] && continue
-    seen[${source_id}]=1
-    count="$(catalog_skills 2>/dev/null | awk -F '\t' -v wanted="${source_id}" '$3 == wanted {n++} END {print n+0}')"
-    [ "${count}" -gt 1 ] || continue
-    local enabled=0 skill_id
-    while IFS=$'\t' read -r skill_id _ _ _ _; do _settings_list_contains "${current}" "${skill_id}" && enabled=$((enabled + 1)); done <<EOF
-$(catalog_skills 2>/dev/null | awk -F '\t' -v wanted="${source_id}" '$3 == wanted')
-EOF
-    records+=("${source_id}"$'\t'"${source_id}"$'\t'"${enabled} / ${count} active")
-  done <<EOF
-$(catalog_skills 2>/dev/null || true)
-EOF
+  local current="${HAWS_SELECTED_SKILLS:-}" key records=()
+  local raw_skills
+  raw_skills="$(catalog_skills 2>/dev/null || true)"
+  if [ -n "${raw_skills}" ]; then
+    while IFS=$'\t' read -r src_id lbl act_info; do
+      [ -n "${src_id}" ] || continue
+      records+=("${src_id}"$'\t'"${lbl}"$'\t'"${act_info}")
+    done < <(printf '%s\n' "${raw_skills}" | awk -F '\t' -v cur="${current}" '
+      BEGIN {
+        gsub(/\r/, "", cur)
+        n_cur = split(cur, cur_arr, "\n")
+        for (i = 1; i <= n_cur; i++) if (cur_arr[i] != "") enabled_set[cur_arr[i]] = 1
+      }
+      NF >= 5 {
+        id = $1; src = $3
+        src_count[src]++
+        if (!seen_src[src]++) {
+          src_order[++num_src] = src
+        }
+        if (id in enabled_set) {
+          src_enabled[src]++
+        }
+      }
+      END {
+        for (i = 1; i <= num_src; i++) {
+          s = src_order[i]
+          if (src_count[s] > 1) {
+            printf "%s\t%s\t%d / %d active\n", s, s, src_enabled[s]+0, src_count[s]+0
+          }
+        }
+      }
+    ')
+  fi
   records+=($'back\tBack to Skills\t')
   ui_clear
   while true; do
@@ -181,6 +241,8 @@ EOF
 _settings_remove_repositories_menu() {
   local records=() id path url revision count
   local sources_list="${HAWS_SELECTED_SOURCES:-$(_settings_sources)}"
+  local raw_skills
+  raw_skills="$(catalog_skills 2>/dev/null || true)"
   while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
     [ -n "${id}" ] || continue
     _settings_list_contains "${sources_list}" "${id}" || continue
@@ -200,7 +262,7 @@ _settings_remove_repositories_menu() {
     fi
     [ -n "${repo_label}" ] || repo_label="${id##*/}"
     repo_label="${repo_label##*::}"
-    count="$(catalog_skills 2>/dev/null | awk -F '\t' -v s="${id}" '$3 == s {n++} END {print n+0}')"
+    count="$(printf '%s\n' "${raw_skills}" | awk -F '\t' -v s="${id}" '$3 == s {n++} END {print n+0}')"
     local count_detail="${count} skills"
     [ "${count}" -eq 1 ] && count_detail="1 skill"
     records+=("${id}"$'\t'"${repo_label}"$'\t'"${count_detail}"$'\t'"0")
@@ -393,12 +455,14 @@ _settings_render() {
 }
 
 _settings_menu_records() {
-  local mode="${1:-settings}" source_count skill_count env_count title
+  local mode="${1:-settings}" source_count skill_count skill_detail env_count title
   if [ "${mode}" = "settings" ] && ! install_is_complete; then
     mode="first-install"
   fi
   source_count="$(printf '%s\n' "${HAWS_SELECTED_SOURCES:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
   skill_count="$(printf '%s\n' "${HAWS_SELECTED_SKILLS:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
+  skill_detail="${skill_count} active"
+  [ "${HAWS_SKILLS_DRAFT_LOADED:-0}" = 1 ] || skill_detail="all active (default)"
   env_count="$(printf '%s\n' "${HAWS_SELECTED_ENVS:-}" | sed '/^$/d' | wc -l | tr -d ' ')"
   if [ "${mode}" = first-install ]; then
     printf '%s\n' "HAWS Setup" >&2
@@ -409,7 +473,7 @@ _settings_menu_records() {
     printf '%s\t%s\t%s\n' default "Reset to Defaults" ""
   fi
   printf '%s\t%s\t%s\n' repositories "Repositories" "${source_count} sources"
-  printf '%s\t%s\t%s\n' skills "Skills" "${skill_count} active"
+  printf '%s\t%s\t%s\n' skills "Skills" "${skill_detail}"
   printf '%s\t%s\t%s\n' envs "AI Environments" "${env_count} selected"
   printf '%s\t%s\t%s\n' second-brain "Second Brain Remote" "[ ${HAWS_DRAFT_SECOND_BRAIN^} ]"
   printf '%s\t%s\t%s\n' auto-update "Auto Update" "[ ${HAWS_DRAFT_AUTO_UPDATE^} ]"
