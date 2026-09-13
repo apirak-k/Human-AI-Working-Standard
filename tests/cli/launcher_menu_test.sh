@@ -14,6 +14,25 @@ test_launcher_is_thin() {
     ! grep -iE 'run_sync|run_setup|run_doctor|git submodule' "${PROJECT_ROOT}/haws.bat" >/dev/null
 }
 
+test_main_menu_reuses_old_interaction_engine() {
+    local source="${PROJECT_ROOT}/haws.sh"
+    local main_block
+
+    grep -q '^interactive_menu()' "${source}" || return 1
+    grep -Fq 'interactive_menu checklist' "${source}" || return 1
+    grep -Fq 'interactive_menu menu' "${source}" || return 1
+
+    main_block="$(sed -n '/^run_main_menu() {/,/^case "${COMMAND}"/p' "${source}")"
+    ! printf '%s\n' "${main_block}" | grep -F 'read -rsn1' >/dev/null || return 1
+    ! printf '%s\n' "${main_block}" | grep -F 'render_main_menu' >/dev/null || return 1
+    ! grep -Fq '\033[H\033[2J' "${source}" || return 1
+    [ "$(grep -Fc 'read -rsn1' "${source}")" -eq 1 ] || return 1
+    grep -Fq 'printf "\033[?25l"' "${source}" || return 1
+    grep -Fq 'printf "\033[%dA"' "${source}" || return 1
+    grep -Fq 'printf "\033[2K\r' "${source}" || return 1
+    grep -Fq 'printf "\033[?25h"' "${source}"
+}
+
 test_bare_q_shows_menu_without_home_mutation() {
     grep -q '^run_main_menu()' "${PROJECT_ROOT}/haws.sh" || return 1
     printf 'q' | HOME="${FIXTURE_HOME}" bash "${PROJECT_ROOT}/haws.sh" >"${OUTPUT_FILE}" 2>&1 || return 1
@@ -74,6 +93,7 @@ test_exit_selection_does_not_dispatch_an_action() {
 }
 
 run_test test_launcher_is_thin
+run_test test_main_menu_reuses_old_interaction_engine
 run_test test_bare_q_shows_menu_without_home_mutation
 run_test test_bare_eof_exits_without_home_mutation
 run_test test_skills_keeps_old_categories_and_controls

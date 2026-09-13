@@ -47,6 +47,26 @@ test("haws.bat exists", { skip: !isWindows }, () => {
   assert.equal(existsSync(launcher), true);
 });
 
+test("main menu uses the shared old terminal interaction engine", { skip: !isWindows }, () => {
+  const source = readFileSync(path.join(projectRoot, "haws.sh"), "utf8");
+  const mainStart = source.indexOf("run_main_menu() {");
+  const mainEnd = source.indexOf('case "${COMMAND}"', mainStart);
+  assert.notEqual(mainStart, -1);
+  assert.notEqual(mainEnd, -1);
+
+  const mainMenu = source.slice(mainStart, mainEnd);
+  assert.equal((source.match(/read -rsn1/g) || []).length, 1);
+  assert.doesNotMatch(mainMenu, /read -rsn1/);
+  assert.doesNotMatch(mainMenu, /render_main_menu/);
+  assert.doesNotMatch(source, /\\033\[H\\033\[2J/);
+  assert.match(source, /interactive_menu\s+menu/);
+  assert.match(source, /interactive_menu\s+checklist/);
+  assert.match(source, /printf "\\033\[\?25l"/);
+  assert.match(source, /printf "\\033\[%dA"/);
+  assert.match(source, /printf "\\033\[2K\\r/);
+  assert.match(source, /printf "\\033\[\?25h"/);
+});
+
 test("bare launch forwards menu and preserves the child exit code", { skip: !isWindows }, () => {
   const root = makeFixture();
   try {

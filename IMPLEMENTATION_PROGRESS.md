@@ -37,3 +37,20 @@ Implementation and verification report: BATCH1_REPORT.md (written by implementer
 Batch 1 automated gates: CLI 7/7, Windows 6/6, existing Codex agents 14/14; pre-commit gate passed. Independent reviewer approved the batch. Physical Explorer acceptance remains pending. Missing-Bash execution test is a minor coverage gap (static assertion only).
 
 Task 2: implementation complete and reviewed; commit checkpoint follows. Next: Batch 2 compatible state.
+
+## User correction after Batch 1
+
+- Commit `941f8e8` matches much of the visible behavior but uses a separate `run_main_menu()` input/render loop and full-screen clear/redraw.
+- User requires implementation-method fidelity, not only similar output. Old terminal behavior is comparable to video redraw in place; fast full-screen redraw is comparable to moving paper quickly and is rejected.
+- Task 2A is now required before Batch 2: reuse or minimally refactor the old `interactive_checklist()` engine, remove the parallel renderer, preserve cursor hide/restore and relative row redraw, then test and review.
+- Ponytail is mandatory: reuse existing code before adding code, delete duplication, use the fewest files, and add one focused check per non-trivial change.
+- Execution routing: `gpt-5.6-luna` at `max` implements Tasks 2A-8; `gpt-5.6-sol` at `high` handles focused review/debugging; `gpt-6-astra` is reserved for final whole-branch review or unresolved architecture defects.
+
+## Task 2A completion
+
+- Reused the old checklist interaction path by extracting one `interactive_menu()` core with `menu` and `checklist` modes; `interactive_checklist()` now delegates to that core.
+- Removed the parallel `run_main_menu()` reader/renderer and all full-screen `\033[H\033[2J` redraws. Main-menu movement uses the shared cursor hide/show, relative movement, and per-row clear path.
+- Red evidence before the correction: CLI `7 passed, 1 failed`; Windows launcher `6 passed, 1 failed` on the method-fidelity assertions against `941f8e8`.
+- Green evidence after the correction: `bash -n haws.sh` plus CLI `8/8`, Windows launcher `7/7`, Codex-agent regression `14/14`, and `git diff --check` all passed.
+- PTY runtime check exercised Down then q and observed cursor hide/restore, relative row movement, and per-row clearing; the source audit found no full-screen clear sequence in `haws.sh`.
+- Self-review found no new dependency, renderer/input duplication, dead main-menu renderer, or changes outside the implementation worktree. Physical Explorer acceptance remains `[Unverified]` and no merge or push was performed.

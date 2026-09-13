@@ -1127,28 +1127,34 @@ run_edit_gitmodules() {
     echo "  [✓] Submodule configuration synchronized."
 }
 
-interactive_checklist() {
-    local title="$1"
-    shift
-    local items=("$@") # Format: "name|detail|initial_state_0_or_1"
+interactive_menu() {
+    local mode="$1"
+    local title="$2"
+    shift 2
+    local items=("$@") # checklist: "name|detail|initial_state_0_or_1"
     local count=${#items[@]}
     [ "$count" -eq 0 ] && return 0
 
     local item_names=()
     local item_details=()
     local item_states=()
+    local total="$count"
 
-    for item in "${items[@]}"; do
-        local n="${item%%|*}"
-        local rest="${item#*|}"
-        local d="${rest%%|*}"
-        local s="${rest##*|}"
-        item_names+=("$n")
-        item_details+=("$d")
-        item_states+=("$s")
-    done
+    if [ "${mode}" = "checklist" ]; then
+        total=$((count + 1))
+        for item in "${items[@]}"; do
+            local n="${item%%|*}"
+            local rest="${item#*|}"
+            local d="${rest%%|*}"
+            local s="${rest##*|}"
+            item_names+=("$n")
+            item_details+=("$d")
+            item_states+=("$s")
+        done
+    else
+        item_names=("${items[@]}")
+    fi
 
-    local total=$((count + 1))
     local cursor=0
     local cancelled=0
 
@@ -1158,40 +1164,50 @@ interactive_checklist() {
         local ptr="  "
         [ "$is_curr" -eq 1 ] && ptr="> "
 
-        if [ "$idx" -eq 0 ]; then
-            local all_sel=1
-            local any_sel=0
-            for ((j=0; j<count; j++)); do
-                if [ "${item_states[$j]}" -eq 1 ]; then
-                    any_sel=1
-                else
-                    all_sel=0
+        if [ "${mode}" = "checklist" ]; then
+            if [ "$idx" -eq 0 ]; then
+                local all_sel=1
+                local any_sel=0
+                for ((j=0; j<count; j++)); do
+                    if [ "${item_states[$j]}" -eq 1 ]; then
+                        any_sel=1
+                    else
+                        all_sel=0
+                    fi
+                done
+                local mark="[ ]"
+                if [ "$all_sel" -eq 1 ]; then
+                    mark="[x]"
+                elif [ "$any_sel" -eq 1 ]; then
+                    mark="[-]"
                 fi
-            done
-            local mark="[ ]"
-            if [ "$all_sel" -eq 1 ]; then
-                mark="[x]"
-            elif [ "$any_sel" -eq 1 ]; then
-                mark="[-]"
-            fi
-            printf "\033[2K\r%s\033[1;36m%s [Toggle All: Select All / Deselect All]\033[0m\n" "${ptr}" "${mark}"
-        else
-            local real_idx=$((idx - 1))
-            local mark="[ ]"
-            local color="\033[0m"
-            if [ "${item_states[$real_idx]}" -eq 1 ]; then
-                mark="[x]"
-                color="\033[32m"
+                printf "\033[2K\r%s\033[1;36m%s [Toggle All: Select All / Deselect All]\033[0m\n" "${ptr}" "${mark}"
             else
-                color="\033[90m"
+                local real_idx=$((idx - 1))
+                local mark="[ ]"
+                local color="\033[0m"
+                if [ "${item_states[$real_idx]}" -eq 1 ]; then
+                    mark="[x]"
+                    color="\033[32m"
+                else
+                    color="\033[90m"
+                fi
+                printf "\033[2K\r%s%s %b%-26s\033[0m \033[90m(%s)\033[0m\n" "${ptr}" "${mark}" "${color}" "${item_names[$real_idx]}" "${item_details[$real_idx]}"
             fi
-            printf "\033[2K\r%s%s %b%-26s\033[0m \033[90m(%s)\033[0m\n" "${ptr}" "${mark}" "${color}" "${item_names[$real_idx]}" "${item_details[$real_idx]}"
+        else
+            printf "\033[2K\r%s%s\n" "${ptr}" "${item_names[$idx]}"
         fi
     }
 
     echo ""
-    echo "=== ${title} ==="
-    echo "Controls: [↑/↓] Navigate | [Space] Toggle | [Enter] Confirm & Save | [q] Cancel"
+    if [ "${mode}" = "checklist" ]; then
+        echo "=== ${title} ==="
+        echo "Controls: [↑/↓] Navigate | [Space] Toggle | [Enter] Confirm & Save | [q] Cancel"
+    else
+        echo "============================================================="
+        echo "                       ${title}"
+        echo "============================================================="
+    fi
     echo ""
 
     for ((i=0; i<total; i++)); do
@@ -1199,61 +1215,73 @@ interactive_checklist() {
         [ "$i" -eq "$cursor" ] && is_c=1
         render_row "$i" "$is_c"
     done
+    if [ "${mode}" = "menu" ]; then
+        echo ""
+        echo "Controls: Up/Down Move | Enter Select | Q Exit"
+    fi
 
     local interactive_terminal=0
-    [ -t 0 ] && interactive_terminal=1
+    [ -t 0 ] && [ -t 1 ] && interactive_terminal=1
+    local redraw_rows="${total}"
+    [ "${mode}" = "menu" ] && redraw_rows=$((total + 2))
     [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25l" 2>/dev/null || true
     while true; do
-            local key=""
-            if ! IFS= read -rsn1 key; then
-                cancelled=1
-                break
-            fi
-            if [[ "${key}" == $'\x1b' ]]; then
-                local rest=""
-                read -rsn2 -t 0.1 rest || rest=""
-                case "${rest}" in
-                    "[A") cursor=$(( (cursor - 1 + total) % total )) ;;
-                    "[B") cursor=$(( (cursor + 1) % total )) ;;
-                esac
-            elif [[ "${key}" == "k" || "${key}" == "K" ]]; then
-                cursor=$(( (cursor - 1 + total) % total ))
-            elif [[ "${key}" == "j" || "${key}" == "J" ]]; then
-                cursor=$(( (cursor + 1) % total ))
-            elif [[ "${key}" == " " || "${key}" == "x" || "${key}" == "X" ]]; then
-                if [ "$cursor" -eq 0 ]; then
-                    local any_unsel=0
-                    for ((j=0; j<count; j++)); do
-                        [ "${item_states[$j]}" -eq 0 ] && any_unsel=1 && break
-                    done
-                    local new_state=1
-                    [ "$any_unsel" -eq 0 ] && new_state=0
-                    for ((j=0; j<count; j++)); do
-                        item_states[$j]=$new_state
-                    done
-                else
-                    local target_idx=$((cursor - 1))
-                    if [ "${item_states[$target_idx]}" -eq 1 ]; then
-                        item_states[$target_idx]=0
-                    else
-                        item_states[$target_idx]=1
-                    fi
-                fi
-            elif [[ "${key}" == "" ]]; then
-                break
-            elif [[ "${key}" == "q" || "${key}" == "Q" ]]; then
-                cancelled=1
-                break
-            fi
-
-            if [ "${interactive_terminal}" -eq 1 ]; then
-                printf "\033[%dA" "${total}"
-                for ((i=0; i<total; i++)); do
-                    local is_c=0
-                    [ "$i" -eq "$cursor" ] && is_c=1
-                    render_row "$i" "$is_c"
+        local key=""
+        if ! IFS= read -rsn1 key; then
+            cancelled=1
+            break
+        fi
+        if [[ "${key}" == $'\x1b' ]]; then
+            local rest=""
+            read -rsn2 -t 0.1 rest || rest=""
+            case "${rest}" in
+                "[A") cursor=$(( (cursor - 1 + total) % total )) ;;
+                "[B") cursor=$(( (cursor + 1) % total )) ;;
+            esac
+        elif [[ "${key}" == "k" || "${key}" == "K" ]]; then
+            cursor=$(( (cursor - 1 + total) % total ))
+        elif [[ "${key}" == "j" || "${key}" == "J" ]]; then
+            cursor=$(( (cursor + 1) % total ))
+        elif [ "${mode}" = "checklist" ] && [[ "${key}" == " " || "${key}" == "x" || "${key}" == "X" ]]; then
+            if [ "$cursor" -eq 0 ]; then
+                local any_unsel=0
+                for ((j=0; j<count; j++)); do
+                    [ "${item_states[$j]}" -eq 0 ] && any_unsel=1 && break
                 done
+                local new_state=1
+                [ "$any_unsel" -eq 0 ] && new_state=0
+                for ((j=0; j<count; j++)); do
+                    item_states[$j]=$new_state
+                done
+            else
+                local target_idx=$((cursor - 1))
+                if [ "${item_states[$target_idx]}" -eq 1 ]; then
+                    item_states[$target_idx]=0
+                else
+                    item_states[$target_idx]=1
+                fi
             fi
+        elif [[ "${key}" == "" ]]; then
+            break
+        elif [[ "${key}" == "q" || "${key}" == "Q" ]]; then
+            cancelled=1
+            break
+        fi
+
+        if [ "${interactive_terminal}" -eq 1 ]; then
+            printf "\033[%dA" "${redraw_rows}"
+        fi
+        if [ "${interactive_terminal}" -eq 1 ] || [ "${mode}" = "menu" ]; then
+            for ((i=0; i<total; i++)); do
+                local is_c=0
+                [ "$i" -eq "$cursor" ] && is_c=1
+                render_row "$i" "$is_c"
+            done
+            if [ "${mode}" = "menu" ]; then
+                echo ""
+                echo "Controls: Up/Down Move | Enter Select | Q Exit"
+            fi
+        fi
     done
     [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25h" 2>/dev/null || true
 
@@ -1262,11 +1290,19 @@ interactive_checklist() {
         return 1
     fi
 
-    CHECKLIST_RESULTS=()
-    for ((i=0; i<count; i++)); do
-        CHECKLIST_RESULTS["${item_names[$i]}"]="${item_states[$i]}"
-    done
+    if [ "${mode}" = "checklist" ]; then
+        CHECKLIST_RESULTS=()
+        for ((i=0; i<count; i++)); do
+            CHECKLIST_RESULTS["${item_names[$i]}"]="${item_states[$i]}"
+        done
+    else
+        INTERACTIVE_MENU_SELECTION="${cursor}"
+    fi
     return 0
+}
+
+interactive_checklist() {
+    interactive_menu checklist "$@"
 }
 
 run_add_git_repo() {
@@ -2540,27 +2576,6 @@ run_main_menu() {
         "Uninstall"
         "Exit"
     )
-    local cursor=0
-    local count=${#items[@]}
-    local interactive_terminal=0
-    [ -t 0 ] && [ -t 1 ] && interactive_terminal=1
-
-    render_main_menu() {
-        echo ""
-        echo "============================================================="
-        echo "                       HAWS — Main Menu"
-        echo "============================================================="
-        local i
-        for ((i=0; i<count; i++)); do
-            if [ "${i}" -eq "${cursor}" ]; then
-                printf "> %s\n" "${items[$i]}"
-            else
-                printf "  %s\n" "${items[$i]}"
-            fi
-        done
-        echo ""
-        echo "Controls: Up/Down Move | Enter Select | Q Exit"
-    }
 
     run_menu_action() {
         local status=0
@@ -2570,44 +2585,11 @@ run_main_menu() {
         fi
     }
 
-    render_main_menu
     while true; do
-        local key=""
-        if ! IFS= read -rsn1 key; then
+        if ! interactive_menu menu "HAWS — Main Menu" "${items[@]}"; then
             return 0
         fi
-        if [[ "${key}" == $'\x1b' ]]; then
-            local rest=""
-            read -rsn2 -t 0.1 rest || rest=""
-            case "${rest}" in
-                "[A") cursor=$(( (cursor - 1 + count) % count )) ;;
-                "[B") cursor=$(( (cursor + 1) % count )) ;;
-            esac
-            [ "${interactive_terminal}" -eq 1 ] && printf "\033[H\033[2J"
-            render_main_menu
-            continue
-        fi
-        case "${key}" in
-            q|Q)
-                return 0
-                ;;
-            k|K)
-                cursor=$(( (cursor - 1 + count) % count ))
-                [ "${interactive_terminal}" -eq 1 ] && printf "\033[H\033[2J"
-                render_main_menu
-                continue
-                ;;
-            j|J)
-                cursor=$(( (cursor + 1) % count ))
-                [ "${interactive_terminal}" -eq 1 ] && printf "\033[H\033[2J"
-                render_main_menu
-                continue
-                ;;
-            "") ;;
-            *) continue ;;
-        esac
-
-        case "${cursor}" in
+        case "${INTERACTIVE_MENU_SELECTION}" in
             0) run_menu_action skills ;;
             1) run_menu_action kit list ;;
             2) run_menu_action user status ;;
@@ -2617,7 +2599,6 @@ run_main_menu() {
             6) run_menu_action uninstall ;;
             7) return 0 ;;
         esac
-        render_main_menu
     done
 }
 
