@@ -3,9 +3,11 @@
 **Implementation worktree:** `codex/old-base-selected-improvements`
 **Previous committed checkpoint:** `5d600e3` (`docs: record old-base HAWS behavior and evidence`)
 **Current checkpoint:** Post-Batch 8 interaction repair — automated verification complete
+**Checkpoint commit:** `0486c9d` (`chore(checkpoint): save old-base interaction repair`)
+**Remote checkpoint:** `origin/codex/old-base-selected-improvements` (pushed 2026-09-14)
 **Previous feature commit:** `0a7d35e` (`feat: add evidence-based health and owned uninstall`)
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
-**Integration:** No merge and no push.
+**Integration:** No merge; checkpoint push completed, no merge into `main`.
 
 ## Confirmed decisions
 
@@ -131,8 +133,23 @@ Scope was limited to `codex/old-base-selected-improvements` versus the unchanged
 - No submodule content was changed or staged. Physical Explorer launch,
   physical key behavior, and host-specific link privileges remain
   `[Unverified]`.
-- The current interaction repair remains uncommitted; no commit, merge, push,
-  reset, worktree switch, or submodule modification was performed.
+- Checkpoint commit `0486c9d` was pushed to
+  `origin/codex/old-base-selected-improvements` for cross-device handoff.
+  No merge into `main`, reset, worktree switch, or submodule modification was
+  performed.
+
+## Remote checkpoint handoff (2026-09-14)
+
+- Commit: `0486c9d` (`chore(checkpoint): save old-base interaction repair`).
+- Target: `origin/codex/old-base-selected-improvements`.
+- Result: new remote branch created and configured as the local upstream.
+- Included files: `haws.sh`, the two CLI regression files, `spec.md`,
+  `README.md`, and `HANDOFF.md`.
+- Excluded and preserved: dirty `haws.bat`, the dirty Windows test, and all
+  five dirty skill submodules.
+- Remaining plan items are still `[Unverified]`: physical Windows Explorer
+  launch/native TTY walkthrough, human acceptance, and external authenticated
+  remote checks. These are not implied by the automated green tests.
 
 ## `[Unverified]` and remaining work
 
@@ -140,7 +157,7 @@ Scope was limited to `codex/old-base-selected-improvements` versus the unchanged
 - External authenticated remotes and host-specific link privileges.
 - Final documentation alignment is recorded above; historical dossier claims
   below are not current verification evidence.
-- Merge into `main` and push require separate user authorization.
+- Merge into `main` remains a separate action and has not been authorized.
 
 The dossier below is historical evidence. Its older diagnostic counts and “current head” references are not current implementation claims.
 
