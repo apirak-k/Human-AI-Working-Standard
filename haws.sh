@@ -583,6 +583,17 @@ _haws_setting_is_toggle() {
     [ "${1:-}" = on ] || [ "${1:-}" = off ]
 }
 
+_haws_remote_is_valid() {
+    local remote="${1:-}"
+    [ -z "${remote}" ] && return 0
+    [[ "${remote}" != *[[:cntrl:]]* ]] || return 1
+    [[ "${remote}" != -* ]] || return 1
+    case "${remote}" in
+        git@?*:?*|?*://?*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 settings_load() {
     local file="$(_haws_state_dir)/settings.tsv"
     settings_defaults
@@ -602,6 +613,7 @@ settings_load() {
                 ;;
             second_brain_remote)
                 [ -z "${extra:-}" ] || return 2
+                _haws_remote_is_valid "${value}" || return 2
                 HAWS_SECOND_BRAIN_REMOTE="${value}"
                 ;;
             auto_update)
@@ -655,6 +667,7 @@ settings_save() {
     esac
     _haws_setting_is_toggle "${second_brain}" || return 2
     _haws_setting_is_toggle "${auto_update}" || return 2
+    _haws_remote_is_valid "${second_brain_remote}" || return 2
 
     local state="$(_haws_state_dir)"
     local file="${state}/settings.tsv"

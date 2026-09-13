@@ -83,6 +83,15 @@ test_settings_save_can_clear_remote() {
     [ -z "${HAWS_SECOND_BRAIN_REMOTE}" ]
 }
 
+test_settings_save_rejects_remote_control_injection() {
+    source_haws || return 1
+    local remote=$'git@example.invalid:user/brain\nmalicious'
+    if settings_save off on "${remote}"; then
+        return 1
+    fi
+    [ ! -f "${HAWS_STATE_DIR}/settings.tsv" ]
+}
+
 test_settings_failure_before_rename_preserves_previous_file() {
     source_haws || return 1
     settings_save off on || return 1
@@ -187,6 +196,7 @@ run_test test_settings_save_does_not_rewrite_disabled_environment_bytes
 run_test test_disabled_environment_save_is_noop_when_bytes_are_unchanged
 run_test test_settings_round_trip_preserves_spaces
 run_test test_settings_save_can_clear_remote
+run_test test_settings_save_rejects_remote_control_injection
 run_test test_settings_failure_before_rename_preserves_previous_file
 run_test test_ownership_round_trip_preserves_spaces_in_paths
 run_test test_ownership_record_updates_one_identity_without_duplicates
