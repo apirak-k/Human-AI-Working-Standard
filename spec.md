@@ -4,7 +4,8 @@
 **Implementation worktree:** `codex/old-base-selected-improvements`  
 **Reference checkout:** `.worktrees/codex-haws-bootstrap`  
 **Last automated verification:** 2026-09-14 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
-**Current code checkpoint:** `500b59e` (`fix(status): route Home details to detailed health output`)
+**Current code checkpoint:** `95e9733` (`chore(checkpoint): establish HAWS base after notify removal`)
+**Remote checkpoint:** `origin/codex/old-base-selected-improvements` at `95e9733`
 **Language:** English
 
 This specification describes behavior implemented in the old-base worktree. It
@@ -119,29 +120,30 @@ menu route. Final Install/Update is the first point where the draft persists.
 ## 8. Evidence
 
 Final automated verification executed on 2026-09-14 at code checkpoint
-`500b59e`:
+`95e9733`:
 
 - `bash -n haws.sh && bash tests/cli/run.sh && node --test
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
   && git diff --check` under Git Bash exited 0.
-- The CLI aggregate passed 101/101 assertions (14 + 14 + 27 + 6 + 10 + 12 +
-  8 + 10). This includes Status/Doctor 8/8 and the new Home Status Details
+- The CLI aggregate passed 102/102 assertions (15 + 14 + 27 + 6 + 10 + 12 +
+  8 + 10). This includes Status/Doctor 8/8 and the Home Status Details
   routing regression.
 - The Node aggregate passed 26 tests and skipped 1. The Codex adapter suite
-  passed 14/14; the Windows launcher suite passed 12/13, with the file-symlink
-  capability skipped as `[Unverified]`.
-- The current working-tree Windows test also contains two pre-existing local
-  additions; they were executed but remain uncommitted and excluded from the
-  checkpoint commit.
-- The selected-improvements code commits are `774cab1`, `0671a2d`, `9ab4499`,
-  and `500b59e`. The tracking remote remains at `614bdb4`; this run did not
-  push or merge.
+  passed 14/14; the Windows file-symlink capability was skipped as
+  `[Unverified]`.
+- The target root has no production source changes. Five skill-pack submodules
+  retain dirty worktrees; `agent-skills`, `anthropics-skills`, and `ponytail`
+  also retain staged gitlink drift. These states were preserved.
+- The selected-improvements implementation history includes `774cab1`, `0671a2d`,
+  `9ab4499`, `500b59e`, `0d0f259`, `1c17b40`, `1aa832d`, and `95e9733`.
+  The tracking remote is at `95e9733`; no new push or merge was performed in
+  this inspection.
 - `ai-configs/codex/skills.test.mjs` and `tests/cli/adapters_test.sh` are not
   present in either compared adapter tree; no placeholder tests were created.
 
 These results are automated evidence, not physical Windows verification or
-human acceptance. The five dirty skill submodules and the two pre-existing
-local files remain outside the checkpoint commit.
+human acceptance. The five dirty skill submodules remain outside the checkpoint
+commit, and standalone skill submodules remain uninitialized.
 
 ## 9. Remaining acceptance
 

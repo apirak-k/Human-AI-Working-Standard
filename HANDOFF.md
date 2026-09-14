@@ -1,13 +1,12 @@
 # Current old-base Implementation Checkpoint
 
 **Implementation worktree:** `codex/old-base-selected-improvements`
-**Previous committed checkpoint:** `614bdb4` (`docs: add cross-device selected-improvements handoff`)
-**Current checkpoint:** Checkpoint 5 automated verification and documentation complete; physical acceptance remains `[Unverified]`
-**Checkpoint commit:** `500b59e` (`fix(status): route Home details to detailed health output`)
-**Remote checkpoint:** `origin/codex/old-base-selected-improvements` at `614bdb4` (no push from this run)
-**Previous feature commit:** `0a7d35e` (`feat: add evidence-based health and owned uninstall`)
+**Previous committed checkpoint:** `1aa832d` (`refactor(lifecycle): remove notify command and documentation`)
+**Current checkpoint:** Post-notify-removal baseline; current automated verification is green; physical acceptance remains `[Unverified]`
+**Checkpoint commit:** `95e9733` (`chore(checkpoint): establish HAWS base after notify removal`)
+**Remote checkpoint:** `origin/codex/old-base-selected-improvements` at `95e9733` (local and remote match)
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
-**Integration:** No merge or push; no merge into `main`.
+**Integration:** No merge into `main`; no new push performed in this inspection.
 
 ## Confirmed decisions
 
@@ -27,15 +26,17 @@
 - Full command: `bash -n haws.sh && bash tests/cli/run.sh && node --test
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
   && git diff --check` exited 0.
-- CLI aggregate: 101/101 passed (14 + 14 + 27 + 6 + 10 + 12 + 8 + 10).
-- Launcher/Menu: 14/14; Settings-flow: 27/27; Sync: 12/12; Status/Doctor:
-  8/8; Uninstall: 10/10.
+- CLI aggregate: 102/102 passed (15 + 14 + 27 + 6 + 10 + 12 + 8 + 10).
+- Launcher/Menu: 15/15; Settings-flow: 27/27; Sync: 12/12; Status/Doctor:
+  8/8; Uninstall: 10/10. State: 14/14; Catalog: 6/6; Repository/Skill:
+  10/10.
 - Node aggregate: 26 passed and 1 `[Unverified]` file-symlink privilege skip;
   Codex agent adapter tests passed 14/14.
-- The current working-tree Windows test contains two pre-existing local tests;
-  they were run but remain uncommitted and excluded from `500b59e`.
-- `git status` confirms the pre-existing dirty `haws.bat`, Windows test, and
-  five skill submodules remain outside the commit and unstaged.
+- The target root has no production source changes. Five skill-pack submodules
+  retain dirty worktrees; `agent-skills`, `anthropics-skills`, and `ponytail`
+  also retain staged gitlink drift. These states were preserved.
+- Standalone skill submodules remain uninitialized; no initialization or sync
+  was attempted.
 
 ## Selected improvements checkpoints — current implementation
 
@@ -43,11 +44,15 @@
 - `0671a2d`: Settings Single Skills/Multi-Skill Packs projection.
 - `9ab4499`: launcher identity and safe navigation.
 - `500b59e`: Status summary/details presentation and Home details routing.
-- Automated evidence is complete for the implementation checkpoint. Physical
+- `0d0f259`: Windows launcher delegates through Git Bash with POSIX path setup.
+- `1c17b40`: selected-improvements verification documentation.
+- `1aa832d`: notify command and documentation removal.
+- `95e9733`: current checkpoint after notify removal.
+- Current automated evidence is recorded above. Physical
   Explorer launch, native cursor behavior, host link capability, external
   authenticated remotes, and human acceptance remain `[Unverified]`.
 
-## Batch 7 — Adapter audit (2026-09-13)
+## Historical Batch 7 — Adapter audit (2026-09-13)
 
 Scope was limited to `codex/old-base-selected-improvements` versus the unchanged `.worktrees/codex-haws-bootstrap` reference. The seven files below are byte-identical in both trees; SHA-256 evidence is recorded to make the no-change result reproducible.
 
@@ -66,7 +71,10 @@ Scope was limited to `codex/old-base-selected-improvements` versus the unchanged
 - Verification: `node --test ai-configs/codex/agents.test.mjs` passed 14/14 with exit code 0. No other adapter test files exist in this worktree.
 - The five pre-existing dirty skill submodules were preserved; no submodule content was changed. Physical Windows checks remain `[Unverified]`.
 
-## Batch 8 — Final verification and documentation checkpoint (2026-09-13)
+## Historical Batch 8 — Final verification and documentation checkpoint (2026-09-13)
+
+> This section records an earlier checkpoint and is superseded by the current
+> checkpoint and verification evidence above.
 
 ### Confirmed decisions
 
@@ -120,7 +128,10 @@ Scope was limited to `codex/old-base-selected-improvements` versus the unchanged
 - Do not infer physical Windows acceptance from these automated results.
 - Stop here; no later batch is started by this checkpoint.
 
-## Post-Batch 8 interaction repair (2026-09-14)
+## Historical post-Batch 8 interaction repair (2026-09-14)
+
+> Historical record only. It is superseded by current checkpoint `95e9733` and
+> the current verification evidence above.
 
 - Root cause: the main-menu Skills route still used line-based numeric prompts
   for category and pack selection, unlike the shared cursor menu used by the
@@ -165,6 +176,8 @@ Scope was limited to `codex/old-base-selected-improvements` versus the unchanged
 
 - Physical Explorer launch and complete human Windows menu acceptance.
 - External authenticated remotes and host-specific link privileges.
+- Real Sync remains unexecuted in the current inspection because source state
+  is blocked by dirty/staged changes.
 - Final documentation alignment is recorded above; historical dossier claims
   below are not current verification evidence.
 - Merge into `main` remains a separate action and has not been authorized.
