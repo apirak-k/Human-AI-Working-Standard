@@ -231,6 +231,19 @@ test_deadline_returns_distinct_timeout_status() {
     [ "$?" -eq 124 ]
 }
 
+test_timeout_uses_local_fallback_without_failure() {
+    add_source localfallback
+    local old_head
+    old_head="$(source_head localfallback)" || return 1
+    write_settings on
+    source_haws || return 1
+    HAWS_SYNC_TIMEOUT_SECONDS=1 HAWS_TEST_SYNC_FETCH_DELAY=2 \
+        sync_run >"${OUTPUT_FILE}" 2>&1
+    [ "$?" -eq 0 ] || return 1
+    [ "$(source_head localfallback)" = "${old_head}" ] || return 1
+    grep -F 'Local fallback' "${OUTPUT_FILE}" >/dev/null || return 1
+}
+
 test_auto_update_off_skips_remote_work_but_runs_explicit_sync() {
     add_source disabled
     local old_head remote_head
@@ -377,6 +390,7 @@ else
     run_test test_dirty_source_is_blocked_while_clean_source_continues
     run_test test_missing_candidate_entrypoint_does_not_fall_back_to_old_content
     run_test test_deadline_returns_distinct_timeout_status
+    run_test test_timeout_uses_local_fallback_without_failure
     run_test test_auto_update_off_skips_remote_work_but_runs_explicit_sync
     run_test test_second_brain_update_applies_remote_revision
     run_test test_explicit_update_uses_same_safe_application

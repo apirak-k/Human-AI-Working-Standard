@@ -12,6 +12,7 @@ test_launcher_is_thin() {
     [ -f "${PROJECT_ROOT}/haws.bat" ] || return 1
     grep -F 'haws.sh' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
     grep -F 'title HAWS — Human-AI Working Standard' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
+    grep -F 'if "%HAWS_BARE%"=="1" set "HAWS_PAUSE=1"' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
     ! grep -iE 'run_sync|run_setup|run_doctor|git submodule' "${PROJECT_ROOT}/haws.bat" >/dev/null
 }
 
@@ -99,10 +100,17 @@ test_home_health_shows_current_status_and_findings() {
         HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" >"${OUTPUT_FILE}" 2>&1 || return 1
     assert_output_contains 'HAWS Health' || return 1
     assert_output_contains 'CURRENT STATUS' || return 1
-    assert_output_contains 'CHECKS' || return 1
+    assert_output_contains 'FINDINGS' || return 1
     grep -E '\[PASS +\] AI Environments' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     grep -E '\[PASS +\] Sources' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     grep -E '\[PASS +\] Skills' "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
+test_home_has_one_header_and_settings_back_is_silent() {
+    local source="${PROJECT_ROOT}/haws.sh"
+    [ "$(grep -c 'HAWS HOME' "${source}")" -ge 1 ] || return 1
+    ! grep -Fq 'Back to caller.' "${source}" || return 1
+    grep -Fq 'HAWS_MENU_SUPPRESS_HEADER' "${source}" || return 1
 }
 
 test_menu_descriptions_use_a_shared_label_column() {

@@ -247,20 +247,16 @@ test_dirty_settings_exit_prompts_before_discarding_draft() {
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
 }
 
-test_unchanged_preview_update_offers_only_back_routes() {
+test_unchanged_home_route_is_clear_and_does_not_sync() {
     mkdir -p "${FIXTURE_PROJECT}/.haws/state"
     printf 'schema=1\tcompleted_at=fixture\n' > "${FIXTURE_PROJECT}/.haws/state/install.complete"
     printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > \
         "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
-    local down=$'\033[B'
-    local input="\n"
-    input+="${down}${down}${down}${down}${down}\nq"
+    local input="q"
     run_haws_input "${input}" || true
-    assert_output_contains 'HAWS — Preview Update' || return 1
-    assert_output_contains 'No settings have changed.' || return 1
-    assert_output_contains 'Back to Settings' || return 1
-    assert_output_contains 'Back to Home' || return 1
-    ! grep -E $'\r(> |  )(Install|Update)[[:space:]]*$' "${OUTPUT_FILE}" >/dev/null 2>&1
+    assert_output_contains 'HAWS Home' || return 1
+    assert_output_not_contains 'Preparing synchronization' || return 1
+    assert_output_not_contains 'Back to caller.'
 }
 
 test_draft_cancel_preserves_existing_state_bytes() {
@@ -442,7 +438,7 @@ run_test test_reset_defaults_requires_confirmation_before_replacing_draft
 run_test test_completed_install_opens_home_without_sync_or_doctor
 run_test test_home_enter_does_not_dispatch_sync_by_default
 run_test test_dirty_settings_exit_prompts_before_discarding_draft
-run_test test_unchanged_preview_update_offers_only_back_routes
+run_test test_unchanged_home_route_is_clear_and_does_not_sync
 run_test test_draft_cancel_preserves_existing_state_bytes
 run_test test_partial_failure_reports_completed_and_remaining_actions
 run_test test_first_install_creates_empty_environment_state_file

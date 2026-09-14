@@ -199,7 +199,7 @@ _health_print_summary() {
 }
 
 _health_print_findings() {
-    local level check detail display_level
+    local level check detail display_level short_detail
     while IFS=$'\t' read -r level check detail _ || [ -n "$level" ]; do
         [ -n "$level" ] || continue
         case "$level" in
@@ -208,7 +208,9 @@ _health_print_findings() {
             Blocked) display_level="BLOCKED" ;;
             *) display_level="$level" ;;
         esac
-        printf '  [%-7s] %-24s - %s\n' "$display_level" "$check" "$detail"
+        short_detail="${detail:0:96}"
+        [ "${#detail}" -le 96 ] || short_detail="${short_detail}..."
+        printf '  [%-7s] %-24s - %s\n' "$display_level" "$check" "$short_detail"
     done <<< "$HAWS_HEALTH_FINDINGS"
 }
 
@@ -222,7 +224,7 @@ health_run() {
     echo "CURRENT STATUS"
     _health_print_summary
     echo ""
-    echo "CHECKS"
+    echo "FINDINGS"
     _health_print_findings
     return $([ "$(health_classify)" = Blocked ] && echo 1 || echo 0)
 }
@@ -1432,6 +1434,14 @@ _sync_timeout_seconds() {
     esac
 }
 
+_sync_fetch_candidate() {
+    local source_dir="$1" fetch_remote="$2" fetch_source="$3" candidate_ref="$4"
+    if [ -n "${HAWS_TEST_SYNC_FETCH_DELAY:-}" ]; then
+        sleep "${HAWS_TEST_SYNC_FETCH_DELAY}"
+    fi
+    git -C "${source_dir}" fetch --quiet "${fetch_remote}" "+${fetch_source}:${candidate_ref}"
+}
+
 _sync_result_label() {
     case "${1:-}" in
         updated) printf '%s\n' Updated ;;
@@ -1645,7 +1655,8 @@ sync_target() {
 
     candidate_ref="$(_sync_candidate_ref "${target}")"
     timeout_seconds="$(_sync_timeout_seconds)"
-    if run_with_deadline "${timeout_seconds}" git -C "${source_dir}" fetch --quiet "${fetch_remote}" "+${fetch_source}:${candidate_ref}"; then
+    if run_with_deadline "${timeout_seconds}" _sync_fetch_candidate \
+        "${source_dir}" "${fetch_remote}" "${fetch_source}" "${candidate_ref}"; then
         fetch_status=0
     else
         fetch_status=$?
@@ -1653,15 +1664,15 @@ sync_target() {
     candidate_revision="$(git -C "${source_dir}" rev-parse --verify "${candidate_ref}" 2>/dev/null || true)"
     if [ "${fetch_status}" -eq 124 ]; then
         _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
-        sync_result_write "${target}" timeout - "remote fetch exceeded ${timeout_seconds}s" || return 1
+        sync_result_write "${target}" skipped - "Local fallback; remote fetch exceeded ${timeout_seconds}s" || return 1
         _sync_legacy_echo "${target}: timeout"
-        return 1
+        return 0
     fi
     if [ "${fetch_status}" -ne 0 ] || [ -z "${candidate_revision}" ]; then
         _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
-        sync_result_write "${target}" failed - "remote candidate could not be fetched" || return 1
+        sync_result_write "${target}" skipped - "Local fallback; network unavailable" || return 1
         _sync_legacy_echo "${target}: failed (remote candidate could not be fetched)"
-        return 1
+        return 0
     fi
 
     if [ "${target}" = haws ]; then
@@ -2573,10 +2584,12 @@ interactive_menu() {
         echo "=== ${title} ==="
         [ -n "${purpose}" ] && echo "${purpose}"
     else
-        echo "============================================================="
-        echo "                       ${title}"
-        echo "============================================================="
-        [ -n "${purpose}" ] && echo "${purpose}"
+        if [ "${HAWS_MENU_SUPPRESS_HEADER:-0}" != 1 ]; then
+            echo "============================================================="
+            echo "                       ${title}"
+            echo "============================================================="
+            [ -n "${purpose}" ] && echo "${purpose}"
+        fi
     fi
     echo ""
 
@@ -4857,7 +4870,6 @@ settings_page() {
         echo "Cancelled. No changes saved."
         return 1
     fi
-    echo "Back to caller."
     return 1
 }
 
@@ -5298,12 +5310,13 @@ home_run() {
         _health_collect
         echo ""
         echo "============================================================="
-        echo "                         HAWS HOME"
+        echo "                         HAWS Home"
         echo "============================================================="
         echo ""
         echo "CURRENT STATUS"
         _health_print_summary
         echo ""
+        export HAWS_MENU_SUPPRESS_HEADER=1
         if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|2" \
             "Sync|Run explicit synchronization" \
             "Health|Show current status and diagnostic reasons" \
@@ -5321,11 +5334,20 @@ home_run() {
                         [ "${result}" -eq 3 ] && return 3
                     fi
                     ;;
-                3) run_uninstall ;;
+                3)
+                    local uninstall_status=0
+                    run_uninstall || uninstall_status=$?
+                    if [ "${uninstall_status}" -eq 0 ] && ! install_is_complete; then
+                        echo "HAWS uninstalled. You can close this window."
+                        return 0
+                    fi
+                    ;;
             esac
         else
+            unset HAWS_MENU_SUPPRESS_HEADER
             return 0
         fi
+        unset HAWS_MENU_SUPPRESS_HEADER
     done
 }
 

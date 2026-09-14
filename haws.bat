@@ -11,7 +11,8 @@ set "HAWS_SCRIPT=%HAWS_DIR%haws.sh"
 set "HAWS_BARE=0"
 set "HAWS_PAUSE=0"
 if "%~1"=="" set "HAWS_BARE=1"
-if "%HAWS_BARE%"=="1" echo(%CMDCMDLINE%| findstr /i /c:" /c " >nul && set "HAWS_PAUSE=1"
+rem Keep a double-click window open so launcher errors and completion status are visible.
+if "%HAWS_BARE%"=="1" set "HAWS_PAUSE=1"
 
 if not exist "%HAWS_SCRIPT%" (
     echo [ERROR] haws.sh was not found at "%HAWS_SCRIPT%".
