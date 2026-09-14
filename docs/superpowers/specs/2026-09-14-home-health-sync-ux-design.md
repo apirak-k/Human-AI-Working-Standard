@@ -18,6 +18,11 @@ and state semantics.
 
 ## Home and Health
 
+The default Health view uses compact section summaries and `[PASS]` markers
+without alignment padding inside the brackets. Long paths stay available to
+the CLI detail view, while the interactive result screens use one-key return
+navigation so the user always has a clear next action.
+
 Home presents a banner, a compact current-state summary, and four actions:
 Sync, Health, Settings, and Uninstall. Health is the only health-related Home
 action. It combines the current-state summary with read-only diagnostic

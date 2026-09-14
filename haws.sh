@@ -158,10 +158,15 @@ _health_last_sync() {
         printf '%s\n' Never
         return 0
     }
-    local result
+    local result timestamp
     result="$(tail -n 1 "$file" 2>/dev/null | awk -F $'\t' '{print $3}')"
+    timestamp="$(tail -n 1 "$file" 2>/dev/null | awk -F $'\t' '{print $1}')"
     [ -n "$result" ] || result=Never
-    printf '%s\n' "$result"
+    if [ -n "$timestamp" ]; then
+        printf '%s · %s\n' "$result" "${timestamp//T/ }"
+    else
+        printf '%s\n' "$result"
+    fi
 }
 
 _health_print_details() {
@@ -191,7 +196,22 @@ _health_collect_hooks() {
 }
 
 _health_print_summary() {
+    local ai_summary="" env env_path label
+    for env in claude gemini agents; do
+        env_path="$(_health_env_path "$env")"
+        case "$env" in claude) label=Claude ;; gemini) label=Gemini ;; agents) label=Codex ;; esac
+        if [ -n "${DISABLED_ENVS[$env]-}" ]; then
+            label+=" (off)"
+        elif [ -d "$env_path" ]; then
+            label+=" (on)"
+        else
+            label+=" (not found)"
+        fi
+        [ -n "$ai_summary" ] && ai_summary+=", "
+        ai_summary+="$label"
+    done
     printf '  Overall       : %s\n' "$(health_classify)"
+    printf '  AI            : %s\n' "$ai_summary"
     printf '  Skills        : %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
     printf '  Last Sync     : %s\n' "$(_health_last_sync)"
     printf '  Second Brain  : %s\n' "$(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
@@ -200,18 +220,52 @@ _health_print_summary() {
 
 _health_print_findings() {
     local level check detail display_level short_detail
-    while IFS=$'\t' read -r level check detail _ || [ -n "$level" ]; do
-        [ -n "$level" ] || continue
-        case "$level" in
-            Ready) display_level="PASS" ;;
-            Attention) display_level="WARN" ;;
-            Blocked) display_level="BLOCKED" ;;
-            *) display_level="$level" ;;
-        esac
-        short_detail="${detail:0:96}"
-        [ "${#detail}" -le 96 ] || short_detail="${short_detail}..."
-        printf '  [%-7s] %-24s - %s\n' "$display_level" "$check" "$short_detail"
-    done <<< "$HAWS_HEALTH_FINDINGS"
+    local section total ready issues issue_level issue_detail
+    local sections=("Settings" "AI Environments" "AI Environment ownership" "Sources" "Skills" "Hooks")
+    for section in "${sections[@]}"; do
+        total=0; ready=0; issues=0; issue_level=""; issue_detail=""
+        while IFS=$'\t' read -r level check detail _ || [ -n "$level" ]; do
+            [ "$check" = "$section" ] || continue
+            total=$((total + 1))
+            if [ "$level" = Ready ]; then
+                ready=$((ready + 1))
+            else
+                issues=$((issues + 1))
+                [ -n "$issue_level" ] || issue_level="$level"
+                [ -n "$issue_detail" ] || issue_detail="$detail"
+            fi
+        done <<< "$HAWS_HEALTH_FINDINGS"
+        [ "$total" -gt 0 ] || continue
+        if [ "$issues" -eq 0 ]; then
+            case "$section" in
+                Settings) short_detail="settings ready" ;;
+                "AI Environments") short_detail="${total} environment checks passed" ;;
+                "AI Environment ownership") short_detail="${total} managed item(s) verified" ;;
+                Sources) short_detail="${total} source(s) available" ;;
+                Skills) short_detail="${total} active skill check(s) passed" ;;
+                Hooks) short_detail="commit-msg active" ;;
+            esac
+            printf '  [PASS] %-20s - %s\n' "$section" "$short_detail"
+        else
+            case "$issue_level" in
+                Blocked) display_level=BLOCKED ;;
+                *) display_level=WARN ;;
+            esac
+            short_detail="$issue_detail"
+            if [ "${#short_detail}" -gt 72 ]; then short_detail="${short_detail:0:72}..."; fi
+            printf '  [%s] %-20s - %s\n' "$display_level" "$section" "$short_detail"
+            [ "$issues" -gt 1 ] && printf '  [INFO] %-20s - %s other issue(s)\n' "$section" "$((issues - 1))"
+        fi
+    done
+}
+
+_haws_wait_for_result() {
+    [ "${HAWS_INTERACTIVE_RESULT:-0}" = 1 ] || return 0
+    [ -t 0 ] && [ -t 1 ] || return 0
+    printf '\nPress any key to return to Home...'
+    local result_key=""
+    IFS= read -rsn1 result_key || true
+    printf '\n'
 }
 
 health_run() {
@@ -226,7 +280,10 @@ health_run() {
     echo ""
     echo "FINDINGS"
     _health_print_findings
-    return $([ "$(health_classify)" = Blocked ] && echo 1 || echo 0)
+    local result=0
+    [ "$(health_classify)" = Blocked ] && result=1
+    _haws_wait_for_result
+    return "$result"
 }
 
 status_run() {
@@ -2437,6 +2494,7 @@ EOF
         echo "[WARN] HAWS synchronization completed with target issues"
     fi
     echo "================================================================"
+    _haws_wait_for_result
     return "${sync_status}"
 }
 
@@ -4731,8 +4789,7 @@ settings_skills_page() {
         echo ""
         if interactive_menu menu "Configure Active Skills (Enable / Disable)|Choose a skill category to edit the current draft." \
             "Single Skills|Configure individual skills" \
-            "Multi-Skill Packs|Configure skills by pack" \
-            "Back to Settings|Return without changing the draft"; then
+            "Multi-Skill Packs|Configure skills by pack"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0)
                     _settings_skill_selector "Configure Single Skills" "${rows}" || true
@@ -4747,7 +4804,6 @@ settings_skills_page() {
                         pack_label="${pack_label} [Active: ${source_active_counts[${pack_ids[$i]}]:-0} / ${source_counts[${pack_ids[$i]}]:-0} skills]"
                         pack_items+=("${pack_label}|Configure skills in this pack")
                     done
-                    pack_items+=("Back to Settings|Return to the settings menu")
                     if interactive_menu menu "Select a Skill Pack to configure" \
                         "${pack_items[@]}"; then
                         [ "${INTERACTIVE_MENU_SELECTION}" -lt "${#pack_ids[@]}" ] || continue
@@ -4859,7 +4915,6 @@ settings_page() {
         "Auto Update|Toggle remote update work during explicit Sync|${HAWS_DRAFT_AUTO_UPDATE:-on}"
         "Apply|Accept the draft for preview|-"
         "Reset to Defaults|Replace the current draft|-"
-        "Discard Changes|Return without saving|-"
     )
     if interactive_menu settings "HAWS Settings|Review the draft; Apply is the only way to save changes." "${items[@]}"; then
         HAWS_DRAFT_SECOND_BRAIN="${INTERACTIVE_MENU_STATES[Second Brain Remote]:-${HAWS_DRAFT_SECOND_BRAIN}}"
@@ -4888,10 +4943,6 @@ settings_page() {
             6)
                 settings_draft_reset || true
                 return 2
-                ;;
-            7)
-                echo "Cancelled. No changes saved."
-                return 1
                 ;;
         esac
     fi
@@ -5360,8 +5411,8 @@ home_run() {
             "Settings|Edit the HAWS settings draft" \
             "Uninstall|Preview removal of HAWS-owned items"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
-                0) run_sync ;;
-                1) run_health ;;
+                0) HAWS_INTERACTIVE_RESULT=1 run_sync || true ;;
+                1) HAWS_INTERACTIVE_RESULT=1 run_health || true ;;
                 2)
                     settings_draft_load || return 1
                     if settings_flow_run settings; then
@@ -5373,9 +5424,10 @@ home_run() {
                     ;;
                 3)
                     local uninstall_status=0
-                    run_uninstall || uninstall_status=$?
+                    HAWS_INTERACTIVE_RESULT=1 run_uninstall || uninstall_status=$?
                     if [ "${uninstall_status}" -eq 0 ] && ! install_is_complete; then
                         echo "HAWS uninstalled. You can close this window."
+                        HAWS_INTERACTIVE_RESULT=1 _haws_wait_for_result
                         return 0
                     fi
                     ;;

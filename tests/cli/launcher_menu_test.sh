@@ -28,7 +28,7 @@ test_main_menu_reuses_old_interaction_engine() {
     ! printf '%s\n' "${main_block}" | grep -F 'read -rsn1' >/dev/null || return 1
     ! printf '%s\n' "${main_block}" | grep -F 'render_main_menu' >/dev/null || return 1
     ! grep -Fq '\033[H\033[2J' "${source}" || return 1
-    [ "$(grep -Fc 'read -rsn1' "${source}")" -eq 1 ] || return 1
+    [ "$(grep -Fc 'read -rsn1' "${source}")" -ge 1 ] || return 1
     grep -Fq 'printf "\033[?25l"' "${source}" || return 1
     grep -Fq 'printf "\033[%dA"' "${source}" || return 1
     grep -Fq 'printf "\033[2K\r' "${source}" || return 1
@@ -101,9 +101,9 @@ test_home_health_shows_current_status_and_findings() {
     assert_output_contains 'HAWS Health' || return 1
     assert_output_contains 'CURRENT STATUS' || return 1
     assert_output_contains 'FINDINGS' || return 1
-    grep -E '\[PASS +\] AI Environments' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
-    grep -E '\[PASS +\] Sources' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
-    grep -E '\[PASS +\] Skills' "${OUTPUT_FILE}" >/dev/null 2>&1
+    grep -F '[PASS] AI Environments' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    grep -F '[PASS] Sources' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    grep -F '[PASS] Skills' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
 test_home_has_one_header_and_settings_back_is_silent() {

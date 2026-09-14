@@ -2,8 +2,8 @@
 
 **Implementation worktree:** `codex/old-base-selected-improvements`
 **Previous committed checkpoint:** `1aa832d` (`refactor(lifecycle): remove notify command and documentation`)
-**Current checkpoint:** Bootstrap-aligned orchestration and shared checklist UX; automated verification is green; physical acceptance remains `[Unverified]`
-**Checkpoint commit:** `1bb1f0b` (`feat(haws): align bootstrap-style orchestration`)
+**Current checkpoint:** Bootstrap-aligned orchestration, compact Health findings, and result-screen navigation; automated verification is green; physical acceptance remains `[Unverified]`
+**Checkpoint commit:** pending UX simplification commit
 **Remote checkpoint:** `origin/codex/old-base-selected-improvements` remains at `95e9733`; no push performed
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
 **Integration:** No merge into `main`; no new push performed in this inspection.
@@ -14,7 +14,7 @@
 - The old menu and shared cursor/raw-key interaction engine remain in use.
 - Settings keeps draft state until final Install/Update confirmation.
 - Sync uses bounded, measured results and preserves the current branch.
-- Health combines the Home status summary with grouped read-only Doctor findings.
+- Health combines the Home status summary with grouped, path-free read-only Doctor findings.
   Compatibility `status` and `doctor` commands remain available.
 - Home uses one footer `Q` action and exposes only Sync, Health, Settings, and
   Uninstall. Child pages use `Q = Back`.

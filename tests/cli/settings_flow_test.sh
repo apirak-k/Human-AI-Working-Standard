@@ -78,7 +78,7 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     assert_output_contains 'Second Brain Remote' || return 1
     assert_output_contains 'Auto Update' || return 1
     assert_output_contains 'Apply' || return 1
-    assert_output_contains 'Discard Changes' || return 1
+    assert_output_not_contains 'Discard Changes|Return without saving' || return 1
     assert_output_contains 'Existing repository sources' || return 1
     assert_output_contains 'all active (default)' || return 1
     assert_output_contains 'Accept the draft for preview' || return 1

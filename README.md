@@ -53,6 +53,8 @@ bash -n haws.sh && bash tests/cli/run.sh && node --test \
   case requires Windows file-symlink privilege and remains `[Unverified]`.
 - Home now shows the one-click banner, compact status, and only Sync, Health,
   Settings, and Uninstall. Health combines compact status with grouped,
+  path-free findings; result screens from Home wait for one key before returning,
+  and Settings uses `Q` plus a dirty-draft prompt instead of a duplicate discard row.
   read-only findings; compatibility `status` and `doctor` commands remain.
 - Explicit Sync/Install integration follows five concise phases: prepare local
   state, detect/configure environments, link skills and profiles, configure the

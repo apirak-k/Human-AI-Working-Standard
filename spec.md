@@ -4,7 +4,7 @@
 **Implementation worktree:** `codex/old-base-selected-improvements`  
 **Reference checkout:** `.worktrees/codex-haws-bootstrap`  
 **Last automated verification:** 2026-09-15 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
-**Current code checkpoint:** `1bb1f0b` (`feat(haws): align bootstrap-style orchestration`)
+**Current code checkpoint:** pending UX simplification commit (Health grouping and result navigation)
 **Remote checkpoint:** `origin/codex/old-base-selected-improvements` remains at `95e9733`; no push performed
 **Language:** English
 
@@ -174,3 +174,8 @@ commit, and standalone skill submodules remain uninitialized.
   merge or retirement.
 
 No merge or push is part of this specification.
+Health presents one `[PASS]` marker without padding inside the brackets, groups
+normal findings by section, and hides long filesystem paths from the default UI.
+Full diagnostic details remain available through the compatibility CLI details
+output. Result screens entered from Home return after one key; `Q` in child
+menus returns to the parent without a duplicate Back row.
