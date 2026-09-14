@@ -120,11 +120,11 @@ _health_collect() {
         _health_add Ready Sources "no registered sources"
 
     local skill_rows=0
-    local skill_id display skill_source entrypoint active source_fields
+    local logical_id display description skill_source entrypoint active source_fields
     local skill_source_path
-    while IFS=$'\t' read -r skill_id display skill_source entrypoint active _ ||
-        [ -n "$skill_id" ]; do
-        [ -n "$skill_id" ] || continue
+    while IFS=$'\t' read -r skill_source logical_id display description entrypoint active _ ||
+        [ -n "$logical_id" ]; do
+        [ -n "$logical_id" ] || continue
         [ "$active" = 1 ] || continue
         skill_rows=1
         source_fields="$(_catalog_source_fields "$skill_source" 2>/dev/null || true)"
@@ -1160,6 +1160,17 @@ catalog_sources() {
         --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
 }
 
+_catalog_skill_sources() {
+    local repo="$(_catalog_repo_dir)"
+    catalog_sources
+
+    local custom_path="skills/custom"
+    [ -d "${repo}/${custom_path}" ] || return 0
+    printf '%s\t%s\t%s\t%s\n' \
+        "$(_catalog_source_id custom "${custom_path}")" \
+        "${custom_path}" local local
+}
+
 _catalog_source_fields() {
     local wanted="$1"
     local row source_id path url revision
@@ -1170,7 +1181,7 @@ _catalog_source_fields() {
             printf '%s\t%s\t%s\n' "${path}" "${url}" "${revision}"
             return 0
         fi
-    done < <(catalog_sources)
+    done < <(_catalog_skill_sources)
     return 1
 }
 
@@ -1199,26 +1210,51 @@ _catalog_is_disabled() {
     return 1
 }
 
+_catalog_skill_is_eligible() {
+    local skill_file="$1"
+    [[ "${skill_file}" =~ \.openclaw/ ]] && return 1
+    [[ "${skill_file}" =~ planning-with-files ]] && \
+        [[ ! "${skill_file}" =~ \.agents/skills ]] && \
+        [[ ! "${skill_file}" =~ skills/i18n ]] && return 1
+    [[ "${skill_file}" =~ ui-ux-pro-max ]] && \
+        [[ ! "${skill_file}" =~ \.claude/skills ]] && return 1
+    [[ "${skill_file}" =~ caveman/plugins/ ]] && return 1
+    return 0
+}
+
 catalog_skills() {
     local row source_id path url revision source_dir skill_file entrypoint
-    local display_name skill_id active
+    local logical_id display_name description active
+    local -A seen_names=()
     while IFS= read -r row || [ -n "${row}" ]; do
         [ -n "${row}" ] || continue
         IFS=$'\t' read -r source_id path url revision <<< "${row}"
         source_dir="$(_catalog_repo_dir)/${path}"
         [ -d "${source_dir}" ] || continue
+        seen_names=()
         while IFS= read -r -d '' skill_file; do
             [ -s "${skill_file}" ] || continue
+            _catalog_skill_is_eligible "${skill_file}" || continue
             entrypoint="${skill_file#${source_dir}/}"
             display_name="$(extract_skill_name "${skill_file}")"
-            skill_id="${source_id}::${entrypoint}"
+            [ -n "${display_name}" ] || continue
+            [ -n "${seen_names["${display_name}"]:-}" ] && continue
+            seen_names["${display_name}"]=1
+            display_name="${display_name//$'\t'/ }"
+            display_name="${display_name//$'\n'/ }"
+            logical_id="${source_id}::${display_name}"
+            description="$(extract_skill_desc "${skill_file}")"
+            [ -n "${description}" ] || description="${display_name}"
+            description="${description//$'\t'/ }"
+            description="${description//$'\n'/ }"
             active=1
-            _catalog_is_disabled "${skill_id}" "${display_name}" "${entrypoint}" && active=0
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "${skill_id}" "${display_name}" "${source_id}" "${entrypoint}" "${active}"
+            _catalog_is_disabled "${logical_id}" "${display_name}" "${entrypoint}" && active=0
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "${source_id}" "${logical_id}" "${display_name}" \
+                "${description}" "${entrypoint}" "${active}"
         done < <(find "${source_dir}" -type f \
             \( -name SKILL.md -o -name skill.md \) -print0 2>/dev/null | sort -z)
-    done < <(catalog_sources)
+    done < <(_catalog_skill_sources)
 }
 
 catalog_validate_url() {
@@ -1277,7 +1313,7 @@ _legacy_skill_is_disabled() {
         case "${skill_file}" in
             "${repo}/${source_path}"/*)
                 entrypoint="${skill_file#${repo}/${source_path}/}"
-                _catalog_is_disabled "${source_id}::${entrypoint}" \
+                _catalog_is_disabled "${source_id}::${skill_name}" \
                     "${skill_name}" "${entrypoint}" && return 0
                 ;;
         esac
@@ -1402,7 +1438,7 @@ source_preflight() {
         return 4
     fi
     [ -z "${status}" ] || return 2
-    while IFS=$'\t' read -r _ _ skill_source _ skill_active || [ -n "${skill_source:-}" ]; do
+    while IFS=$'\t' read -r skill_source _ _ _ _ skill_active || [ -n "${skill_source:-}" ]; do
         if [ "${skill_source:-}" = "${source_id}" ] && [ "${skill_active:-0}" = 1 ]; then
             has_active=1
             break
@@ -1420,7 +1456,7 @@ source_candidate_validate() {
     source_path="$(_sync_source_path "${source_id}")" || return 1
     source_dir="$(_catalog_repo_dir)/${source_path}"
     [ -d "${source_dir}" ] || return 1
-    while IFS=$'\t' read -r skill_id display skill_source entrypoint active ||
+    while IFS=$'\t' read -r skill_source skill_id display _ entrypoint active ||
         [ -n "${skill_id:-}" ]; do
         [ "${skill_source:-}" = "${source_id}" ] && [ "${active:-0}" = 1 ] || continue
         found=1
@@ -2737,10 +2773,7 @@ get_repo_skills() {
     declare -A seen=()
     while IFS= read -r sf; do
         [ -z "$sf" ] && continue
-        [[ "$sf" =~ \.openclaw/ ]] && continue
-        [[ "$sf" =~ planning-with-files ]] && [[ ! "$sf" =~ \.agents/skills ]] && [[ ! "$sf" =~ skills/i18n ]] && continue
-        [[ "$sf" =~ ui-ux-pro-max ]] && [[ ! "$sf" =~ \.claude/skills ]] && continue
-        [[ "$sf" =~ caveman/plugins/ ]] && continue
+        _catalog_skill_is_eligible "$sf" || continue
 
         local sn="$(extract_skill_name "$sf")"
         [ -z "$sn" ] && continue
@@ -4244,7 +4277,7 @@ settings_draft_remove_source() {
 _settings_ensure_skill_draft() {
     [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && return 0
     load_disabled_skills
-    HAWS_DRAFT_SKILLS="$(catalog_skills | awk -F '\t' '$5 == 1 {print $1}')"
+    HAWS_DRAFT_SKILLS="$(catalog_skills | awk -F '\t' '$6 == 1 {print $2}')"
     HAWS_DRAFT_SKILLS_LOADED=1
     HAWS_PERSIST_SKILLS="${HAWS_DRAFT_SKILLS}"
     export HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
@@ -4381,18 +4414,18 @@ _settings_skill_selector() {
     local title="$1"
     local rows="$2"
     local wanted_source="${3:-}"
-    local source_id entrypoint id display active source_count
-    local detail label source_path skill_file
+    local source_id id display description entrypoint active source_count
+    local detail label
     local items=() ids=()
     local -A source_counts=() display_counts=()
 
-    while IFS=$'\t' read -r id display source_id entrypoint active || [ -n "${id}" ]; do
+    while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         source_counts["${source_id}"]=$(( ${source_counts[${source_id}]:-0} + 1 ))
         display_counts["${display}"]=$(( ${display_counts[${display}]:-0} + 1 ))
     done <<< "${rows}"
 
-    while IFS=$'\t' read -r id display source_id entrypoint active || [ -n "${id}" ]; do
+    while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         source_count="${source_counts[${source_id}]:-0}"
         if [ -n "${wanted_source}" ]; then
@@ -4404,9 +4437,7 @@ _settings_skill_selector() {
         if [ "${display_counts[${display}]:-0}" -gt 1 ]; then
             label="${display} [${source_id}::${entrypoint}]"
         fi
-        source_path="$(_catalog_source_fields "${source_id}" 2>/dev/null | cut -f1)"
-        skill_file="$(_catalog_repo_dir)/${source_path}/${entrypoint}"
-        detail="$(extract_skill_desc "${skill_file}")"
+        detail="${description}"
         [ -n "${detail}" ] || detail="${source_id}"
         active=0
         _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${id}" && active=1
@@ -4477,17 +4508,17 @@ settings_skills_page() {
     _settings_ensure_skill_draft || return 1
     local rows="$(catalog_skills)"
     echo "  [✓] Skills catalog ready."
-    local id display source_id entrypoint active source_count
+    local source_id id display description entrypoint active source_count
     local single_total=0 single_active=0
     local pack_total=0
     local pack_ids=() pack_names=()
     local -A source_counts=() pack_name_counts=() seen_sources=()
 
-    while IFS=$'\t' read -r id display source_id entrypoint active || [ -n "${id}" ]; do
+    while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         source_counts["${source_id}"]=$(( ${source_counts[${source_id}]:-0} + 1 ))
     done <<< "${rows}"
-    while IFS=$'\t' read -r id display source_id entrypoint active || [ -n "${id}" ]; do
+    while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         source_count="${source_counts[${source_id}]:-0}"
         if [ "${source_count}" -eq 1 ]; then
@@ -4798,9 +4829,9 @@ settings_preview() {
     [ "${printed_source}" -eq 1 ] || echo "  Default"
     echo ""
     echo "Skills"
-    local skill_rows skill_id skill_display skill_source_id entrypoint active printed_skill=0
+    local skill_rows skill_id skill_display skill_source_id skill_description entrypoint active printed_skill=0
     skill_rows="$(catalog_skills)"
-    while IFS=$'\t' read -r skill_id skill_display skill_source_id entrypoint active ||
+    while IFS=$'\t' read -r skill_source_id skill_id skill_display skill_description entrypoint active ||
         [ -n "${skill_id}" ]; do
         [ -n "${skill_id}" ] || continue
         _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}" || continue
@@ -4926,11 +4957,11 @@ settings_apply_skill_draft() {
     [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] || return 0
     local destination="${SCRIPT_DIR}/skills/skills.disabled"
     local temporary="${destination}.stage.$$"
-    local skill_id display source_id entrypoint active
+    local source_id skill_id display description entrypoint active
     mkdir -p "$(dirname "${destination}")" || return 1
     {
         echo "# HAWS Disabled Skills (source-aware)"
-        while IFS=$'\t' read -r skill_id display source_id entrypoint active ||
+        while IFS=$'\t' read -r source_id skill_id display description entrypoint active ||
             [ -n "${skill_id}" ]; do
             [ -n "${skill_id}" ] || continue
             _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}" ||

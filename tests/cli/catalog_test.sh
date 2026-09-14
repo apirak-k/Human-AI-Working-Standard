@@ -61,12 +61,12 @@ test_catalog_keeps_duplicate_names_source_aware() {
     source_haws || return 1
     local rows count ids
     rows="$(catalog_skills)"
-    count="$(printf '%s\n' "${rows}" | awk -F '\t' '$2 == "Shared" {n++} END {print n+0}')"
+    count="$(printf '%s\n' "${rows}" | awk -F '\t' '$3 == "Shared" {n++} END {print n+0}')"
     [ "${count}" -eq 2 ] || return 1
-    ids="$(printf '%s\n' "${rows}" | awk -F '\t' '$2 == "Shared" {print $1}' | sort -u | wc -l | tr -d ' ')"
+    ids="$(printf '%s\n' "${rows}" | awk -F '\t' '$3 == "Shared" {print $2}' | sort -u | wc -l | tr -d ' ')"
     [ "${ids}" -eq 2 ] || return 1
     printf '%s\n' "${rows}" | awk -F '\t' \
-        '$2 == "Shared" && $1 ~ /source-one/ && $3 == "source-one::skills\/packs\/source-one" {found=1}
+        '$3 == "Shared" && $1 == "source-one::skills/packs/source-one" {found=1}
          END {exit found ? 0 : 1}'
 }
 
@@ -79,7 +79,7 @@ test_catalog_ignores_empty_skill_entrypoints() {
     local rows
     rows="$(catalog_skills)"
     ! printf '%s\n' "${rows}" | grep -F '/empty/SKILL.md' >/dev/null 2>&1 || return 1
-    printf '%s\n' "${rows}" | awk -F '\t' '$2 == "Valid" {found=1} END {exit found ? 0 : 1}'
+    printf '%s\n' "${rows}" | awk -F '\t' '$3 == "Valid" {found=1} END {exit found ? 0 : 1}'
 }
 
 test_settings_draft_defers_skill_catalog_until_skills_is_entered() {

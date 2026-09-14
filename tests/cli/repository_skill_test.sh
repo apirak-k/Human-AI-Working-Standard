@@ -75,6 +75,80 @@ make_remote() {
     REMOTE_URL="file://${bare}"
 }
 
+write_catalog_skill() {
+    local relative_path="$1"
+    local skill_name="$2"
+    local description="$3"
+    mkdir -p "${FIXTURE_PROJECT}/$(dirname "${relative_path}")"
+    printf '%s\n' '---' "name: ${skill_name}" "description: ${description}" '---' \
+        > "${FIXTURE_PROJECT}/${relative_path}"
+}
+
+prepare_logical_skill_catalog() {
+    init_superproject || return 1
+    {
+        printf '[submodule "source-one"]\n'
+        printf '\tpath = skills/packs/source-one\n'
+        printf '\turl = https://github.com/acme/source-one.git\n'
+        printf '[submodule "source-two"]\n'
+        printf '\tpath = skills/packs/source-two\n'
+        printf '\turl = https://github.com/acme/source-two.git\n'
+    } > "${FIXTURE_PROJECT}/.gitmodules"
+
+    write_catalog_skill \
+        'skills/packs/source-one/shared-skill/SKILL.md' \
+        'Shared Skill' 'Canonical source-one description.'
+    write_catalog_skill \
+        'skills/packs/source-one/.openclaw/shared-skill/SKILL.md' \
+        'Shared Skill' 'Adapter copy must not win.'
+    write_catalog_skill \
+        'skills/packs/source-one/caveman/plugins/shared-skill/SKILL.md' \
+        'Shared Skill' 'Vendor copy must not win.'
+    write_catalog_skill \
+        'skills/packs/source-two/shared-skill/SKILL.md' \
+        'Shared Skill' 'Canonical source-two description.'
+    write_catalog_skill \
+        'skills/custom/catalog-custom/SKILL.md' \
+        'Catalog Custom' 'Local custom description.'
+}
+
+test_catalog_resolves_source_scoped_logical_skills() {
+    prepare_logical_skill_catalog || return 1
+    enable_local_sources
+    source_haws || return 1
+
+    local rows
+    rows="$(catalog_skills)"
+
+    printf '%s\n' "${rows}" | awk -F '\t' '
+        $1 == "source-one::skills/packs/source-one" && $3 == "Shared Skill" {
+            count++
+            if (NF == 6 && $2 == "source-one::skills/packs/source-one::Shared Skill" &&
+                $4 == "Canonical source-one description." &&
+                $5 == "shared-skill/SKILL.md" && $6 == 1) {
+                canonical++
+            }
+        }
+        END { exit !(count == 1 && canonical == 1) }' || return 1
+
+    printf '%s\n' "${rows}" | awk -F '\t' '
+        $1 == "source-two::skills/packs/source-two" && $3 == "Shared Skill" {
+            count++
+            if (NF == 6 && $2 == "source-two::skills/packs/source-two::Shared Skill" &&
+                $4 == "Canonical source-two description." &&
+                $5 == "shared-skill/SKILL.md" && $6 == 1) {
+                canonical++
+            }
+        }
+        END { exit !(count == 1 && canonical == 1) }' || return 1
+
+    printf '%s\n' "${rows}" | awk -F '\t' '
+        $1 == "custom::skills/custom" &&
+            $2 == "custom::skills/custom::Catalog Custom" &&
+            $3 == "Catalog Custom" && $4 == "Local custom description." && NF == 6 {found++}
+        END { exit !(found == 1) }' || return 1
+}
+
 enable_local_sources() {
     export HAWS_TEST_ALLOW_LOCAL_SOURCES=1
     export HAWS_TEST_NO_INTEGRATION=1
@@ -151,8 +225,10 @@ test_legacy_run_sync_honors_source_aware_disabled_skill() {
         skills/packs/legacy-disabled || return 1
     source_haws || return 1
     local skill_id display_name
-    skill_id="$(catalog_skills | cut -f1)"
-    display_name="$(catalog_skills | cut -f2)"
+    skill_id="$(catalog_skills | awk -F '\t' \
+        '$1 == "skills/packs/legacy-disabled::skills/packs/legacy-disabled" {print $2; exit}')"
+    display_name="$(catalog_skills | awk -F '\t' \
+        '$1 == "skills/packs/legacy-disabled::skills/packs/legacy-disabled" {print $3; exit}')"
     [ -n "${skill_id}" ] && [ -n "${display_name}" ] || return 1
     mkdir -p "${FIXTURE_PROJECT}/skills" "${FIXTURE_HOME}/.claude"
     printf '%s\n' "${skill_id}" > "${FIXTURE_PROJECT}/skills/skills.disabled"
@@ -176,7 +252,8 @@ test_skill_draft_persists_source_identity_only_on_final_apply() {
     settings_draft_load || return 1
     _settings_ensure_skill_draft || return 1
     local skill_id
-    skill_id="$(catalog_skills | cut -f1)"
+    skill_id="$(catalog_skills | awk -F '\t' \
+        '$1 == "skills/packs/persist-skill::skills/packs/persist-skill" {print $2; exit}')"
     [ -n "${skill_id}" ] || return 1
     HAWS_DRAFT_SKILLS=""
     HAWS_DRAFT_SKILLS_LOADED=1
@@ -187,7 +264,7 @@ test_skill_draft_persists_source_identity_only_on_final_apply() {
     settings_apply_final >"${OUTPUT_FILE}" 2>&1 || return 1
     assert_file_contains "${FIXTURE_PROJECT}/skills/skills.disabled" "${skill_id}" || return 1
     catalog_skills | awk -F '\t' -v wanted="${skill_id}" \
-        '$1 == wanted && $5 == 0 {found=1} END {exit found ? 0 : 1}'
+        '$2 == wanted && $6 == 0 {found=1} END {exit found ? 0 : 1}'
 }
 
 test_repository_back_and_discard_do_not_mutate_git_files() {
@@ -248,6 +325,7 @@ run_test() {
 
 trap cleanup_fixture EXIT
 
+run_test test_catalog_resolves_source_scoped_logical_skills
 run_test test_add_only_apply_creates_local_submodule_entry
 run_test test_remove_only_apply_removes_registered_source_and_keeps_unrelated_file
 run_test test_dirty_source_removal_is_blocked_before_disk_removal
