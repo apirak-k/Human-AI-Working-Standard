@@ -4414,24 +4414,30 @@ _settings_skill_selector() {
     local title="$1"
     local rows="$2"
     local wanted_source="${3:-}"
-    local source_id id display description entrypoint active source_count
+    local source_id id display description entrypoint active source_path
     local detail label
     local items=() ids=()
-    local -A source_counts=() display_counts=()
+    local -A source_paths=() display_counts=()
+
+    local source_url source_revision
+    while IFS=$'\t' read -r source_id source_path source_url source_revision ||
+        [ -n "${source_id}" ]; do
+        [ -n "${source_id}" ] || continue
+        source_paths["${source_id}"]="${source_path}"
+    done < <(_catalog_skill_sources)
 
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
-        source_counts["${source_id}"]=$(( ${source_counts[${source_id}]:-0} + 1 ))
         display_counts["${display}"]=$(( ${display_counts[${display}]:-0} + 1 ))
     done <<< "${rows}"
 
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
-        source_count="${source_counts[${source_id}]:-0}"
         if [ -n "${wanted_source}" ]; then
             [ "${source_id}" = "${wanted_source}" ] || continue
         else
-            [ "${source_count}" -eq 1 ] || continue
+            source_path="${source_paths[${source_id}]:-}"
+            [[ "${source_path}" == skills/packs/* ]] && continue
         fi
         label="${display}"
         if [ "${display_counts[${display}]:-0}" -gt 1 ]; then
@@ -4508,42 +4514,39 @@ settings_skills_page() {
     _settings_ensure_skill_draft || return 1
     local rows="$(catalog_skills)"
     echo "  [✓] Skills catalog ready."
-    local source_id id display description entrypoint active source_count
-    local single_total=0 single_active=0
-    local pack_total=0
+    local source_id id display description entrypoint active source_path
     local pack_ids=() pack_names=()
-    local -A source_counts=() pack_name_counts=() seen_sources=()
+    local -A source_counts=() source_active_counts=() source_paths=()
+    local -A pack_name_counts=() seen_sources=()
+
+    local source_url source_revision
+    while IFS=$'\t' read -r source_id source_path source_url source_revision ||
+        [ -n "${source_id}" ]; do
+        [ -n "${source_id}" ] || continue
+        source_paths["${source_id}"]="${source_path}"
+    done < <(_catalog_skill_sources)
 
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         source_counts["${source_id}"]=$(( ${source_counts[${source_id}]:-0} + 1 ))
+        if _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${id}"; then
+            local current_active="${source_active_counts[${source_id}]:-0}"
+            source_active_counts["${source_id}"]=$((current_active + 1))
+        fi
     done <<< "${rows}"
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
-        source_count="${source_counts[${source_id}]:-0}"
-        if [ "${source_count}" -eq 1 ]; then
-            single_total=$((single_total + 1))
-            _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${id}" && \
-                single_active=$((single_active + 1))
-        elif [ -z "${seen_sources[${source_id}]:-}" ]; then
-            seen_sources["${source_id}"]=1
-            pack_ids+=("${source_id}")
-            local pack_name="${source_id##*/}"
-            pack_names+=("${pack_name}")
-            pack_name_counts["${pack_name}"]=$(( ${pack_name_counts[${pack_name}]:-0} + 1 ))
-            pack_total=$((pack_total + 1))
-        fi
+        source_path="${source_paths[${source_id}]:-}"
+        [[ "${source_path}" == skills/packs/* ]] || continue
+        [ -z "${seen_sources[${source_id}]:-}" ] || continue
+        seen_sources["${source_id}"]=1
+        pack_ids+=("${source_id}")
+        local pack_name="${source_path##*/}"
+        pack_names+=("${pack_name}")
+        pack_name_counts["${pack_name}"]=$(( ${pack_name_counts[${pack_name}]:-0} + 1 ))
     done <<< "${rows}"
 
     while true; do
-        echo ""
-        echo "============================================================="
-        echo "             Configure Active Skills (Enable / Disable)"
-        echo "============================================================="
-        printf "  Single Skills\n     Status: [Active: %d / %d skills]\n" \
-            "${single_active}" "${single_total}"
-        echo "  Multi-Skill Packs"
-        echo "     Status: [${pack_total} pack(s)]"
         echo ""
         if interactive_menu menu "Configure Active Skills (Enable / Disable)" \
             "Single Skills|Configure individual skills" \
@@ -4560,6 +4563,7 @@ settings_skills_page() {
                         if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
                             pack_label="${pack_label} [${pack_ids[$i]}]"
                         fi
+                        pack_label="${pack_label} [Active: ${source_active_counts[${pack_ids[$i]}]:-0} / ${source_counts[${pack_ids[$i]}]:-0} skills]"
                         pack_items+=("${pack_label}|Configure skills in this pack")
                     done
                     pack_items+=("Back to Settings|Return to the settings menu")

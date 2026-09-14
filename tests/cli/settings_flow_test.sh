@@ -118,6 +118,16 @@ test_settings_skills_shows_catalog_loading_status() {
     assert_output_contains '[✓] Skills catalog ready.'
 }
 
+test_settings_skills_route_keeps_draft_and_avoids_duplicate_frame() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}\nq"
+    run_haws_input "${input}" || true
+    [ "$(grep -Fc 'Configure Active Skills (Enable / Disable)' "${OUTPUT_FILE}")" -eq 1 ] || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/skills.disabled" || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+}
+
 test_settings_ai_environments_opens_an_actionable_selector() {
     mkdir -p "${FIXTURE_HOME}/.claude" "${FIXTURE_HOME}/.codex" || return 1
     local down=$'\033[B'
@@ -387,6 +397,7 @@ run_test test_settings_repositories_route_keeps_old_actions
 run_test test_settings_skills_route_keeps_old_single_pack_labels
 run_test test_settings_skills_without_edits_has_no_false_discard_prompt
 run_test test_settings_skills_shows_catalog_loading_status
+run_test test_settings_skills_route_keeps_draft_and_avoids_duplicate_frame
 run_test test_settings_ai_environments_opens_an_actionable_selector
 run_test test_settings_enter_toggles_auto_update_and_reaches_preview
 run_test test_settings_apply_reaches_preview_without_persisting

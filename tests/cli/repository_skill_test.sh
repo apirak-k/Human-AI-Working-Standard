@@ -40,6 +40,11 @@ source_haws() {
     unset HAWS_SOURCE_ONLY
 }
 
+assert_output_not_contains() {
+    local needle="$1"
+    ! grep -F -- "${needle}" "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
 init_superproject() {
     git_fixture -C "${FIXTURE_PROJECT}" init -q || return 1
     git_fixture -C "${FIXTURE_PROJECT}" config user.email test@example.invalid
@@ -283,6 +288,75 @@ test_repository_back_and_discard_do_not_mutate_git_files() {
     [ "${before_status}" = "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain)" ]
 }
 
+prepare_settings_skill_presentation_catalog() {
+    init_superproject || return 1
+    rm -rf -- "${FIXTURE_PROJECT}/skills/custom/demo-one"
+    {
+        printf '[submodule "source-one"]\n'
+        printf '\tpath = skills/packs/source-one\n'
+        printf '\turl = https://github.com/acme/source-one.git\n'
+        printf '[submodule "source-two"]\n'
+        printf '\tpath = skills/standalone/source-two\n'
+        printf '\turl = https://github.com/acme/source-two.git\n'
+    } > "${FIXTURE_PROJECT}/.gitmodules"
+
+    write_catalog_skill \
+        'skills/packs/source-one/pack-alpha/SKILL.md' \
+        'Pack Alpha' 'Canonical pack alpha description.'
+    write_catalog_skill \
+        'skills/packs/source-one/pack-beta/SKILL.md' \
+        'Pack Beta' 'Canonical pack beta description.'
+    write_catalog_skill \
+        'skills/packs/source-one/.openclaw/pack-beta/SKILL.md' \
+        'Pack Beta' 'Filtered adapter description.'
+    write_catalog_skill \
+        'skills/packs/source-one/caveman/plugins/pack-beta/SKILL.md' \
+        'Pack Beta' 'Filtered vendor description.'
+    write_catalog_skill \
+        'skills/standalone/source-two/standalone/SKILL.md' \
+        'Standalone Skill' 'Canonical standalone description.'
+    write_catalog_skill \
+        'skills/custom/catalog-custom/SKILL.md' \
+        'Catalog Custom' 'Canonical custom description.'
+
+    mkdir -p "${FIXTURE_PROJECT}/skills"
+    printf '%s\n' \
+        'source-one::skills/packs/source-one::Pack Beta' \
+        > "${FIXTURE_PROJECT}/skills/skills.disabled"
+}
+
+test_settings_skills_presents_logical_groups_and_keeps_state_draft_only() {
+    prepare_settings_skill_presentation_catalog || return 1
+    enable_local_sources
+    source_haws || return 1
+    settings_draft_load || return 1
+    local disabled_before
+    disabled_before="$(sha256sum "${FIXTURE_PROJECT}/skills/skills.disabled" | awk '{print $1}')"
+
+    if settings_skills_page <<< $'\nqj\n\nqq' >"${OUTPUT_FILE}" 2>&1; then
+        :
+    fi
+    assert_output_contains 'Canonical standalone description.' || return 1
+    assert_output_contains 'Canonical custom description.' || return 1
+    assert_output_contains 'Canonical pack alpha description.' || return 1
+    assert_output_contains 'source-one [Active: 1 / 2 skills]' || return 1
+    assert_output_not_contains 'Filtered adapter description.' || return 1
+    assert_output_not_contains 'Filtered vendor description.' || return 1
+    assert_output_not_contains 'Status: [Active: 2 / 2 skills]' || return 1
+    [ "${disabled_before}" = "$(sha256sum "${FIXTURE_PROJECT}/skills/skills.disabled" | awk '{print $1}')" ] || return 1
+}
+
+test_settings_skills_uses_one_page_frame() {
+    init_superproject || return 1
+    source_haws || return 1
+    settings_draft_load || return 1
+    if settings_skills_page <<< 'q' >"${OUTPUT_FILE}" 2>&1; then
+        :
+    fi
+    [ "$(grep -Fc 'Configure Active Skills (Enable / Disable)' "${OUTPUT_FILE}")" -eq 1 ] || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/skills/skills.disabled"
+}
+
 test_settings_skills_preserves_old_single_and_pack_organization() {
     init_superproject || return 1
     {
@@ -332,6 +406,8 @@ run_test test_dirty_source_removal_is_blocked_before_disk_removal
 run_test test_legacy_run_sync_honors_source_aware_disabled_skill
 run_test test_skill_draft_persists_source_identity_only_on_final_apply
 run_test test_repository_back_and_discard_do_not_mutate_git_files
+run_test test_settings_skills_presents_logical_groups_and_keeps_state_draft_only
+run_test test_settings_skills_uses_one_page_frame
 run_test test_settings_skills_preserves_old_single_and_pack_organization
 
 echo "CLI Batch 4 repository/skill tests: ${passed} passed, ${failed} failed"
