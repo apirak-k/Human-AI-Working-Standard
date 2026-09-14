@@ -1,13 +1,13 @@
 # Current old-base Implementation Checkpoint
 
 **Implementation worktree:** `codex/old-base-selected-improvements`
-**Previous committed checkpoint:** `5d600e3` (`docs: record old-base HAWS behavior and evidence`)
-**Current checkpoint:** Post-Batch 8 interaction repair — automated verification complete
-**Checkpoint commit:** `0486c9d` (`chore(checkpoint): save old-base interaction repair`)
-**Remote checkpoint:** `origin/codex/old-base-selected-improvements` (pushed 2026-09-14)
+**Previous committed checkpoint:** `614bdb4` (`docs: add cross-device selected-improvements handoff`)
+**Current checkpoint:** Checkpoint 5 automated verification and documentation complete; physical acceptance remains `[Unverified]`
+**Checkpoint commit:** `500b59e` (`fix(status): route Home details to detailed health output`)
+**Remote checkpoint:** `origin/codex/old-base-selected-improvements` at `614bdb4` (no push from this run)
 **Previous feature commit:** `0a7d35e` (`feat: add evidence-based health and owned uninstall`)
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
-**Integration:** No merge; checkpoint push completed, no merge into `main`.
+**Integration:** No merge or push; no merge into `main`.
 
 ## Confirmed decisions
 
@@ -22,20 +22,30 @@
 - Selectable rows expose short action descriptions, and actions report their
   start and completion/failure state.
 
-## Executed verification
+## Current executed verification — 2026-09-14
 
-- Earlier Batch 8 CLI aggregate: 84/84 passed on 2026-09-13.
-- Current CLI aggregate: 91/91 passed on 2026-09-14.
-- Current launcher/menu tests: 12/12 passed.
-- Current settings-flow tests: 23/23 passed.
-- Batch 5 sync: 12/12 passed.
-- Batch 6 Status/Doctor: 7/7 passed.
-- Batch 6 Uninstall: 10/10 passed.
-- Earlier Windows launcher result: 9 passed, 1 privilege-dependent symlink case skipped as `[Unverified]`.
-- Latest Node aggregate: 25 passed and 1 `[Unverified]` file-symlink skip.
-- Direct `haws.bat` checks for `help`, `--help`, and `-h` each exited 0.
-- Codex agent adapter tests: 14/14 passed.
-- `bash -n haws.sh` and `git diff --check`: passed.
+- Full command: `bash -n haws.sh && bash tests/cli/run.sh && node --test
+  ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
+  && git diff --check` exited 0.
+- CLI aggregate: 101/101 passed (14 + 14 + 27 + 6 + 10 + 12 + 8 + 10).
+- Launcher/Menu: 14/14; Settings-flow: 27/27; Sync: 12/12; Status/Doctor:
+  8/8; Uninstall: 10/10.
+- Node aggregate: 26 passed and 1 `[Unverified]` file-symlink privilege skip;
+  Codex agent adapter tests passed 14/14.
+- The current working-tree Windows test contains two pre-existing local tests;
+  they were run but remain uncommitted and excluded from `500b59e`.
+- `git status` confirms the pre-existing dirty `haws.bat`, Windows test, and
+  five skill submodules remain outside the commit and unstaged.
+
+## Selected improvements checkpoints — current implementation
+
+- `774cab1`: source-scoped logical-skill catalog identity.
+- `0671a2d`: Settings Single Skills/Multi-Skill Packs projection.
+- `9ab4499`: launcher identity and safe navigation.
+- `500b59e`: Status summary/details presentation and Home details routing.
+- Automated evidence is complete for the implementation checkpoint. Physical
+  Explorer launch, native cursor behavior, host link capability, external
+  authenticated remotes, and human acceptance remain `[Unverified]`.
 
 ## Batch 7 — Adapter audit (2026-09-13)
 
@@ -138,7 +148,7 @@ Scope was limited to `codex/old-base-selected-improvements` versus the unchanged
   No merge into `main`, reset, worktree switch, or submodule modification was
   performed.
 
-## Remote checkpoint handoff (2026-09-14)
+## Historical remote checkpoint handoff (2026-09-14)
 
 - Commit: `0486c9d` (`chore(checkpoint): save old-base interaction repair`).
 - Target: `origin/codex/old-base-selected-improvements`.

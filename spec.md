@@ -4,6 +4,7 @@
 **Implementation worktree:** `codex/old-base-selected-improvements`  
 **Reference checkout:** `.worktrees/codex-haws-bootstrap`  
 **Last automated verification:** 2026-09-14 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
+**Current code checkpoint:** `500b59e` (`fix(status): route Home details to detailed health output`)
 **Language:** English
 
 This specification describes behavior implemented in the old-base worktree. It
@@ -117,27 +118,30 @@ menu route. Final Install/Update is the first point where the draft persists.
 
 ## 8. Evidence
 
-Final automated verification executed on 2026-09-14:
+Final automated verification executed on 2026-09-14 at code checkpoint
+`500b59e`:
 
-- `bash -n haws.sh && bash tests/cli/run.sh` under Git Bash exited 0: 91/91
-  CLI tests passed (12 + 14 + 23 + 6 + 7 + 12 + 7 + 10).
-- `node --test ai-configs/codex/agents.test.mjs
-  tests/windows_launcher_execution.test.mjs` exited 0: 25 passed and 1
-  skipped. The Codex adapter suite passed 14/14; the Windows launcher suite
-  passed 11/12, with the file-symlink capability skipped as `[Unverified]`.
-- `haws.bat` `help`, `--help`, and `-h` each exited 0 in a direct launcher
-  check.
-- Focused interaction regressions passed: launcher/menu 12/12 and
-  settings-flow 23/23, including action status, skill loading, the actionable
-  AI Environments selector, `all active (default)`, and false-discard coverage.
+- `bash -n haws.sh && bash tests/cli/run.sh && node --test
+  ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
+  && git diff --check` under Git Bash exited 0.
+- The CLI aggregate passed 101/101 assertions (14 + 14 + 27 + 6 + 10 + 12 +
+  8 + 10). This includes Status/Doctor 8/8 and the new Home Status Details
+  routing regression.
+- The Node aggregate passed 26 tests and skipped 1. The Codex adapter suite
+  passed 14/14; the Windows launcher suite passed 12/13, with the file-symlink
+  capability skipped as `[Unverified]`.
+- The current working-tree Windows test also contains two pre-existing local
+  additions; they were executed but remain uncommitted and excluded from the
+  checkpoint commit.
+- The selected-improvements code commits are `774cab1`, `0671a2d`, `9ab4499`,
+  and `500b59e`. The tracking remote remains at `614bdb4`; this run did not
+  push or merge.
 - `ai-configs/codex/skills.test.mjs` and `tests/cli/adapters_test.sh` are not
   present in either compared adapter tree; no placeholder tests were created.
-- `git diff --check` passed after the documentation update.
 
 These results are automated evidence, not physical Windows verification or
-human acceptance. Batch 8 itself was documentation-only; the post-Batch 8
-interaction repair is the scoped `haws.sh` change recorded in this contract.
-No adapter or submodule content was changed.
+human acceptance. The five dirty skill submodules and the two pre-existing
+local files remain outside the checkpoint commit.
 
 ## 9. Remaining acceptance
 

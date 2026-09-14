@@ -13,9 +13,10 @@ Compare the current old-base implementation with the trusted historical line and
 5. Pending — present decision matrix and obtain user decisions one topic at a time, with screen/flow examples after the user switches to Luna.
 6. Complete — draft specification approved; checkpointed implementation plan
    written at `docs/superpowers/plans/2026-09-14-haws-selected-improvements.md`.
-7. Complete for Checkpoints 1–3. The selected-improvements implementation was
-   executed and stopped after Checkpoint 3 for user review; do not begin
-   Checkpoint 4 without explicit authorization.
+7. Complete for Checkpoints 1–5 automated evidence. The selected-improvements
+   implementation and continuity documentation are complete through
+   `500b59e`; physical Windows/human acceptance remains `[Unverified]` and is
+   a separate follow-up.
 
 ## Cross-device continuation status
 
@@ -23,9 +24,10 @@ Compare the current old-base implementation with the trusted historical line and
 - Checkpoint 1: `774cab1`
 - Checkpoint 2: `0671a2d`
 - Checkpoint 3: `9ab4499`
+- Checkpoint 4: `500b59e`
 - Handoff record: `docs/superpowers/2026-09-14-selected-improvements-cross-device-handoff.md`
-- No Checkpoint 4, main-branch change, push, merge, or dirty-submodule change
-  is included in this handoff.
+- Current local HEAD is `500b59e`; tracking remote remains at `614bdb4`.
+- No main-branch change, push, merge, or dirty-submodule change is included.
 
 ## Confirmed decisions
 
@@ -38,3 +40,15 @@ Compare the current old-base implementation with the trusted historical line and
 - Review decisions can be approved at subtopic level. Each approved subtopic is recorded immediately, and the next screen/transition is stated before continuing.
 - **Interaction trace — Step 1: Launch (approved 2026-09-14):** Launching `haws.bat` is inert: it must not sync, run Doctor, write state, or use the network automatically. It may read local state only, then route **not installed → Setup** and **installed → Home**. The terminal/tab title identifies the product as `HAWS — Human-AI Working Standard`, rather than the generic `C:\WINDOWS\system32\cmd...` path.
 - Handoff note: the user later clarified that all screen/interaction discussions since switching to Luna are unconfirmed. Treat the Home screen discussion, Settings lifecycle, Q/Back/Apply semantics, and all subsequent mockups as proposals only until reconfirmed in the new chat.
+
+## Implementation completion status — 2026-09-14
+
+- Checkpoints 1–4 are committed on `codex/old-base-selected-improvements`.
+- Final automated verification exited 0 with CLI 101/101 and Node 26 passed,
+  1 `[Unverified]` file-symlink privilege skip.
+- The final verification command and evidence are recorded in `spec.md`,
+  `README.md`, and `HANDOFF.md`.
+- Physical Explorer launch, full disposable Windows traversal, external
+  authenticated remotes, and human acceptance remain `[Unverified]`.
+- The audit implementation phase is complete; merge, push, and retirement of
+  checkouts remain separately unauthorized actions.

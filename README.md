@@ -33,8 +33,8 @@ compatibility.
 `haws.bat` is the Windows launcher. macOS and Linux use `./haws.sh`; the shared shell engine keeps behavior and state semantics aligned without requiring one launcher file for every OS.
 
 The physical Explorer launch and full Windows menu walkthrough remain
-`[Unverified]` at this checkpoint. Automated launcher coverage and CLI results
-are recorded below.
+`[Unverified]` at this final automated checkpoint. Automated launcher coverage
+and CLI results are recorded below.
 
 ### Old-base verification checkpoint
 
@@ -42,15 +42,22 @@ Executed on 2026-09-14 in the old-base worktree with Git Bash 5.3.15 and Node.js
 v22.14.0:
 
 ```bash
-bash -n haws.sh && bash tests/cli/run.sh
-node --test ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
+bash -n haws.sh && bash tests/cli/run.sh && node --test \
+  ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs \
+  && git diff --check
 ```
 
-- CLI aggregate: 91/91 passed; the command exited 0.
-- Node suites: 25 passed and 1 skipped; the command exited 0. The skipped case
-  requires Windows file-symlink privilege and remains `[Unverified]`.
-- `haws.bat` `help`, `--help`, and `-h` each exited 0 in the direct launcher
-  check.
+- CLI aggregate: 101/101 passed; the command exited 0 (14 + 14 + 27 + 6 +
+  10 + 12 + 8 + 10).
+- Node aggregate: 26 passed and 1 skipped; the command exited 0. The skipped
+  case requires Windows file-symlink privilege and remains `[Unverified]`.
+- Status/Doctor now reports overall health, Skills `active / total`, Second
+  Brain, Auto Update, and `Last sync: Never` when no sync state exists. Home
+  `Status Details` invokes the detailed status mode.
+- The current working-tree Windows test includes two pre-existing local tests;
+  they were executed but were not included in the code checkpoint commit.
+- The code checkpoint is `500b59e`; the branch is one commit ahead of its
+  tracking remote because no push or merge was performed.
 - Settings-flow coverage includes the actionable AI Environments selector and
   verifies that opening Skills without edits does not show a false discard
   prompt.

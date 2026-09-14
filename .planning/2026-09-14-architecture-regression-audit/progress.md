@@ -102,3 +102,23 @@
 - Preserve the existing dirty `skills/standalone/planning-with-files`
   submodule, modified `HANDOFF.md`, and unrelated untracked artifacts. Do not
   start Checkpoint 4 unless the user explicitly authorizes it.
+
+## Checkpoint 4 and final verification — 2026-09-14
+
+- The user authorized continuation after the cross-device handoff. Checkpoint
+  4 was completed in `500b59e`, adding the read-only Status Skills count,
+  explicit `Last sync: Never` handling, and Home Status Details routing.
+- Final automated verification ran from the old-base worktree with the exact
+  command `bash -n haws.sh && bash tests/cli/run.sh && node --test
+  ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
+  && git diff --check` and exited 0.
+- Evidence: CLI 101/101 passed; Node 26 passed and 1 file-symlink privilege
+  case remained `[Unverified]`. The current working-tree Windows test's two
+  pre-existing local additions were executed but excluded from the code
+  checkpoint.
+- `git status` confirmed only the pre-existing dirty `haws.bat`, Windows test,
+  and five skill submodules remain outside the checkpoint. No push, merge, or
+  submodule modification was performed.
+- Continuity documents were updated from the executed evidence. Physical
+  Explorer launch, native cursor traversal, external authenticated remotes,
+  and human acceptance remain `[Unverified]`.
