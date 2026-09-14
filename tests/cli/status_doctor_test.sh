@@ -102,6 +102,17 @@ test_status_reports_current_attention_separately_from_last_sync() {
     ! grep -F 'Overall: Ready' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
+test_status_summary_reports_health_facts_without_sync_state() {
+    seed_health_fixture || return 1
+    rm -f "${FIXTURE_PROJECT}/.haws/state/sync-state.tsv"
+    run_haws status || return 1
+    assert_output_contains 'Overall: Attention' || return 1
+    assert_output_contains 'Skills: 1 / 1 active' || return 1
+    assert_output_contains 'Second Brain: off' || return 1
+    assert_output_contains 'Auto Update: off' || return 1
+    assert_output_contains 'Last sync: Never'
+}
+
 test_status_details_labels_executed_sections() {
     seed_health_fixture || return 1
     run_haws status --details || return 1
@@ -136,6 +147,7 @@ run_test test_health_apis_are_present
 run_test test_status_and_doctor_preserve_all_fixture_files_and_git_state
 run_test test_status_never_invokes_network_commands
 run_test test_status_reports_current_attention_separately_from_last_sync
+run_test test_status_summary_reports_health_facts_without_sync_state
 run_test test_status_details_labels_executed_sections
 run_test test_doctor_reports_failed_check_instead_of_fixed_ready
 run_test test_doctor_and_status_share_classification

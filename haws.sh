@@ -125,13 +125,17 @@ _health_collect() {
     [ "$source_rows" -eq 1 ] ||
         _health_add Ready Sources "no registered sources"
 
+    HAWS_HEALTH_SKILLS_ACTIVE=0
+    HAWS_HEALTH_SKILLS_TOTAL=0
     local skill_rows=0
     local logical_id display description skill_source entrypoint active source_fields
     local skill_source_path
     while IFS=$'\t' read -r skill_source logical_id display description entrypoint active _ ||
         [ -n "$logical_id" ]; do
         [ -n "$logical_id" ] || continue
+        HAWS_HEALTH_SKILLS_TOTAL=$((HAWS_HEALTH_SKILLS_TOTAL + 1))
         [ "$active" = 1 ] || continue
+        HAWS_HEALTH_SKILLS_ACTIVE=$((HAWS_HEALTH_SKILLS_ACTIVE + 1))
         skill_rows=1
         source_fields="$(_catalog_source_fields "$skill_source" 2>/dev/null || true)"
         skill_source_path="${source_fields%%$'\t'*}"
@@ -151,12 +155,12 @@ _health_last_sync() {
     local state="$(_health_state)"
     local file="$state/sync-state.tsv"
     [ -f "$file" ] || {
-        printf '%s\n' Unknown
+        printf '%s\n' Never
         return 0
     }
     local result
     result="$(tail -n 1 "$file" 2>/dev/null | awk -F $'\t' '{print $3}')"
-    [ -n "$result" ] || result=Unknown
+    [ -n "$result" ] || result=Never
     printf '%s\n' "$result"
 }
 
@@ -180,6 +184,7 @@ status_run() {
     overall="$(health_classify)"
     printf '%s\n' "HAWS Status"
     printf 'Overall: %s\n' "$overall"
+    printf 'Skills: %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
     printf 'Last sync: %s\n' "$(_health_last_sync)"
     printf 'Second Brain: %s\n' "$HAWS_SECOND_BRAIN_ENABLED"
     printf 'Auto Update: %s\n' "$HAWS_AUTO_UPDATE"
@@ -5216,7 +5221,7 @@ home_run() {
                     fi
                     ;;
                 2) run_doctor ;;
-                3) run_status ;;
+                3) run_status --details ;;
                 4) run_uninstall ;;
                 *) return 0 ;;
             esac

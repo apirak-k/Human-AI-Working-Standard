@@ -78,6 +78,21 @@ test_main_menu_has_purpose_and_context_controls() {
     assert_output_contains 'Controls: [Up/Down] Move | [Enter] Select | [Q] Exit'
 }
 
+test_home_status_details_uses_detailed_status() {
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state"
+    printf 'schema_version\t1\nsecond_brain\toff\nauto_update\toff\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+    printf 'schema=1\tcompleted_at=now\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete"
+    local down=$'\033[B'
+    printf '%b' "${down}${down}\nq" |
+        HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" >"${OUTPUT_FILE}" 2>&1 || return 1
+    assert_output_contains 'HAWS Status' || return 1
+    assert_output_contains $'Ready\tAI Environments' || return 1
+    assert_output_contains $'Ready\tSources' || return 1
+    assert_output_contains $'Ready\tSkills'
+}
+
 test_bare_eof_exits_without_home_mutation() {
     grep -q '^run_main_menu()' "${PROJECT_ROOT}/haws.sh" || return 1
     HOME="${FIXTURE_HOME}" bash "${PROJECT_ROOT}/haws.sh" menu </dev/null >"${OUTPUT_FILE}" 2>&1 || return 1
@@ -142,6 +157,7 @@ run_test test_help_aliases_exit_successfully
 run_test test_main_menu_action_reports_start_and_completion
 run_test test_bare_q_shows_menu_without_home_mutation
 run_test test_main_menu_has_purpose_and_context_controls
+run_test test_home_status_details_uses_detailed_status
 run_test test_bare_eof_exits_without_home_mutation
 run_test test_skills_keeps_old_categories_and_controls
 run_test test_skills_category_accepts_arrow_enter
