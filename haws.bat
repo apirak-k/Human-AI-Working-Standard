@@ -40,9 +40,9 @@ if not defined BASH_CMD (
 cd /d "%HAWS_DIR%"
 if "%~1"=="" (
     set "HAWS_BARE_LAUNCH=1"
-    "%BASH_CMD%" "%HAWS_SCRIPT%" menu
+    "%BASH_CMD%" -c "export PATH=/usr/bin:/bin:$PATH; exec bash \"$0\" \"$@\"" "%HAWS_SCRIPT%" menu
 ) else (
-    "%BASH_CMD%" "%HAWS_SCRIPT%" %*
+    "%BASH_CMD%" -c "export PATH=/usr/bin:/bin:$PATH; exec bash \"$0\" \"$@\"" "%HAWS_SCRIPT%" %*
 )
 set "HAWS_EXIT=%ERRORLEVEL%"
 call :maybe_pause

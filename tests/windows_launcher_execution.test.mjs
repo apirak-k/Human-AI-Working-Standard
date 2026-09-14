@@ -216,6 +216,41 @@ test("real launcher and haws.sh bare q exit without mutating fixture HOME", { sk
   }
 });
 
+test("real launcher help exits successfully", { skip: !isWindows }, () => {
+  const result = spawnSync("cmd.exe", ["/d", "/c", "haws.bat", "--help"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+    env: { ...process.env, HAWS_NO_PAUSE: "1" },
+    timeout: 5000,
+    windowsHide: true,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stdout + "\n" + result.stderr);
+  assert.match(result.stdout, /Usage:/);
+});
+
+test("launcher supplies Git Bash POSIX utilities when only its bin is on PATH", { skip: !isWindows }, () => {
+  const system32 = path.join(process.env.SystemRoot, "System32");
+  const gitBin = path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", "bin");
+  const cleanEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key.toLowerCase() !== "path"),
+  );
+  const result = spawnSync("cmd.exe", ["/d", "/c", "haws.bat", "--help"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+    env: {
+      ...cleanEnv,
+      Path: `${gitBin};${system32}`,
+      HAWS_NO_PAUSE: "1",
+    },
+    timeout: 5000,
+    windowsHide: true,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stdout + "\n" + result.stderr);
+  assert.match(result.stdout, /Usage:/);
+});
+
 test("Windows generated-file ownership is removed without touching its source", { skip: !isWindows }, () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "haws-batch6-windows-"));
   const home = path.join(root, "home", ".claude");
