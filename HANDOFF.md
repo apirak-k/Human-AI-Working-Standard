@@ -2,8 +2,8 @@
 
 **Implementation worktree:** `codex/old-base-selected-improvements`
 **Previous committed checkpoint:** `1aa832d` (`refactor(lifecycle): remove notify command and documentation`)
-**Current checkpoint:** Home, Health, and Sync UX implementation; automated verification is green; physical acceptance remains `[Unverified]`
-**Checkpoint commit:** `4b35039` (`perf(ui): simplify launcher output and sync fallback`)
+**Current checkpoint:** Bootstrap-aligned orchestration and shared checklist UX; automated verification is green; physical acceptance remains `[Unverified]`
+**Checkpoint commit:** `1bb1f0b` (`feat(haws): align bootstrap-style orchestration`)
 **Remote checkpoint:** `origin/codex/old-base-selected-improvements` remains at `95e9733`; no push performed
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
 **Integration:** No merge into `main`; no new push performed in this inspection.
@@ -19,7 +19,14 @@
 - Home uses one footer `Q` action and exposes only Sync, Health, Settings, and
   Uninstall. Child pages use `Q = Back`.
 - Sync presentation uses OPTIONS, TARGETS, SUMMARY and fixed result columns;
-  sync safety and state behavior are unchanged.
+  batch-style result markers; sync safety and state behavior are unchanged.
+- Explicit integration/Sync follows the bootstrap-style phase sequence: prepare
+  local state, detect/configure environments, link skills/profiles/commands and
+  prune, configure the `commit-msg` hook, then show the result. Bootstrap was
+  used as a workflow reference; its implementation was not copied over.
+- Single Skills uses the shared checklist renderer. Redraws keep all checklist
+  rows and the footer at the same height, preserving the Settings draft-only
+  boundary.
 - Adapter audit found no selected adapter delta; both adapter/reference trees match.
 - Main-menu Skills category and pack selectors use the shared cursor interaction
   engine; numeric shortcuts remain accepted for compatibility.
@@ -30,9 +37,9 @@
 
 - Full command: `bash -n haws.sh && bash tests/cli/run.sh && node --test
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
-  && git diff --check` exited 0.
-- CLI aggregate: 106/106 passed (16 + 14 + 27 + 6 + 10 + 14 + 9 + 10).
-- Launcher/Menu: 16/16; Settings-flow: 27/27; Sync: 14/14; Status/Doctor:
+  && git diff --check && cmd.exe /c haws.bat --help` exited 0.
+- CLI aggregate: 110/110 passed (17 + 14 + 27 + 6 + 10 + 17 + 9 + 10).
+- Launcher/Menu: 17/17; Settings-flow: 27/27; Sync: 17/17; Status/Doctor:
   9/9; Uninstall: 10/10. State: 14/14; Catalog: 6/6; Repository/Skill:
   10/10.
 - Node aggregate: 26 passed and 1 `[Unverified]` file-symlink privilege skip;
@@ -46,9 +53,11 @@
 
 ## Selected improvements checkpoints — current implementation
 
+- `1bb1f0b`: Bootstrap-style orchestration phases, batch-style Sync markers,
+  shared checklist redraw fix, hook result handling, and focused tests. The
+  remote remains at `95e9733`.
 - `4b35039`: Home, Health, Sync presentation, local fallback, and launcher UX;
-  focused tests and design
-  record included. The remote remains at `95e9733`.
+  focused tests and design record included.
 
 - `774cab1`: source-scoped logical-skill catalog identity.
 - `0671a2d`: Settings Single Skills/Multi-Skill Packs projection.

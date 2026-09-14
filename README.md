@@ -44,21 +44,28 @@ v22.14.0:
 ```bash
 bash -n haws.sh && bash tests/cli/run.sh && node --test \
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs \
-  && git diff --check
+  && git diff --check && cmd.exe /c haws.bat --help
 ```
 
-- CLI aggregate: 106/106 passed; the command exited 0 (16 + 14 + 27 + 6 +
-  10 + 14 + 9 + 10).
+- CLI aggregate: 110/110 passed; the command exited 0 (17 + 14 + 27 + 6 +
+  10 + 17 + 9 + 10).
 - Node aggregate: 26 passed and 1 skipped; the command exited 0. The skipped
   case requires Windows file-symlink privilege and remains `[Unverified]`.
 - Home now shows the one-click banner, compact status, and only Sync, Health,
   Settings, and Uninstall. Health combines compact status with grouped,
   read-only findings; compatibility `status` and `doctor` commands remain.
+- Explicit Sync/Install integration follows five concise phases: prepare local
+  state, detect/configure environments, link skills and profiles, configure the
+  `commit-msg` hook, and show the result. Sync target rows use fixed columns
+  with batch-style `[PASS]`, `[WARN]`, `[BLOCKED]`, and `[FAIL]` markers.
+- Settings Single Skills uses the shared checklist renderer; redraw keeps all
+  rows and the footer in one frame. Opening HAWS still does not auto-sync or
+  auto-run Doctor.
 - The current working-tree Windows test includes two pre-existing local tests;
   they were executed but were not included in the code checkpoint commit.
-- The UX implementation is committed locally as `4b35039` after the prior
-  checkpoint; the branch remains ahead of its tracking remote at `95e9733`
-  because no push or merge was performed.
+- The bootstrap-aligned orchestration implementation is committed locally as
+  `1bb1f0b` after the prior checkpoint; the branch remains ahead of its tracking
+  remote at `95e9733` because no push or merge was performed.
 - Settings-flow coverage includes the actionable AI Environments selector and
   verifies that opening Skills without edits does not show a false discard
   prompt.

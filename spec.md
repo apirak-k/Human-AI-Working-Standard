@@ -4,7 +4,7 @@
 **Implementation worktree:** `codex/old-base-selected-improvements`  
 **Reference checkout:** `.worktrees/codex-haws-bootstrap`  
 **Last automated verification:** 2026-09-15 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
-**Current code checkpoint:** `4b35039` (`perf(ui): simplify launcher output and sync fallback`)
+**Current code checkpoint:** `1bb1f0b` (`feat(haws): align bootstrap-style orchestration`)
 **Remote checkpoint:** `origin/codex/old-base-selected-improvements` remains at `95e9733`; no push performed
 **Language:** English
 
@@ -32,6 +32,9 @@ The implementation keeps the old terminal interaction engine:
 - `Q`/`q` is shown once in the footer: `Back` on child pages and `Exit` on
   Home/root pages.
 - Cursor movement and redraw happen on the existing menu surface.
+- Settings Single Skills and other checklists use the shared renderer; every
+  redraw includes the same rows and footer height, so the cursor does not jump
+  or overwrite the footer.
 - No replacement full-screen renderer is introduced.
 - Main-menu Skills category and pack selectors use the same shared cursor
   controls; numeric shortcuts remain accepted for compatibility.
@@ -63,6 +66,13 @@ menu route. Final Install/Update is the first point where the draft persists.
 - Second Brain Remote stays in draft until final validation and Apply.
 - Toggle does not access the remote.
 - Final Apply and Home Sync use bounded remote operations.
+- Explicit integration follows the bootstrap-style sequence: prepare local
+  state, apply the requested draft at its existing boundary, link skills and
+  profiles, configure the `commit-msg` hook, then show the result.
+- Sync target rows show fixed `Target`, `Result`, and `Detail` columns with
+  batch-style `[PASS]`, `[WARN]`, `[BLOCKED]`, and `[FAIL]` markers.
+- Opening the launcher does not auto-sync or auto-run Doctor; hook setup is
+  part of explicit integration/Sync only.
 - Sync validates a candidate before activating it.
 - Sync reports measured `updated`, `up-to-date`, `skipped`, `blocked`,
   `failed`, or `timeout` results.
@@ -125,14 +135,15 @@ The compatibility commands remain available:
 
 ## 8. Evidence
 
-Final automated verification executed on 2026-09-15 at code checkpoint
-`4b35039` after the Home, Health, and Sync UX implementation:
+Final automated verification executed on 2026-09-15 for implementation
+checkpoint `1bb1f0b`:
 
 - `bash -n haws.sh && bash tests/cli/run.sh && node --test
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
-  && git diff --check` under Git Bash exited 0.
-- The CLI aggregate passed 106/106 assertions (16 + 14 + 27 + 6 + 10 + 14 +
-  9 + 10). This includes the Home/Health routing and Sync presentation tests.
+  && git diff --check && cmd.exe /c haws.bat --help` under Git Bash exited 0.
+- The CLI aggregate passed 110/110 assertions (17 + 14 + 27 + 6 + 10 + 17 +
+  9 + 10). This includes the shared-checklist redraw, bootstrap-style phase,
+  hook orchestration, and Sync result-marker tests.
 - The Node aggregate passed 26 tests and skipped 1. The Codex adapter suite
   passed 14/14; the Windows file-symlink capability was skipped as
   `[Unverified]`.
@@ -141,8 +152,9 @@ Final automated verification executed on 2026-09-15 at code checkpoint
   also retain staged gitlink drift. These states were preserved.
 - The selected-improvements history through the prior checkpoint includes
   `774cab1`, `0671a2d`, `9ab4499`, `500b59e`, `0d0f259`, `1c17b40`, `1aa832d`,
-  and `95e9733`. The UX implementation is committed locally as `4b35039`; the
-  tracking remote remains at `95e9733`, and no push or merge was performed.
+  and `95e9733`. Bootstrap-aligned orchestration is committed locally as
+  `1bb1f0b`; the tracking remote remains at `95e9733`, and no push or merge was
+  performed.
 - `ai-configs/codex/skills.test.mjs` and `tests/cli/adapters_test.sh` are not
   present in either compared adapter tree; no placeholder tests were created.
 
