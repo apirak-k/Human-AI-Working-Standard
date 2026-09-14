@@ -147,6 +147,16 @@ run_sync_process() {
         bash "${FIXTURE_REPO}/haws.sh" "${command}" >"${OUTPUT_FILE}" 2>&1
 }
 
+test_sync_output_has_sections_and_summary() {
+    local source="${PROJECT_ROOT}/haws.sh"
+    local sync_block
+    sync_block="$(sed -n '/^sync_run() {/,/^run_sync() {/p' "${source}")"
+    printf '%s\n' "${sync_block}" | grep -Fq 'OPTIONS' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq 'TARGETS' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq 'SUMMARY' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq 'Updated' || return 1
+}
+
 test_sync_apis_are_present() {
     source_haws || return 1
     for api in run_with_deadline source_preflight source_candidate_validate \
@@ -232,8 +242,7 @@ test_auto_update_off_skips_remote_work_but_runs_explicit_sync() {
     [ "$(source_head disabled)" = "${old_head}" ] || return 1
     [ "$(source_remote_head disabled)" = "${remote_head}" ] || return 1
     assert_record "disabled::skills/packs/disabled" skipped || return 1
-    grep -F 'Auto Update: Disabled' "${OUTPUT_FILE}" >/dev/null || return 1
-    grep -F 'Explicit local synchronization remains available' "${OUTPUT_FILE}" >/dev/null
+    grep -F '[INFO] Auto Update is disabled; explicit synchronization remains available.' "${OUTPUT_FILE}" >/dev/null
 }
 
 test_second_brain_update_applies_remote_revision() {
@@ -362,6 +371,7 @@ if [ -n "${HAWS_SYNC_TEST_ONLY:-}" ]; then
     run_test "${HAWS_SYNC_TEST_ONLY}"
 else
     run_test test_sync_apis_are_present
+    run_test test_sync_output_has_sections_and_summary
     run_test test_clean_source_applies_remote_revision
     run_test test_up_to_date_requires_measured_head_equality
     run_test test_dirty_source_is_blocked_while_clean_source_continues

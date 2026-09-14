@@ -174,6 +174,59 @@ _health_print_details() {
     done <<< "$HAWS_HEALTH_FINDINGS"
 }
 
+_health_collect_hooks() {
+    local repo hook_path
+    repo="$(_health_repo)"
+    if hook_path="$(git -C "$repo" config --get core.hooksPath 2>/dev/null)"; then
+        if [ -z "$hook_path" ]; then
+            _health_add Ready Hooks "core.hooksPath is not configured"
+        elif [ -d "$repo/$hook_path" ] || [ -d "$hook_path" ]; then
+            _health_add Ready Hooks "core.hooksPath points to $hook_path"
+        else
+            _health_add Attention Hooks "core.hooksPath points to missing $hook_path"
+        fi
+    else
+        _health_add Ready Hooks "core.hooksPath is not configured"
+    fi
+}
+
+_health_print_summary() {
+    printf '  Overall       : %s\n' "$(health_classify)"
+    printf '  Skills        : %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
+    printf '  Last Sync     : %s\n' "$(_health_last_sync)"
+    printf '  Second Brain  : %s\n' "$(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
+    printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
+}
+
+_health_print_findings() {
+    local level check detail display_level
+    while IFS=$'\t' read -r level check detail _ || [ -n "$level" ]; do
+        [ -n "$level" ] || continue
+        case "$level" in
+            Ready) display_level="PASS" ;;
+            Attention) display_level="WARN" ;;
+            Blocked) display_level="BLOCKED" ;;
+            *) display_level="$level" ;;
+        esac
+        printf '  [%-7s] %-24s - %s\n' "$display_level" "$check" "$detail"
+    done <<< "$HAWS_HEALTH_FINDINGS"
+}
+
+health_run() {
+    _health_collect
+    _health_collect_hooks
+    echo "============================================================="
+    echo "                         HAWS Health"
+    echo "============================================================="
+    echo ""
+    echo "CURRENT STATUS"
+    _health_print_summary
+    echo ""
+    echo "CHECKS"
+    _health_print_findings
+    return $([ "$(health_classify)" = Blocked ] && echo 1 || echo 0)
+}
+
 status_run() {
     local details=0 arg
     for arg in "$@"; do
@@ -202,19 +255,7 @@ doctor_run() {
         [ "$arg" = --json ] && json=1
     done
     _health_collect
-    local repo hook_path
-    repo="$(_health_repo)"
-    if hook_path="$(git -C "$repo" config --get core.hooksPath 2>/dev/null)"; then
-        if [ -z "$hook_path" ]; then
-            _health_add Ready Hooks "core.hooksPath is not configured"
-        elif [ -d "$repo/$hook_path" ] || [ -d "$hook_path" ]; then
-            _health_add Ready Hooks "core.hooksPath points to $hook_path"
-        else
-            _health_add Attention Hooks "core.hooksPath points to missing $hook_path"
-        fi
-    else
-        _health_add Ready Hooks "core.hooksPath is not configured"
-    fi
+    _health_collect_hooks
     local overall
     overall="$(health_classify)"
     if [ "$json" -eq 1 ]; then
@@ -233,6 +274,10 @@ run_status() {
 
 run_doctor() {
     doctor_run "$@"
+}
+
+run_health() {
+    health_run "$@"
 }
 legacy_run_status() {
     local gemini_dir="${HOME}/.gemini/config/skills"
@@ -1387,6 +1432,37 @@ _sync_timeout_seconds() {
     esac
 }
 
+_sync_result_label() {
+    case "${1:-}" in
+        updated) printf '%s\n' Updated ;;
+        up-to-date) printf '%s\n' Up-to-date ;;
+        skipped) printf '%s\n' Skipped ;;
+        blocked) printf '%s\n' Blocked ;;
+        failed) printf '%s\n' Failed ;;
+        timeout) printf '%s\n' Timeout ;;
+        *) printf '%s\n' "${1:--}" ;;
+    esac
+}
+
+_sync_present_result() {
+    local target="${1:-}" result="${2:-}" detail="${3:-}"
+    local label
+    label="$(_sync_result_label "${result}")"
+    printf '  %-28s %-10s %s\n' "${target}" "${label}" "${detail:--}"
+    case "${result}" in
+        updated) SYNC_SUMMARY_UPDATED=$((SYNC_SUMMARY_UPDATED + 1)) ;;
+        up-to-date) SYNC_SUMMARY_UP_TO_DATE=$((SYNC_SUMMARY_UP_TO_DATE + 1)) ;;
+        skipped) SYNC_SUMMARY_SKIPPED=$((SYNC_SUMMARY_SKIPPED + 1)) ;;
+        blocked) SYNC_SUMMARY_BLOCKED=$((SYNC_SUMMARY_BLOCKED + 1)) ;;
+        failed) SYNC_SUMMARY_FAILED=$((SYNC_SUMMARY_FAILED + 1)) ;;
+        timeout) SYNC_SUMMARY_TIMEOUT=$((SYNC_SUMMARY_TIMEOUT + 1)) ;;
+    esac
+}
+
+_sync_legacy_echo() {
+    [ "${HAWS_SYNC_PRESENTATION:-0}" = 1 ] || echo "$*"
+}
+
 sync_result_write() {
     local target="${1:-}" result="${2:-}" revision="${3:--}" detail="${4:-}"
     [ -n "${target}" ] && [ -n "${result}" ] || return 2
@@ -1414,6 +1490,9 @@ sync_result_write() {
         replace_status=$?
     fi
     rm -f -- "${temporary}"
+    if [ "${replace_status}" -eq 0 ] && [ "${HAWS_SYNC_PRESENTATION:-0}" = 1 ]; then
+        _sync_present_result "${target}" "${result}" "${detail}"
+    fi
     return "${replace_status}"
 }
 
@@ -1502,7 +1581,7 @@ sync_target() {
     [ -n "${target}" ] || return 2
     if [ "${HAWS_AUTO_UPDATE:-${AUTO_UPDATE:-on}}" != on ]; then
         sync_result_write "${target}" skipped - "Auto Update is disabled" || return 1
-        echo "${target}: skipped (Auto Update is disabled)"
+        _sync_legacy_echo "${target}: skipped (Auto Update is disabled)"
         return 0
     fi
 
@@ -1511,14 +1590,14 @@ sync_target() {
         current_branch="$(git -C "${source_dir}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
         [ -n "${current_branch}" ] || {
             sync_result_write "${target}" blocked - "HAWS checkout is detached" || true
-            echo "${target}: blocked (detached checkout)"
+            _sync_legacy_echo "${target}: blocked (detached checkout)"
             return 1
         }
         fetch_remote="$(git -C "${source_dir}" config --get "branch.${current_branch}.remote" 2>/dev/null || true)"
         fetch_source="$(git -C "${source_dir}" config --get "branch.${current_branch}.merge" 2>/dev/null || true)"
         [ -n "${fetch_remote}" ] && [ -n "${fetch_source}" ] || {
             sync_result_write "${target}" failed - "HAWS branch has no tracked remote" || true
-            echo "${target}: failed (no tracked remote)"
+            _sync_legacy_echo "${target}: failed (no tracked remote)"
             return 1
         }
         if _sync_root_preflight; then
@@ -1529,7 +1608,7 @@ sync_target() {
     else
         source_path="$(_sync_source_path "${target}")" || {
             sync_result_write "${target}" failed - "source is not registered" || true
-            echo "${target}: failed (source is not registered)"
+            _sync_legacy_echo "${target}: failed (source is not registered)"
             return 1
         }
         source_dir="$(_catalog_repo_dir)/${source_path}"
@@ -1543,23 +1622,23 @@ sync_target() {
     case "${preflight_status}" in
         2)
             sync_result_write "${target}" blocked - "source has staged, unstaged, or untracked changes" || return 1
-            echo "${target}: blocked (local changes)"
+            _sync_legacy_echo "${target}: blocked (local changes)"
             return 1
             ;;
         3)
             sync_result_write "${target}" skipped - "source has no active skills" || return 1
-            echo "${target}: skipped (no active skills)"
+            _sync_legacy_echo "${target}: skipped (no active skills)"
             return 0
             ;;
         4)
             sync_result_write "${target}" failed - "source checkout is unavailable" || return 1
-            echo "${target}: failed (source checkout is unavailable)"
+            _sync_legacy_echo "${target}: failed (source checkout is unavailable)"
             return 1
             ;;
         0) ;;
         *)
             sync_result_write "${target}" failed - "source preflight failed" || return 1
-            echo "${target}: failed (source preflight failed)"
+            _sync_legacy_echo "${target}: failed (source preflight failed)"
             return 1
             ;;
     esac
@@ -1575,13 +1654,13 @@ sync_target() {
     if [ "${fetch_status}" -eq 124 ]; then
         _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
         sync_result_write "${target}" timeout - "remote fetch exceeded ${timeout_seconds}s" || return 1
-        echo "${target}: timeout"
+        _sync_legacy_echo "${target}: timeout"
         return 1
     fi
     if [ "${fetch_status}" -ne 0 ] || [ -z "${candidate_revision}" ]; then
         _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
         sync_result_write "${target}" failed - "remote candidate could not be fetched" || return 1
-        echo "${target}: failed (remote candidate could not be fetched)"
+        _sync_legacy_echo "${target}: failed (remote candidate could not be fetched)"
         return 1
     fi
 
@@ -1591,7 +1670,7 @@ sync_target() {
         else
             _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
             sync_result_write "${target}" failed "${candidate_revision}" "candidate validation failed" || return 1
-            echo "${target}: failed (candidate validation)"
+            _sync_legacy_echo "${target}: failed (candidate validation)"
             return 1
         fi
     elif source_candidate_validate "${target}" "${candidate_revision}"; then
@@ -1599,7 +1678,7 @@ sync_target() {
     else
         _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
         sync_result_write "${target}" failed "${candidate_revision}" "candidate validation failed" || return 1
-        echo "${target}: failed (candidate validation)"
+        _sync_legacy_echo "${target}: failed (candidate validation)"
         return 1
     fi
 
@@ -1607,7 +1686,7 @@ sync_target() {
     if [ -z "${current}" ]; then
         _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
         sync_result_write "${target}" failed "${candidate_revision}" "current revision could not be read" || return 1
-        echo "${target}: failed (current revision could not be read)"
+        _sync_legacy_echo "${target}: failed (current revision could not be read)"
         return 1
     fi
     if [ "${current}" != "${candidate_revision}" ]; then
@@ -1621,7 +1700,7 @@ sync_target() {
         else
             _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
             sync_result_write "${target}" failed "${candidate_revision}" "candidate activation failed" || return 1
-            echo "${target}: failed (candidate activation)"
+            _sync_legacy_echo "${target}: failed (candidate activation)"
             return 1
         fi
     fi
@@ -1630,15 +1709,15 @@ sync_target() {
     if [ "${final}" = "${candidate_revision}" ]; then
         if [ "${current}" = "${candidate_revision}" ]; then
             sync_result_write "${target}" up-to-date "${candidate_revision}" "final HEAD equals candidate" || return 1
-            echo "${target}: up-to-date"
+            _sync_legacy_echo "${target}: up-to-date"
         else
             sync_result_write "${target}" updated "${candidate_revision}" "final HEAD equals candidate" || return 1
-            echo "${target}: updated"
+            _sync_legacy_echo "${target}: updated"
         fi
         return 0
     fi
     sync_result_write "${target}" failed "${candidate_revision}" "final HEAD did not equal candidate" || return 1
-    echo "${target}: failed (final HEAD did not equal candidate)"
+    _sync_legacy_echo "${target}: failed (final HEAD did not equal candidate)"
     return 1
 }
 
@@ -1647,27 +1726,27 @@ sync_second_brain_target() {
     local current remote_head final before status timeout_seconds
     [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ] || {
         sync_result_write secondbrain skipped - "Second Brain is disabled" || return 1
-        echo "secondbrain: skipped (disabled)"
+        _sync_legacy_echo "secondbrain: skipped (disabled)"
         return 0
     }
     [ -d "${brain_dir}/.git" ] || {
         sync_result_write secondbrain failed - "Second Brain checkout is unavailable" || return 1
-        echo "secondbrain: failed (checkout is unavailable)"
+        _sync_legacy_echo "secondbrain: failed (checkout is unavailable)"
         return 1
     }
     if ! status="$(git -C "${brain_dir}" status --porcelain --untracked-files=all 2>/dev/null)"; then
         sync_result_write secondbrain failed - "Second Brain checkout could not be inspected" || return 1
-        echo "secondbrain: failed (checkout could not be inspected)"
+        _sync_legacy_echo "secondbrain: failed (checkout could not be inspected)"
         return 1
     fi
     [ -z "${status}" ] || {
         sync_result_write secondbrain blocked - "Second Brain has local changes" || return 1
-        echo "secondbrain: blocked (local changes)"
+        _sync_legacy_echo "secondbrain: blocked (local changes)"
         return 1
     }
     git -C "${brain_dir}" remote get-url origin >/dev/null 2>&1 || {
         sync_result_write secondbrain skipped - "Second Brain is local-only" || return 1
-        echo "secondbrain: skipped (local-only)"
+        _sync_legacy_echo "secondbrain: skipped (local-only)"
         return 0
     }
     current="$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
@@ -1678,10 +1757,10 @@ sync_second_brain_target() {
         local sync_status=$?
         if [ "${sync_status}" -eq 124 ]; then
             sync_result_write secondbrain timeout - "remote sync exceeded ${timeout_seconds}s" || return 1
-            echo "secondbrain: timeout"
+            _sync_legacy_echo "secondbrain: timeout"
         else
             sync_result_write secondbrain failed - "remote sync failed" || return 1
-            echo "secondbrain: failed (remote sync)"
+            _sync_legacy_echo "secondbrain: failed (remote sync)"
         fi
         return 1
     fi
@@ -1689,15 +1768,15 @@ sync_second_brain_target() {
     remote_head="$(git -C "${brain_dir}" rev-parse --verify refs/remotes/origin/main 2>/dev/null || true)"
     [ -n "${remote_head}" ] && [ "${final}" = "${remote_head}" ] || {
         sync_result_write secondbrain failed "${final:--}" "final HEAD did not equal origin/main" || return 1
-        echo "secondbrain: failed (final HEAD did not equal origin/main)"
+        _sync_legacy_echo "secondbrain: failed (final HEAD did not equal origin/main)"
         return 1
     }
     if [ "${final}" = "${current}" ]; then
         sync_result_write secondbrain up-to-date "${final}" "final HEAD equals origin/main" || return 1
-        echo "secondbrain: up-to-date"
+        _sync_legacy_echo "secondbrain: up-to-date"
     else
         sync_result_write secondbrain updated "${final}" "final HEAD equals origin/main" || return 1
-        echo "secondbrain: updated"
+        _sync_legacy_echo "secondbrain: updated"
     fi
     return 0
 }
@@ -1740,11 +1819,25 @@ sync_run() {
         sleep "${HAWS_TEST_SYNC_DELAY}"
     fi
 
-    echo "=== HAWS Universal Command Engine (All-in-One Sync) ==="
+    HAWS_SYNC_PRESENTATION=1
+    SYNC_SUMMARY_UPDATED=0
+    SYNC_SUMMARY_UP_TO_DATE=0
+    SYNC_SUMMARY_SKIPPED=0
+    SYNC_SUMMARY_BLOCKED=0
+    SYNC_SUMMARY_FAILED=0
+    SYNC_SUMMARY_TIMEOUT=0
+    echo "============================================================="
+    echo "                         HAWS SYNC"
+    echo "============================================================="
     echo ""
+    echo "OPTIONS"
+    printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
+    printf '  Second Brain  : %s\n' "$(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
+    echo ""
+    echo "TARGETS"
+    printf '  %-28s %-10s %s\n' Target Result Detail
     if [ "${HAWS_AUTO_UPDATE:-on}" != on ]; then
-        echo "Auto Update: Disabled"
-        echo "Explicit local synchronization remains available."
+        echo "  [INFO] Auto Update is disabled; explicit synchronization remains available."
     fi
     if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
         target_count=$((target_count + 1))
@@ -1759,7 +1852,7 @@ sync_run() {
         target_count=$((target_count + 1))
         sync_second_brain_target || status=1
     fi
-    [ "${target_count}" -gt 0 ] || echo "No remote targets enabled"
+    [ "${target_count}" -gt 0 ] || echo "  [INFO] No remote targets enabled"
 
     if sync_lock_release; then
         :
@@ -1768,6 +1861,13 @@ sync_run() {
     fi
     HAWS_SYNC_LOCK_ACQUIRED=0
     trap - EXIT INT TERM
+    echo ""
+    echo "SUMMARY"
+    printf '  Updated: %-4s Up-to-date: %-4s Skipped: %-4s\n' \
+        "${SYNC_SUMMARY_UPDATED}" "${SYNC_SUMMARY_UP_TO_DATE}" "${SYNC_SUMMARY_SKIPPED}"
+    printf '  Blocked: %-4s Failed: %-4s Timeout: %-4s\n' \
+        "${SYNC_SUMMARY_BLOCKED}" "${SYNC_SUMMARY_FAILED}" "${SYNC_SUMMARY_TIMEOUT}"
+    HAWS_SYNC_PRESENTATION=0
     return "${status}"
 }
 
@@ -2381,6 +2481,13 @@ interactive_menu() {
         item_names=("${items[@]}")
     fi
 
+    local menu_label_width=0 label_length
+    for item_name in "${item_names[@]}"; do
+        label_length=${#item_name}
+        [ "${label_length}" -gt "${menu_label_width}" ] && menu_label_width="${label_length}"
+    done
+    menu_label_width=$((menu_label_width + 2))
+
     local cursor="${start_index}"
     [ "${cursor}" -lt "${total}" ] || cursor=0
     local cancelled=0
@@ -2432,7 +2539,7 @@ interactive_menu() {
                 else
                     color="\033[90m"
                 fi
-                printf "\033[2K\r%s%s %b%-26s\033[0m \033[90m(%s)\033[0m\n" "${ptr}" "${mark}" "${color}" "${item_names[$real_idx]}" "${item_details[$real_idx]}"
+                printf "\033[2K\r%s%s %b%-*s\033[0m \033[90m(%s)\033[0m\n" "${ptr}" "${mark}" "${color}" "${menu_label_width}" "${item_names[$real_idx]}" "${item_details[$real_idx]}"
             fi
         elif [ "${mode}" = "settings" ]; then
             local state_mark=""
@@ -2442,16 +2549,16 @@ interactive_menu() {
                 off) state_mark=" [ Off ]" ;;
             esac
             if [ -n "${detail}" ]; then
-                printf "\033[2K\r%s%s%s \033[90m— %s\033[0m\n" \
-                    "${ptr}" "${item_names[$idx]}" "${state_mark}" "${detail}"
+                printf "\033[2K\r%s%-*s%s \033[90m- %s\033[0m\n" \
+                    "${ptr}" "${menu_label_width}" "${item_names[$idx]}" "${state_mark}" "${detail}"
             else
                 printf "\033[2K\r%s%s%s\n" "${ptr}" "${item_names[$idx]}" "${state_mark}"
             fi
         else
             local detail="${item_details[$idx]:-}"
             if [ -n "${detail}" ]; then
-                printf "\033[2K\r%s%s \033[90m— %s\033[0m\n" \
-                    "${ptr}" "${item_names[$idx]}" "${detail}"
+                printf "\033[2K\r%s%-*s \033[90m- %s\033[0m\n" \
+                    "${ptr}" "${menu_label_width}" "${item_names[$idx]}" "${detail}"
             else
                 printf "\033[2K\r%s%s\n" "${ptr}" "${item_names[$idx]}"
             fi
@@ -2462,11 +2569,9 @@ interactive_menu() {
     if [ "${mode}" = "checklist" ]; then
         echo "=== ${title} ==="
         [ -n "${purpose}" ] && echo "${purpose}"
-        echo "${controls}"
     elif [ "${mode}" = "settings" ]; then
         echo "=== ${title} ==="
         [ -n "${purpose}" ] && echo "${purpose}"
-        echo "${controls}"
     else
         echo "============================================================="
         echo "                       ${title}"
@@ -2480,17 +2585,12 @@ interactive_menu() {
         [ "$i" -eq "$cursor" ] && is_c=1
         render_row "$i" "$is_c"
     done
-    if [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
-        echo ""
-        echo "${controls}"
-    fi
+    echo ""
+    echo "${controls}"
 
     local interactive_terminal=0
     [ -t 0 ] && [ -t 1 ] && interactive_terminal=1
-    local redraw_rows="${total}"
-    if [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
-        redraw_rows=$((total + 2))
-    fi
+    local redraw_rows=$((total + 2))
     [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25l" 2>/dev/null || true
     while true; do
         local key=""
@@ -5159,8 +5259,7 @@ setup_run() {
         echo "Auto Update         On"
         if interactive_menu menu "HAWS Setup|Choose a setup option or leave without changes." \
             "Use Default Setup|Preview the standard HAWS setup" \
-            "Customize Settings|Edit settings before preview" \
-            "Exit|Leave setup without changes"; then
+            "Customize Settings|Edit settings before preview"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0)
                     settings_draft_load || return 1
@@ -5196,20 +5295,24 @@ home_run() {
     local result
     settings_load || return $?
     while true; do
+        _health_collect
         echo ""
-        echo "Status: Installed"
-        echo "Second Brain Remote: $(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
-        echo "Auto Update: $(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
-        if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|1" \
+        echo "============================================================="
+        echo "                         HAWS HOME"
+        echo "============================================================="
+        echo ""
+        echo "CURRENT STATUS"
+        _health_print_summary
+        echo ""
+        if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|2" \
             "Sync|Run explicit synchronization" \
+            "Health|Show current status and diagnostic reasons" \
             "Settings|Edit the HAWS settings draft" \
-            "Doctor|Run read-only diagnostics" \
-            "Status Details|Show current health details" \
-            "Uninstall|Preview removal of HAWS-owned items" \
-            "Exit|Leave HAWS Home"; then
+            "Uninstall|Preview removal of HAWS-owned items"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0) run_sync ;;
-                1)
+                1) run_health ;;
+                2)
                     settings_draft_load || return 1
                     if settings_flow_run settings; then
                         settings_load || return $?
@@ -5218,10 +5321,7 @@ home_run() {
                         [ "${result}" -eq 3 ] && return 3
                     fi
                     ;;
-                2) run_doctor ;;
-                3) run_status --details ;;
-                4) run_uninstall ;;
-                *) return 0 ;;
+                3) run_uninstall ;;
             esac
         else
             return 0
@@ -5246,7 +5346,6 @@ run_main_menu() {
         "Status|Show current HAWS status"
         "Doctor|Run read-only diagnostics"
         "Uninstall|Preview removal of HAWS-owned items"
-        "Exit|Leave the main menu"
     )
 
     run_menu_action() {
@@ -5274,7 +5373,6 @@ run_main_menu() {
             4) run_menu_action "Status" status ;;
             5) run_menu_action "Doctor" doctor ;;
             6) run_menu_action "Uninstall" uninstall ;;
-            7) return 0 ;;
         esac
     done
 }

@@ -154,7 +154,7 @@ test_settings_enter_toggles_auto_update_and_reaches_preview() {
     input+="${down}\nq"
     run_haws_input "${input}" settings || true
     assert_output_contains 'HAWS — Preview Install' || return 1
-    assert_output_contains 'Auto Update [ Off ]' || return 1
+    grep -E 'Auto Update[[:space:]]+\[ Off \]' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
 }
 
 test_settings_apply_reaches_preview_without_persisting() {
@@ -179,7 +179,7 @@ test_preview_back_to_settings_preserves_draft() {
     run_haws_input "${input}" || true
     assert_output_contains 'HAWS — Preview Install' || return 1
     assert_output_contains 'Back to Settings' || return 1
-    assert_output_contains 'Auto Update [ Off ]' || return 1
+    grep -E 'Auto Update[[:space:]]+\[ Off \]' "${OUTPUT_FILE}" || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
 }
 
@@ -214,10 +214,12 @@ test_completed_install_opens_home_without_sync_or_doctor() {
     assert_output_contains 'HAWS Home' || return 1
     assert_output_contains 'Sync' || return 1
     assert_output_contains 'Settings' || return 1
-    assert_output_contains 'Doctor' || return 1
-    assert_output_contains 'Status Details' || return 1
+    assert_output_contains 'Health' || return 1
     assert_output_contains 'Uninstall' || return 1
     assert_output_contains 'Exit' || return 1
+    assert_output_not_contains '> Exit' || return 1
+    assert_output_not_contains '> Doctor' || return 1
+    assert_output_not_contains 'Status Details' || return 1
     assert_output_not_contains 'HAWS Setup' || return 1
     [ ! -s "${CALL_LOG}" ]
 }
@@ -385,7 +387,7 @@ test_second_brain_remote_access_is_deferred_until_final_apply() {
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" $'second_brain\ton' || return 1
 
     PATH="${fake_bin}:${old_path}"
-    run_haws_input_with_env "${up}\nq" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
+    run_haws_input_with_env "${up}${up}\nq" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
     PATH="${old_path}"
     [ "$(wc -l < "${git_log}" | tr -d ' ')" = 2 ] || return 1
     tail -n 1 "${git_log}" | grep -Fx pull >/dev/null

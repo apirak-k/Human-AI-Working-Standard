@@ -73,6 +73,7 @@ test_bare_q_shows_menu_without_home_mutation() {
     assert_output_contains 'Doctor' || return 1
     assert_output_contains 'Uninstall' || return 1
     assert_output_contains 'Exit' || return 1
+    ! grep -F '> Exit' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     assert_output_contains 'Configure active skills' || return 1
     assert_output_contains 'Run explicit synchronization' || return 1
     assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest" || return 1
@@ -87,19 +88,27 @@ test_main_menu_has_purpose_and_context_controls() {
     assert_output_contains 'Controls: [Up/Down] Move | [Enter] Select | [Q] Exit'
 }
 
-test_home_status_details_uses_detailed_status() {
+test_home_health_shows_current_status_and_findings() {
     mkdir -p "${FIXTURE_PROJECT}/.haws/state"
     printf 'schema_version\t1\nsecond_brain\toff\nauto_update\toff\n' \
         > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
     printf 'schema=1\tcompleted_at=now\n' \
         > "${FIXTURE_PROJECT}/.haws/state/install.complete"
-    local down=$'\033[B'
-    printf '%b' "${down}${down}\nq" |
+    local up=$'\033[A'
+    printf '%b' "${up}\nq" |
         HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" >"${OUTPUT_FILE}" 2>&1 || return 1
-    assert_output_contains 'HAWS Status' || return 1
-    assert_output_contains $'Ready\tAI Environments' || return 1
-    assert_output_contains $'Ready\tSources' || return 1
-    assert_output_contains $'Ready\tSkills'
+    assert_output_contains 'HAWS Health' || return 1
+    assert_output_contains 'CURRENT STATUS' || return 1
+    assert_output_contains 'CHECKS' || return 1
+    grep -E '\[PASS +\] AI Environments' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    grep -E '\[PASS +\] Sources' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    grep -E '\[PASS +\] Skills' "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
+test_menu_descriptions_use_a_shared_label_column() {
+    local source="${PROJECT_ROOT}/haws.sh"
+    grep -Fq 'menu_label_width' "${source}" || return 1
+    grep -Fq '%-*s' "${source}"
 }
 
 test_bare_eof_exits_without_home_mutation() {
@@ -149,13 +158,9 @@ test_checklist_eof_cancels_without_saving() {
     assert_file_not_exists "${FIXTURE_PROJECT}/skills.disabled"
 }
 
-test_exit_selection_does_not_dispatch_an_action() {
-    {
-        local i
-        for ((i=0; i<7; i++)); do printf '\033[B'; done
-        printf '\n'
-    } | HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" menu >"${OUTPUT_FILE}" 2>&1 || return 1
-    assert_output_contains '> Exit' || return 1
+test_q_exits_without_an_exit_row() {
+    printf 'q' | HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" menu >"${OUTPUT_FILE}" 2>&1 || return 1
+    ! grep -F '> Exit' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/skills.disabled" || return 1
     assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest"
 }
@@ -167,14 +172,15 @@ run_test test_notify_command_is_removed
 run_test test_main_menu_action_reports_start_and_completion
 run_test test_bare_q_shows_menu_without_home_mutation
 run_test test_main_menu_has_purpose_and_context_controls
-run_test test_home_status_details_uses_detailed_status
+run_test test_home_health_shows_current_status_and_findings
+run_test test_menu_descriptions_use_a_shared_label_column
 run_test test_bare_eof_exits_without_home_mutation
 run_test test_skills_keeps_old_categories_and_controls
 run_test test_skills_category_accepts_arrow_enter
 run_test test_arrow_space_enter_updates_only_fixture
 run_test test_skills_pack_q_returns_to_category_menu
 run_test test_checklist_eof_cancels_without_saving
-run_test test_exit_selection_does_not_dispatch_an_action
+run_test test_q_exits_without_an_exit_row
 
 echo "Batch 1 launcher/menu tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]
