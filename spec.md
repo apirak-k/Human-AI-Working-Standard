@@ -3,9 +3,9 @@
 **Status:** Current implementation contract for the old-base selected worktree  
 **Implementation worktree:** `codex/old-base-selected-improvements`  
 **Reference checkout:** `.worktrees/codex-haws-bootstrap`  
-**Last automated verification:** 2026-09-14 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
-**Current code checkpoint:** `95e9733` (`chore(checkpoint): establish HAWS base after notify removal`)
-**Remote checkpoint:** `origin/codex/old-base-selected-improvements` at `95e9733`
+**Last automated verification:** 2026-09-15 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
+**Current code checkpoint:** `58142e1` (`feat(ui): unify HAWS home health and sync presentation`)
+**Remote checkpoint:** `origin/codex/old-base-selected-improvements` remains at `95e9733`; no push performed
 **Language:** English
 
 This specification describes behavior implemented in the old-base worktree. It
@@ -29,7 +29,8 @@ The implementation keeps the old terminal interaction engine:
 - `Up`/`Down` moves the current menu row.
 - `Enter` selects the current row.
 - `Space` toggles checklist items.
-- `Q`/`q` leaves the current selector.
+- `Q`/`q` is shown once in the footer: `Back` on child pages and `Exit` on
+  Home/root pages.
 - Cursor movement and redraw happen on the existing menu surface.
 - No replacement full-screen renderer is introduced.
 - Main-menu Skills category and pack selectors use the same shared cursor
@@ -45,7 +46,7 @@ First launch -> HAWS Setup
 Setup -> Use Default Setup -> Preview Install -> Install -> HAWS Home
 Setup -> Customize Settings -> Apply -> Preview Install -> Install -> Home
 Later launch -> HAWS Home
-Home -> Sync | Settings | Doctor | Status Details | Uninstall | Exit
+Home -> Sync | Health | Settings | Uninstall
 Settings -> Apply -> Preview Install/Update -> Install/Update -> Home
 Settings -> Skills -> Single Skills | Multi-Skill Packs -> Settings
 Settings -> AI Environments -> detected-environment checklist -> Settings
@@ -84,6 +85,11 @@ menu route. Final Install/Update is the first point where the draft persists.
 
 ## 5. Read-only health
 
+Home presents a compact status summary immediately. Health is the single UI
+page combining that summary with grouped Doctor findings for Settings,
+AI Environments, Ownership, Sources, Skills, and Hooks. It is read-only.
+The compatibility commands remain available:
+
 `status` and `doctor` inspect current state only:
 
 - They do not repair files.
@@ -119,25 +125,24 @@ menu route. Final Install/Update is the first point where the draft persists.
 
 ## 8. Evidence
 
-Final automated verification executed on 2026-09-14 at code checkpoint
-`95e9733`:
+Final automated verification executed on 2026-09-15 at code checkpoint
+`58142e1` after the Home, Health, and Sync UX implementation:
 
 - `bash -n haws.sh && bash tests/cli/run.sh && node --test
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
   && git diff --check` under Git Bash exited 0.
-- The CLI aggregate passed 102/102 assertions (15 + 14 + 27 + 6 + 10 + 12 +
-  8 + 10). This includes Status/Doctor 8/8 and the Home Status Details
-  routing regression.
+- The CLI aggregate passed 105/105 assertions (16 + 14 + 27 + 6 + 10 + 13 +
+  9 + 10). This includes the Home/Health routing and Sync presentation tests.
 - The Node aggregate passed 26 tests and skipped 1. The Codex adapter suite
   passed 14/14; the Windows file-symlink capability was skipped as
   `[Unverified]`.
 - The target root has no production source changes. Five skill-pack submodules
   retain dirty worktrees; `agent-skills`, `anthropics-skills`, and `ponytail`
   also retain staged gitlink drift. These states were preserved.
-- The selected-improvements implementation history includes `774cab1`, `0671a2d`,
-  `9ab4499`, `500b59e`, `0d0f259`, `1c17b40`, `1aa832d`, and `95e9733`.
-  The tracking remote is at `95e9733`; no new push or merge was performed in
-  this inspection.
+- The selected-improvements history through the prior checkpoint includes
+  `774cab1`, `0671a2d`, `9ab4499`, `500b59e`, `0d0f259`, `1c17b40`, `1aa832d`,
+  and `95e9733`. The UX implementation is committed locally as `58142e1`; the
+  tracking remote remains at `95e9733`, and no push or merge was performed.
 - `ai-configs/codex/skills.test.mjs` and `tests/cli/adapters_test.sh` are not
   present in either compared adapter tree; no placeholder tests were created.
 
@@ -149,7 +154,8 @@ commit, and standalone skill submodules remain uninitialized.
 
 - `[Unverified]` Launch `haws.bat` by double-clicking from Explorer.
 - `[Unverified]` Exercise Setup, Settings, Preview, Back, Cancel, Install/Update,
-  Home, Sync, Status, Doctor, and Uninstall on a disposable Windows fixture.
+  Home, Sync, Health, compatibility Status/Doctor, and Uninstall on a
+  disposable Windows fixture.
 - Record actual terminal cursor behavior and any rejected route.
 - `[Unverified]` Test external authenticated remotes separately.
 - Keep old-base, current, and reference checkouts until the user authorizes

@@ -19,8 +19,8 @@ Double-click **`haws.bat`** in the HAWS repository root. It locates Git Bash and
 
 - First launch opens **HAWS Setup**.
 - After installation, launch opens **HAWS Home**.
-- Use `Up`/`Down` to move, `Enter` to select, `Space` for checklist items, and `Q` to leave a menu.
-- Setup, Sync, Doctor, and Uninstall run only after the matching menu action. Launch does not auto-sync or auto-run Doctor.
+- Use `Up`/`Down` to move, `Enter` to select, `Space` for checklist items, and the footer `Q` action to go back or exit.
+- Setup, Sync, Health, and Uninstall run only after the matching menu action. Launch does not auto-sync or auto-run Health.
 - Selectable rows include a short action description, and actions report when
   they start and complete.
 - Skills and AI Environments show an explicit loading/result state. If the
@@ -38,7 +38,7 @@ and CLI results are recorded below.
 
 ### Old-base verification checkpoint
 
-Executed on 2026-09-14 in the old-base worktree with Git Bash 5.3.15 and Node.js
+Executed on 2026-09-15 in the old-base worktree with Git Bash 5.3.15 and Node.js
 v22.14.0:
 
 ```bash
@@ -47,17 +47,18 @@ bash -n haws.sh && bash tests/cli/run.sh && node --test \
   && git diff --check
 ```
 
-- CLI aggregate: 101/101 passed; the command exited 0 (14 + 14 + 27 + 6 +
-  10 + 12 + 8 + 10).
+- CLI aggregate: 105/105 passed; the command exited 0 (16 + 14 + 27 + 6 +
+  10 + 13 + 9 + 10).
 - Node aggregate: 26 passed and 1 skipped; the command exited 0. The skipped
   case requires Windows file-symlink privilege and remains `[Unverified]`.
-- Status/Doctor now reports overall health, Skills `active / total`, Second
-  Brain, Auto Update, and `Last sync: Never` when no sync state exists. Home
-  `Status Details` invokes the detailed status mode.
+- Home now shows the one-click banner, compact status, and only Sync, Health,
+  Settings, and Uninstall. Health combines compact status with grouped,
+  read-only findings; compatibility `status` and `doctor` commands remain.
 - The current working-tree Windows test includes two pre-existing local tests;
   they were executed but were not included in the code checkpoint commit.
-- The code checkpoint is `500b59e`; the branch is one commit ahead of its
-  tracking remote because no push or merge was performed.
+- The UX implementation is committed locally as `58142e1` after the prior
+  checkpoint; the branch remains ahead of its tracking remote at `95e9733`
+  because no push or merge was performed.
 - Settings-flow coverage includes the actionable AI Environments selector and
   verifies that opening Skills without edits does not show a false discard
   prompt.
@@ -82,7 +83,7 @@ cd Human-AI-Working-Standard
 bash haws.sh setup
 ```
 
-Setup edits a draft, shows a Preview, and writes state only after `Install` or `Update` confirmation. Later launches open Home, where `Sync`, `Settings`, `Doctor`, `Status Details`, and `Uninstall` are explicit actions.
+Setup edits a draft, shows a Preview, and writes state only after `Install` or `Update` confirmation. Later launches open Home, where `Sync`, `Health`, `Settings`, and `Uninstall` are explicit actions.
 
 ### Prerequisites
 

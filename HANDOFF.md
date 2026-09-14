@@ -2,9 +2,9 @@
 
 **Implementation worktree:** `codex/old-base-selected-improvements`
 **Previous committed checkpoint:** `1aa832d` (`refactor(lifecycle): remove notify command and documentation`)
-**Current checkpoint:** Post-notify-removal baseline; current automated verification is green; physical acceptance remains `[Unverified]`
-**Checkpoint commit:** `95e9733` (`chore(checkpoint): establish HAWS base after notify removal`)
-**Remote checkpoint:** `origin/codex/old-base-selected-improvements` at `95e9733` (local and remote match)
+**Current checkpoint:** Home, Health, and Sync UX implementation; automated verification is green; physical acceptance remains `[Unverified]`
+**Checkpoint commit:** `58142e1` (`feat(ui): unify HAWS home health and sync presentation`)
+**Remote checkpoint:** `origin/codex/old-base-selected-improvements` remains at `95e9733`; no push performed
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
 **Integration:** No merge into `main`; no new push performed in this inspection.
 
@@ -14,31 +14,40 @@
 - The old menu and shared cursor/raw-key interaction engine remain in use.
 - Settings keeps draft state until final Install/Update confirmation.
 - Sync uses bounded, measured results and preserves the current branch.
-- Status/Doctor are read-only. Uninstall uses ownership and fingerprint checks.
+- Health combines the Home status summary with grouped read-only Doctor findings.
+  Compatibility `status` and `doctor` commands remain available.
+- Home uses one footer `Q` action and exposes only Sync, Health, Settings, and
+  Uninstall. Child pages use `Q = Back`.
+- Sync presentation uses OPTIONS, TARGETS, SUMMARY and fixed result columns;
+  sync safety and state behavior are unchanged.
 - Adapter audit found no selected adapter delta; both adapter/reference trees match.
 - Main-menu Skills category and pack selectors use the shared cursor interaction
   engine; numeric shortcuts remain accepted for compatibility.
 - Selectable rows expose short action descriptions, and actions report their
   start and completion/failure state.
 
-## Current executed verification — 2026-09-14
+## Current executed verification — 2026-09-15
 
 - Full command: `bash -n haws.sh && bash tests/cli/run.sh && node --test
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
   && git diff --check` exited 0.
-- CLI aggregate: 102/102 passed (15 + 14 + 27 + 6 + 10 + 12 + 8 + 10).
-- Launcher/Menu: 15/15; Settings-flow: 27/27; Sync: 12/12; Status/Doctor:
-  8/8; Uninstall: 10/10. State: 14/14; Catalog: 6/6; Repository/Skill:
+- CLI aggregate: 105/105 passed (16 + 14 + 27 + 6 + 10 + 13 + 9 + 10).
+- Launcher/Menu: 16/16; Settings-flow: 27/27; Sync: 13/13; Status/Doctor:
+  9/9; Uninstall: 10/10. State: 14/14; Catalog: 6/6; Repository/Skill:
   10/10.
 - Node aggregate: 26 passed and 1 `[Unverified]` file-symlink privilege skip;
   Codex agent adapter tests passed 14/14.
-- The target root has no production source changes. Five skill-pack submodules
+- The target root changes only the HAWS UX implementation and its focused tests;
+  five skill-pack submodules
   retain dirty worktrees; `agent-skills`, `anthropics-skills`, and `ponytail`
   also retain staged gitlink drift. These states were preserved.
 - Standalone skill submodules remain uninitialized; no initialization or sync
   was attempted.
 
 ## Selected improvements checkpoints — current implementation
+
+- `58142e1`: Home, Health, and Sync presentation; focused tests and design
+  record included. The remote remains at `95e9733`.
 
 - `774cab1`: source-scoped logical-skill catalog identity.
 - `0671a2d`: Settings Single Skills/Multi-Skill Packs projection.
