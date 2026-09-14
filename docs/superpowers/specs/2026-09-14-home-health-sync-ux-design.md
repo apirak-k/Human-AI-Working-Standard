@@ -29,6 +29,10 @@ the current state is Ready, Attention, or Blocked.
 
 ## Sync presentation
 
+Sync reads local state first. A single bounded network attempt is allowed per
+target; when it times out or the network is unavailable, the target remains at
+its current local revision and the result says `Local fallback`.
+
 Sync behavior, locking, validation, and state writes remain unchanged. The
 human-facing output is reorganized into OPTIONS, TARGETS, and SUMMARY sections.
 Target results use aligned Target, Result, and Detail columns and the existing

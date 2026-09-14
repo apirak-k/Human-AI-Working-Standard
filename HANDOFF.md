@@ -3,7 +3,7 @@
 **Implementation worktree:** `codex/old-base-selected-improvements`
 **Previous committed checkpoint:** `1aa832d` (`refactor(lifecycle): remove notify command and documentation`)
 **Current checkpoint:** Home, Health, and Sync UX implementation; automated verification is green; physical acceptance remains `[Unverified]`
-**Checkpoint commit:** `58142e1` (`feat(ui): unify HAWS home health and sync presentation`)
+**Checkpoint commit:** `4b35039` (`perf(ui): simplify launcher output and sync fallback`)
 **Remote checkpoint:** `origin/codex/old-base-selected-improvements` remains at `95e9733`; no push performed
 **Reference checkout:** `.worktrees/codex-haws-bootstrap` remains unchanged.
 **Integration:** No merge into `main`; no new push performed in this inspection.
@@ -31,8 +31,8 @@
 - Full command: `bash -n haws.sh && bash tests/cli/run.sh && node --test
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
   && git diff --check` exited 0.
-- CLI aggregate: 105/105 passed (16 + 14 + 27 + 6 + 10 + 13 + 9 + 10).
-- Launcher/Menu: 16/16; Settings-flow: 27/27; Sync: 13/13; Status/Doctor:
+- CLI aggregate: 106/106 passed (16 + 14 + 27 + 6 + 10 + 14 + 9 + 10).
+- Launcher/Menu: 16/16; Settings-flow: 27/27; Sync: 14/14; Status/Doctor:
   9/9; Uninstall: 10/10. State: 14/14; Catalog: 6/6; Repository/Skill:
   10/10.
 - Node aggregate: 26 passed and 1 `[Unverified]` file-symlink privilege skip;
@@ -46,7 +46,8 @@
 
 ## Selected improvements checkpoints — current implementation
 
-- `58142e1`: Home, Health, and Sync presentation; focused tests and design
+- `4b35039`: Home, Health, Sync presentation, local fallback, and launcher UX;
+  focused tests and design
   record included. The remote remains at `95e9733`.
 
 - `774cab1`: source-scoped logical-skill catalog identity.

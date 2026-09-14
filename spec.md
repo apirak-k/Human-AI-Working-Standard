@@ -4,7 +4,7 @@
 **Implementation worktree:** `codex/old-base-selected-improvements`  
 **Reference checkout:** `.worktrees/codex-haws-bootstrap`  
 **Last automated verification:** 2026-09-15 on Windows PowerShell 7.6.5, Git Bash 5.3.15, Node.js v22.14.0, and Git 2.55.0.windows.2
-**Current code checkpoint:** `58142e1` (`feat(ui): unify HAWS home health and sync presentation`)
+**Current code checkpoint:** `4b35039` (`perf(ui): simplify launcher output and sync fallback`)
 **Remote checkpoint:** `origin/codex/old-base-selected-improvements` remains at `95e9733`; no push performed
 **Language:** English
 
@@ -126,12 +126,12 @@ The compatibility commands remain available:
 ## 8. Evidence
 
 Final automated verification executed on 2026-09-15 at code checkpoint
-`58142e1` after the Home, Health, and Sync UX implementation:
+`4b35039` after the Home, Health, and Sync UX implementation:
 
 - `bash -n haws.sh && bash tests/cli/run.sh && node --test
   ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs
   && git diff --check` under Git Bash exited 0.
-- The CLI aggregate passed 105/105 assertions (16 + 14 + 27 + 6 + 10 + 13 +
+- The CLI aggregate passed 106/106 assertions (16 + 14 + 27 + 6 + 10 + 14 +
   9 + 10). This includes the Home/Health routing and Sync presentation tests.
 - The Node aggregate passed 26 tests and skipped 1. The Codex adapter suite
   passed 14/14; the Windows file-symlink capability was skipped as
@@ -141,7 +141,7 @@ Final automated verification executed on 2026-09-15 at code checkpoint
   also retain staged gitlink drift. These states were preserved.
 - The selected-improvements history through the prior checkpoint includes
   `774cab1`, `0671a2d`, `9ab4499`, `500b59e`, `0d0f259`, `1c17b40`, `1aa832d`,
-  and `95e9733`. The UX implementation is committed locally as `58142e1`; the
+  and `95e9733`. The UX implementation is committed locally as `4b35039`; the
   tracking remote remains at `95e9733`, and no push or merge was performed.
 - `ai-configs/codex/skills.test.mjs` and `tests/cli/adapters_test.sh` are not
   present in either compared adapter tree; no placeholder tests were created.

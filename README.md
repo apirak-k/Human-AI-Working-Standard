@@ -47,8 +47,8 @@ bash -n haws.sh && bash tests/cli/run.sh && node --test \
   && git diff --check
 ```
 
-- CLI aggregate: 105/105 passed; the command exited 0 (16 + 14 + 27 + 6 +
-  10 + 13 + 9 + 10).
+- CLI aggregate: 106/106 passed; the command exited 0 (16 + 14 + 27 + 6 +
+  10 + 14 + 9 + 10).
 - Node aggregate: 26 passed and 1 skipped; the command exited 0. The skipped
   case requires Windows file-symlink privilege and remains `[Unverified]`.
 - Home now shows the one-click banner, compact status, and only Sync, Health,
@@ -56,7 +56,7 @@ bash -n haws.sh && bash tests/cli/run.sh && node --test \
   read-only findings; compatibility `status` and `doctor` commands remain.
 - The current working-tree Windows test includes two pre-existing local tests;
   they were executed but were not included in the code checkpoint commit.
-- The UX implementation is committed locally as `58142e1` after the prior
+- The UX implementation is committed locally as `4b35039` after the prior
   checkpoint; the branch remains ahead of its tracking remote at `95e9733`
   because no push or merge was performed.
 - Settings-flow coverage includes the actionable AI Environments selector and
