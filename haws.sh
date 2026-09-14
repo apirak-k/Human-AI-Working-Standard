@@ -1454,11 +1454,22 @@ _sync_result_label() {
     esac
 }
 
+_sync_result_marker() {
+    case "${1:-}" in
+        updated|up-to-date) printf '%s\n' '[PASS]' ;;
+        skipped|timeout) printf '%s\n' '[WARN]' ;;
+        blocked) printf '%s\n' '[BLOCKED]' ;;
+        failed) printf '%s\n' '[FAIL]' ;;
+        *) printf '%s\n' '[INFO]' ;;
+    esac
+}
+
 _sync_present_result() {
     local target="${1:-}" result="${2:-}" detail="${3:-}"
-    local label
+    local label marker
     label="$(_sync_result_label "${result}")"
-    printf '  %-28s %-10s %s\n' "${target}" "${label}" "${detail:--}"
+    marker="$(_sync_result_marker "${result}")"
+    printf '  %-28s %-18s %s\n' "${target}" "${marker} ${label}" "${detail:--}"
     case "${result}" in
         updated) SYNC_SUMMARY_UPDATED=$((SYNC_SUMMARY_UPDATED + 1)) ;;
         up-to-date) SYNC_SUMMARY_UP_TO_DATE=$((SYNC_SUMMARY_UP_TO_DATE + 1)) ;;
@@ -1889,13 +1900,19 @@ run_sync() {
     done
     shift || true
     local sync_status=0
+    echo "[*] Step 1/5: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
+    if [ "${sync_status}" -eq 0 ]; then
+        echo "[PASS] Step 1/5: Sources are synchronized or safely unchanged"
+    else
+        echo "[WARN] Step 1/5: Source synchronization completed with target issues"
+    fi
 
     local SOURCE_DIR="${SCRIPT_DIR}"
     load_disabled_skills
 
-    # 3. Detect AI Environments
-    echo "--- Step 3: Detecting AI Environments ---"
+    # 2. Detect AI Environments
+    echo "[*] Step 2/5: Detecting AI environments"
     local DETECTED_CLAUDE=false
     local DETECTED_GEMINI=false
     local DETECTED_CURSOR=false
@@ -1913,6 +1930,7 @@ run_sync() {
     [ "$DETECTED_CURSOR" = true ] && echo "  [✓] Cursor IDE detected"
     [ "$DETECTED_COPILOT" = true ] && echo "  [✓] GitHub Copilot detected"
     [ "$DETECTED_CODEX" = true ] && echo "  [✓] OpenAI Codex detected (${HOME}/.codex)"
+    echo "[PASS] Step 2/5: AI environment detection complete"
     echo ""
 
     # Helper Linking Functions
@@ -1920,6 +1938,7 @@ run_sync() {
     local AGENTS_LINKED=0
     local RULES_LINKED=0
     local SKIPPED_COUNT=0
+    local active_count=0
     local IS_WINDOWS=false
     if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
         IS_WINDOWS=true
@@ -2076,8 +2095,8 @@ run_sync() {
         fi
     }
 
-    # 4. Setup Global Pointers
-    echo "--- Step 4: Setting Up Global Environment Pointers ---"
+    # 3. Setup Global Pointers
+    echo "[*] Step 3/5: Configuring global environment pointers"
     [ "$DETECTED_CLAUDE" = true ] && safe_append_pointer "${HOME}/.claude/CLAUDE.md"
     [ "$DETECTED_GEMINI" = true ] && safe_append_pointer "${HOME}/.gemini/GEMINI.md"
     if [ "$DETECTED_CURSOR" = true ]; then
@@ -2104,10 +2123,11 @@ run_sync() {
             safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
         fi
     fi
+    echo "[PASS] Step 3/5: Global environment pointers configured"
     echo ""
 
-    # 5. Link Skills
-    echo "--- Step 5: Linking Skills ---"
+    # 4. Link Skills, profiles, and commands
+    echo "[*] Step 4/5: Linking skills, profiles, and commands"
     echo "  [*] Discovering and linking active skills to AI environments, please wait..."
     declare -A PROCESSED_SKILLS
 
@@ -2158,6 +2178,7 @@ run_sync() {
 
             if [ -n "${skill_name}" ] && [ -z "${PROCESSED_SKILLS[${skill_name}]:-}" ]; then
                 PROCESSED_SKILLS[${skill_name}]=1
+                active_count=$((active_count + 1))
                 echo "skill:${skill_name}" >> "${TMP_MANIFEST}"
 
                 if [ "$DETECTED_CLAUDE" = true ]; then
@@ -2262,15 +2283,13 @@ run_sync() {
             echo "}"
         } > "${target_json}"
         echo "  [CONFIG] Antigravity Native Config (Dynamic): ${target_json}"
-        local active_count=${#PROCESSED_SKILLS[@]}
         SKILLS_LINKED=$((SKILLS_LINKED + active_count))
     fi
-    local active_count=${#PROCESSED_SKILLS[@]}
     echo "  [✓] Skills linking complete (${active_count} active skills linked)."
     echo ""
 
-    # 6. Link Subagents
-    echo "--- Step 6: Linking Subagents ---"
+    # Link Subagents
+    echo "  [*] Linking native subagent profiles"
     if [ "$DETECTED_CODEX" = true ]; then
         run_codex_agents install --source "${SOURCE_DIR}"
         AGENTS_LINKED=$((AGENTS_LINKED + 5))
@@ -2297,8 +2316,8 @@ run_sync() {
     fi
     echo ""
 
-    # 7. Link Custom Commands
-    echo "--- Step 7: Linking Slash Commands for Custom Skills ---"
+    # Link Custom Commands
+    echo "  [*] Preparing custom skill commands"
     local COMMANDS_LINKED=0
     if [ "$DETECTED_CLAUDE" = true ] && [ -d "${SOURCE_DIR}/skills/custom" ]; then
         mkdir -p "${HOME}/.claude/commands"
@@ -2330,12 +2349,11 @@ EOF
         done
     fi
     echo ""
-
     # Commit Manifest
     [ -f "${TMP_MANIFEST}" ] && mv -f "${TMP_MANIFEST}" "${MANIFEST_FILE}"
 
-    # 8. Auto-Pruning
-    echo "--- Step 8: Auto-Pruning Orphaned & Removed Items ---"
+    # 4. Finalize linked state and prune removed items
+    echo "  [*] Pruning removed items"
     local PRUNED=0
     if [ -f "${PREV_MANIFEST}" ] && [ -f "${MANIFEST_FILE}" ]; then
         while IFS= read -r entry || [ -n "$entry" ]; do
@@ -2384,23 +2402,39 @@ EOF
             echo "  [✓] Purged ${UNMANAGED_PURGED} unmanaged foreign skill(s)."
         fi
     fi
+    echo "[PASS] Step 4/5: Skills, profiles, commands, and cleanup are ready"
+    echo ""
+
+    # 5. Configure hooks
+    echo "[*] Step 5/5: Configuring hooks"
+    if [ -d "${SCRIPT_DIR}/.githooks" ]; then
+        if run_hooks install >/dev/null; then
+            echo "[PASS] Step 5/5: Git safety hooks configured"
+        else
+            echo "[FAIL] Step 5/5: Git safety hooks could not be configured"
+            sync_status=1
+        fi
+    else
+        echo "[WARN] Step 5/5: Git safety hooks directory is not present"
+    fi
     echo ""
 
     # 9. Summary & Fast Status
-    echo "=== Summary ==="
+    echo "SUMMARY"
     echo "Global Rules  : ${RULES_LINKED}"
     echo "Skills Linked : ${SKILLS_LINKED}"
     echo "Commands Ready: ${COMMANDS_LINKED}"
     echo "Agents Linked : ${AGENTS_LINKED}"
     echo "Skipped Items : ${SKIPPED_COUNT}"
     echo ""
-    run_status
+    _health_collect
+    _health_print_summary
     echo ""
     echo "================================================================"
     if [ "${sync_status}" -eq 0 ]; then
-        echo "  [✓] HAWS Universal Sync Completed Successfully."
+        echo "[PASS] HAWS synchronization completed"
     else
-        echo "  [!] HAWS Universal Sync completed with target issues."
+        echo "[WARN] HAWS synchronization completed with target issues"
     fi
     echo "================================================================"
     return "${sync_status}"
@@ -2681,7 +2715,7 @@ interactive_menu() {
                 [ "$i" -eq "$cursor" ] && is_c=1
                 render_row "$i" "$is_c"
             done
-            if [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
+            if [ "${mode}" = "checklist" ] || [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
                 echo ""
                 echo "${controls}"
             fi
@@ -3660,7 +3694,10 @@ run_hooks() {
         install)
             echo "=== Installing HAWS Git Hooks ==="
             if [ -d "${SCRIPT_DIR}/.githooks" ]; then
-                git -C "${SCRIPT_DIR}" config core.hooksPath .githooks
+                if ! git -C "${SCRIPT_DIR}" config core.hooksPath .githooks; then
+                    echo "  [ERROR] Could not configure Git core.hooksPath"
+                    return 1
+                fi
                 chmod +x "${SCRIPT_DIR}/.githooks/commit-msg" 2>/dev/null || true
                 echo "  [✓] Git core.hooksPath set to .githooks"
                 echo "  [✓] commit-msg hook active (Conventional Commits & English invariant)"

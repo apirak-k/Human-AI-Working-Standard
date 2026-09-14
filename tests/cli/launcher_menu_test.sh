@@ -119,6 +119,12 @@ test_menu_descriptions_use_a_shared_label_column() {
     grep -Fq '%-*s' "${source}"
 }
 
+test_checklist_redraws_rows_and_footer_as_one_frame() {
+    local source="${PROJECT_ROOT}/haws.sh"
+    grep -Fq 'if [ "${mode}" = "checklist" ] || [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then' "${source}" || return 1
+    grep -Fq 'redraw_rows=$((total + 2))' "${source}" || return 1
+}
+
 test_bare_eof_exits_without_home_mutation() {
     grep -q '^run_main_menu()' "${PROJECT_ROOT}/haws.sh" || return 1
     HOME="${FIXTURE_HOME}" bash "${PROJECT_ROOT}/haws.sh" menu </dev/null >"${OUTPUT_FILE}" 2>&1 || return 1
@@ -182,6 +188,7 @@ run_test test_bare_q_shows_menu_without_home_mutation
 run_test test_main_menu_has_purpose_and_context_controls
 run_test test_home_health_shows_current_status_and_findings
 run_test test_menu_descriptions_use_a_shared_label_column
+run_test test_checklist_redraws_rows_and_footer_as_one_frame
 run_test test_bare_eof_exits_without_home_mutation
 run_test test_skills_keeps_old_categories_and_controls
 run_test test_skills_category_accepts_arrow_enter
