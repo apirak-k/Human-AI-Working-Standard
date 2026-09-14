@@ -4,6 +4,7 @@ rem HAWS (Human-AI Working Standard) - Windows launcher
 rem Locates Bash and delegates to the shared haws.sh command engine.
 rem ============================================================================
 setlocal
+title HAWS — Human-AI Working Standard
 
 set "HAWS_DIR=%~dp0"
 set "HAWS_SCRIPT=%HAWS_DIR%haws.sh"

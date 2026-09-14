@@ -64,6 +64,13 @@ test_default_setup_reaches_preview_install_before_cancel() {
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete"
 }
 
+test_preview_enter_does_not_apply_by_default() {
+    run_haws_input $'\n\nq' || true
+    assert_output_contains 'HAWS — Preview Install' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv" || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete"
+}
+
 test_customize_setup_reaches_lifecycle_neutral_settings() {
     local down=$'\033[B'
     run_haws_input "${down}\nq" || return 1
@@ -168,7 +175,7 @@ test_preview_back_to_settings_preserves_draft() {
     local down=$'\033[B'
     local input="${down}\n"
     input+="${down}${down}${down}${down} ${down}\n"
-    input+="${down}\n"
+    input+="\n"
     run_haws_input "${input}" || true
     assert_output_contains 'HAWS — Preview Install' || return 1
     assert_output_contains 'Back to Settings' || return 1
@@ -180,7 +187,7 @@ test_preview_cancel_discards_draft_and_returns_to_setup() {
     local down=$'\033[B'
     local input="${down}\n"
     input+="${down}${down}${down}${down} ${down}\n"
-    input+="${down}${down}\n"
+    input+="${down}\n"
     run_haws_input "${input}" || true
     assert_output_contains 'Cancelled. No changes saved.' || return 1
     assert_output_contains 'HAWS Setup' || return 1
@@ -215,13 +222,36 @@ test_completed_install_opens_home_without_sync_or_doctor() {
     [ ! -s "${CALL_LOG}" ]
 }
 
+test_home_enter_does_not_dispatch_sync_by_default() {
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state"
+    printf 'schema=1\tcompleted_at=fixture\n' > "${FIXTURE_PROJECT}/.haws/state/install.complete"
+    printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > \
+        "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+    run_haws_input $'\nq' || true
+    assert_output_contains 'HAWS Home' || return 1
+    assert_output_not_contains 'Preparing synchronization' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/sync-state.tsv"
+}
+
+test_dirty_settings_exit_prompts_before_discarding_draft() {
+    local down=$'\033[B'
+    local up=$'\033[A'
+    local input="${down}${down}${down}${down}\n"
+    input+="${up}${up}${up}${up}\n"
+    input+="qqq"
+    run_haws_input "${input}" settings || true
+    assert_output_contains 'Discard Changes?' || return 1
+    assert_output_contains 'You have unapplied changes in Settings.' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+}
+
 test_unchanged_preview_update_offers_only_back_routes() {
     mkdir -p "${FIXTURE_PROJECT}/.haws/state"
     printf 'schema=1\tcompleted_at=fixture\n' > "${FIXTURE_PROJECT}/.haws/state/install.complete"
     printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' > \
         "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
     local down=$'\033[B'
-    local input="${down}\n"
+    local input="\n"
     input+="${down}${down}${down}${down}${down}\nq"
     run_haws_input "${input}" || true
     assert_output_contains 'HAWS — Preview Update' || return 1
@@ -254,7 +284,7 @@ _sha256_file() {
 }
 
 test_partial_failure_reports_completed_and_remaining_actions() {
-    run_haws_input_with_env $'\n\n' 'HAWS_TEST_FAIL_AFTER_SETTINGS=1' || true
+    run_haws_input_with_env $'\n\033[A\n' 'HAWS_TEST_FAIL_AFTER_SETTINGS=1' || true
     assert_output_contains 'Partial failure' || return 1
     assert_output_contains 'Completed: settings' || return 1
     assert_output_contains 'Remaining: integration' || return 1
@@ -263,7 +293,7 @@ test_partial_failure_reports_completed_and_remaining_actions() {
 }
 
 test_first_install_creates_empty_environment_state_file() {
-    run_haws_input_with_env $'\n\n' 'HAWS_TEST_NO_INTEGRATION=1' || return 1
+    run_haws_input_with_env $'\n\033[A\n' 'HAWS_TEST_NO_INTEGRATION=1' || return 1
     local disabled_file="${FIXTURE_PROJECT}/ai-configs/environments.disabled"
     [ -f "${disabled_file}" ] || return 1
     ! grep -E '^[[:space:]]*[^#[:space:]]' "${disabled_file}" >/dev/null 2>&1
@@ -295,8 +325,9 @@ test_second_brain_remote_invalid_does_not_persist() {
 
 test_second_brain_remote_unreachable_does_not_persist() {
     local down=$'\033[B'
+    local up=$'\033[A'
     local input="${down}\n"
-    input+="${down}${down}${down} ${down}${down}\nfile://${FIXTURE_ROOT}/missing.git\n\nq"
+    input+="${down}${down}${down} ${down}${down}\nfile://${FIXTURE_ROOT}/missing.git\n${up}\nq"
     run_haws_input_with_env "${input}" 'HAWS_TEST_NO_INTEGRATION=1' || true
     assert_output_contains 'Remote validation failed' || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
@@ -320,6 +351,7 @@ test_second_brain_remote_access_is_deferred_until_final_apply() {
     chmod +x "${fake_bin}/git"
 
     local down=$'\033[B'
+    local up=$'\033[A'
     local toggle_input="${down}\n"
     toggle_input+="${down}${down}${down} q"
     local old_path="${PATH}"
@@ -343,7 +375,7 @@ test_second_brain_remote_access_is_deferred_until_final_apply() {
     git -C "${FIXTURE_PROJECT}/secondbrain" push --quiet -u origin main || return 1
     git --git-dir="${FIXTURE_ROOT}/remote.git" symbolic-ref HEAD refs/heads/main || return 1
     local apply_input="${down}\n"
-    apply_input+="${down}${down}${down} ${down}${down}\n${remote}\n\nq"
+    apply_input+="${down}${down}${down} ${down}${down}\n${remote}\n${up}\nq"
     PATH="${fake_bin}:${old_path}"
     run_haws_input_with_env "${apply_input}" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
     PATH="${old_path}"
@@ -353,14 +385,14 @@ test_second_brain_remote_access_is_deferred_until_final_apply() {
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" $'second_brain\ton' || return 1
 
     PATH="${fake_bin}:${old_path}"
-    run_haws_input_with_env $'\nq' "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
+    run_haws_input_with_env "${up}\nq" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
     PATH="${old_path}"
     [ "$(wc -l < "${git_log}" | tr -d ' ')" = 2 ] || return 1
     tail -n 1 "${git_log}" | grep -Fx pull >/dev/null
 }
 
 test_successful_install_records_completion_and_next_launch_home() {
-    run_haws_input_with_env $'\n\n' 'HAWS_TEST_NO_INTEGRATION=1' || return 1
+    run_haws_input_with_env $'\n\033[A\n' 'HAWS_TEST_NO_INTEGRATION=1' || return 1
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/install.complete" 'schema=1' || return 1
     run_haws_input 'q' || return 1
     assert_output_contains 'HAWS Home'
@@ -392,6 +424,7 @@ fi
 
 run_test test_first_use_opens_setup_without_mutation
 run_test test_default_setup_reaches_preview_install_before_cancel
+run_test test_preview_enter_does_not_apply_by_default
 run_test test_customize_setup_reaches_lifecycle_neutral_settings
 run_test test_settings_repositories_route_keeps_old_actions
 run_test test_settings_skills_route_keeps_old_single_pack_labels
@@ -405,6 +438,8 @@ run_test test_preview_back_to_settings_preserves_draft
 run_test test_preview_cancel_discards_draft_and_returns_to_setup
 run_test test_reset_defaults_requires_confirmation_before_replacing_draft
 run_test test_completed_install_opens_home_without_sync_or_doctor
+run_test test_home_enter_does_not_dispatch_sync_by_default
+run_test test_dirty_settings_exit_prompts_before_discarding_draft
 run_test test_unchanged_preview_update_offers_only_back_routes
 run_test test_draft_cancel_preserves_existing_state_bytes
 run_test test_partial_failure_reports_completed_and_remaining_actions

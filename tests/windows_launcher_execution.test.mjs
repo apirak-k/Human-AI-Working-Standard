@@ -192,6 +192,10 @@ test("launcher retains an explicit missing-Bash error", { skip: !isWindows }, ()
   assert.match(readFileSync(launcher, "utf8"), /Git Bash was not found/i);
 });
 
+test("launcher establishes the HAWS window title before delegation", { skip: !isWindows }, () => {
+  assert.match(readFileSync(launcher, "utf8"), /title HAWS — Human-AI Working Standard/);
+});
+
 test("real launcher and haws.sh bare q exit without mutating fixture HOME", { skip: !isWindows }, () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "haws-batch1-home-"));
   try {

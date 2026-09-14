@@ -11,6 +11,7 @@ trap cleanup_fixture EXIT
 test_launcher_is_thin() {
     [ -f "${PROJECT_ROOT}/haws.bat" ] || return 1
     grep -F 'haws.sh' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
+    grep -F 'title HAWS — Human-AI Working Standard' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
     ! grep -iE 'run_sync|run_setup|run_doctor|git submodule' "${PROJECT_ROOT}/haws.bat" >/dev/null
 }
 
@@ -69,6 +70,12 @@ test_bare_q_shows_menu_without_home_mutation() {
     printf 'Q' | HOME="${FIXTURE_HOME}" bash "${PROJECT_ROOT}/haws.sh" menu >"${OUTPUT_FILE}" 2>&1 || return 1
     assert_output_contains 'HAWS — Main Menu' || return 1
     assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest"
+}
+
+test_main_menu_has_purpose_and_context_controls() {
+    printf 'q' | HOME="${FIXTURE_HOME}" bash "${PROJECT_ROOT}/haws.sh" menu >"${OUTPUT_FILE}" 2>&1 || return 1
+    assert_output_contains 'Choose an HAWS command to run.' || return 1
+    assert_output_contains 'Controls: [Up/Down] Move | [Enter] Select | [Q] Exit'
 }
 
 test_bare_eof_exits_without_home_mutation() {
@@ -134,6 +141,7 @@ run_test test_main_menu_reuses_old_interaction_engine
 run_test test_help_aliases_exit_successfully
 run_test test_main_menu_action_reports_start_and_completion
 run_test test_bare_q_shows_menu_without_home_mutation
+run_test test_main_menu_has_purpose_and_context_controls
 run_test test_bare_eof_exits_without_home_mutation
 run_test test_skills_keeps_old_categories_and_controls
 run_test test_skills_category_accepts_arrow_enter

@@ -9,6 +9,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMAND="${1:-menu}"
 BARE_LAUNCH="${HAWS_BARE_LAUNCH:-0}"
 [ "$#" -eq 0 ] && BARE_LAUNCH=1
+HAWS_WINDOW_TITLE="HAWS — Human-AI Working Standard"
+
+haws_set_terminal_title() {
+    [ -t 1 ] || return 0
+    printf '\033]0;%s\007' "${HAWS_WINDOW_TITLE}"
+}
 
 # Native Codex agent installation is also available without a global sync.
 run_codex_agents() {
@@ -2322,7 +2328,19 @@ run_edit_gitmodules() {
 
 interactive_menu() {
     local mode="$1"
-    local title="$2"
+    local title_spec="$2"
+    local title="${title_spec}"
+    local purpose=""
+    local start_index=0
+    if [[ "${title_spec}" == *"|"* ]]; then
+        title="${title_spec%%|*}"
+        local metadata="${title_spec#*|}"
+        purpose="${metadata%%|*}"
+        if [[ "${metadata}" == *"|"* ]]; then
+            local requested_start="${metadata#*|}"
+            [[ "${requested_start}" =~ ^[0-9]+$ ]] && start_index="${requested_start}"
+        fi
+    fi
     shift 2
     local items=("$@") # checklist: "name|detail|initial_state_0_or_1"
     local count=${#items[@]}
@@ -2358,8 +2376,22 @@ interactive_menu() {
         item_names=("${items[@]}")
     fi
 
-    local cursor=0
+    local cursor="${start_index}"
+    [ "${cursor}" -lt "${total}" ] || cursor=0
     local cancelled=0
+    local controls
+    if [ "${mode}" = "checklist" ]; then
+        controls="Controls: [Up/Down] Move | [Space] Toggle | [Enter] Confirm & Save | [Q] Cancel"
+    elif [ "${mode}" = "settings" ]; then
+        controls="Controls: [Up/Down] Move | [Enter] Select/Toggle | [Space] Toggle | [Q] Back"
+    else
+        local exit_hint="Exit"
+        case "${title}" in
+            "HAWS — Main Menu"|"HAWS Setup"|"HAWS Home") ;;
+            *) exit_hint="Back" ;;
+        esac
+        controls="Controls: [Up/Down] Move | [Enter] Select | [Q] ${exit_hint}"
+    fi
 
     render_row() {
         local idx="$1"
@@ -2424,14 +2456,17 @@ interactive_menu() {
     echo ""
     if [ "${mode}" = "checklist" ]; then
         echo "=== ${title} ==="
-        echo "Controls: [↑/↓] Navigate | [Space] Toggle | [Enter] Confirm & Save | [q] Cancel"
+        [ -n "${purpose}" ] && echo "${purpose}"
+        echo "${controls}"
     elif [ "${mode}" = "settings" ]; then
         echo "=== ${title} ==="
-        echo "Controls: Up/Down Move | Enter Select/Toggle | Space Toggle | Q Back"
+        [ -n "${purpose}" ] && echo "${purpose}"
+        echo "${controls}"
     else
         echo "============================================================="
         echo "                       ${title}"
         echo "============================================================="
+        [ -n "${purpose}" ] && echo "${purpose}"
     fi
     echo ""
 
@@ -2442,11 +2477,7 @@ interactive_menu() {
     done
     if [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
         echo ""
-        if [ "${mode}" = "settings" ]; then
-            echo "Controls: Up/Down Move | Enter Select/Toggle | Space Toggle | Q Back"
-        else
-            echo "Controls: Up/Down Move | Enter Select | Q Exit"
-        fi
+        echo "${controls}"
     fi
 
     local interactive_terminal=0
@@ -2532,12 +2563,9 @@ interactive_menu() {
                 [ "$i" -eq "$cursor" ] && is_c=1
                 render_row "$i" "$is_c"
             done
-            if [ "${mode}" = "menu" ]; then
+            if [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
                 echo ""
-                echo "Controls: Up/Down Move | Enter Select | Q Exit"
-            elif [ "${mode}" = "settings" ]; then
-                echo ""
-                echo "Controls: Up/Down Move | Enter Select/Toggle | Space Toggle | Q Back"
+                echo "${controls}"
             fi
         fi
     done
@@ -4548,7 +4576,7 @@ settings_skills_page() {
 
     while true; do
         echo ""
-        if interactive_menu menu "Configure Active Skills (Enable / Disable)" \
+        if interactive_menu menu "Configure Active Skills (Enable / Disable)|Choose a skill category to edit the current draft." \
             "Single Skills|Configure individual skills" \
             "Multi-Skill Packs|Configure skills by pack" \
             "Back to Settings|Return without changing the draft"; then
@@ -4634,7 +4662,7 @@ _settings_repository_remove_page() {
 settings_repositories_page() {
     local url
     while true; do
-        if ! interactive_menu menu "Repositories" \
+        if ! interactive_menu menu "Repositories|Manage repository sources in the current draft." \
             "Add Git Repository|Add a repository to the draft" \
             "Remove Git Repository|Remove a repository from the draft" \
             "Back to Settings|Return without changing the draft"; then
@@ -4680,7 +4708,7 @@ settings_page() {
         "Reset to Defaults|Replace the current draft|-"
         "Discard Changes|Return without saving|-"
     )
-    if interactive_menu settings "HAWS Settings" "${items[@]}"; then
+    if interactive_menu settings "HAWS Settings|Review the draft; Apply is the only way to save changes." "${items[@]}"; then
         HAWS_DRAFT_SECOND_BRAIN="${INTERACTIVE_MENU_STATES[Second Brain Remote]:-${HAWS_DRAFT_SECOND_BRAIN}}"
         HAWS_DRAFT_AUTO_UPDATE="${INTERACTIVE_MENU_STATES[Auto Update]:-${HAWS_DRAFT_AUTO_UPDATE}}"
         export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_AUTO_UPDATE
@@ -4788,7 +4816,8 @@ settings_plan_build() {
 }
 
 settings_preview() {
-    local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}"
+    local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}|Review the draft; Apply is the only way to write changes."
+    [ "${HAWS_PLAN_CHANGED:-1}" -eq 0 ] || title+="|1"
     local skills_was_loaded="${HAWS_DRAFT_SKILLS_LOADED:-0}"
     if [ "${skills_was_loaded}" != 1 ]; then
         echo "  [*] Loading skills catalog, please wait..."
@@ -5125,7 +5154,7 @@ setup_run() {
         echo "AI Environments     Default"
         echo "Second Brain Remote Off"
         echo "Auto Update         On"
-        if interactive_menu menu "HAWS Setup" \
+        if interactive_menu menu "HAWS Setup|Choose a setup option or leave without changes." \
             "Use Default Setup|Preview the standard HAWS setup" \
             "Customize Settings|Edit settings before preview" \
             "Exit|Leave setup without changes"; then
@@ -5168,7 +5197,7 @@ home_run() {
         echo "Status: Installed"
         echo "Second Brain Remote: $(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
         echo "Auto Update: $(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
-        if interactive_menu menu "HAWS Home" \
+        if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|1" \
             "Sync|Run explicit synchronization" \
             "Settings|Edit the HAWS settings draft" \
             "Doctor|Run read-only diagnostics" \
@@ -5231,7 +5260,7 @@ run_main_menu() {
     }
 
     while true; do
-        if ! interactive_menu menu "HAWS — Main Menu" "${items[@]}"; then
+        if ! interactive_menu menu "HAWS — Main Menu|Choose an HAWS command to run." "${items[@]}"; then
             return 0
         fi
         case "${INTERACTIVE_MENU_SELECTION}" in
@@ -5248,6 +5277,7 @@ run_main_menu() {
 }
 
 if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ]; then
+    haws_set_terminal_title
 case "${COMMAND}" in
     help|--help|-h)
         echo "Usage: ./haws.sh [menu|setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents] [--clean]"
