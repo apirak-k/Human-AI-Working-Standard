@@ -41,7 +41,16 @@ test_help_aliases_exit_successfully() {
             return 1
         fi
         assert_output_contains 'Usage:' || return 1
+        ! grep -F 'notify' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     done
+}
+
+test_notify_command_is_removed() {
+    if HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" notify >"${OUTPUT_FILE}" 2>&1; then
+        return 1
+    fi
+    assert_output_contains 'Usage:' || return 1
+    ! grep -F 'tools/notify.sh' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
 test_main_menu_action_reports_start_and_completion() {
@@ -154,6 +163,7 @@ test_exit_selection_does_not_dispatch_an_action() {
 run_test test_launcher_is_thin
 run_test test_main_menu_reuses_old_interaction_engine
 run_test test_help_aliases_exit_successfully
+run_test test_notify_command_is_removed
 run_test test_main_menu_action_reports_start_and_completion
 run_test test_bare_q_shows_menu_without_home_mutation
 run_test test_main_menu_has_purpose_and_context_controls

@@ -263,37 +263,6 @@ Located at `skills/custom/keyboard-layout-fixer/`:
 
 ---
 
-## Remote Notifications for Long-Running Tasks
-
-During long-running autonomous workflows (`/goal`, deep refactoring, comprehensive test suites), developers can receive instant mobile notifications and decision checkpoints via phone:
-
-| Service / Protocol | Setup Time | Push (iOS/Android) | Interactive (Two-Way) | Recommended Use Case |
-| :--- | :---: | :--- | :--- | :--- |
-| **Telegram Bot API** | 2 mins | Instant | Inline Buttons | Pair programming and decision checkpoints |
-| **ntfy.sh** | 30s | Native App | Action Links | Lightweight alerts (zero-account / privacy-first) |
-| **Discord Webhooks** | 1 min | Channel Push | One-Way Only | Shared team notification channels |
-
-### Instant Notification Snippets
-
-**Telegram Bot**:
-```bash
-curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-  -d "chat_id=${TELEGRAM_CHAT_ID}" \
-  -d "text=HAWS automated verification completed; review the recorded evidence." \
-  -d "parse_mode=Markdown"
-```
-
-**ntfy.sh (Zero-Account / One-Liner)**:
-```bash
-curl -H "Title: HAWS Task Complete" \
-     -H "Priority: high" \
-     -H "Tags: white_check_mark,rocket" \
-     -d "Automated checks completed; review the current evidence checkpoint." \
-     https://ntfy.sh/<your-secret-topic>
-```
-
----
-
 ## Priority Hierarchy
 
 When instructions or information conflict, always resolve in this order:

@@ -5285,7 +5285,7 @@ if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ]; then
     haws_set_terminal_title
 case "${COMMAND}" in
     help|--help|-h)
-        echo "Usage: ./haws.sh [menu|setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents] [--clean]"
+        echo "Usage: ./haws.sh [menu|setup|sync|status|doctor|hook|kit|user|uninstall|codex-agents] [--clean]"
         ;;
     menu|interactive)
         shift || true
@@ -5345,17 +5345,8 @@ case "${COMMAND}" in
         shift || true
         run_uninstall "$@"
         ;;
-    notify)
-        shift || true
-        if [ -f "${SCRIPT_DIR}/tools/notify.sh" ]; then
-            "${SCRIPT_DIR}/tools/notify.sh" "$@"
-        else
-            echo "[ERROR] tools/notify.sh not found."
-            exit 1
-        fi
-        ;;
     *)
-        echo "Usage: ./haws.sh [menu|setup|sync|status|doctor|hook|kit|user|uninstall|notify|codex-agents] [--clean]"
+        echo "Usage: ./haws.sh [menu|setup|sync|status|doctor|hook|kit|user|uninstall|codex-agents] [--clean]"
         echo "  codex-agents [install|check|uninstall] [--dry-run] Native Codex roles only (no network sync)"
         echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
@@ -5365,7 +5356,6 @@ case "${COMMAND}" in
         echo "  status          Instant sub-second skill count and token budget check"
         echo "  doctor [--json] Run comprehensive 10-axis system diagnostics"
         echo "  uninstall       Safely detach HAWS pointers, skills, and hooks without deleting user data"
-        echo "  notify          Dispatch task completion alert via Telegram/Discord/Webhook"
         exit 1
         ;;
 esac
