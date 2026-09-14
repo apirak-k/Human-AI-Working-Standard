@@ -5,6 +5,7 @@ set -u
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${TEST_DIR}/test_helper.sh"
+HAWS_ROOT="$(cd "${TEST_DIR}/../.." && pwd)"
 
 passed=0
 failed=0
@@ -37,8 +38,7 @@ fixture_snapshot() {
 seed_health_fixture() {
     mkdir -p "${FIXTURE_PROJECT}/.haws/state" "${FIXTURE_HOME}/.claude" \
         "${FIXTURE_PROJECT}/.githooks"
-    : > "${FIXTURE_PROJECT}/.githooks/pre-commit"
-    : > "${FIXTURE_PROJECT}/.githooks/pre-push"
+    : > "${FIXTURE_PROJECT}/.githooks/commit-msg"
     printf 'schema_version\t1\nsecond_brain\toff\nauto_update\toff\n' \
         > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
     printf '2026-09-09T00:00:00Z\thaws\tUp to date\tabc123\tlocal check\n' \
@@ -61,6 +61,12 @@ test_health_apis_are_present() {
     for api in status_run doctor_run; do
         declare -F "${api}" >/dev/null || return 1
     done
+}
+
+test_only_commit_msg_hook_is_present() {
+    [ -f "${HAWS_ROOT}/.githooks/commit-msg" ] || return 1
+    [ ! -e "${HAWS_ROOT}/.githooks/pre-commit" ] || return 1
+    [ ! -e "${HAWS_ROOT}/.githooks/pre-push" ] || return 1
 }
 
 test_status_and_doctor_preserve_all_fixture_files_and_git_state() {
@@ -144,6 +150,7 @@ test_doctor_and_status_share_classification() {
 }
 
 run_test test_health_apis_are_present
+run_test test_only_commit_msg_hook_is_present
 run_test test_status_and_doctor_preserve_all_fixture_files_and_git_state
 run_test test_status_never_invokes_network_commands
 run_test test_status_reports_current_attention_separately_from_last_sync

@@ -180,7 +180,7 @@ Use `haws.bat`, then choose the matching Home action:
 | `bash haws.sh brain status` | Check Second Brain cloud connection and commit count (alias: `user status`) |
 | `bash haws.sh brain connect <url>` | Connect Second Brain to private GitHub repository (alias: `user connect`) |
 | `bash haws.sh brain disconnect` | Switch Second Brain to local-only mode (alias: `user disconnect`) |
-| `bash haws.sh hook install` | Install hardware git hooks (`pre-commit` and `pre-push`) |
+| `bash haws.sh hook install` | Install the HAWS Git `commit-msg` hook |
 | `bash haws.sh hook status` | Inspect git hook activation status |
 
 ### Managing Skills (Add & Remove)
@@ -246,8 +246,7 @@ HAWS organizes skills into two main tiers:
 4. **Package & Dependency Invariant**: Lockfiles (`package-lock.json`, `poetry.lock`, `Cargo.lock`) must always be committed. Dependency vulnerability audits (`npm audit`, `pip-audit`) must pass with zero High/Critical vulnerabilities.
 5. **Git Remote Push Protection**: AI agents must **NEVER** run `git push` to GitHub or any remote repository autonomously without explicit user confirmation in chat.
 6. **Hardware Git Hooks (`.githooks/`)**:
-   - `pre-commit`: Scans staged diffs for `.env*` secrets, verifies LF normalization, and runs `haws.sh doctor`.
-   - `pre-push`: Hardware-level blocker preventing unauthorized remote pushes.
+   - `commit-msg`: Enforces Conventional Commits syntax and the English/ASCII invariant.
 
 ---
 

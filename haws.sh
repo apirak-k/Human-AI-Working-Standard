@@ -571,12 +571,12 @@ legacy_run_doctor() {
     [ "$json_mode" = false ] && echo "" && echo "10. Checking Git Hooks (Quality & Safety Gates)..."
     local hooks_path
     hooks_path="$(git -C "${SCRIPT_DIR}" config core.hooksPath 2>/dev/null || echo "")"
-    if [ -f "${SCRIPT_DIR}/.githooks/pre-commit" ] && [ -f "${SCRIPT_DIR}/.githooks/pre-push" ]; then
+    if [ -f "${SCRIPT_DIR}/.githooks/commit-msg" ]; then
         if [ "${hooks_path}" != ".githooks" ]; then
             git -C "${SCRIPT_DIR}" config core.hooksPath .githooks 2>/dev/null || true
         fi
         passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] Git hooks active (.githooks: pre-commit, pre-push)"
+        [ "$json_mode" = false ] && echo "   [PASS] Git hooks active (.githooks: commit-msg)"
         details+=("{\"item\":\"Git Hooks Guardrails\",\"status\":\"PASS\"}")
     else
         failed=$((failed + 1))
@@ -3548,11 +3548,9 @@ run_hooks() {
             echo "=== Installing HAWS Git Hooks ==="
             if [ -d "${SCRIPT_DIR}/.githooks" ]; then
                 git -C "${SCRIPT_DIR}" config core.hooksPath .githooks
-                chmod +x "${SCRIPT_DIR}/.githooks"/* 2>/dev/null || true
+                chmod +x "${SCRIPT_DIR}/.githooks/commit-msg" 2>/dev/null || true
                 echo "  [✓] Git core.hooksPath set to .githooks"
-                echo "  [✓] pre-commit hook active (Secret scan + LF audit + doctor check)"
                 echo "  [✓] commit-msg hook active (Conventional Commits & English invariant)"
-                echo "  [✓] pre-push hook active (Human authorization guardrail)"
             else
                 echo "  [ERROR] .githooks directory not found in ${SCRIPT_DIR}"
                 return 1
@@ -5352,7 +5350,7 @@ case "${COMMAND}" in
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
         echo "  kit [add|prune|update] Manage KIT submodules and external tools with merge protection"
         echo "  user [connect]  Manage personal Second Brain (symmetrical 1-click cloud sync)"
-        echo "  hook [install]  Install or inspect HAWS Git pre-commit and pre-push hooks"
+        echo "  hook [install]  Install or inspect the HAWS Git commit-msg hook"
         echo "  status          Instant sub-second skill count and token budget check"
         echo "  doctor [--json] Run comprehensive 10-axis system diagnostics"
         echo "  uninstall       Safely detach HAWS pointers, skills, and hooks without deleting user data"
