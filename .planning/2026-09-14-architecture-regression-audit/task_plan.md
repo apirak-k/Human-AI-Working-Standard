@@ -1,0 +1,40 @@
+# Architecture Regression Audit
+
+## Goal
+
+Compare the current old-base implementation with the trusted historical line and selected clean-base improvements. Identify root-cause regressions, agree decisions with the user one topic at a time, then produce an implementation plan. Do not implement fixes during the audit.
+
+## Phases
+
+1. In progress — map old/current/clean-base architecture and commit lineage.
+2. Pending — compare skill source, catalog, identity, state, and adapter-link boundaries.
+3. Pending — compare Home actions and reporting flows: Status, Doctor, Sync, Uninstall, and menu semantics.
+4. Pending — audit interaction safety across the whole lifecycle: default selection, Enter, q/Q, Back, cancellation, EOF, and destructive confirmation.
+5. Pending — present decision matrix and obtain user decisions one topic at a time, with screen/flow examples after the user switches to Luna.
+6. Complete — draft specification approved; checkpointed implementation plan
+   written at `docs/superpowers/plans/2026-09-14-haws-selected-improvements.md`.
+7. Complete for Checkpoints 1–3. The selected-improvements implementation was
+   executed and stopped after Checkpoint 3 for user review; do not begin
+   Checkpoint 4 without explicit authorization.
+
+## Cross-device continuation status
+
+- Branch: `codex/old-base-selected-improvements`
+- Checkpoint 1: `774cab1`
+- Checkpoint 2: `0671a2d`
+- Checkpoint 3: `9ab4499`
+- Handoff record: `docs/superpowers/2026-09-14-selected-improvements-cross-device-handoff.md`
+- No Checkpoint 4, main-branch change, push, merge, or dirty-submodule change
+  is included in this handoff.
+
+## Confirmed decisions
+
+- Keep the current line as the trusted behavior and safety baseline.
+- Select only proven improvements from `recovery/clean-base`; do not copy its architecture wholesale.
+- A logical skill is source-scoped. Deduplicate adapter/vendor copies within one source only; show same-name skills from different sources separately.
+- Enter defaults must be safe and context-specific. A shortcut such as q/Q for keyboard-layout recovery must not make accidental Enter trigger a network, persistent, or destructive action.
+- Status summaries show Skills as `active / total`; in first-install draft this is explicitly labeled as the default draft, not as an already-installed result.
+- `Auto Update` and `Last Sync` are separate facts. Disabling Auto Update must not erase the last manual/automatic sync result; if no sync has occurred, show `Never` with Auto Update state separately.
+- Review decisions can be approved at subtopic level. Each approved subtopic is recorded immediately, and the next screen/transition is stated before continuing.
+- **Interaction trace — Step 1: Launch (approved 2026-09-14):** Launching `haws.bat` is inert: it must not sync, run Doctor, write state, or use the network automatically. It may read local state only, then route **not installed → Setup** and **installed → Home**. The terminal/tab title identifies the product as `HAWS — Human-AI Working Standard`, rather than the generic `C:\WINDOWS\system32\cmd...` path.
+- Handoff note: the user later clarified that all screen/interaction discussions since switching to Luna are unconfirmed. Treat the Home screen discussion, Settings lifecycle, Q/Back/Apply semantics, and all subsequent mockups as proposals only until reconfirmed in the new chat.
