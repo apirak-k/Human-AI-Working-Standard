@@ -260,12 +260,19 @@ _health_print_findings() {
 }
 
 _haws_wait_for_result() {
+    HAWS_RESULT_NAVIGATION=home
+    export HAWS_RESULT_NAVIGATION
     [ "${HAWS_INTERACTIVE_RESULT:-0}" = 1 ] || return 0
     [ -t 0 ] && [ -t 1 ] || return 0
-    printf '\nPress any key to return to Home...'
+    printf '\n[Q] Return to Home\n[Any key] Exit CLI\n'
     local result_key=""
     IFS= read -rsn1 result_key || true
     printf '\n'
+    case "${result_key}" in
+        q|Q) HAWS_RESULT_NAVIGATION=home ;;
+        *) HAWS_RESULT_NAVIGATION=exit ;;
+    esac
+    export HAWS_RESULT_NAVIGATION
 }
 
 health_run() {
@@ -1918,6 +1925,7 @@ sync_run() {
     if [ "${HAWS_AUTO_UPDATE:-on}" != on ]; then
         echo "  [INFO] Auto Update is disabled; explicit synchronization remains available."
     fi
+    echo "  [*] Checking configured remote targets, please wait..."
     if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
         target_count=$((target_count + 1))
         sync_target haws || status=1
@@ -2487,14 +2495,17 @@ EOF
     _health_collect
     _health_print_summary
     echo ""
-    echo "================================================================"
+    echo "============================================================="
+    echo "                    HAWS Sync Result"
+    echo "============================================================="
     if [ "${sync_status}" -eq 0 ]; then
         echo "[PASS] HAWS synchronization completed"
     else
         echo "[WARN] HAWS synchronization completed with target issues"
     fi
-    echo "================================================================"
-    _haws_wait_for_result
+    local wait_status=0
+    _haws_wait_for_result || wait_status=$?
+    [ "${wait_status}" -eq 0 ] || return "${wait_status}"
     return "${sync_status}"
 }
 
@@ -5454,7 +5465,14 @@ home_run() {
             "Doctor|Run read-only diagnostics" \
             "Uninstall|Preview removal of HAWS-owned items"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
-                0) HAWS_INTERACTIVE_RESULT=1 run_sync || true ;;
+                0)
+                    local sync_status=0
+                    HAWS_RESULT_NAVIGATION=home
+                    HAWS_INTERACTIVE_RESULT=1
+                    run_sync || sync_status=$?
+                    unset HAWS_INTERACTIVE_RESULT
+                    [ "${HAWS_RESULT_NAVIGATION:-home}" = exit ] && return "${sync_status}"
+                    ;;
                 1)
                     settings_draft_load || return 1
                     if settings_flow_run settings; then

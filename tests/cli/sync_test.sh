@@ -166,6 +166,34 @@ test_sync_uses_short_bootstrap_style_phases() {
     printf '%s\n' "${sync_block}" | grep -Fq 'Step 5/5' || return 1
 }
 
+test_sync_result_defines_full_header_and_navigation_contract() {
+    local source="${PROJECT_ROOT}/haws.sh"
+    local sync_block wait_block
+    sync_block="$(sed -n '/^run_sync() {/,/^run_edit_gitmodules() {/p' "${source}")"
+    wait_block="$(sed -n '/^_haws_wait_for_result() {/,/^health_run() {/p' "${source}")"
+    printf '%s\n' "${sync_block}" | grep -Fq 'HAWS Sync Result' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq '=============================================================' || return 1
+    printf '%s\n' "${wait_block}" | grep -Fq '[Q] Return to Home' || return 1
+    printf '%s\n' "${wait_block}" | grep -Fq '[Any key] Exit CLI' || return 1
+    printf '%s\n' "${wait_block}" | grep -Fq 'q|Q' || return 1
+}
+
+test_sync_result_wait_does_not_replace_sync_exit_status() {
+    local source="${PROJECT_ROOT}/haws.sh"
+    local sync_block
+    sync_block="$(sed -n '/^run_sync() {/,/^run_edit_gitmodules() {/p' "${source}")"
+    printf '%s\n' "${sync_block}" | grep -Fq 'wait_status' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq 'return "${sync_status}"' || return 1
+}
+
+test_direct_sync_prints_result_without_entering_home() {
+    write_settings off
+    run_sync_process sync || return 1
+    grep -F 'HAWS Sync Result' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    ! grep -F 'HAWS Home' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    ! grep -F 'Press any key to return to Home' "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
 test_sync_runs_phases_in_order_and_configures_hooks() {
     mkdir -p "${FIXTURE_REPO}/.githooks"
     printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "${FIXTURE_REPO}/.githooks/commit-msg"
@@ -440,6 +468,9 @@ else
     run_test test_sync_apis_are_present
     run_test test_sync_output_has_sections_and_summary
     run_test test_sync_uses_short_bootstrap_style_phases
+    run_test test_sync_result_defines_full_header_and_navigation_contract
+    run_test test_sync_result_wait_does_not_replace_sync_exit_status
+    run_test test_direct_sync_prints_result_without_entering_home
     run_test test_sync_runs_phases_in_order_and_configures_hooks
     run_test test_sync_target_rows_use_batch_result_markers
     run_test test_clean_source_applies_remote_revision
