@@ -1287,6 +1287,27 @@ _catalog_source_fields() {
     return 1
 }
 
+catalog_source_kind() {
+    local source_id="${1:-}"
+    local path url revision source_dir raw_skill_count
+    [ -n "${source_id}" ] || return 1
+    IFS=$'\t' read -r path url revision <<< "$(_catalog_source_fields "${source_id}")" || return 1
+    source_dir="$(_catalog_repo_dir)/${path}"
+    if [ ! -d "${source_dir}" ]; then
+        printf '%s\n' UNVERIFIED
+        return 0
+    fi
+    raw_skill_count="$(find "${source_dir}" -type f \
+        \( -name SKILL.md -o -name skill.md \) -print 2>/dev/null | awk 'END { print NR + 0 }')"
+    if [ "${raw_skill_count}" -eq 1 ]; then
+        printf '%s\n' SINGLE
+    elif [ "${raw_skill_count}" -gt 1 ]; then
+        printf '%s\n' PACK
+    else
+        printf '%s\n' UNVERIFIED
+    fi
+}
+
 _catalog_is_disabled() {
     local skill_id="$1"
     local display_name="$2"
@@ -4439,8 +4460,7 @@ _settings_repository_remove_page() {
     while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         name="${path##*/}"
-        type=PACK
-        [[ "${path}" == skills/standalone/* ]] && type=SINGLE
+        type="$(catalog_source_kind "${id}")"
         label="${name}"
         [ "${name_counts[${name}]:-0}" -gt 1 ] && label="${name} [${id}]"
         items+=("${label}|[${type}] ${path}|0")

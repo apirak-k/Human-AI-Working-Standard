@@ -97,6 +97,7 @@ write_catalog_skill() {
 
 prepare_logical_skill_catalog() {
     init_superproject || return 1
+    rm -rf -- "${FIXTURE_PROJECT}/skills/custom/demo-one"
     {
         printf '[submodule "source-one"]\n'
         printf '\tpath = skills/packs/source-one\n'
@@ -104,6 +105,9 @@ prepare_logical_skill_catalog() {
         printf '[submodule "source-two"]\n'
         printf '\tpath = skills/packs/source-two\n'
         printf '\turl = https://github.com/acme/source-two.git\n'
+        printf '[submodule "source-uninitialized"]\n'
+        printf '\tpath = skills/standalone/source-uninitialized\n'
+        printf '\turl = https://github.com/acme/source-uninitialized.git\n'
     } > "${FIXTURE_PROJECT}/.gitmodules"
 
     write_catalog_skill \
@@ -115,6 +119,34 @@ prepare_logical_skill_catalog() {
     write_catalog_skill \
         'skills/packs/source-one/caveman/plugins/shared-skill/SKILL.md' \
         'Shared Skill' 'Vendor copy must not win.'
+    write_catalog_skill \
+        'skills/packs/source-one/planning-with-files/SKILL.md' \
+        'planning-with-files' 'Filtered planning copy.'
+    write_catalog_skill \
+        'skills/packs/source-one/.agents/skills/planning-with-files/SKILL.md' \
+        'planning-with-files' 'Canonical planning description.'
+    write_catalog_skill \
+        'skills/packs/source-one/planning-with-files-v2/SKILL.md' \
+        'planning-with-files-v2' 'Versioned planning copy.'
+    write_catalog_skill \
+        'skills/packs/source-one/ui-ux-pro-max/SKILL.md' \
+        'ui-ux-pro-max' 'Filtered UI copy.'
+    write_catalog_skill \
+        'skills/packs/source-one/.claude/skills/ui-ux-pro-max/SKILL.md' \
+        'ui-ux-pro-max' 'Canonical UI description.'
+    write_catalog_skill \
+        'skills/packs/source-one/design-taste-frontend-v1/SKILL.md' \
+        'design-taste-frontend-v1' 'Versioned design copy.'
+    mkdir -p "${FIXTURE_PROJECT}/skills/packs/source-one/.codex-plugin" \
+        "${FIXTURE_PROJECT}/skills/packs/source-one/hooks" \
+        "${FIXTURE_PROJECT}/skills/packs/source-one/commands" \
+        "${FIXTURE_PROJECT}/skills/packs/source-one/references" \
+        "${FIXTURE_PROJECT}/skills/packs/source-one/templates"
+    printf '%s\n' '{}' > "${FIXTURE_PROJECT}/skills/packs/source-one/.codex-plugin/plugin.json"
+    printf '%s\n' hook > "${FIXTURE_PROJECT}/skills/packs/source-one/hooks/test.sh"
+    printf '%s\n' command > "${FIXTURE_PROJECT}/skills/packs/source-one/commands/test.md"
+    printf '%s\n' reference > "${FIXTURE_PROJECT}/skills/packs/source-one/references/test.md"
+    printf '%s\n' template > "${FIXTURE_PROJECT}/skills/packs/source-one/templates/test.md"
     write_catalog_skill \
         'skills/packs/source-two/shared-skill/SKILL.md' \
         'Shared Skill' 'Canonical source-two description.'
@@ -158,6 +190,31 @@ test_catalog_resolves_source_scoped_logical_skills() {
             $2 == "custom::skills/custom::Catalog Custom" &&
             $3 == "Catalog Custom" && $4 == "Local custom description." && NF == 6 {found++}
         END { exit !(found == 1) }' || return 1
+}
+
+test_catalog_classifies_inspected_sources_from_raw_skill_files() {
+    prepare_logical_skill_catalog || return 1
+    source_haws || return 1
+
+    [ "$(catalog_source_kind 'source-one::skills/packs/source-one')" = PACK ] || return 1
+    [ "$(catalog_source_kind 'source-two::skills/packs/source-two')" = SINGLE ] || return 1
+    [ "$(catalog_source_kind 'custom::skills/custom')" = SINGLE ] || return 1
+    [ "$(catalog_source_kind 'source-uninitialized::skills/standalone/source-uninitialized')" = UNVERIFIED ] || return 1
+}
+
+test_catalog_keeps_only_historical_canonical_skill_copies() {
+    prepare_logical_skill_catalog || return 1
+    source_haws || return 1
+
+    local rows
+    rows="$(catalog_skills)"
+    printf '%s\n' "${rows}" | awk -F '\t' '
+        $3 == "planning-with-files" && $4 == "Canonical planning description." { planning++ }
+        $3 == "ui-ux-pro-max" && $4 == "Canonical UI description." { ui++ }
+        $3 == "planning-with-files-v2" || $3 == "design-taste-frontend-v1" { rejected++ }
+        END { exit !(planning == 1 && ui == 1 && rejected == 0) }' || return 1
+    ! printf '%s\n' "${rows}" | grep -F 'Filtered planning copy.' >/dev/null 2>&1 || return 1
+    ! printf '%s\n' "${rows}" | grep -F 'Filtered UI copy.' >/dev/null 2>&1 || return 1
 }
 
 enable_local_sources() {
@@ -482,6 +539,8 @@ run_test() {
 trap cleanup_fixture EXIT
 
 run_test test_catalog_resolves_source_scoped_logical_skills
+run_test test_catalog_classifies_inspected_sources_from_raw_skill_files
+run_test test_catalog_keeps_only_historical_canonical_skill_copies
 run_test test_add_only_apply_creates_local_submodule_entry
 run_test test_remove_only_apply_removes_registered_source_and_keeps_unrelated_file
 run_test test_dirty_source_removal_is_blocked_before_disk_removal
