@@ -63,6 +63,40 @@ test_health_apis_are_present() {
     done
 }
 
+test_doctor_is_the_only_detailed_diagnostics_page() {
+    source_haws || return 1
+    ! grep -q '^health_run()' "${FIXTURE_PROJECT}/haws.sh" || return 1
+    ! grep -q '^run_health()' "${FIXTURE_PROJECT}/haws.sh" || return 1
+    seed_health_fixture || return 1
+    run_haws doctor || true
+    assert_output_contains '=============================================================' || return 1
+    assert_output_contains 'HAWS Doctor' || return 1
+    assert_output_contains '[*] Running diagnostics, please wait...' || return 1
+    assert_output_contains 'FINDINGS' || return 1
+    ! grep -F 'HAWS Health' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    local loading_line overall_line
+    loading_line="$(grep -nF '[*] Running diagnostics, please wait...' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    overall_line="$(grep -nF 'Overall:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    [ -n "${loading_line}" ] && [ -n "${overall_line}" ] && [ "${loading_line}" -lt "${overall_line}" ]
+}
+
+test_slow_routes_have_explicit_progress_messages() {
+    local source="${PROJECT_ROOT}/haws.sh"
+    local message
+    for message in \
+        '[*] Loading current status, please wait...' \
+        '[*] Running diagnostics, please wait...' \
+        '[*] Scanning skills catalog, please wait...' \
+        '[*] Connecting Second Brain, please wait...' \
+        '[*] Syncing Second Brain, please wait...' \
+        '[*] Building uninstall preview...' \
+        '[*] Applying uninstall changes, please wait...' \
+        '[*] Applying settings draft...' \
+        '[*] Validating repository source, please wait...'; do
+        grep -F "${message}" "${source}" >/dev/null 2>&1 || return 1
+    done
+}
+
 test_only_commit_msg_hook_is_present() {
     [ -f "${HAWS_ROOT}/.githooks/commit-msg" ] || return 1
     [ ! -e "${HAWS_ROOT}/.githooks/pre-commit" ] || return 1
@@ -146,7 +180,7 @@ test_doctor_reports_failed_check_instead_of_fixed_ready() {
     run_haws doctor || true
     assert_output_contains 'HAWS Doctor' || return 1
     assert_output_contains 'Overall: Attention' || return 1
-    grep -E $'^(Attention|Blocked)\t' "${OUTPUT_FILE}" >/dev/null 2>&1
+    grep -E '\[(WARN|BLOCKED)\]' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     ! grep -F 'HEALTHY & READY' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
@@ -161,16 +195,22 @@ test_doctor_and_status_share_classification() {
     [ "${status_level}" = 'Overall: Attention' ]
 }
 
-run_test test_health_apis_are_present
-run_test test_only_commit_msg_hook_is_present
-run_test test_status_and_doctor_preserve_all_fixture_files_and_git_state
-run_test test_status_never_invokes_network_commands
-run_test test_status_reports_current_attention_separately_from_last_sync
-run_test test_status_summary_reports_health_facts_without_sync_state
-run_test test_status_derives_second_brain_from_git_remote
-run_test test_status_details_labels_executed_sections
-run_test test_doctor_reports_failed_check_instead_of_fixed_ready
-run_test test_doctor_and_status_share_classification
+if [ -n "${HAWS_STATUS_TEST_ONLY:-}" ]; then
+    run_test "${HAWS_STATUS_TEST_ONLY}"
+else
+    run_test test_health_apis_are_present
+    run_test test_doctor_is_the_only_detailed_diagnostics_page
+    run_test test_slow_routes_have_explicit_progress_messages
+    run_test test_only_commit_msg_hook_is_present
+    run_test test_status_and_doctor_preserve_all_fixture_files_and_git_state
+    run_test test_status_never_invokes_network_commands
+    run_test test_status_reports_current_attention_separately_from_last_sync
+    run_test test_status_summary_reports_health_facts_without_sync_state
+    run_test test_status_derives_second_brain_from_git_remote
+    run_test test_status_details_labels_executed_sections
+    run_test test_doctor_reports_failed_check_instead_of_fixed_ready
+    run_test test_doctor_and_status_share_classification
+fi
 
 echo "CLI Batch 6 status/doctor tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]

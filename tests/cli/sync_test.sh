@@ -170,7 +170,7 @@ test_sync_result_defines_full_header_and_navigation_contract() {
     local source="${PROJECT_ROOT}/haws.sh"
     local sync_block wait_block
     sync_block="$(sed -n '/^run_sync() {/,/^run_edit_gitmodules() {/p' "${source}")"
-    wait_block="$(sed -n '/^_haws_wait_for_result() {/,/^health_run() {/p' "${source}")"
+    wait_block="$(sed -n '/^_haws_wait_for_result() {/,/^status_run() {/p' "${source}")"
     printf '%s\n' "${sync_block}" | grep -Fq 'HAWS Sync Result' || return 1
     printf '%s\n' "${sync_block}" | grep -Fq '=============================================================' || return 1
     printf '%s\n' "${wait_block}" | grep -Fq '[Q] Return to Home' || return 1

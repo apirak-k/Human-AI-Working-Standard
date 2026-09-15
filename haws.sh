@@ -275,24 +275,6 @@ _haws_wait_for_result() {
     export HAWS_RESULT_NAVIGATION
 }
 
-health_run() {
-    _health_collect
-    _health_collect_hooks
-    echo "============================================================="
-    echo "                         HAWS Health"
-    echo "============================================================="
-    echo ""
-    echo "CURRENT STATUS"
-    _health_print_summary
-    echo ""
-    echo "FINDINGS"
-    _health_print_findings
-    local result=0
-    [ "$(health_classify)" = Blocked ] && result=1
-    _haws_wait_for_result
-    return "$result"
-}
-
 status_run() {
     local details=0 arg
     for arg in "$@"; do
@@ -320,6 +302,14 @@ doctor_run() {
     for arg in "$@"; do
         [ "$arg" = --json ] && json=1
     done
+    if [ "$json" -eq 0 ]; then
+        echo ""
+        echo "============================================================="
+        echo "                         HAWS Doctor"
+        echo "============================================================="
+        echo ""
+        echo "[*] Running diagnostics, please wait..."
+    fi
     _health_collect
     _health_collect_hooks
     local overall
@@ -327,9 +317,12 @@ doctor_run() {
     if [ "$json" -eq 1 ]; then
         printf '{"status":"%s"}\n' "$overall"
     else
-        printf '%s\n' "HAWS Doctor"
+        echo ""
+        echo "CURRENT STATUS"
         printf 'Overall: %s\n' "$overall"
-        printf '%s' "$HAWS_HEALTH_FINDINGS"
+        echo ""
+        echo "FINDINGS"
+        _health_print_findings
     fi
     [ "$overall" != Blocked ]
 }
@@ -342,9 +335,6 @@ run_doctor() {
     doctor_run "$@"
 }
 
-run_health() {
-    health_run "$@"
-}
 legacy_run_status() {
     local gemini_dir="${HOME}/.gemini/config/skills"
     local claude_dir="${HOME}/.claude/skills"
@@ -2602,7 +2592,7 @@ interactive_menu() {
     else
         local exit_hint="Exit"
         case "${title}" in
-            "HAWS — Main Menu"|"HAWS Setup"|"HAWS Home") ;;
+            "HAWS Setup"|"HAWS Home") ;;
             *) exit_hint="Back" ;;
         esac
         controls="Controls: [Up/Down] Move | [Enter] Select | [Q] ${exit_hint}"
@@ -2828,7 +2818,7 @@ run_add_git_repo() {
 
         if [ -z "${repo_url}" ] || [[ "${repo_url}" =~ ^(c|cancel)$ ]]; then
             if [ "${added_count}" -eq 0 ]; then
-                echo "  [INFO] No repositories added. Returning to main menu."
+                echo "  [INFO] No repositories added. Returning to Home."
                 return 1
             fi
             break
@@ -2904,7 +2894,7 @@ run_add_git_repo() {
     fi
 
     echo ""
-    echo "  [✓] Add Git Repository complete. Returning to main menu."
+    echo "  [✓] Add Git Repository complete. Returning to Home."
     return 0
 }
 
@@ -2938,7 +2928,7 @@ run_remove_git_repo() {
 
     if [ "${#checklist_items[@]}" -eq 0 ]; then
         echo "  No external git repositories currently installed."
-        read -r -p "Press [Enter] to return to main menu: " _dummy || true
+        read -r -p "Press [Enter] to return to Home: " _dummy || true
         return 1
     fi
 
@@ -3158,13 +3148,13 @@ run_configure_skills() {
         for ((i=0; i<${#pack_names[@]}; i++)); do
             printf "       • %-20s [Active: %2d / %2d skills]\n" "${pack_names[$i]}" "${pack_actives[$i]}" "${pack_totals[$i]}"
         done
-        echo "  0) Back to Main Menu"
+        echo "  0) Back to Home"
         echo ""
 
         local category_items=(
             "Single Skills|Configure individual skills"
             "Multi-Skill Packs|Configure skills by pack"
-            "Back to Main Menu|Return to the main menu"
+            "Back to Home|Return to HAWS Home"
         )
         if interactive_menu menu "Configure Active Skills (Enable / Disable)" \
             "${category_items[@]}"; then
@@ -3211,7 +3201,7 @@ run_configure_skills() {
             for pack_name in "${pack_names[@]}"; do
                 pack_items+=("${pack_name}|Configure skills in this pack")
             done
-            pack_items+=("Back to Main Menu|Return to the skill categories")
+            pack_items+=("Back to Skill Categories|Return to the skill categories")
             if ! interactive_menu menu "Select a Skill Pack to configure" \
                 "${pack_items[@]}"; then
                 break
@@ -4066,6 +4056,7 @@ _uninstall_remove_path() {
 uninstall_apply() {
     local plan="$1"
     [ -f "$plan" ] || return 2
+    echo "  [*] Applying uninstall changes, please wait..."
     local status=0
     local processed=0
     local threshold
@@ -4504,6 +4495,7 @@ _settings_source_path_taken() {
 settings_draft_add_source() {
     local url="${1:-}"
     local identity existing existing_identity destination
+    echo "  [*] Validating repository source, please wait..."
     catalog_validate_url "${url}" || {
         echo "Invalid GitHub repository URL: ${url}"
         return 1
