@@ -84,7 +84,6 @@ test_slow_routes_have_explicit_progress_messages() {
     local source="${PROJECT_ROOT}/haws.sh"
     local message
     for message in \
-        '[*] Loading current status, please wait...' \
         '[*] Running diagnostics, please wait...' \
         '[*] Loading skills catalog, please wait...' \
         '[*] Connecting Second Brain, please wait...' \

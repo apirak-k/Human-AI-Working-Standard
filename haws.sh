@@ -5001,13 +5001,12 @@ home_run() {
         echo "                         HAWS Home"
         echo "============================================================="
         echo ""
-        echo "[*] Loading current status, please wait..."
         settings_load || return $?
-        _health_collect
-        echo "[✓] Current status ready."
-        echo ""
         echo "CURRENT STATUS"
-        _health_print_summary
+        printf '  Last Sync     : %s\n' "$(_health_last_sync)"
+        printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
+        printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
+        printf '  Diagnostics   : Use Doctor for full diagnostics\n'
         echo ""
         export HAWS_MENU_SUPPRESS_HEADER=1
         if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|1" \

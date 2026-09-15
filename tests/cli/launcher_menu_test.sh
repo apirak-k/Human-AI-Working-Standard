@@ -93,7 +93,7 @@ test_home_has_purpose_and_context_controls() {
     assert_output_contains 'Controls: [Up/Down] Move | [Enter] Select | [Q] Exit'
 }
 
-test_home_shows_current_status_without_health_page() {
+test_home_shows_local_status_without_health_page() {
     mkdir -p "${FIXTURE_PROJECT}/.haws/state"
     printf 'schema_version\t1\nsecond_brain\toff\nauto_update\toff\n' \
         > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
@@ -102,8 +102,12 @@ test_home_shows_current_status_without_health_page() {
     printf 'q' |
         HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" >"${OUTPUT_FILE}" 2>&1 || return 1
     assert_output_contains 'CURRENT STATUS' || return 1
-    assert_output_contains 'Overall' || return 1
+    assert_output_contains 'Last Sync' || return 1
+    assert_output_contains 'Never' || return 1
     assert_output_contains 'Auto Update' || return 1
+    assert_output_contains 'Second Brain' || return 1
+    assert_output_contains 'Use Doctor for full diagnostics' || return 1
+    ! grep -F 'Overall' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     ! grep -F 'HAWS Health' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     ! grep -F 'FINDINGS' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     ! grep -F '[PASS]' "${OUTPUT_FILE}" >/dev/null 2>&1
@@ -212,7 +216,7 @@ run_test test_notify_command_is_removed
 run_test test_home_navigation_has_no_exit_row
 run_test test_menu_and_bare_launch_use_the_same_home
 run_test test_home_has_purpose_and_context_controls
-run_test test_home_shows_current_status_without_health_page
+run_test test_home_shows_local_status_without_health_page
 run_test test_menu_descriptions_use_a_shared_label_column
 run_test test_checklist_redraws_rows_and_footer_as_one_frame
 run_test test_bare_eof_exits_without_home_mutation
