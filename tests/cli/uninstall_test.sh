@@ -25,6 +25,12 @@ run_haws() {
         bash "${FIXTURE_PROJECT}/haws.sh" "$@" >"${OUTPUT_FILE}" 2>&1
 }
 
+run_haws_with_input() {
+    printf '%s' "$1" | env HOME="${FIXTURE_HOME}" HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
+        HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" HAWS_TEST_KEYS= PATH="${PATH}" \
+        bash "${FIXTURE_PROJECT}/haws.sh" "${@:2}" >"${OUTPUT_FILE}" 2>&1
+}
+
 seed_uninstall_state() {
     mkdir -p "${FIXTURE_PROJECT}/.haws/state" \
         "${FIXTURE_HOME}/.claude/skills" "${FIXTURE_HOME}/shared"
@@ -167,10 +173,38 @@ test_interrupted_apply_keeps_remaining_records_recoverable() {
 
 test_direct_uninstall_requires_preview_confirmation_and_applies() {
     seed_uninstall_state || return 1
-    HAWS_TEST_KEYS=yes run_haws uninstall skills || return 1
+    HAWS_TEST_KEYS=y run_haws uninstall skills || return 1
     assert_output_contains 'Uninstall preview' || return 1
+    assert_output_contains '=============================================================' || return 1
+    assert_output_contains '                   HAWS Uninstall Preview' || return 1
+    assert_output_contains '[SAFETY GUARD]' || return 1
+    assert_output_contains 'Your project code and Second Brain will NOT be deleted.' || return 1
+    assert_output_contains '[*] Applying uninstall changes, please wait...' || return 1
     assert_file_not_exists "${FIXTURE_HOME}/.claude/skills/managed"
     assert_file_contains "${FIXTURE_HOME}/.claude/skills/unrelated" 'unrelated'
+}
+
+test_default_confirmation_cancels_safely() {
+    seed_uninstall_state || return 1
+    run_haws_with_input $'\n' uninstall skills || return 1
+    grep -F 'Do you really want to proceed with uninstallation? (y/N):' \
+        "${FIXTURE_PROJECT}/haws.sh" >/dev/null || return 1
+    assert_output_contains 'Uninstall cancelled' || return 1
+    [ -e "${FIXTURE_HOME}/.claude/skills/managed" ] ||
+        [ -L "${FIXTURE_HOME}/.claude/skills/managed" ] || return 1
+}
+
+test_confirmation_accepts_only_y_or_y_uppercase() {
+    seed_uninstall_state || return 1
+    HAWS_TEST_KEYS=yes run_haws uninstall skills || return 1
+    assert_output_contains 'Uninstall cancelled' || return 1
+    [ -e "${FIXTURE_HOME}/.claude/skills/managed" ] ||
+        [ -L "${FIXTURE_HOME}/.claude/skills/managed" ] || return 1
+}
+
+test_legacy_uninstall_route_is_removed() {
+    source_haws || return 1
+    ! declare -F legacy_run_uninstall >/dev/null 2>&1
 }
 
 test_direct_dry_run_never_removes_owned_item() {
@@ -197,6 +231,9 @@ run_test test_unrelated_files_and_second_brain_are_preserved
 run_test test_dirty_owned_repository_is_blocked
 run_test test_interrupted_apply_keeps_remaining_records_recoverable
 run_test test_direct_uninstall_requires_preview_confirmation_and_applies
+run_test test_default_confirmation_cancels_safely
+run_test test_confirmation_accepts_only_y_or_y_uppercase
+run_test test_legacy_uninstall_route_is_removed
 run_test test_direct_dry_run_never_removes_owned_item
 
 echo "CLI Batch 6 uninstall tests: ${passed} passed, ${failed} failed"
