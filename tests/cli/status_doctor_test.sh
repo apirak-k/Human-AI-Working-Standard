@@ -114,9 +114,21 @@ test_status_summary_reports_health_facts_without_sync_state() {
     run_haws status || return 1
     assert_output_contains 'Overall: Attention' || return 1
     assert_output_contains 'Skills: 1 / 1 active' || return 1
-    assert_output_contains 'Second Brain: off' || return 1
+    assert_output_contains 'Second Brain: Local-Only' || return 1
     assert_output_contains 'Auto Update: off' || return 1
     assert_output_contains 'Last sync: Never'
+}
+
+test_status_derives_second_brain_from_git_remote() {
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state" "${FIXTURE_PROJECT}/secondbrain"
+    printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+    git -C "${FIXTURE_PROJECT}/secondbrain" init -q || return 1
+    git -C "${FIXTURE_PROJECT}/secondbrain" remote add origin \
+        'file:///tmp/haws-secondbrain-status.git' || return 1
+    run_haws status || return 1
+    assert_output_contains 'Second Brain: Connected' || return 1
+    ! grep -F 'Second Brain: off' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
 test_status_details_labels_executed_sections() {
@@ -155,6 +167,7 @@ run_test test_status_and_doctor_preserve_all_fixture_files_and_git_state
 run_test test_status_never_invokes_network_commands
 run_test test_status_reports_current_attention_separately_from_last_sync
 run_test test_status_summary_reports_health_facts_without_sync_state
+run_test test_status_derives_second_brain_from_git_remote
 run_test test_status_details_labels_executed_sections
 run_test test_doctor_reports_failed_check_instead_of_fixed_ready
 run_test test_doctor_and_status_share_classification

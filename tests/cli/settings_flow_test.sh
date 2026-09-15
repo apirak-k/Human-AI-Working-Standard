@@ -42,6 +42,24 @@ assert_output_not_contains() {
     ! grep -F -- "${needle}" "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
+seed_second_brain_with_remote() {
+    local remote="${FIXTURE_ROOT}/secondbrain.git"
+    local brain="${FIXTURE_PROJECT}/secondbrain"
+    git init --bare -q "${remote}" || return 1
+    mkdir -p "${brain}" || return 1
+    git -C "${brain}" init -q || return 1
+    git -C "${brain}" checkout -q -b main || return 1
+    git -C "${brain}" config user.name HAWS-Test
+    git -C "${brain}" config user.email test@example.invalid
+    printf '%s\n' '# Preferences' > "${brain}/USER_PREFERENCES.md"
+    printf '%s\n' '# Anti-patterns' > "${brain}/ANTI_PATTERNS.md"
+    git -C "${brain}" add . || return 1
+    git -C "${brain}" commit -q -m baseline || return 1
+    git -C "${brain}" remote add origin "file://${remote}" || return 1
+    git -C "${brain}" push -q -u origin main || return 1
+    git --git-dir="${remote}" symbolic-ref HEAD refs/heads/main
+}
+
 test_first_use_opens_setup_without_mutation() {
     run_haws_input 'q' || return 1
     assert_output_contains 'HAWS Setup' || return 1
@@ -75,7 +93,9 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     local down=$'\033[B'
     run_haws_input "${down}\nq" || return 1
     assert_output_contains 'HAWS Settings' || return 1
-    assert_output_contains 'Second Brain Remote' || return 1
+    assert_output_contains 'Second Brain' || return 1
+    assert_output_contains 'View status / Connect / Disconnect' || return 1
+    assert_output_not_contains 'Second Brain Remote' || return 1
     assert_output_contains 'Auto Update' || return 1
     assert_output_contains 'Apply' || return 1
     assert_output_not_contains 'Discard Changes|Return without saving' || return 1
@@ -83,6 +103,49 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     assert_output_contains 'all active (default)' || return 1
     assert_output_contains 'Accept the draft for preview' || return 1
     assert_output_not_contains 'HAWS Settings — First Install'
+}
+
+test_settings_exposes_second_brain_detail_without_toggle() {
+    run_haws_input 'q' settings || true
+    assert_output_contains 'Second Brain' || return 1
+    assert_output_contains 'View status / Connect / Disconnect' || return 1
+    assert_output_contains 'Auto Update' || return 1
+    assert_output_not_contains 'Second Brain Remote' || return 1
+    ! grep -E 'Second Brain[[:space:]]+\[ (On|Off) \]' "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
+test_second_brain_local_only_cancel_preserves_local_only_mode() {
+    local down=$'\033[B'
+    local input="${down}${down}${down}\nn\nq"
+    run_haws_input "${input}" settings || true
+    assert_output_contains 'LOCAL-ONLY' || return 1
+    assert_output_contains 'Do you want to connect? (y/N):' || return 1
+    assert_output_contains 'Connection cancelled.' || return 1
+    [ ! -d "${FIXTURE_PROJECT}/secondbrain/.git" ]
+}
+
+test_second_brain_connected_detail_disconnects_after_yes() {
+    seed_second_brain_with_remote || return 1
+    local down=$'\033[B'
+    local input="${down}${down}${down}\ny\nq"
+    run_haws_input "${input}" settings || true
+    assert_output_contains 'ONLINE / CONNECTED' || return 1
+    assert_output_contains 'Remote URL' || return 1
+    assert_output_contains 'Total Commits' || return 1
+    assert_output_contains 'Do you want to disconnect? (y/N):' || return 1
+    assert_output_contains 'Successfully disconnected' || return 1
+    ! git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin >/dev/null 2>&1
+}
+
+test_second_brain_connect_is_immediate_after_yes() {
+    local remote="file://${FIXTURE_ROOT}/secondbrain-connect.git"
+    git init --bare -q "${FIXTURE_ROOT}/secondbrain-connect.git" || return 1
+    local down=$'\033[B'
+    local input="${down}${down}${down}\ny\n${remote}\nq"
+    run_haws_input "${input}" settings || true
+    assert_output_contains 'Connecting Second Brain' || return 1
+    assert_output_contains 'please wait' || return 1
+    [ "$(git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin)" = "${remote}" ]
 }
 
 test_settings_repositories_route_keeps_old_actions() {
@@ -214,7 +277,8 @@ test_completed_install_opens_home_without_sync_or_doctor() {
     assert_output_contains 'HAWS Home' || return 1
     assert_output_contains 'Sync' || return 1
     assert_output_contains 'Settings' || return 1
-    assert_output_contains 'Health' || return 1
+    assert_output_contains 'Doctor' || return 1
+    assert_output_not_contains 'Health' || return 1
     assert_output_contains 'Uninstall' || return 1
     assert_output_contains 'Exit' || return 1
     assert_output_not_contains '> Exit' || return 1
@@ -297,96 +361,34 @@ test_first_install_creates_empty_environment_state_file() {
     ! grep -E '^[[:space:]]*[^#[:space:]]' "${disabled_file}" >/dev/null 2>&1
 }
 
-test_second_brain_remote_empty_does_not_persist() {
-    local down=$'\033[B'
-    local input="${down}\n"
-    input+="${down}${down}${down} ${down}${down}\nq"
-    run_haws_input_with_env "${input}" 'HAWS_TEST_NO_INTEGRATION=1' || true
-    assert_output_contains 'remote URL' || return 1
-    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
-    if [ -f "${FIXTURE_PROJECT}/.haws/state/settings.tsv" ]; then
-        ! grep -F $'second_brain\ton' "${FIXTURE_PROJECT}/.haws/state/settings.tsv" >/dev/null 2>&1 || return 1
-    fi
+test_legacy_second_brain_fields_do_not_override_remote_state() {
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state"
+    printf 'schema_version\t1\nsecond_brain\ton\nsecond_brain_remote\tfile://${FIXTURE_ROOT}/missing.git\nauto_update\toff\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+    run_haws_input 'q' status || return 1
+    assert_output_contains 'Second Brain: Local-Only' || return 1
+    assert_output_contains 'Auto Update: off' || return 1
 }
 
-test_second_brain_remote_invalid_does_not_persist() {
+test_second_brain_detail_rejects_blank_url_without_creating_remote() {
     local down=$'\033[B'
-    local input="${down}\n"
-    input+="${down}${down}${down} ${down}${down}\nnot-a-remote\nq"
-    run_haws_input_with_env "${input}" 'HAWS_TEST_NO_INTEGRATION=1' || true
-    assert_output_contains 'Invalid remote URL' || return 1
-    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
-    if [ -f "${FIXTURE_PROJECT}/.haws/state/settings.tsv" ]; then
-        ! grep -F $'second_brain\ton' "${FIXTURE_PROJECT}/.haws/state/settings.tsv" >/dev/null 2>&1 || return 1
-    fi
+    local input="${down}${down}${down}\ny\n\nq"
+    run_haws_input "${input}" settings || true
+    assert_output_contains 'Connection cancelled.' || return 1
+    [ ! -d "${FIXTURE_PROJECT}/secondbrain/.git" ]
 }
 
-test_second_brain_remote_unreachable_does_not_persist() {
+test_second_brain_detail_rejects_invalid_url() {
     local down=$'\033[B'
-    local up=$'\033[A'
-    local input="${down}\n"
-    input+="${down}${down}${down} ${down}${down}\nfile://${FIXTURE_ROOT}/missing.git\n${up}\nq"
-    run_haws_input_with_env "${input}" 'HAWS_TEST_NO_INTEGRATION=1' || true
-    assert_output_contains 'Remote validation failed' || return 1
-    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
-    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+    local input="${down}${down}${down}\ny\nnot-a-remote\nq"
+    run_haws_input "${input}" settings || true
+    assert_output_contains 'Invalid Git repository URL format' || return 1
+    ! git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin >/dev/null 2>&1
 }
 
-test_second_brain_remote_access_is_deferred_until_final_apply() {
-    local real_git
-    real_git="$(command -v git)"
-    local fake_bin="${FIXTURE_ROOT}/fake-bin"
-    local git_log="${FIXTURE_ROOT}/git-calls.log"
-    mkdir -p "${fake_bin}"
-    printf '%s\n' \
-        '#!/usr/bin/env bash' \
-        'for arg in "$@"; do' \
-        '    case "${arg}" in' \
-        '        ls-remote|pull) printf "%s\\n" "${arg}" >> "${GIT_CALL_LOG}"; break ;;' \
-        '    esac' \
-        'done' \
-        'exec "${HAWS_REAL_GIT}" "$@"' > "${fake_bin}/git"
-    chmod +x "${fake_bin}/git"
-
-    local down=$'\033[B'
-    local up=$'\033[A'
-    local toggle_input="${down}\n"
-    toggle_input+="${down}${down}${down} q"
-    local old_path="${PATH}"
-    PATH="${fake_bin}:${old_path}"
-    run_haws_input_with_env "${toggle_input}" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git}" || true
-    PATH="${old_path}"
-    [ ! -s "${git_log}" ] || return 1
-
-    git init --bare --quiet "${FIXTURE_ROOT}/remote.git" || return 1
-    local remote="file://${FIXTURE_ROOT}/remote.git"
-    mkdir -p "${FIXTURE_PROJECT}/secondbrain"
-    git -C "${FIXTURE_PROJECT}/secondbrain" init --quiet || return 1
-    git -C "${FIXTURE_PROJECT}/secondbrain" checkout --quiet -b main || return 1
-    git -C "${FIXTURE_PROJECT}/secondbrain" config user.name HAWS-Test
-    git -C "${FIXTURE_PROJECT}/secondbrain" config user.email test@example.invalid
-    printf '# Preferences\n' > "${FIXTURE_PROJECT}/secondbrain/USER_PREFERENCES.md"
-    printf '# Anti-patterns\n' > "${FIXTURE_PROJECT}/secondbrain/ANTI_PATTERNS.md"
-    git -C "${FIXTURE_PROJECT}/secondbrain" add . || return 1
-    git -C "${FIXTURE_PROJECT}/secondbrain" commit --quiet -m baseline || return 1
-    git -C "${FIXTURE_PROJECT}/secondbrain" remote add origin "${remote}" || return 1
-    git -C "${FIXTURE_PROJECT}/secondbrain" push --quiet -u origin main || return 1
-    git --git-dir="${FIXTURE_ROOT}/remote.git" symbolic-ref HEAD refs/heads/main || return 1
-    local apply_input="${down}\n"
-    apply_input+="${down}${down}${down} ${down}${down}\n${remote}\n${up}\nq"
-    PATH="${fake_bin}:${old_path}"
-    run_haws_input_with_env "${apply_input}" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
-    PATH="${old_path}"
-    [ "$(wc -l < "${git_log}" | tr -d ' ')" = 1 ] || return 1
-    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
-        $'second_brain_remote\tfile://' || return 1
-    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" $'second_brain\ton' || return 1
-
-    PATH="${fake_bin}:${old_path}"
-    run_haws_input_with_env "${up}${up}\nq" "GIT_CALL_LOG=${git_log} HAWS_REAL_GIT=${real_git} HAWS_TEST_NO_INTEGRATION=1" || return 1
-    PATH="${old_path}"
-    [ "$(wc -l < "${git_log}" | tr -d ' ')" = 2 ] || return 1
-    tail -n 1 "${git_log}" | grep -Fx pull >/dev/null
+test_second_brain_settings_have_no_deferred_remote_validation() {
+    ! grep -F '_settings_collect_second_brain_remote' "${PROJECT_ROOT}/haws.sh" >/dev/null 2>&1 || return 1
+    ! grep -F 'setting\tsecond_brain' "${PROJECT_ROOT}/haws.sh" >/dev/null 2>&1
 }
 
 test_successful_install_records_completion_and_next_launch_home() {
@@ -424,6 +426,10 @@ run_test test_first_use_opens_setup_without_mutation
 run_test test_default_setup_reaches_preview_install_before_cancel
 run_test test_preview_enter_does_not_apply_by_default
 run_test test_customize_setup_reaches_lifecycle_neutral_settings
+run_test test_settings_exposes_second_brain_detail_without_toggle
+run_test test_second_brain_local_only_cancel_preserves_local_only_mode
+run_test test_second_brain_connected_detail_disconnects_after_yes
+run_test test_second_brain_connect_is_immediate_after_yes
 run_test test_settings_repositories_route_keeps_old_actions
 run_test test_settings_skills_route_keeps_old_single_pack_labels
 run_test test_settings_skills_without_edits_has_no_false_discard_prompt
@@ -442,10 +448,10 @@ run_test test_unchanged_home_route_is_clear_and_does_not_sync
 run_test test_draft_cancel_preserves_existing_state_bytes
 run_test test_partial_failure_reports_completed_and_remaining_actions
 run_test test_first_install_creates_empty_environment_state_file
-run_test test_second_brain_remote_empty_does_not_persist
-run_test test_second_brain_remote_invalid_does_not_persist
-run_test test_second_brain_remote_unreachable_does_not_persist
-run_test test_second_brain_remote_access_is_deferred_until_final_apply
+run_test test_legacy_second_brain_fields_do_not_override_remote_state
+run_test test_second_brain_detail_rejects_blank_url_without_creating_remote
+run_test test_second_brain_detail_rejects_invalid_url
+run_test test_second_brain_settings_have_no_deferred_remote_validation
 run_test test_successful_install_records_completion_and_next_launch_home
 
 echo "CLI settings-flow tests: ${passed} passed, ${failed} failed"

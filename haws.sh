@@ -214,7 +214,7 @@ _health_print_summary() {
     printf '  AI            : %s\n' "$ai_summary"
     printf '  Skills        : %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
     printf '  Last Sync     : %s\n' "$(_health_last_sync)"
-    printf '  Second Brain  : %s\n' "$(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
+    printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
     printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
 }
 
@@ -305,7 +305,7 @@ status_run() {
     printf 'Overall: %s\n' "$overall"
     printf 'Skills: %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
     printf 'Last sync: %s\n' "$(_health_last_sync)"
-    printf 'Second Brain: %s\n' "$HAWS_SECOND_BRAIN_ENABLED"
+    printf 'Second Brain: %s\n' "$(_second_brain_status_label)"
     printf 'Auto Update: %s\n' "$HAWS_AUTO_UPDATE"
     if [ "$details" -eq 1 ]; then
         _health_print_details "AI Environments"
@@ -895,6 +895,32 @@ _haws_state_replace() {
     mv -f -- "${temporary}" "${destination}"
 }
 
+_second_brain_dir() {
+    printf '%s/secondbrain\n' "${SCRIPT_DIR}"
+}
+
+_second_brain_remote_url() {
+    git -C "$(_second_brain_dir)" remote get-url origin 2>/dev/null || true
+}
+
+_second_brain_refresh_state() {
+    local remote
+    remote="$(_second_brain_remote_url)"
+    HAWS_SECOND_BRAIN_REMOTE="${remote}"
+    if [ -n "${remote}" ]; then
+        HAWS_SECOND_BRAIN_ENABLED="on"
+        SECOND_BRAIN_ENABLED="on"
+    else
+        HAWS_SECOND_BRAIN_ENABLED="off"
+        SECOND_BRAIN_ENABLED="off"
+    fi
+    export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE SECOND_BRAIN_ENABLED
+}
+
+_second_brain_status_label() {
+    [ -n "$(_second_brain_remote_url)" ] && printf '%s\n' Connected || printf '%s\n' Local-Only
+}
+
 settings_defaults() {
     HAWS_SECOND_BRAIN_ENABLED="off"
     HAWS_SECOND_BRAIN_REMOTE=""
@@ -920,17 +946,6 @@ _haws_remote_is_valid() {
     esac
 }
 
-_haws_remote_access_check() {
-    local remote="${1:-}"
-    _haws_remote_is_valid "${remote}" || return 2
-    [ -n "${remote}" ] || return 1
-    [ "${HAWS_VALIDATED_REMOTE:-}" = "${remote}" ] && return 0
-    command -v timeout >/dev/null 2>&1 || return 1
-    timeout 5 git ls-remote --heads "${remote}" HEAD >/dev/null 2>&1 || return 1
-    HAWS_VALIDATED_REMOTE="${remote}"
-    export HAWS_VALIDATED_REMOTE
-}
-
 settings_load() {
     local file="$(_haws_state_dir)/settings.tsv"
     settings_defaults
@@ -945,13 +960,10 @@ settings_load() {
                 ;;
             second_brain|second_brain_enabled)
                 _haws_setting_is_toggle "${value}" && [ -z "${extra:-}" ] || return 2
-                HAWS_SECOND_BRAIN_ENABLED="${value}"
-                SECOND_BRAIN_ENABLED="${value}"
                 ;;
             second_brain_remote)
                 [ -z "${extra:-}" ] || return 2
                 _haws_remote_is_valid "${value}" || return 2
-                HAWS_SECOND_BRAIN_REMOTE="${value}"
                 ;;
             auto_update)
                 _haws_setting_is_toggle "${value}" && [ -z "${extra:-}" ] || return 2
@@ -963,48 +975,31 @@ settings_load() {
                 ;;
         esac
     done < "${file}"
+    _second_brain_refresh_state
     export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE \
         HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
 }
 
 settings_save() {
-    local second_brain auto_update second_brain_remote
+    local auto_update="${HAWS_AUTO_UPDATE:-on}"
     case "${1:-}" in
-        second_brain|second_brain_enabled|auto_update|second_brain_remote)
-            local setting_name="$1"
-            local setting_value="${2:-}"
-            settings_load || return $?
-            case "${setting_name}" in
-                second_brain|second_brain_enabled)
-                    second_brain="${setting_value}"
-                    auto_update="${HAWS_AUTO_UPDATE}"
-                    second_brain_remote="${HAWS_SECOND_BRAIN_REMOTE}"
-                    ;;
-                auto_update)
-                    second_brain="${HAWS_SECOND_BRAIN_ENABLED}"
-                    auto_update="${setting_value}"
-                    second_brain_remote="${HAWS_SECOND_BRAIN_REMOTE}"
-                    ;;
-                second_brain_remote)
-                    second_brain="${HAWS_SECOND_BRAIN_ENABLED}"
-                    auto_update="${HAWS_AUTO_UPDATE}"
-                    second_brain_remote="${setting_value}"
-                    ;;
-            esac
+        auto_update)
+            auto_update="${2:-}"
+            ;;
+        second_brain|second_brain_enabled)
+            _haws_setting_is_toggle "${2:-}" || return 2
+            ;;
+        second_brain_remote)
+            _haws_remote_is_valid "${2:-}" || return 2
             ;;
         *)
-            second_brain="${1:-${HAWS_SECOND_BRAIN_ENABLED:-off}}"
-            auto_update="${2:-${HAWS_AUTO_UPDATE:-on}}"
+            [ "$#" -lt 2 ] || auto_update="$2"
             if [ "$#" -ge 3 ]; then
-                second_brain_remote="$3"
-            else
-                second_brain_remote="${HAWS_SECOND_BRAIN_REMOTE:-}"
+                _haws_remote_is_valid "$3" || return 2
             fi
             ;;
     esac
-    _haws_setting_is_toggle "${second_brain}" || return 2
     _haws_setting_is_toggle "${auto_update}" || return 2
-    _haws_remote_is_valid "${second_brain_remote}" || return 2
 
     local state="$(_haws_state_dir)"
     local file="${state}/settings.tsv"
@@ -1012,9 +1007,6 @@ settings_save() {
     mkdir -p "${state}" || return 1
     {
         printf 'schema_version\t1\n'
-        printf 'second_brain\t%s\n' "${second_brain}"
-        [ -z "${second_brain_remote}" ] ||
-            printf 'second_brain_remote\t%s\n' "${second_brain_remote}"
         printf 'auto_update\t%s\n' "${auto_update}"
     } > "${temporary}" || {
         rm -f -- "${temporary}"
@@ -1024,13 +1016,10 @@ settings_save() {
     local result=$?
     rm -f -- "${temporary}"
     [ "${result}" -eq 0 ] || return "${result}"
-    HAWS_SECOND_BRAIN_ENABLED="${second_brain}"
-    HAWS_SECOND_BRAIN_REMOTE="${second_brain_remote}"
     HAWS_AUTO_UPDATE="${auto_update}"
-    SECOND_BRAIN_ENABLED="${second_brain}"
     AUTO_UPDATE="${auto_update}"
-    export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE \
-        HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+    _second_brain_refresh_state
+    export HAWS_AUTO_UPDATE AUTO_UPDATE
 }
 
 disabled_environments_load() {
@@ -1918,7 +1907,7 @@ sync_run() {
     echo ""
     echo "OPTIONS"
     printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
-    printf '  Second Brain  : %s\n' "$(_haws_toggle_label "${HAWS_SECOND_BRAIN_ENABLED:-off}")"
+    printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
     echo ""
     echo "TARGETS"
     printf '  %-28s %-10s %s\n' Target Result Detail
@@ -2684,7 +2673,9 @@ interactive_menu() {
         echo "=== ${title} ==="
         [ -n "${purpose}" ] && echo "${purpose}"
     elif [ "${mode}" = "settings" ]; then
-        echo "=== ${title} ==="
+        echo "============================================================="
+        echo "                       ${title}"
+        echo "============================================================="
         [ -n "${purpose}" ] && echo "${purpose}"
     else
         if [ "${HAWS_MENU_SUPPRESS_HEADER:-0}" != 1 ]; then
@@ -3656,11 +3647,13 @@ EOF
                 return 1
             fi
 
-            echo "=== Connecting Second Brain Cloud ==="
-            echo "=========================================================================="
+            echo "============================================================="
+            echo "             HAWS Second Brain Connect"
+            echo "============================================================="
             echo " [PRIVACY NOTICE] Ensure your repository is set to PRIVATE on GitHub!"
             echo " Second Brain stores personal notes & anti-patterns and must NEVER be Public."
-            echo "=========================================================================="
+            echo "============================================================="
+            echo "  [*] Connecting Second Brain, please wait..."
             if git -C "${brain_dir}" remote get-url origin &>/dev/null; then
                 git -C "${brain_dir}" remote set-url origin "${repo_url}"
             else
@@ -3699,12 +3692,12 @@ EOF
             fi
 
             if [[ ! "${confirm}" =~ ^(-y|--yes|-f|--force)$ ]]; then
-                echo "================================================================"
+                echo "============================================================="
                 echo " [GUARD] WARNING: Disconnecting Second Brain Cloud"
                 echo " Current Remote: ${current_remote}"
                 echo " This machine will return to Local-Only mode."
                 echo " (Your cloud repository data will NOT be deleted)."
-                echo "================================================================"
+                echo "============================================================="
                 read -r -p "Are you sure you want to disconnect? [y/N]: " confirm
             fi
             if [[ "${confirm}" =~ ^([Yy]|-y|--yes|-f|--force)$ ]]; then
@@ -3718,7 +3711,8 @@ EOF
             local current_remote
             current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
             if [ -n "${current_remote}" ]; then
-                echo "  [*] Syncing Second Brain with ${current_remote}..."
+                echo "  [*] Syncing Second Brain, please wait..."
+                echo "      Remote: ${current_remote}"
                 git -C "${brain_dir}" add . 2>/dev/null || true
                 git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet 2>/dev/null || true
                 if ! git -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
@@ -3736,7 +3730,9 @@ EOF
         status)
             local current_remote
             current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
-            echo "=== HAWS Second Brain Status ==="
+            echo "============================================================="
+            echo "                 HAWS Second Brain Status"
+            echo "============================================================="
             if [ -n "${current_remote}" ]; then
                 echo "Mode          : [ONLINE / CONNECTED]"
                 echo "Remote URL    : ${current_remote}"
@@ -3755,6 +3751,54 @@ EOF
             return 1
             ;;
     esac
+}
+
+second_brain_detail_page() {
+    local brain_dir="$(_second_brain_dir)"
+    local current_remote confirm url commit_count
+    echo ""
+    echo "============================================================="
+    echo "                 HAWS Second Brain Status"
+    echo "============================================================="
+    current_remote="$(_second_brain_remote_url)"
+    if [ -n "${current_remote}" ]; then
+        echo "Mode          : [ONLINE / CONNECTED]"
+        echo "Remote URL    : ${current_remote}"
+        commit_count="$(git -C "${brain_dir}" rev-list --count HEAD 2>/dev/null || echo 0)"
+        echo "Total Commits : ${commit_count}"
+        echo ""
+        confirm=""
+        printf '%s' "Do you want to disconnect? (y/N): "
+        read -r confirm || confirm=""
+        printf '\n'
+        if [[ "${confirm}" =~ ^[Yy]$ ]]; then
+            run_user disconnect --yes || return $?
+        else
+            echo "  [INFO] Disconnect cancelled. Connection preserved."
+        fi
+    else
+        echo "Mode          : [LOCAL-ONLY (Zero Cloud Telemetry)]"
+        echo "Path          : ${brain_dir}"
+        echo "Status        : [SAFE & CONFINED TO THIS MACHINE]"
+        echo ""
+        confirm=""
+        printf '%s' "Do you want to connect? (y/N): "
+        read -r confirm || confirm=""
+        printf '\n'
+        if [[ "${confirm}" =~ ^[Yy]$ ]]; then
+            url=""
+            read -r -p "Enter Private GitHub Repository URL (blank cancels): " url || url=""
+            url="${url%$'\r'}"
+            if [ -z "${url}" ]; then
+                echo "  [INFO] Connection cancelled."
+                return 0
+            fi
+            run_user connect "${url}" || return $?
+        else
+            echo "  [INFO] Connection cancelled."
+        fi
+    fi
+    return 0
 }
 
 run_hooks() {
@@ -4536,8 +4580,6 @@ _settings_ensure_skill_draft() {
 settings_draft_load() {
     settings_load || return $?
     disabled_environments_load
-    HAWS_PERSIST_SECOND_BRAIN="${HAWS_SECOND_BRAIN_ENABLED}"
-    HAWS_PERSIST_SECOND_BRAIN_REMOTE="${HAWS_SECOND_BRAIN_REMOTE}"
     HAWS_PERSIST_AUTO_UPDATE="${HAWS_AUTO_UPDATE}"
     HAWS_PERSIST_ENVIRONMENTS=""
     local environment
@@ -4545,8 +4587,6 @@ settings_draft_load() {
         [ -n "${DISABLED_ENVIRONMENTS[${environment}]:-}" ] && continue
         HAWS_PERSIST_ENVIRONMENTS+="${environment}"$'\n'
     done < <(_haws_detected_environments)
-    HAWS_DRAFT_SECOND_BRAIN="${HAWS_PERSIST_SECOND_BRAIN}"
-    HAWS_DRAFT_SECOND_BRAIN_REMOTE="${HAWS_PERSIST_SECOND_BRAIN_REMOTE}"
     HAWS_DRAFT_AUTO_UPDATE="${HAWS_PERSIST_AUTO_UPDATE}"
     HAWS_DRAFT_ENVIRONMENTS="${HAWS_PERSIST_ENVIRONMENTS}"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=0
@@ -4557,9 +4597,7 @@ settings_draft_load() {
     HAWS_DRAFT_ADDED_PATHS=""
     HAWS_DRAFT_SKILLS=""
     HAWS_DRAFT_SKILLS_LOADED=0
-    export HAWS_PERSIST_SECOND_BRAIN HAWS_PERSIST_SECOND_BRAIN_REMOTE \
-        HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
-        HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
+    export HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
         HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN
     export HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
@@ -4572,9 +4610,7 @@ settings_draft_discard() {
     rm -f -- "${state}/settings.plan" "${state}/apply.result"
     rmdir -- "${state}" 2>/dev/null || true
     rmdir -- "$(dirname "${state}")" 2>/dev/null || true
-    unset HAWS_PERSIST_SECOND_BRAIN HAWS_PERSIST_SECOND_BRAIN_REMOTE \
-        HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
-        HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
+    unset HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
         HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN \
         HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
@@ -4592,8 +4628,6 @@ _settings_draft_is_dirty() {
           "$( _settings_list_signature "${HAWS_PERSIST_SKILLS:-}" )" ]; then
         return 0
     fi
-    [ "${HAWS_DRAFT_SECOND_BRAIN:-}" != "${HAWS_PERSIST_SECOND_BRAIN:-}" ] && return 0
-    [ "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" != "${HAWS_PERSIST_SECOND_BRAIN_REMOTE:-}" ] && return 0
     [ "${HAWS_DRAFT_AUTO_UPDATE:-}" != "${HAWS_PERSIST_AUTO_UPDATE:-}" ] && return 0
     [ "$( _settings_list_signature "${HAWS_DRAFT_ENVIRONMENTS:-}" )" != \
         "$( _settings_list_signature "${HAWS_PERSIST_ENVIRONMENTS:-}" )" ]
@@ -4610,8 +4644,6 @@ settings_draft_reset() {
         echo "Reset cancelled."
         return 1
     }
-    HAWS_DRAFT_SECOND_BRAIN="off"
-    HAWS_DRAFT_SECOND_BRAIN_REMOTE=""
     HAWS_DRAFT_AUTO_UPDATE="on"
     HAWS_DRAFT_ENVIRONMENTS="$(_haws_detected_environments)"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
@@ -4620,43 +4652,11 @@ settings_draft_reset() {
     HAWS_DRAFT_ADDED_PATHS=""
     HAWS_DRAFT_SKILLS=""
     HAWS_DRAFT_SKILLS_LOADED=0
-    export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_SECOND_BRAIN_REMOTE \
-        HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
+    export HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
         HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_SOURCES \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
     echo "The draft now contains default values. Nothing has changed on this computer yet."
-    return 0
-}
-
-_settings_collect_second_brain_remote() {
-    [ "${HAWS_DRAFT_SECOND_BRAIN:-off}" = on ] || return 0
-    [ -n "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ] && return 0
-
-    echo "Second Brain Remote URL (draft only)"
-    local remote=""
-    if ! read -r -p "Enter remote URL (blank cancels): " remote; then
-        [ -n "${remote}" ] || remote=""
-    fi
-    remote="${remote%$'\r'}"
-    case "${remote}" in
-        q|Q) remote="" ;;
-    esac
-    if [ -z "${remote}" ]; then
-        echo "Cannot enable Second Brain Remote without a remote URL. No changes saved."
-        HAWS_DRAFT_SECOND_BRAIN="off"
-        export HAWS_DRAFT_SECOND_BRAIN
-        return 1
-    fi
-    if ! _haws_remote_is_valid "${remote}"; then
-        echo "Invalid remote URL. No changes saved."
-        HAWS_DRAFT_SECOND_BRAIN="off"
-        export HAWS_DRAFT_SECOND_BRAIN
-        return 1
-    fi
-    HAWS_DRAFT_SECOND_BRAIN_REMOTE="${remote}"
-    export HAWS_DRAFT_SECOND_BRAIN_REMOTE
-    echo "Remote URL saved in draft; it will be applied only after Preview and Apply."
     return 0
 }
 
@@ -4962,15 +4962,14 @@ settings_page() {
         "Repositories|Existing repository sources|-"
         "Skills|${skills_detail}|-"
         "AI Environments|${environment_count} selected|-"
-        "Second Brain Remote|Toggle remote participation|${HAWS_DRAFT_SECOND_BRAIN:-off}"
-        "Auto Update|Toggle remote update work during explicit Sync|${HAWS_DRAFT_AUTO_UPDATE:-on}"
+        "Second Brain|View status / Connect / Disconnect >|"
+        "Auto Update|Update HAWS sources during Sync|${HAWS_DRAFT_AUTO_UPDATE:-on}"
         "Apply|Accept the draft for preview|-"
         "Reset to Defaults|Replace the current draft|-"
     )
     if interactive_menu settings "HAWS Settings|Review the draft; Apply is the only way to save changes." "${items[@]}"; then
-        HAWS_DRAFT_SECOND_BRAIN="${INTERACTIVE_MENU_STATES[Second Brain Remote]:-${HAWS_DRAFT_SECOND_BRAIN}}"
         HAWS_DRAFT_AUTO_UPDATE="${INTERACTIVE_MENU_STATES[Auto Update]:-${HAWS_DRAFT_AUTO_UPDATE}}"
-        export HAWS_DRAFT_SECOND_BRAIN HAWS_DRAFT_AUTO_UPDATE
+        export HAWS_DRAFT_AUTO_UPDATE
         case "${INTERACTIVE_MENU_SELECTION}" in
             0)
                 settings_repositories_page || true
@@ -4984,11 +4983,14 @@ settings_page() {
                 settings_environments_page || true
                 return 2
                 ;;
-            3|4)
+            3)
+                second_brain_detail_page || true
+                return 2
+                ;;
+            4)
                 return 2
                 ;;
             5)
-                _settings_collect_second_brain_remote || return 2
                 return 0
                 ;;
             6)
@@ -5026,9 +5028,6 @@ settings_plan_build() {
     fi
     mkdir -p "${state}" || return 1
     {
-        printf 'setting\tsecond_brain\t%s\n' "${HAWS_DRAFT_SECOND_BRAIN:-off}"
-        [ -z "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ] ||
-            printf 'setting\tsecond_brain_remote\t%s\n' "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"
         printf 'setting\tauto_update\t%s\n' "${HAWS_DRAFT_AUTO_UPDATE:-on}"
         if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
             while IFS= read -r environment; do
@@ -5137,8 +5136,8 @@ settings_preview() {
     done <<< "${HAWS_DRAFT_ENVIRONMENTS:-}"
     [ "${printed_environment}" -eq 1 ] || echo "  None detected"
     echo ""
-    echo "Second Brain Remote"
-    echo "  $(_haws_toggle_label "${HAWS_DRAFT_SECOND_BRAIN:-off}")"
+    echo "Second Brain"
+    echo "  $(_second_brain_status_label)"
     echo ""
     echo "Auto Update"
     echo "  $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE:-on}")"
@@ -5269,25 +5268,8 @@ settings_apply_final() {
     local state="$(_haws_state_dir)"
     local environment_file="${HAWS_DISABLED_ENVIRONMENTS_FILE:-$(_haws_compat_file environments.disabled)}"
     [ -f "${plan}" ] || return 1
-    if [ "${HAWS_DRAFT_SECOND_BRAIN:-off}" = on ]; then
-        if [ -z "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" ]; then
-            echo "Cannot enable Second Brain Remote without a remote URL. No changes saved."
-            return 1
-        fi
-        if ! _haws_remote_is_valid "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"; then
-            echo "Invalid remote URL. No changes saved."
-            return 1
-        fi
-        echo "  [*] Checking Second Brain Remote access (timeout: 5s)..."
-        if ! _haws_remote_access_check "${HAWS_DRAFT_SECOND_BRAIN_REMOTE}"; then
-            echo "  [!] Remote validation failed. No changes saved."
-            return 1
-        fi
-        echo "  [✓] Second Brain Remote access verified."
-    fi
     echo "  [*] Applying settings draft..."
-    settings_save "${HAWS_DRAFT_SECOND_BRAIN:-off}" \
-        "${HAWS_DRAFT_AUTO_UPDATE:-on}" "${HAWS_DRAFT_SECOND_BRAIN_REMOTE:-}" || return 1
+    settings_save auto_update "${HAWS_DRAFT_AUTO_UPDATE:-on}" || return 1
     if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
         local disabled=()
         local environment
@@ -5406,7 +5388,7 @@ setup_run() {
         echo "Repositories        Default"
         echo "Skills              Default"
         echo "AI Environments     Default"
-        echo "Second Brain Remote Off"
+        echo "Second Brain       Local-Only"
         echo "Auto Update         On"
         if interactive_menu menu "HAWS Setup|Choose a setup option or leave without changes." \
             "Use Default Setup|Preview the standard HAWS setup" \
@@ -5459,7 +5441,7 @@ home_run() {
         _health_print_summary
         echo ""
         export HAWS_MENU_SUPPRESS_HEADER=1
-        if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|2" \
+        if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|1" \
             "Sync|Run explicit synchronization" \
             "Settings|Edit the HAWS settings draft" \
             "Doctor|Run read-only diagnostics" \

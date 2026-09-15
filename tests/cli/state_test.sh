@@ -65,21 +65,22 @@ test_disabled_environment_save_is_noop_when_bytes_are_unchanged() {
     [ "${before}" = "${after}" ]
 }
 
-test_settings_round_trip_preserves_spaces() {
+test_settings_save_writes_only_auto_update() {
     export HAWS_STATE_DIR="${FIXTURE_PROJECT}/state folder/with spaces"
     source_haws || return 1
     settings_save on off "git@example.invalid:user/brain with spaces.git" || return 1
     settings_load || return 1
-    [ "${HAWS_SECOND_BRAIN_ENABLED}" = on ] || return 1
+    [ "${HAWS_SECOND_BRAIN_ENABLED}" = off ] || return 1
     [ "${HAWS_AUTO_UPDATE}" = off ] || return 1
-    [ "${HAWS_SECOND_BRAIN_REMOTE}" = "git@example.invalid:user/brain with spaces.git" ]
+    [ -z "${HAWS_SECOND_BRAIN_REMOTE}" ] || return 1
+    ! grep -F 'second_brain' "${HAWS_STATE_DIR}/settings.tsv" >/dev/null 2>&1
 }
 
-test_settings_save_can_clear_remote() {
+test_settings_save_ignores_legacy_remote_argument() {
     source_haws || return 1
     settings_save on off "git@example.invalid:user/brain.git" || return 1
-    settings_save on off "" || return 1
     settings_load || return 1
+    [ "${HAWS_AUTO_UPDATE}" = off ] || return 1
     [ -z "${HAWS_SECOND_BRAIN_REMOTE}" ]
 }
 
@@ -194,8 +195,8 @@ run_test test_state_api_is_present
 run_test test_empty_disabled_environment_file_means_all_enabled
 run_test test_settings_save_does_not_rewrite_disabled_environment_bytes
 run_test test_disabled_environment_save_is_noop_when_bytes_are_unchanged
-run_test test_settings_round_trip_preserves_spaces
-run_test test_settings_save_can_clear_remote
+run_test test_settings_save_writes_only_auto_update
+run_test test_settings_save_ignores_legacy_remote_argument
 run_test test_settings_save_rejects_remote_control_injection
 run_test test_settings_failure_before_rename_preserves_previous_file
 run_test test_ownership_round_trip_preserves_spaces_in_paths
