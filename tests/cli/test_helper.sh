@@ -70,4 +70,3 @@ run_test() {
     fi
     cleanup_fixture
 }
-

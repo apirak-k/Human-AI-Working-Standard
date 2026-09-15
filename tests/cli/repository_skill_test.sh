@@ -40,6 +40,12 @@ source_haws() {
     unset HAWS_SOURCE_ONLY
 }
 
+write_sync_settings() {
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state"
+    printf 'schema_version\t1\nauto_update\toff\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+}
+
 assert_output_not_contains() {
     local needle="$1"
     ! grep -F -- "${needle}" "${OUTPUT_FILE}" >/dev/null 2>&1
@@ -223,7 +229,7 @@ test_dirty_source_removal_is_blocked_before_disk_removal() {
     grep -F 'skills/packs/registered' "${FIXTURE_PROJECT}/.gitmodules" >/dev/null
 }
 
-test_legacy_run_sync_honors_source_aware_disabled_skill() {
+test_run_sync_honors_source_aware_disabled_skill_without_legacy_scanner() {
     init_superproject || return 1
     make_remote legacy-disabled single || return 1
     git_fixture -C "${FIXTURE_PROJECT}" submodule add -q "${REMOTE_URL}" \
@@ -244,7 +250,75 @@ test_legacy_run_sync_honors_source_aware_disabled_skill() {
     local run_sync_block
     run_sync_block="$(sed -n '/^run_sync() {/,/^run_user() {/p' \
         "${FIXTURE_PROJECT}/haws.sh")"
-    [ "$(printf '%s\n' "${run_sync_block}" | grep -Fc '_legacy_skill_is_disabled')" -eq 3 ]
+    printf '%s\n' "${run_sync_block}" | grep -Fq 'catalog_skills' || return 1
+    ! printf '%s\n' "${run_sync_block}" | grep -Fq '_legacy_skill_is_disabled'
+}
+
+test_direct_skills_route_uses_the_settings_catalog() {
+    prepare_logical_skill_catalog || return 1
+    enable_local_sources
+    local down=$'\033[B'
+    printf '%b' "${down}\n\nq" |
+        HOME="${FIXTURE_HOME}" HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
+        HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" \
+        bash "${FIXTURE_PROJECT}/haws.sh" skills >"${OUTPUT_FILE}" 2>&1 || return 1
+    assert_output_contains 'Canonical source-one description.' || return 1
+    assert_output_contains \
+        'Shared Skill [source-one::skills/packs/source-one::shared-skill/SKILL.md]' || return 1
+    grep -Fq 'settings_skills_page' "${FIXTURE_PROJECT}/haws.sh" || return 1
+    ! grep -q '^run_configure_skills()' "${FIXTURE_PROJECT}/haws.sh"
+}
+
+test_run_sync_keeps_each_source_qualified_skill_in_state() {
+    prepare_logical_skill_catalog || return 1
+    write_sync_settings
+    mkdir -p "${FIXTURE_HOME}/.agents/skills"
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || true
+    local manifest="${FIXTURE_HOME}/.haws_manifest"
+    grep -Fq $'skill:source-one::skills/packs/source-one::Shared Skill\tShared Skill' \
+        "${manifest}" || return 1
+    grep -Fq $'skill:source-two::skills/packs/source-two::Shared Skill\tShared Skill' \
+        "${manifest}"
+}
+
+test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail() {
+    init_superproject || return 1
+    mkdir -p "${FIXTURE_PROJECT}/skills/custom/ponytail" \
+        "${FIXTURE_HOME}/.agents/skills" \
+        "${FIXTURE_HOME}/.codex/plugins/cache/provider/1.0/skills/ponytail"
+    write_catalog_skill 'skills/custom/ponytail/SKILL.md' 'ponytail' \
+        'HAWS copy of Ponytail.'
+    printf '%s\n' 'not a skill entrypoint' > \
+        "${FIXTURE_PROJECT}/skills/custom/ponytail/README.md"
+    printf '%s\n' '---' 'name: ponytail' 'description: Plugin copy of Ponytail.' '---' \
+        > "${FIXTURE_HOME}/.codex/plugins/cache/provider/1.0/skills/ponytail/SKILL.md"
+    write_sync_settings
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || true
+    assert_output_contains 'plugin-owned' || return 1
+    assert_file_not_exists "${FIXTURE_HOME}/.agents/skills/ponytail" || return 1
+    assert_file_contains \
+        "${FIXTURE_HOME}/.codex/plugins/cache/provider/1.0/skills/ponytail/SKILL.md" \
+        'Plugin copy of Ponytail.'
+}
+
+test_run_sync_preserves_unowned_codex_skill_link() {
+    init_superproject || return 1
+    mkdir -p "${FIXTURE_PROJECT}/skills/custom/foreign-skill" \
+        "${FIXTURE_ROOT}/foreign-skill" "${FIXTURE_HOME}/.agents/skills"
+    write_catalog_skill 'skills/custom/foreign-skill/SKILL.md' 'foreign-skill' \
+        'HAWS source copy.'
+    printf '%s\n' 'foreign' > "${FIXTURE_ROOT}/foreign-skill/SKILL.md"
+    cp -R "${FIXTURE_ROOT}/foreign-skill" \
+        "${FIXTURE_HOME}/.agents/skills/foreign-skill" || return 1
+    write_sync_settings
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || true
+    assert_file_contains "${FIXTURE_HOME}/.agents/skills/foreign-skill/SKILL.md" foreign
 }
 
 test_skill_draft_persists_source_identity_only_on_final_apply() {
@@ -411,7 +485,11 @@ run_test test_catalog_resolves_source_scoped_logical_skills
 run_test test_add_only_apply_creates_local_submodule_entry
 run_test test_remove_only_apply_removes_registered_source_and_keeps_unrelated_file
 run_test test_dirty_source_removal_is_blocked_before_disk_removal
-run_test test_legacy_run_sync_honors_source_aware_disabled_skill
+run_test test_run_sync_honors_source_aware_disabled_skill_without_legacy_scanner
+run_test test_direct_skills_route_uses_the_settings_catalog
+run_test test_run_sync_keeps_each_source_qualified_skill_in_state
+run_test test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail
+run_test test_run_sync_preserves_unowned_codex_skill_link
 run_test test_skill_draft_persists_source_identity_only_on_final_apply
 run_test test_repository_back_and_discard_do_not_mutate_git_files
 run_test test_settings_skills_presents_logical_groups_and_keeps_state_draft_only

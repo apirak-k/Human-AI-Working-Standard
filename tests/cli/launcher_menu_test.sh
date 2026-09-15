@@ -139,7 +139,16 @@ test_bare_eof_exits_without_home_mutation() {
     assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest"
 }
 
+prepare_fixture_skill_source() {
+    printf '%s\n' \
+        '[submodule "demo-pack"]' \
+        $'\tpath = skills/packs/demo-pack' \
+        $'\turl = https://example.invalid/demo-pack.git' \
+        > "${FIXTURE_PROJECT}/.gitmodules"
+}
+
 test_skills_keeps_old_categories_and_controls() {
+    prepare_fixture_skill_source
     printf '\n1\nq0\nq' | HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" skills >"${OUTPUT_FILE}" 2>&1 || return 1
     assert_output_contains 'Single Skills' || return 1
     assert_output_contains 'Multi-Skill Packs' || return 1
@@ -148,6 +157,7 @@ test_skills_keeps_old_categories_and_controls() {
 }
 
 test_skills_category_accepts_arrow_enter() {
+    prepare_fixture_skill_source
     local down=$'\033[B'
     local input="${down}\n\nq"
     printf '%b' "${input}" |
@@ -157,14 +167,16 @@ test_skills_category_accepts_arrow_enter() {
 }
 
 test_arrow_space_enter_updates_only_fixture() {
+    prepare_fixture_skill_source
     local down=$'\033[B'
-    printf '%b' "${down}\n\n${down} \nq" |
+    printf '%b' "${down}\n\n${down} \n\nq" |
         HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" skills >"${OUTPUT_FILE}" 2>&1 || return 1
-    assert_file_contains "${FIXTURE_PROJECT}/skills.disabled" 'demo-alpha' || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/skills/skills.disabled" 'demo-alpha' || return 1
     assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest"
 }
 
 test_skills_pack_q_returns_to_category_menu() {
+    prepare_fixture_skill_source
     local down=$'\033[B'
     printf '%b' "${down}q" |
         HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" skills >"${OUTPUT_FILE}" 2>&1 || return 1
@@ -173,6 +185,7 @@ test_skills_pack_q_returns_to_category_menu() {
 }
 
 test_checklist_eof_cancels_without_saving() {
+    prepare_fixture_skill_source
     local down=$'\033[B'
     printf '%b' "${down}\n\n${down} " |
         HOME="${FIXTURE_HOME}" bash "${FIXTURE_PROJECT}/haws.sh" skills >"${OUTPUT_FILE}" 2>&1 || return 1

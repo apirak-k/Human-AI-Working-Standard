@@ -621,7 +621,10 @@ legacy_run_doctor() {
         declare -A known_skills
         while IFS= read -r line || [ -n "$line" ]; do
             if [[ "$line" =~ ^skill:(.+) ]]; then
-                known_skills["${BASH_REMATCH[1]}"]=1
+                local manifest_skill_target
+                manifest_skill_target="$(_manifest_skill_target_name "$line" 2>/dev/null || true)"
+                [ -n "${manifest_skill_target}" ] &&
+                    known_skills["${manifest_skill_target}"]=1
             fi
         done < "${manifest}"
 
@@ -1339,6 +1342,11 @@ catalog_skills() {
             entrypoint="${skill_file#${source_dir}/}"
             display_name="$(extract_skill_name "${skill_file}")"
             [ -n "${display_name}" ] || continue
+            case "${display_name}" in
+                pi-planning-with-files|planning-with-files-*|design-taste-frontend-v1)
+                    continue
+                    ;;
+            esac
             [ -n "${seen_names["${display_name}"]:-}" ] && continue
             seen_names["${display_name}"]=1
             display_name="${display_name//$'\t'/ }"
@@ -1356,6 +1364,88 @@ catalog_skills() {
         done < <(find "${source_dir}" -type f \
             \( -name SKILL.md -o -name skill.md \) -print0 2>/dev/null | sort -z)
     done < <(_catalog_skill_sources)
+}
+
+_codex_plugin_skill_dir() {
+    local skill_name="${1:-}"
+    [ -n "${skill_name}" ] || return 1
+    local roots=(
+        "${CODEX_HOME:-${HOME}/.codex}/plugins/cache"
+        "${HOME}/.codex/plugins/cache"
+        "${HOME}/.agents/plugins/cache"
+    )
+    local root skill_file
+    for root in "${roots[@]}"; do
+        [ -d "${root}" ] || continue
+        while IFS= read -r -d '' skill_file; do
+            case "${skill_file}" in
+                */skills/${skill_name}/SKILL.md|*/skills/${skill_name}/skill.md)
+                    printf '%s\n' "$(dirname "${skill_file}")"
+                    return 0
+                    ;;
+            esac
+        done < <(find "${root}" -type f \( -name SKILL.md -o -name skill.md \) \
+            -print0 2>/dev/null || true)
+    done
+    return 1
+}
+
+_manifest_skill_target_name() {
+    local entry="${1:-}"
+    [[ "${entry}" == skill:* ]] || return 1
+    local payload="${entry#skill:}"
+    local target="${payload}"
+    [[ "${payload}" == *$'\t'* ]] && target="${payload#*$'\t'}"
+    [[ "${payload}" == *$'\t'* ]] || target="${payload##*::}"
+    [ -n "${target}" ] || return 1
+    printf '%s\n' "${target}"
+}
+
+_manifest_has_skill_target() {
+    local manifest="${1:-}" wanted="${2:-}" entry target
+    [ -f "${manifest}" ] || return 1
+    while IFS= read -r entry || [ -n "${entry}" ]; do
+        target="$(_manifest_skill_target_name "${entry}" 2>/dev/null || true)"
+        [ "${target}" = "${wanted}" ] && return 0
+    done < "${manifest}"
+    return 1
+}
+
+_haws_skill_link_owned_record() {
+    local wanted="${1:-}"
+    local wanted_native="$(_uninstall_native_path "${wanted}")"
+    local group kind path source fingerprint extra path_native
+    while IFS=$'\t' read -r group kind path source fingerprint extra ||
+        [ -n "${group}" ]; do
+        [ "${group}" = skills ] || continue
+        path_native="$(_uninstall_native_path "${path}")"
+        [ "${path_native}" = "${wanted_native}" ] || continue
+        if ownership_verify "${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}"; then
+            printf '%s\t%s\t%s\t%s\n' "${kind}" "${path}" "${source}" "${fingerprint}"
+            return 0
+        fi
+    done < <(ownership_list skills)
+    return 1
+}
+
+_haws_skill_link_is_owned() {
+    _haws_skill_link_owned_record "${1:-}" >/dev/null
+}
+
+_haws_skill_link_remove_if_owned() {
+    local record kind path source fingerprint
+    record="$(_haws_skill_link_owned_record "${1:-}" 2>/dev/null)" || return 1
+    IFS=$'\t' read -r kind path source fingerprint <<< "${record}"
+    _uninstall_remove_path "${kind}" "${path}"
+}
+
+_haws_record_skill_link() {
+    local kind="${1:-symlink}" dest="${2:-}" source="${3:-}" fingerprint
+    [ -n "${dest}" ] && [ -n "${source}" ] || return 2
+    [ -L "${dest}" ] || return 0
+    fingerprint="$(readlink "${dest}" 2>/dev/null || true)"
+    [ -n "${fingerprint}" ] || fingerprint="${source}"
+    ownership_record skills "${kind}" "${dest}" "${source}" "${fingerprint}"
 }
 
 catalog_validate_url() {
@@ -1393,34 +1483,6 @@ catalog_validate_destination() {
     [ ! -e "${repo}/${destination}" ] && [ ! -L "${repo}/${destination}" ]
 }
 
-_legacy_skill_is_disabled() {
-    local skill_path="$1"
-    local skill_name="$2"
-    local repo="$(_catalog_repo_dir)"
-    local skill_file="${skill_path}"
-    local source_id source_path source_url source_revision entrypoint
-
-    [ -n "${DISABLED_SKILLS["${skill_name}"]:-}" ] && return 0
-    if [ -d "${skill_path}" ]; then
-        if [ -f "${skill_path}/SKILL.md" ]; then
-            skill_file="${skill_path}/SKILL.md"
-        elif [ -f "${skill_path}/skill.md" ]; then
-            skill_file="${skill_path}/skill.md"
-        fi
-    fi
-    while IFS=$'\t' read -r source_id source_path source_url source_revision ||
-        [ -n "${source_id}" ]; do
-        [ -n "${source_id}" ] || continue
-        case "${skill_file}" in
-            "${repo}/${source_path}"/*)
-                entrypoint="${skill_file#${repo}/${source_path}/}"
-                _catalog_is_disabled "${source_id}::${skill_name}" \
-                    "${skill_name}" "${entrypoint}" && return 0
-                ;;
-        esac
-    done < <(catalog_sources)
-    return 1
-}
 
 run_with_deadline() {
     local seconds="${1:-}"
@@ -1953,7 +2015,6 @@ run_sync() {
     fi
 
     local SOURCE_DIR="${SCRIPT_DIR}"
-    load_disabled_skills
 
     # 2. Detect AI Environments
     echo "[*] Step 2/5: Detecting AI environments"
@@ -2037,57 +2098,41 @@ run_sync() {
         dest_dir="$(dirname "${dest}")"
         mkdir -p "${dest_dir}"
 
+        local src_marker="${src}/SKILL.md"
+        [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
+        local dest_marker="${dest}/SKILL.md"
+        [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
+        local current_target=""
+        [ -L "${dest}" ] && current_target="$(readlink "${dest}" 2>/dev/null || true)"
+        if [ -n "${current_target}" ] && [ "${current_target}" = "${src}" ]; then
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+            return 0
+        fi
+        if [ -e "${dest}" ] || [ -L "${dest}" ]; then
+            if ! _haws_skill_link_remove_if_owned "${dest}"; then
+                echo "  [SKIPPED] Preserved existing skill link: ${dest}"
+                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                return 0
+            fi
+        elif [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] &&
+            diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+            return 0
+        fi
+
         if [ "$IS_WINDOWS" = true ]; then
             local win_src win_dest
             win_src="$(cygpath -w "${src}")"
             win_dest="$(cygpath -w "${dest}")"
-
-            # Check if skill marker already exists and matches to avoid redundant process spawning
-            local src_marker="${src}/SKILL.md"
-            [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
-            local dest_marker="${dest}/SKILL.md"
-            [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
-
-            if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] && diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
-                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-                return 0
-            fi
-
-            if [ -d "${dest}" ] || [ -L "${dest}" ]; then
-                MSYS2_ARG_CONV_EXCL="*" cmd.exe /c rmdir "${win_dest}" >/dev/null 2>&1 || rm -rf "${dest}" 2>/dev/null || true
-            fi
-
             if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /J "${win_dest}" "${win_src}" >/dev/null 2>&1; then
+                _haws_record_skill_link junction "${dest}" "${src}" || return 1
                 echo "  [JUNCTION] ${label}: ${dest} -> ${src}"
                 return 0
             fi
         fi
 
-        if [ -L "${dest}" ]; then
-            local current_target
-            current_target="$(readlink "${dest}" || true)"
-            if [ "${current_target}" = "${src}" ]; then
-                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-                return 0
-            fi
-            rm -f "${dest}"
-        elif [ -d "${dest}" ]; then
-            local src_marker="${src}/SKILL.md"
-            [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
-            local dest_marker="${dest}/SKILL.md"
-            [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
-
-            if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] && diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
-                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-                return 0
-            else
-                cp -rf "${src}"/* "${dest}/" 2>/dev/null || cp -rf "${src}" "${dest_dir}/"
-                echo "  [UPDATED] ${label}: ${dest} -> ${src}"
-                return 0
-            fi
-        fi
-
         if ln -sfn "${src}" "${dest}" 2>/dev/null || ln -s "${src}" "${dest}" 2>/dev/null; then
+            _haws_record_skill_link symlink "${dest}" "${src}" || return 1
             echo "  [LINKED] ${label}: ${dest} -> ${src}"
         else
             cp -rf "${src}" "${dest}"
@@ -2173,7 +2218,19 @@ run_sync() {
     # 4. Link Skills, profiles, and commands
     echo "[*] Step 4/5: Linking skills, profiles, and commands"
     echo "  [*] Discovering and linking active skills to AI environments, please wait..."
-    declare -A PROCESSED_SKILLS
+    local skill_rows source_id skill_id skill_display skill_description entrypoint active
+    local source_path source_dir skill_dir target_name source_label
+    local -A source_paths=() display_counts=() processed_skills=()
+    skill_rows="$(catalog_skills)"
+    while IFS=$'\t' read -r source_id skill_id skill_display skill_description entrypoint active ||
+        [ -n "${skill_id}" ]; do
+        [ -n "${skill_id}" ] && [ "${active}" = 1 ] || continue
+        display_counts["${skill_display}"]=$(( ${display_counts[${skill_display}]:-0} + 1 ))
+    done <<< "${skill_rows}"
+    while IFS=$'\t' read -r source_id source_path _ _ || [ -n "${source_id}" ]; do
+        [ -n "${source_id}" ] || continue
+        source_paths["${source_id}"]="${source_path}"
+    done < <(_catalog_skill_sources)
 
     local MANIFEST_FILE="${HOME}/.haws_manifest"
     local PREV_MANIFEST="${HOME}/.haws_manifest.prev"
@@ -2184,135 +2241,70 @@ run_sync() {
     rm -f "${TMP_MANIFEST}"
     touch "${TMP_MANIFEST}"
 
-    find_and_link_skills() {
-        local base_dir="$1"
-        [ ! -d "${base_dir}" ] && return 0
+    while IFS=$'\t' read -r source_id skill_id skill_display skill_description entrypoint active ||
+        [ -n "${skill_id}" ]; do
+        [ -n "${skill_id}" ] && [ "${active}" = 1 ] || continue
+        [ -n "${processed_skills[${skill_id}]:-}" ] && continue
+        processed_skills["${skill_id}"]=1
+        source_path="${source_paths[${source_id}]:-}"
+        [ -n "${source_path}" ] || continue
+        source_dir="${SOURCE_DIR}/${source_path}"
+        skill_dir="${source_dir}/$(dirname "${entrypoint}")"
+        target_name="${skill_display}"
+        if [ "${display_counts[${skill_display}]:-0}" -gt 1 ]; then
+            source_label="${source_path##*/}"
+            target_name="${skill_display} [${source_label}]"
+        fi
+        active_count=$((active_count + 1))
+        printf 'skill:%s\t%s\n' "${skill_id}" "${target_name}" >> "${TMP_MANIFEST}"
 
-        while IFS= read -r -d '' skill_file; do
-            local skill_dir
-            skill_dir="$(dirname "${skill_file}")"
-
-            local skill_name=""
-            if [ -f "${skill_file}" ]; then
-                while IFS= read -r line; do
-                    if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
-                        skill_name="${BASH_REMATCH[1]}"
-                        skill_name="${skill_name%"${skill_name##*[![:space:]]}"}"
-                        break
-                    fi
-                done < "${skill_file}"
+        if [ "$DETECTED_CLAUDE" = true ]; then
+            safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${target_name}" \
+                "Claude Skill [${target_name}]"
+            SKILLS_LINKED=$((SKILLS_LINKED + 1))
+        fi
+        if [ "$DETECTED_CODEX" = true ]; then
+            local plugin_dir=""
+            if [ "${skill_display}" = ponytail ]; then
+                plugin_dir="$(_codex_plugin_skill_dir "${skill_display}" 2>/dev/null || true)"
             fi
-            [ -z "${skill_name}" ] && skill_name="$(basename "${skill_dir}")"
-
-            # Check dynamic disabled list
-            _legacy_skill_is_disabled "${skill_file}" "${skill_name}" && continue
-
-            # Filter rules per user specification:
-            [[ "${skill_dir}" =~ \.openclaw ]] && continue
-            [[ "${skill_dir}" =~ planning-with-files ]] && [[ ! "${skill_dir}" =~ \.agents/skills ]] && continue
-            [[ "${skill_dir}" =~ ui-ux-pro-max ]] && [[ ! "${skill_dir}" =~ \.claude/skills ]] && continue
-            [[ "${skill_dir}" =~ caveman/plugins ]] && continue
-
-            # 1. planning-with-files: keep only primary 'planning-with-files'
-            [[ "${skill_name}" == "pi-planning-with-files" ]] && continue
-            [[ "${skill_name}" =~ ^planning-with-files- ]] && continue
-
-            # 2. taste-skill: exclude v1, keep only v2
-            [[ "${skill_name}" == "design-taste-frontend-v1" ]] && continue
-
-            if [ -n "${skill_name}" ] && [ -z "${PROCESSED_SKILLS[${skill_name}]:-}" ]; then
-                PROCESSED_SKILLS[${skill_name}]=1
-                active_count=$((active_count + 1))
-                echo "skill:${skill_name}" >> "${TMP_MANIFEST}"
-
-                if [ "$DETECTED_CLAUDE" = true ]; then
-                    safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${skill_name}" "Claude Skill [${skill_name}]"
-                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
-                fi
-                if [ "$DETECTED_CODEX" = true ]; then
-                    safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${skill_name}" "Codex Skill [${skill_name}]"
-                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
-                fi
+            if [ -n "${plugin_dir}" ]; then
+                echo "  [SKIPPED] Codex Skill [${target_name}] (plugin-owned: ${plugin_dir})"
+            else
+                safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${target_name}" \
+                    "Codex Skill [${target_name}]"
+                SKILLS_LINKED=$((SKILLS_LINKED + 1))
             fi
-        done < <(find "${base_dir}" -type f \( -name "SKILL.md" -o -name "skill.md" \) -print0 2>/dev/null || true)
-    }
-
-    [ -d "${SOURCE_DIR}/skills/custom" ] && find_and_link_skills "${SOURCE_DIR}/skills/custom"
-    find_and_link_skills "${SOURCE_DIR}/skills"
-    [ -d "${SOURCE_DIR}/skills/packs/ponytail/skills" ] && find_and_link_skills "${SOURCE_DIR}/skills/packs/ponytail/skills"
+        fi
+    done <<< "${skill_rows}"
 
     if [ "$DETECTED_GEMINI" = true ]; then
         local target_json="${HOME}/.gemini/config/skills.json"
         mkdir -p "${HOME}/.gemini/config"
-
-        # Clean legacy broken junctions on Windows so Antigravity doesn't choke
-        if [ "$IS_WINDOWS" = true ] && [ -d "${HOME}/.gemini/config/skills" ]; then
-            for junc in "${HOME}/.gemini/config/skills"/*; do
-                if [ -d "${junc}" ] || [ -L "${junc}" ]; then
-                    rm -rf "${junc}" 2>/dev/null || true
-                fi
-            done
-        fi
-
-        local win_source="${SOURCE_DIR}"
-        command -v cygpath &>/dev/null && win_source="$(cygpath -m "${SOURCE_DIR}")"
-
         local json_entries=()
         declare -A seen_dirs
-
-        # 1. Custom skills (respect disabled)
-        if [ -d "${SOURCE_DIR}/skills/custom" ]; then
-            for cdir in "${SOURCE_DIR}/skills/custom"/*; do
-                [ ! -d "$cdir" ] && continue
-                local cname="$(basename "$cdir")"
-                _legacy_skill_is_disabled "${cdir}" "${cname}" && continue
-                local win_cdir="$cdir"
-                command -v cygpath &>/dev/null && win_cdir="$(cygpath -m "$cdir")"
-                seen_dirs["$win_cdir"]=1
-                json_entries+=("    { \"path\": \"${win_cdir}\" }")
-            done
-        fi
-
-        # 2. Standalone & Packs
-        while IFS= read -r f; do
-            [ -z "${f}" ] && continue
-            local sdir="$(dirname "${f}")"
-            local pdir="$(dirname "${sdir}")"
-            local sname=""
-            while IFS= read -r line; do
-                if [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
-                    sname="${BASH_REMATCH[1]}"
-                    sname="${sname%"${sname##*[![:space:]]}"}"
-                    break
+        while IFS=$'\t' read -r source_id skill_id skill_display skill_description entrypoint active ||
+            [ -n "${skill_id}" ]; do
+            [ -n "${skill_id}" ] && [ "${active}" = 1 ] || continue
+            source_path="${source_paths[${source_id}]:-}"
+            source_dir="${SOURCE_DIR}/${source_path}"
+            skill_dir="${source_dir}/$(dirname "${entrypoint}")"
+            local target_dir="${skill_dir}"
+            if [[ "${source_path}" == skills/packs/* ]]; then
+                local parent_dir="$(dirname "${skill_dir}")"
+                target_dir="${parent_dir}"
+                if [ -d "${parent_dir}/skills" ] && [ "$(basename "${parent_dir}")" != skills ]; then
+                    target_dir="${skill_dir}"
                 fi
-            done < "${f}"
-            [ -z "${sname}" ] && sname="$(basename "${sdir}")"
-
-            # Check if disabled
-            _legacy_skill_is_disabled "${f}" "${sname}" && continue
-            [[ "${sname}" == "pi-planning-with-files" ]] && continue
-            [[ "${sname}" =~ ^planning-with-files- ]] && continue
-            [[ "${sname}" == "design-taste-frontend-v1" ]] && continue
-
-            # Structural rules
-            [[ "${sdir}" =~ \.openclaw ]] && continue
-            [[ "${sdir}" =~ planning-with-files ]] && [[ ! "${sdir}" =~ \.agents/skills ]] && continue
-            [[ "${sdir}" =~ ui-ux-pro-max ]] && [[ ! "${sdir}" =~ \.claude/skills ]] && continue
-            [[ "${sdir}" =~ caveman/plugins ]] && continue
-
-            local target_dir="${pdir}"
-            if [ -d "${pdir}/skills" ] && [ "$(basename "${pdir}")" != "skills" ]; then
-                target_dir="${sdir}"
             fi
-            [[ "${sdir}" =~ skills/standalone/ ]] && target_dir="${sdir}"
-
+            [[ "${source_path}" == skills/standalone/* ]] && target_dir="${skill_dir}"
             local win_target="${target_dir}"
             command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
             if [ -z "${seen_dirs[${win_target}]:-}" ]; then
                 seen_dirs["${win_target}"]=1
                 json_entries+=("    { \"path\": \"${win_target}\" }")
             fi
-        done < <(find "${SOURCE_DIR}/skills/packs" "${SOURCE_DIR}/skills/standalone" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
+        done <<< "${skill_rows}"
 
         {
             echo "{"
@@ -2406,9 +2398,16 @@ EOF
                 local type="${entry%%:*}"
                 local name="${entry#*:}"
                 if [ "$type" = "skill" ]; then
-                    [ -e "${HOME}/.claude/skills/${name}" ] && rm -rf "${HOME}/.claude/skills/${name}" && PRUNED=$((PRUNED + 1))
-                    [ -e "${HOME}/.gemini/config/skills/${name}" ] && rm -rf "${HOME}/.gemini/config/skills/${name}" && PRUNED=$((PRUNED + 1))
-                    echo "  [PRUNED] Skill [${name}]"
+                    local target_name
+                    target_name="$(_manifest_skill_target_name "${entry}" 2>/dev/null || true)"
+                    [ -n "${target_name}" ] || continue
+                    if _haws_skill_link_remove_if_owned "${HOME}/.claude/skills/${target_name}"; then
+                        PRUNED=$((PRUNED + 1))
+                    fi
+                    if _haws_skill_link_remove_if_owned "${HOME}/.agents/skills/${target_name}"; then
+                        PRUNED=$((PRUNED + 1))
+                    fi
+                    echo "  [PRUNED] Skill [${target_name}] (owned links only)"
                 elif [ "$type" = "agent" ]; then
                     [ -e "${HOME}/.claude/agents/${name}.md" ] && rm -f "${HOME}/.claude/agents/${name}.md" && PRUNED=$((PRUNED + 1))
                     [ -e "${HOME}/.gemini/config/agents/${name}" ] && rm -rf "${HOME}/.gemini/config/agents/${name}" && PRUNED=$((PRUNED + 1))
@@ -2432,10 +2431,13 @@ EOF
                     [ ! -d "${s}" ] && [ ! -L "${s}" ] && continue
                     local sname
                     sname="$(basename "${s}")"
-                    if ! grep -q "^skill:${sname}$" "${MANIFEST_FILE}" 2>/dev/null; then
-                        rm -rf "${s}" 2>/dev/null || true
-                        echo "  [PURGED UNMANAGED] Skill [${sname}]"
-                        UNMANAGED_PURGED=$((UNMANAGED_PURGED + 1))
+                    if ! _manifest_has_skill_target "${MANIFEST_FILE}" "${sname}"; then
+                        if _haws_skill_link_remove_if_owned "${s}"; then
+                            echo "  [PURGED UNMANAGED] Skill [${sname}]"
+                            UNMANAGED_PURGED=$((UNMANAGED_PURGED + 1))
+                        else
+                            echo "  [SKIPPED] Preserved unowned skill [${sname}]"
+                        fi
                     fi
                 done
             fi
@@ -2884,11 +2886,7 @@ run_add_git_repo() {
     configure_now="$(echo "${configure_now}" | tr -d ' \r\n')"
 
     if [[ "${configure_now}" =~ ^[Yy] ]]; then
-        load_disabled_skills
-        for ndir in "${newly_added_dirs[@]}"; do
-            configure_repo_skills "${SCRIPT_DIR}/${ndir}"
-        done
-        save_disabled_skills
+        run_skills_route || true
     else
         echo "  [✓] Kept all skills enabled by default."
     fi
@@ -2997,233 +2995,6 @@ run_remove_git_repo() {
     return 0
 }
 
-get_repo_skills() {
-    local rdir="$1"
-    local with_desc="${2:-1}"
-    declare -A seen=()
-    while IFS= read -r sf; do
-        [ -z "$sf" ] && continue
-        _catalog_skill_is_eligible "$sf" || continue
-
-        local sn="$(extract_skill_name "$sf")"
-        [ -z "$sn" ] && continue
-        [ -n "${seen[$sn]:-}" ] && continue
-        seen["$sn"]=1
-
-        local sdesc=""
-        if [ "$with_desc" -eq 1 ]; then
-            sdesc="$(extract_skill_desc "$sf")"
-            [ -z "$sdesc" ] && sdesc="${sn}"
-        fi
-
-        echo "${sn}|${sdesc}|${sf}"
-    done < <(find "$rdir" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
-}
-
-configure_repo_skills() {
-    local rdir="$1"
-    local rname="${2:-$(basename "$rdir")}"
-
-    local chk_items=()
-    while IFS='|' read -r sn sdesc sf; do
-        [ -z "$sn" ] && continue
-        local is_on=1
-        [ -n "${DISABLED_SKILLS[$sn]:-}" ] && is_on=0
-        chk_items+=("${sn}|${sdesc}|${is_on}")
-    done < <(get_repo_skills "$rdir" 1)
-
-    if [ ${#chk_items[@]} -eq 0 ]; then
-        echo "  [INFO] No skills found in ${rname}."
-        return 0
-    fi
-
-    declare -A CHECKLIST_RESULTS
-    if interactive_checklist "Configure Skills in ${rname}" "${chk_items[@]}"; then
-        for sn in "${!CHECKLIST_RESULTS[@]}"; do
-            if [ "${CHECKLIST_RESULTS[$sn]}" -eq 1 ]; then
-                unset "DISABLED_SKILLS[$sn]"
-            else
-                DISABLED_SKILLS["$sn"]=1
-            fi
-        done
-        save_disabled_skills
-        echo "  [✓] Updated active skills for ${rname}."
-    else
-        echo "  [INFO] Configuration cancelled. No changes saved."
-    fi
-}
-
-run_configure_skills() {
-    load_disabled_skills
-    echo "  [*] Scanning skills catalog, please wait..."
-    local single_total=0
-    local single_names=()
-    local single_files=()
-
-    local -A repo_total=()
-    local -A repo_first_sn=()
-    local -A repo_first_sf=()
-    local -A repo_all_skills=()
-    local -A seen_combo=()
-    local -A repo_registered=()
-    local repo_order=()
-
-    while IFS= read -r sf; do
-        [ -z "$sf" ] && continue
-        [[ "$sf" =~ \.openclaw/ ]] && continue
-        [[ "$sf" =~ planning-with-files ]] && [[ ! "$sf" =~ \.agents/skills ]] && [[ ! "$sf" =~ skills/i18n ]] && continue
-        [[ "$sf" =~ ui-ux-pro-max ]] && [[ ! "$sf" =~ \.claude/skills ]] && continue
-        [[ "$sf" =~ caveman/plugins/ ]] && continue
-
-        local rel="${sf#${SCRIPT_DIR}/skills/}"
-        local category="${rel%%/*}"
-        local rest="${rel#*/}"
-        local rname="${rest%%/*}"
-        local rpath="${SCRIPT_DIR}/skills/${category}/${rname}"
-
-        local sn="$(extract_skill_name "$sf")"
-        [ -z "$sn" ] && continue
-
-        local combo="${rpath}|${sn}"
-        [ -n "${seen_combo[$combo]:-}" ] && continue
-        seen_combo["$combo"]=1
-
-        if [ -z "${repo_registered[$rpath]:-}" ]; then
-            repo_registered["$rpath"]=1
-            repo_order+=("$rpath")
-            repo_total["$rpath"]=0
-            repo_all_skills["$rpath"]=""
-        fi
-
-        repo_total["$rpath"]=$(( ${repo_total["$rpath"]} + 1 ))
-        repo_first_sn["$rpath"]="$sn"
-        repo_first_sf["$rpath"]="$sf"
-        repo_all_skills["$rpath"]="${repo_all_skills["$rpath"]} ${sn}"
-    done < <(find "${SCRIPT_DIR}/skills" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | sort || true)
-
-    local pack_repos=()
-    local pack_names=()
-    local pack_totals=()
-
-    for rpath in "${repo_order[@]}"; do
-        local rname="$(basename "$rpath")"
-        local tot="${repo_total[$rpath]}"
-
-        if [ "$tot" -eq 1 ]; then
-            single_total=$((single_total + 1))
-            single_names+=("${repo_first_sn[$rpath]}")
-            single_files+=("${repo_first_sf[$rpath]}")
-        else
-            pack_repos+=("$rpath")
-            pack_names+=("$rname")
-            pack_totals+=("$tot")
-        fi
-    done
-
-    printf "\033[2K"
-    echo "  [✓] Skills catalog ready."
-
-    while true; do
-        # Fast in-memory recount of active skills (0 subprocesses, 0 disk I/O)
-        local single_active=0
-        for sn in "${single_names[@]}"; do
-            [ -z "${DISABLED_SKILLS[$sn]:-}" ] && single_active=$((single_active + 1))
-        done
-
-        local pack_actives=()
-        for ((i=0; i<${#pack_repos[@]}; i++)); do
-            local rpath="${pack_repos[$i]}"
-            local act=0
-            for sn in ${repo_all_skills["$rpath"]}; do
-                [ -z "${DISABLED_SKILLS[$sn]:-}" ] && act=$((act + 1))
-            done
-            pack_actives+=("$act")
-        done
-
-        echo ""
-        echo "Select skill category to configure:"
-        printf "  1) Single Skills\n     Status: [Active: %d / %d skills]\n" "${single_active}" "${single_total}"
-        echo "  2) Multi-Skill Packs"
-        echo "     Status:"
-        for ((i=0; i<${#pack_names[@]}; i++)); do
-            printf "       • %-20s [Active: %2d / %2d skills]\n" "${pack_names[$i]}" "${pack_actives[$i]}" "${pack_totals[$i]}"
-        done
-        echo "  0) Back to Home"
-        echo ""
-
-        local category_items=(
-            "Single Skills|Configure individual skills"
-            "Multi-Skill Packs|Configure skills by pack"
-            "Back to Home|Return to HAWS Home"
-        )
-        if interactive_menu menu "Configure Active Skills (Enable / Disable)" \
-            "${category_items[@]}"; then
-            case "${INTERACTIVE_MENU_SELECTION}" in
-            0)
-            echo ""
-            echo "  [*] Loading Single Skills checklist..."
-            local chk_items=()
-            for ((i=0; i<${#single_names[@]}; i++)); do
-                local sn="${single_names[$i]}"
-                local sf="${single_files[$i]}"
-                local sdesc="$(extract_skill_desc "$sf")"
-                [ -z "$sdesc" ] && sdesc="${sn}"
-                local is_on=1
-                [ -n "${DISABLED_SKILLS[$sn]:-}" ] && is_on=0
-                chk_items+=("${sn}|${sdesc}|${is_on}")
-            done
-
-            declare -A CHECKLIST_RESULTS
-            if interactive_checklist "Configure Single Skills" "${chk_items[@]}"; then
-                for sn in "${!CHECKLIST_RESULTS[@]}"; do
-                    if [ "${CHECKLIST_RESULTS[$sn]}" -eq 1 ]; then
-                        unset "DISABLED_SKILLS[$sn]"
-                    else
-                        DISABLED_SKILLS["$sn"]=1
-                    fi
-                done
-                save_disabled_skills
-                echo "  [✓] Updated single skills configuration."
-            else
-                echo "  [INFO] Configuration cancelled. No changes saved."
-            fi
-
-            ;;
-        1)
-            echo ""
-            echo "Select a Skill Pack to configure:"
-            for ((i=0; i<${#pack_names[@]}; i++)); do
-                printf "  %2d) %-20s [Active: %2d / %2d skills]\n" "$((i+1))" "${pack_names[$i]}" "${pack_actives[$i]}" "${pack_totals[$i]}"
-            done
-            echo "   0) Back"
-            echo ""
-            local pack_items=()
-            for pack_name in "${pack_names[@]}"; do
-                pack_items+=("${pack_name}|Configure skills in this pack")
-            done
-            pack_items+=("Back to Skill Categories|Return to the skill categories")
-            if ! interactive_menu menu "Select a Skill Pack to configure" \
-                "${pack_items[@]}"; then
-                break
-            elif [ "${INTERACTIVE_MENU_SELECTION}" -lt "${#pack_names[@]}" ]; then
-                local sel_pack_dir="${pack_repos[${INTERACTIVE_MENU_SELECTION}]}"
-                local sel_pack_name="${pack_names[${INTERACTIVE_MENU_SELECTION}]}"
-                echo ""
-                echo "  [*] Loading skills for ${sel_pack_name}, please wait..."
-                configure_repo_skills "${sel_pack_dir}" "${sel_pack_name}"
-            fi
-
-            ;;
-        *)
-            break
-            ;;
-            esac
-        else
-            break
-        fi
-    done
-    return 0
-}
 
 run_interactive_kit_setup() {
     run_setup "$@"
@@ -5163,6 +4934,21 @@ settings_flow_run() {
     done
 }
 
+run_skills_route() {
+    settings_draft_load || return $?
+    local result=0
+    settings_skills_page "$@" || result=$?
+    if [ "${result}" -eq 0 ] && _settings_draft_is_dirty; then
+        echo "  [*] Applying active skills, please wait..."
+        if ! settings_apply_skill_draft; then
+            settings_draft_discard
+            return 1
+        fi
+    fi
+    settings_draft_discard
+    return "${result}"
+}
+
 setup_run() {
     local result
     while true; do
@@ -5315,7 +5101,7 @@ case "${COMMAND}" in
         ;;
     skills|skill)
         shift || true
-        run_configure_skills "$@"
+        run_skills_route "$@"
         ;;
     kit)
         shift || true
