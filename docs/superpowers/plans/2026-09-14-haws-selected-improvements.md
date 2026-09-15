@@ -19,6 +19,135 @@ shell regression harness.
 
 **Spec:** `docs/superpowers/specs/2026-09-14-haws-selected-improvements-design.md`
 
+## Current Continuation Plan — Single Source of Truth
+
+This section is the current implementation plan for the continuation work. It
+consolidates the latest plan exported as `PLAN.md` with the confirmed
+Plugin/Skill rule. The historical checkpoint sections below remain useful
+implementation evidence, but they must not be executed as a separate plan.
+
+**Status:** plan consolidated; implementation has not started. Do not change
+production code until the user explicitly approves this consolidated plan.
+
+### Scope and target
+
+- Reference the trusted historical behavior in
+  `E:\Human-AI-Working-Standard\.worktrees\codex-haws-bootstrap`.
+- Implement only in
+  `E:\Human-AI-Working-Standard\.worktrees\codex-haws-old-base-selected` on
+  branch `codex/remote-continuation`.
+- Keep one `haws.bat` launcher; retain proven historical launcher behavior
+  without restoring the obsolete set of separate batch launchers.
+- Do not commit `.haws` runtime state, lock files, generated Graphify output,
+  or unrelated submodule changes. Do not push without explicit authorization.
+
+### Source, Skill, and Plugin rules
+
+- A registered repository that contains `SKILL.md`/`skill.md` is a HAWS skill
+  source, even when it also contains plugin metadata, hooks, commands,
+  references, templates, or other extensions.
+- Keep those extension files inside their owning source repository under
+  `skills/packs/` or `skills/standalone/`; do not create a separate Plugin
+  catalog or move them into a root `plugins/` tree.
+- Only `SKILL.md`/`skill.md` files become selectable skill rows. Plugin
+  manifests and extension files are preserved source assets, not separate
+  skills and not separate repository types.
+- Classify a source as `PACK` or `SINGLE` using the raw number of skill files,
+  including vendor-specific copies. Calculate `Active / Total` separately from
+  canonical skills after applying the historical duplicate/vendor filters.
+- Preserve source-scoped logical skill identity and deduplicate vendor copies
+  within one source only. Same-name skills from different sources remain
+  separate.
+
+### Checkpointed implementation rounds
+
+#### Round 1 — Open Home immediately
+
+Make Home read only lightweight local settings/state and render the menu
+without waiting for `_health_collect`, `catalog_skills`, `catalog_sources`,
+ownership, or entrypoint scans. Show Last Sync, Auto Update, Second Brain, and
+an instruction to use Doctor for full diagnostics.
+
+Add the focused Home RED test first, implement the smallest change, run the
+focused and boundary regressions, then commit:
+
+`perf(cli): open Home before full health scan`
+
+#### Round 2 — Correct source classification and skill catalog behavior
+
+Use the historical filters for `planning-with-files`, `ui-ux-pro-max`,
+`caveman`, and duplicate/version names. Reconcile repositories whose physical
+paths disagree with their raw source type while preserving URL and submodule
+SHA. Expected moves include `caveman`, `planning-with-files`, `taste-skill`,
+and `ui-ux-pro-max` into `skills/packs/`; true one-skill repositories remain
+under `skills/standalone/`.
+
+Do not move or classify an uninitialized source until its contents can be
+inspected. Preserve disabled-skill behavior and existing source-scoped IDs.
+
+Add catalog/repository fixtures for vendor copies, plugin metadata, hooks,
+commands, references, and templates. Commit:
+
+`fix(cli): reconcile skill source kinds and paths`
+
+#### Round 3 — Make the interactive presentation consistent
+
+- Use the Settings-style full-width header for all interactive pages.
+- Align `[ On ]`/`[ Off ]` and descriptions in fixed columns.
+- Show Multi-Skill Packs with aligned `Active / Total` and no redundant
+  `Configure skills in this pack` description.
+- Use short source labels instead of long internal paths.
+- Truncate long visible names safely while retaining the full logical ID for
+  selection and persistence.
+
+Commit:
+
+`refactor(cli): unify interactive skill presentation`
+
+#### Round 4 — Make Sync results explicit and usable
+
+Retain the current lock, exit-code, and truthful-result safety behavior while
+using the clear progress and PASS/WARN/FAIL presentation from the historical
+batch flow.
+
+- Direct `haws.bat sync` shows Summary/Result and waits for a key before the
+  window closes.
+- `HAWS_NO_PAUSE=1` bypasses the launcher wait.
+- Sync invoked from Home keeps `[Q]` to return Home and another key to exit.
+- Direct Bash remains automation-friendly and does not gain an unconditional
+  interactive pause.
+
+Commit:
+
+`fix(cli): restore explicit sync result pause`
+
+#### Round 5 — Measure and remove repeated full scans
+
+After Round 1, measure Settings, Doctor, and Sync separately. If repeated
+catalog work remains a measured bottleneck, reuse one catalog snapshot within
+one operation. Do not introduce a cross-run global cache or speculative
+parallelism.
+
+### Round test and commit gate
+
+Every round follows this order:
+
+1. Add or update the focused test and observe RED.
+2. Implement only that round's behavior.
+3. Reach GREEN on the focused test.
+4. Run the relevant regression tests.
+5. Check Git status, submodule state, and excluded runtime/generated files.
+6. Commit only that round's logical files.
+7. Stop for review before starting the next round.
+
+Primary tests are `home_entrypoint_test.sh`, `catalog_test.sh`,
+`repository_skill_test.sh`, `launcher_menu_test.sh`, `settings_flow_test.sh`,
+`sync_test.sh`, and the full `tests/cli/run.sh`; run real Windows launcher
+acceptance after Round 4.
+
+The current stale `.haws/state/sync.lock` must be handled as runtime
+preflight after confirming its PID is not alive. It must never enter a commit.
+
 ## Global Constraints
 
 - Keep `haws.bat` a thin launcher; shared business logic remains in `haws.sh`.
