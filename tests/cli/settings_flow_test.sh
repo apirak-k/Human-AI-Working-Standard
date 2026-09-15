@@ -198,6 +198,24 @@ test_settings_skills_route_keeps_draft_and_avoids_duplicate_frame() {
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
 }
 
+test_interactive_skill_pages_use_settings_header_and_fixed_state_columns() {
+    mkdir -p "${FIXTURE_PROJECT}/skills/custom/presentation-sample" || return 1
+    printf '%s\n' '---' 'name: presentation-sample' 'description: Presentation sample.' '---' \
+        > "${FIXTURE_PROJECT}/skills/custom/presentation-sample/SKILL.md"
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}\n\nq"
+    run_haws_input "${input}" || true
+    assert_output_contains '                       Configure Single Skills' || return 1
+    assert_output_not_contains '=== Configure Single Skills ===' || return 1
+    local state_column detail_column
+    state_column="$(awk '/Auto Update[[:space:]]+\[ On \]/ { print index($0, "[ On ]"); exit }' "${OUTPUT_FILE}")"
+    detail_column="$(awk '/Auto Update[[:space:]]+\[ On \]/ { print index($0, " - "); exit }' "${OUTPUT_FILE}")"
+    [ -n "${state_column}" ] || return 1
+    [ -n "${detail_column}" ] || return 1
+    [ "${detail_column}" -gt "${state_column}" ]
+}
+
 test_settings_ai_environments_opens_an_actionable_selector() {
     mkdir -p "${FIXTURE_HOME}/.claude" "${FIXTURE_HOME}/.codex" || return 1
     local down=$'\033[B'
@@ -435,6 +453,7 @@ run_test test_settings_skills_route_keeps_old_single_pack_labels
 run_test test_settings_skills_without_edits_has_no_false_discard_prompt
 run_test test_settings_skills_shows_catalog_loading_status
 run_test test_settings_skills_route_keeps_draft_and_avoids_duplicate_frame
+run_test test_interactive_skill_pages_use_settings_header_and_fixed_state_columns
 run_test test_settings_ai_environments_opens_an_actionable_selector
 run_test test_settings_enter_toggles_auto_update_and_reaches_preview
 run_test test_settings_apply_reaches_preview_without_persisting
