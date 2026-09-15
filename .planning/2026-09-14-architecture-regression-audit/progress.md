@@ -1,5 +1,28 @@
 # Progress
 
+## 2026-09-15 — cross-device performance/UI audit checkpoint
+
+- Actual continuation worktree is `codex/remote-continuation` at `421bd98`,
+  clean before this audit; the historical `HANDOFF.md` header still names the
+  old-base worktree and must not override Git truth.
+- Read the requested `using-superpowers` and `ponytail` skills plus current
+  HAWS, Work Instructions, user preferences, anti-patterns, and active plan
+  before inspection. No production code was changed.
+- Confirmed serial timings: Bash `status` 19,366 ms, Bash `doctor` 18,892 ms,
+  Windows `haws.bat status` 18,373 ms, and Windows `haws.bat menu < nul`
+  17,709 ms. Helper timings and route findings are recorded in `findings.md`.
+- A full CLI test run was started once for audit coverage, then interrupted when
+  the user moved to cross-device work. The process was stopped and its suite
+  result remains `[Unverified]`; do not claim it passed.
+- A local checkpoint commit was attempted after `git diff --check` passed, but
+  the sandbox denied writes to the linked-worktree Git index. No stale lock was
+  present, and the four continuity files remain uncommitted for the next
+  authorized Git operation.
+- Exact resume point: finish static/dynamic trace coverage for Settings,
+  nested Skills/Repositories/AI Environments/Second Brain, Sync result,
+  Uninstall, and legacy direct routes; then report findings and ask for the
+  architecture choice before writing the implementation plan.
+
 ## 2026-09-14
 
 - Initialized a dedicated read-first audit ledger.

@@ -1,5 +1,78 @@
 # Findings
 
+## 2026-09-15 startup, loading, and Settings audit — initial evidence
+
+- Actual repository state is branch `codex/remote-continuation` at `421bd98`,
+  clean, eight commits ahead of its configured tracking ref
+  `origin/codex/old-base-selected-improvements`. The existing `HANDOFF.md`
+  describes the older `codex/old-base-selected-improvements` worktree, so it is
+  historical context rather than current Git truth.
+- `home_run` prints the Home frame, then calls `settings_load` and the full
+  `_health_collect` before drawing the status summary and interactive menu
+  (`haws.sh:4996-5021`). This is the primary perceived startup wait.
+- `_health_collect` performs settings/environment parsing, disabled-skill
+  loading, ownership checks, source catalog enumeration, skill catalog
+  enumeration, and per-skill entrypoint checks (`haws.sh:66-151`). Its work is
+  reused by `status_run`, `doctor_run`, and Sync summary paths, so changing it
+  requires a caller/blast-radius audit rather than a Home-only guard.
+- Slow work is also reached by Settings: Skills loads `catalog_skills`
+  (`haws.sh:4316-4426`), Repositories loads `catalog_sources`
+  (`haws.sh:4428-4500`), Settings preview loads both catalogs
+  (`haws.sh:4625-4708`), and Apply can validate/apply repository and skill
+  drafts (`haws.sh:4711-4895`).
+- `catalog_sources` invokes Git for source URL/revision discovery
+  (`haws.sh:1225-1263`), while `catalog_skills` runs `find | sort` and parses
+  each skill (`haws.sh:1327-1365`). `load_disabled_skills` launches `sed` per
+  line (`haws.sh:1185-1197`). These are likely multiplicative process-launch
+  costs on Windows/Git Bash.
+- Long-running UI traces already exist for Home, Doctor, Sync, Skills,
+  repository validation, Settings Apply, Second Brain Connect/Sync, and
+  Uninstall (`haws.sh:300-325`, `1967-1977`, `2218-2222`, `3410-3477`,
+  `3907-3930`, `4060-4062`, `4316-4320`, `4630-4634`, `4940-4941`). The audit
+  still needs to check whether each message appears before the first blocking
+  operation and whether any other blocking route lacks one.
+- Full-width headers are not yet universal: legacy Status/Doctor/Hook paths
+  still emit short `=== ... ===` headers (`haws.sh:420-472`, `3563-3592`), while
+  newer Home/Doctor/Sync/Second Brain/Uninstall paths use full separators.
+- Settings currently presents Auto Update inline as a bracket toggle in the
+  same selector row as its description (`haws.sh:4515-4525`). The Skills page
+  has its own loading/status block and nested selector, but the audit must
+  inspect every nested page for a location header and secondary separator
+  consistency.
+- A parallel host measurement that launched several Git Bash processes at once
+  failed before HAWS executed with MSYS2 `fatal error - add_item ... errno 1`.
+  This is an environment/tooling measurement error, not application evidence;
+  subsequent runtime checks must run one Git Bash process at a time.
+- Serial runtime checks on the actual worktree completed successfully but were
+  slow: `./haws.sh status` took 19,366 ms and `./haws.sh doctor` took 18,892 ms.
+  Both call `_health_collect`; this disproves the current documentation claim
+  that the direct status path is sub-second and confirms the startup delay is
+  shared by Home, Status, and Doctor rather than being only a visual issue.
+- The first aggregate helper-timing probe failed in PowerShell because the
+  multiline Bash script was over-escaped before Bash parsed it. No HAWS code
+  ran in that probe; the retry must pass the script as one process argument.
+- The first retry still omitted the PowerShell script argument and Bash
+  reported `-c: option requires an argument`; no HAWS code ran. The next probe
+  will bind the multiline script directly in PowerShell before invoking Bash.
+- Serial helper timings in one sourced Bash process were: `settings_load`
+  185 ms, `load_disabled_skills` 2,729 ms, `catalog_sources` 3,995 ms,
+  `catalog_skills` 5,246 ms, `_health_collect` 16,764 ms, and
+  `settings_draft_load` 4,217 ms. The latter includes one source catalog pass;
+  the full collector includes repeated catalog/source and per-skill work.
+- Physical Windows route checks were run serially: `cmd.exe /c haws.bat status`
+  exited 0 in 18,373 ms, and `cmd.exe /c haws.bat menu < nul` exited 0 in
+  17,709 ms. The latter rendered one Home with Sync, Settings, Doctor, and
+  Uninstall, but the user waits through the full status scan before seeing the
+  menu. This is confirmed Windows behavior, not only Git Bash profiling.
+- The full `tests/cli/run.sh` audit run was started once but the user moved to
+  cross-device work before it produced a result. The process was interrupted
+  and confirmed stopped; its aggregate outcome is `[Unverified]`. No
+  production file was modified by that run.
+- A local audit checkpoint commit was attempted but the sandbox could not write
+  the linked-worktree Git index (`.git/worktrees/cli-task1-remote/index.lock`,
+  permission denied). A read-only check confirmed no stale `index.lock` exists;
+  the four continuity files remain as intended working-tree changes.
+
 ## Initial evidence
 
 - Historical skill fixes `065296b`, `5ac8147`, `7c1b957`, `b42beb9`, and `b1cc486` are ancestors of the current checkpoint.

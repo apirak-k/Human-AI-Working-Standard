@@ -18,6 +18,13 @@ Compare the current old-base implementation with the trusted historical line and
    `500b59e`; physical Windows/human acceptance remains `[Unverified]` and is
    a separate follow-up.
 
+8. In progress — follow-up performance and UI consistency audit requested on
+   2026-09-15. Inspect every blocking trace, Settings/nested-page header,
+   secondary separator, and Auto Update presentation before proposing fixes.
+   Do not implement during this audit.
+9. Pending — present confirmed findings, architecture recommendation, and a
+   checkpointed implementation plan after the audit is complete and reviewed.
+
 ## Cross-device continuation status
 
 - Branch: `codex/old-base-selected-improvements`

@@ -1,5 +1,24 @@
 # Current old-base Implementation Checkpoint
 
+## CURRENT OVERRIDE — 2026-09-15 follow-up audit
+
+The current continuation worktree is `C:\Users\ai-project\Desktop\SC0434\Human-AI-Working-Standard\.worktrees\cli-task1-remote` on branch `codex/remote-continuation` at `421bd98`. Git reports a clean production worktree; the active audit ledger has uncommitted findings only. This section supersedes the historical branch/worktree labels below.
+
+Scope is audit-only. The user requested a complete trace audit before any fix or implementation plan: every slow/blocking route, architecture boundary, Settings and nested-page headers, secondary separators, Auto Update alignment/location, and the correct commit/push checkpoint procedure. No production code or tests were modified.
+
+Confirmed runtime evidence:
+
+- `cmd.exe /c haws.bat --help`: exit 0.
+- `./haws.sh status`: exit 0, 19,366 ms.
+- `./haws.sh doctor`: exit 0, 18,892 ms.
+- `cmd.exe /c haws.bat status`: exit 0, 18,373 ms.
+- `cmd.exe /c haws.bat menu < nul`: exit 0, 17,709 ms; one Home rendered only after the full status scan.
+- Sourced helper timings: `settings_load` 185 ms, `load_disabled_skills` 2,729 ms, `catalog_sources` 3,995 ms, `catalog_skills` 5,246 ms, `_health_collect` 16,764 ms, and `settings_draft_load` 4,217 ms.
+
+The full `tests/cli/run.sh` audit run was started once and interrupted when the user moved to cross-device work. The process was stopped; the aggregate result is `[Unverified]`. The detailed findings are in `.planning/2026-09-14-architecture-regression-audit/findings.md` and the active task state is in its `task_plan.md` and `progress.md`.
+
+Next session: resume from the follow-up trace audit, do not implement yet, and do not treat the historical text below as current Git state. No `git push` has been performed. The branch is eight commits ahead of its configured tracking ref `origin/codex/old-base-selected-improvements`; pushing a checkpoint requires explicit human authorization under HAWS.
+
 **Implementation worktree:** `codex/old-base-selected-improvements`
 **Previous committed checkpoint:** `1aa832d` (`refactor(lifecycle): remove notify command and documentation`)
 **Current checkpoint:** Bootstrap-aligned orchestration, compact Health findings, and result-screen navigation; automated verification is green; physical acceptance remains `[Unverified]`
