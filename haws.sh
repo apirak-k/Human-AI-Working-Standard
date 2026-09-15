@@ -4785,7 +4785,47 @@ settings_skills_page() {
         pack_name_counts["${pack_name}"]=$(( ${pack_name_counts[${pack_name}]:-0} + 1 ))
     done <<< "${rows}"
 
+    local single_total=0 single_active=0
+    local single_source_id single_source_path
+    for single_source_id in "${!source_counts[@]}"; do
+        single_source_path="${source_paths[${single_source_id}]:-}"
+        [[ "${single_source_path}" == skills/packs/* ]] && continue
+        single_total=$((single_total + ${source_counts[${single_source_id}]:-0}))
+        single_active=$((single_active + ${source_active_counts[${single_source_id}]:-0}))
+    done
+
+    local summary_label="Single Skills"
+    local summary_width=${#summary_label}
+    local summary_name i
+    for ((i=0; i<${#pack_names[@]}; i++)); do
+        summary_name="${pack_names[$i]}"
+        if [ "${pack_name_counts[${summary_name}]:-0}" -gt 1 ]; then
+            summary_name="${summary_name} [${pack_ids[$i]}]"
+        fi
+        [ "${#summary_name}" -gt "${summary_width}" ] && summary_width="${#summary_name}"
+    done
+    summary_width=$((summary_width + 2))
+
     while true; do
+        echo ""
+        echo "Skill Summary"
+        printf "  %-*s [Active: %d / %d skills]\n" \
+            "${summary_width}" "Single Skills" "${single_active}" "${single_total}"
+        printf "  %s\n" "Multi-Skill Packs"
+        if [ "${#pack_names[@]}" -eq 0 ]; then
+            printf "    (none)\n"
+        else
+            for ((i=0; i<${#pack_names[@]}; i++)); do
+                summary_name="${pack_names[$i]}"
+                if [ "${pack_name_counts[${summary_name}]:-0}" -gt 1 ]; then
+                    summary_name="${summary_name} [${pack_ids[$i]}]"
+                fi
+                printf "    %-*s [Active: %d / %d skills]\n" \
+                    "$((summary_width - 2))" "${summary_name}" \
+                    "${source_active_counts[${pack_ids[$i]}]:-0}" \
+                    "${source_counts[${pack_ids[$i]}]:-0}"
+            done
+        fi
         echo ""
         if interactive_menu menu "Configure Active Skills (Enable / Disable)|Choose a skill category to edit the current draft." \
             "Single Skills|Configure individual skills" \

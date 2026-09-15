@@ -358,6 +358,7 @@ test_settings_skills_uses_one_page_frame() {
 }
 
 test_settings_skills_preserves_old_single_and_pack_organization() {
+    rm -rf -- "${FIXTURE_PROJECT}/skills/custom"
     init_superproject || return 1
     {
         printf '[submodule "single"]\n'
@@ -381,6 +382,13 @@ test_settings_skills_preserves_old_single_and_pack_organization() {
     assert_output_contains 'Configure Active Skills' || return 1
     assert_output_contains 'Single Skills' || return 1
     assert_output_contains 'Multi-Skill Packs' || return 1
+    assert_output_contains 'Active: 1 / 1 skills' || return 1
+    assert_output_contains 'Active: 2 / 2 skills' || return 1
+    local single_count_column pack_count_column
+    single_count_column="$(awk '/Single Skills[[:space:]]+\[Active:/ { print index($0, "[Active:"); exit }' "${OUTPUT_FILE}")"
+    pack_count_column="$(awk '/pack[[:space:]]+\[Active:/ { print index($0, "[Active:"); exit }' "${OUTPUT_FILE}")"
+    [ -n "${single_count_column}" ] || return 1
+    [ "${single_count_column}" = "${pack_count_column}" ] || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/skills.disabled"
 }
 
