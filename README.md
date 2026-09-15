@@ -239,10 +239,7 @@ HAWS organizes skills into two main tiers:
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
 ├── haws.sh                              # Shared CLI command engine
-├── haws.bat                             # Windows launcher for the shared engine
-├── 1-CLICK-SYNC.bat                     # Legacy convenience launcher
-├── 2nd-BRAIN-TOGGLE.bat                 # Legacy convenience launcher
-└── UNINSTALL.bat                        # Legacy convenience launcher
+└── haws.bat                             # Windows launcher for the shared engine
 ```
 
 ---

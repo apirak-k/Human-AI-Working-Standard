@@ -242,13 +242,13 @@ The following chronological sequence documents everything committed from `cceb21
 | `10f5f0d` | `feat(sync)` | Implemented automated Python-powered Symmetrical Merge and Deduplication in `haws.sh`. |
 | `edb8694` | `docs(handoff)` | Recorded checkpoint timestamp and token optimization status. |
 | `403f130` | `feat(launcher)` | Added initial Windows `haws.bat` launcher. |
-| `2dec3e9` | `feat(launcher)` | Added `1-CLICK-SYNC.bat` for 1-click execution in File Explorer. |
-| `fabf45c` | `refactor(launcher)` | Renamed `brain-online.bat` to `2nd-BRAIN-TOGGLE.bat` for clarity. |
-| `a05c33d` | `docs` | Updated all launcher references to `2nd-BRAIN-TOGGLE.bat`. |
+| `2dec3e9` | `feat(launcher)` | Added a one-click Windows launcher for File Explorer. |
+| `fabf45c` | `refactor(launcher)` | Renamed the legacy Second Brain launcher for clarity. |
+| `a05c33d` | `docs` | Updated legacy launcher references. |
 | `9dda4d0` | `refactor(launcher)` | Consolidated and deleted redundant `haws.bat`. |
-| `5f5e8f1` | `feat(launcher)` | Updated `1-CLICK-SYNC.bat` with standalone launcher logic and clean README. |
+| `5f5e8f1` | `feat(launcher)` | Updated the legacy one-click launcher with standalone logic and clean README. |
 | `82a1cdb` | `feat(adapters)` | Added 5 Multi-AI adapters in `templates/`, POSIX symlink engine, and doctor Axis 11 (45 checks). |
-| `6f54cce` | `feat(lifecycle)` | Added 1-Click Clean Uninstaller (`UNINSTALL.bat`), `commit-msg` hook, `tools/notify.sh`, and Doctor Axis 12 (51 checks). |
+| `6f54cce` | `feat(lifecycle)` | Added the one-click clean uninstaller, `commit-msg` hook, `tools/notify.sh`, and Doctor Axis 12 (51 checks). |
 | `9cfede4` | `feat(setup)` | Implemented 5-Option English setup menu and dynamic skill toggle engine (`config/skills.disabled`). |
 | `7c1b957` | `fix(setup)` | Deduplicated skills and filtered vendor directories (`.openclaw`, `.cursor`, `.vscode`) in configure menu. |
 | `ae904e3` | `perf(setup)` | Optimized Option 4 skill catalog scan with pure bash single-pass scanner (reduced load time from 35s to <1.5s). |
@@ -276,10 +276,10 @@ The following chronological sequence documents everything committed from `cceb21
    - Separated from upstream repo via `.gitignore`.
    - Connected to private GitHub remote (`apirak-k/secondbrain.git`).
    - Python-powered Symmetrical Merge and Deduplication engine in `haws.sh`.
-6. **Windows 1-Click Launchers Suite**:
-   - `1-CLICK-SYNC.bat`: Pulls repo, syncs Second Brain, links skills, runs doctor in 1 double-click.
-   - `2nd-BRAIN-TOGGLE.bat`: Toggles Second Brain between Local-Only and Private Cloud.
-   - `UNINSTALL.bat`: 1-Click clean uninstallation with dry-run preview and safety prompts.
+6. **Windows Single-Entry Launcher**:
+   - `haws.bat`: Opens the shared HAWS Home from File Explorer and routes all actions through `haws.sh`.
+   - Second Brain connection is managed from Settings with an immediate Yes/No action.
+   - Uninstall uses a dry-run preview and ownership-aware safety prompts.
 7. **Custom Skill `keyboard-layout-fixer`** (`skills/custom/keyboard-layout-fixer/`):
    - Auto-detects and converts Thai Kedmanee $\leftrightarrow$ English US QWERTY and inverted CapsLock.
    - 4 test suites passing 100%.
@@ -292,7 +292,7 @@ The following chronological sequence documents everything committed from `cceb21
    - Claude Code (`templates/CLAUDE.md.template`)
    - Cursor IDE (`templates/.cursor/rules/haws.mdc.template` and `templates/.cursorrules.template`)
    - OpenAI Codex & GitHub Copilot (`templates/.github/copilot-instructions.md.template`)
-10. **Clean Uninstallation Engine** (`haws.sh uninstall` & `UNINSTALL.bat`):
+10. **Clean Uninstallation Engine** (`haws.sh uninstall` & `haws.bat`):
     - Strips HAWS pointer blocks from `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.cursor/rules/haws.mdc`, `~/.cursorrules`, `~/.copilot/copilot-instructions.md`.
     - Cleans skills from `~/.gemini/config/skills.json` and `~/.claude/skills`.
     - Unlinks `.githooks` from `.git/config` (`core.hooksPath`).
@@ -364,7 +364,7 @@ All 39 original user inputs from the baseline review are codified in permanent H
 | | 4.3 Subagents, Personas & Harness | #14, #30, #36 | ✅ Verified | `agents/*.md` (`<task_assignment>` / `<task_report>`) |
 | | 4.4 Self-Correcting Loops & Engineering | #33, #39 | ✅ Verified | `core/HAWS.md` Sec 7.1 (Strict 3-iteration maximum) |
 | | 4.5 Candidate Custom Skills | #19, #22 | ✅ Verified | `skills/custom/keyboard-layout-fixer/` |
-| **Domain 5** | 5.1 Ready-to-Use Installation Engine | #5 | ✅ Verified | `SETUP.bat`, `1-CLICK-SYNC.bat`, `haws.sh setup` |
+| **Domain 5** | 5.1 Ready-to-Use Installation Engine | #5 | ✅ Verified | `haws.bat`, `haws.sh setup` |
 | | 5.2 Diagnostic Verification Suite | #6 | ✅ Verified | `haws.sh doctor` (42/42 checks PASS 100% Green) |
 | | 5.3 SWE Fundamentals & Testing Discipline | #27, #32 | ✅ Verified | `core/HAWS.md` Sec 5.1 (Ponytail 7-rung ladder) |
 | | 5.4 MCP & RAG Integrations | #25, #29 | ✅ Verified | `core/WORK_INSTRUCTIONS.md`, `core/HAWS.md` Sec 9 |

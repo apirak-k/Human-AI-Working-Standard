@@ -86,10 +86,10 @@ test_slow_routes_have_explicit_progress_messages() {
     for message in \
         '[*] Loading current status, please wait...' \
         '[*] Running diagnostics, please wait...' \
-        '[*] Scanning skills catalog, please wait...' \
+        '[*] Loading skills catalog, please wait...' \
         '[*] Connecting Second Brain, please wait...' \
         '[*] Syncing Second Brain, please wait...' \
-        '[*] Building uninstall preview...' \
+        '[*] Building uninstall preview, please wait...' \
         '[*] Applying uninstall changes, please wait...' \
         '[*] Applying settings draft...' \
         '[*] Validating repository source, please wait...'; do

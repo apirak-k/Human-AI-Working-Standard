@@ -716,10 +716,8 @@ legacy_run_doctor() {
 
     # 12. Check Launchers & Automation Tools
     [ "$json_mode" = false ] && echo "" && echo "12. Checking Launchers & Automation Tools..."
-    check_item "${SCRIPT_DIR}/1-CLICK-SYNC.bat" "1-CLICK-SYNC.bat"
-    check_item "${SCRIPT_DIR}/SETUP.bat" "SETUP.bat"
-    check_item "${SCRIPT_DIR}/2nd-BRAIN-TOGGLE.bat" "2nd-BRAIN-TOGGLE.bat"
-    check_item "${SCRIPT_DIR}/UNINSTALL.bat" "UNINSTALL.bat"
+    check_item "${SCRIPT_DIR}/haws.sh" "haws.sh"
+    check_item "${SCRIPT_DIR}/haws.bat" "haws.bat"
 
     if "${SCRIPT_DIR}/haws.sh" uninstall --dry-run >/dev/null 2>&1; then
         passed=$((passed + 1))
