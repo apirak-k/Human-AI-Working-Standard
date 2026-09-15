@@ -5433,13 +5433,16 @@ run_setup() { setup_run "$@"; }
 
 home_run() {
     local result
-    settings_load || return $?
     while true; do
-        _health_collect
         echo ""
         echo "============================================================="
         echo "                         HAWS Home"
         echo "============================================================="
+        echo ""
+        echo "[*] Loading current status, please wait..."
+        settings_load || return $?
+        _health_collect
+        echo "[✓] Current status ready."
         echo ""
         echo "CURRENT STATUS"
         _health_print_summary
@@ -5447,13 +5450,12 @@ home_run() {
         export HAWS_MENU_SUPPRESS_HEADER=1
         if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|2" \
             "Sync|Run explicit synchronization" \
-            "Health|Show current status and diagnostic reasons" \
             "Settings|Edit the HAWS settings draft" \
+            "Doctor|Run read-only diagnostics" \
             "Uninstall|Preview removal of HAWS-owned items"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0) HAWS_INTERACTIVE_RESULT=1 run_sync || true ;;
-                1) HAWS_INTERACTIVE_RESULT=1 run_health || true ;;
-                2)
+                1)
                     settings_draft_load || return 1
                     if settings_flow_run settings; then
                         settings_load || return $?
@@ -5462,6 +5464,7 @@ home_run() {
                         [ "${result}" -eq 3 ] && return 3
                     fi
                     ;;
+                2) run_doctor || true ;;
                 3)
                     local uninstall_status=0
                     HAWS_INTERACTIVE_RESULT=1 run_uninstall || uninstall_status=$?
@@ -5488,46 +5491,6 @@ run_lifecycle() {
     fi
 }
 
-run_main_menu() {
-    local items=(
-        "Skills|Configure active skills"
-        "Repositories|Manage repository sources"
-        "Second Brain|View Second Brain status"
-        "Sync|Run explicit synchronization"
-        "Status|Show current HAWS status"
-        "Doctor|Run read-only diagnostics"
-        "Uninstall|Preview removal of HAWS-owned items"
-    )
-
-    run_menu_action() {
-        local action="${1:-action}"
-        shift || true
-        local status=0
-        echo "  [*] Starting ${action}..."
-        bash "${SCRIPT_DIR}/haws.sh" "$@" || status=$?
-        if [ "${status}" -ne 0 ]; then
-            echo "  [ERROR] Action failed (exit ${status})."
-        else
-            echo "  [✓] ${action} completed."
-        fi
-    }
-
-    while true; do
-        if ! interactive_menu menu "HAWS — Main Menu|Choose an HAWS command to run." "${items[@]}"; then
-            return 0
-        fi
-        case "${INTERACTIVE_MENU_SELECTION}" in
-            0) run_menu_action "Skills" skills ;;
-            1) run_menu_action "Repositories" kit list ;;
-            2) run_menu_action "Second Brain" user status ;;
-            3) run_menu_action "Sync" sync ;;
-            4) run_menu_action "Status" status ;;
-            5) run_menu_action "Doctor" doctor ;;
-            6) run_menu_action "Uninstall" uninstall ;;
-        esac
-    done
-}
-
 if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ]; then
     haws_set_terminal_title
 case "${COMMAND}" in
@@ -5536,11 +5499,7 @@ case "${COMMAND}" in
         ;;
     menu|interactive)
         shift || true
-        if [ "${BARE_LAUNCH}" = 1 ]; then
-            run_lifecycle
-        else
-            run_main_menu
-        fi
+        run_lifecycle
         ;;
     settings|configure)
         shift || true
