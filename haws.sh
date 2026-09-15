@@ -112,23 +112,26 @@ _health_collect() {
     local repo="$(_health_repo)"
     local source_rows=0
     local source_id source_path source_url source_revision
+    local -A health_source_paths=()
     while IFS=$'\t' read -r source_id source_path source_url source_revision _ ||
         [ -n "$source_id" ]; do
         [ -n "$source_id" ] || continue
+        health_source_paths["$source_id"]="$source_path"
+        [ "$source_url" = local ] && continue
         source_rows=1
         if [ -d "$repo/$source_path" ]; then
             _health_add Ready Sources "$source_id available at $source_path ($source_revision)"
         else
             _health_add Attention Sources "$source_id missing at $source_path"
         fi
-    done < <(catalog_sources)
+    done < <(_catalog_skill_sources)
     [ "$source_rows" -eq 1 ] ||
         _health_add Ready Sources "no registered sources"
 
     HAWS_HEALTH_SKILLS_ACTIVE=0
     HAWS_HEALTH_SKILLS_TOTAL=0
     local skill_rows=0
-    local logical_id display description skill_source entrypoint active source_fields
+    local logical_id display description skill_source entrypoint active
     local skill_source_path
     while IFS=$'\t' read -r skill_source logical_id display description entrypoint active _ ||
         [ -n "$logical_id" ]; do
@@ -137,9 +140,8 @@ _health_collect() {
         [ "$active" = 1 ] || continue
         HAWS_HEALTH_SKILLS_ACTIVE=$((HAWS_HEALTH_SKILLS_ACTIVE + 1))
         skill_rows=1
-        source_fields="$(_catalog_source_fields "$skill_source" 2>/dev/null || true)"
-        skill_source_path="${source_fields%%$'\t'*}"
-        if [ -s "$repo/$skill_source_path/$entrypoint" ]; then
+        skill_source_path="${health_source_paths["$skill_source"]:-}"
+        if [ -n "$skill_source_path" ] && [ -s "$repo/$skill_source_path/$entrypoint" ]; then
             _health_add Ready Skills "$display entrypoint is present"
         else
             _health_add Blocked Skills "$display entrypoint is missing"
