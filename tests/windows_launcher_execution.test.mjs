@@ -163,6 +163,27 @@ test("explicit arguments are forwarded unchanged", { skip: !isWindows }, () => {
   }
 });
 
+test("direct haws.bat sync pauses unless HAWS_NO_PAUSE=1", { skip: !isWindows }, () => {
+  const root = makeFixture();
+  try {
+    const resultNoPause = spawnSync("cmd.exe", ["/d", "/c", "haws.bat", "sync"], {
+      cwd: root,
+      encoding: "utf8",
+      env: launcherEnv(root, { HAWS_NO_PAUSE: "1" }),
+      timeout: 5000,
+      windowsHide: true,
+    });
+    assert.equal(resultNoPause.status, 0);
+    const forwarded = readFileSync(path.join(root, "bash.log"), "utf8");
+    assert.equal(forwarded, "<sync>\n");
+
+    const batContent = readFileSync(path.join(root, "haws.bat"), "utf8");
+    assert.match(batContent, /if\s+\/i\s+"%~1"=="sync"\s+set\s+"HAWS_PAUSE=1"/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("missing haws.sh is an explicit non-blocking error", { skip: !isWindows }, () => {
   const root = makeFixture({ script: false });
   try {

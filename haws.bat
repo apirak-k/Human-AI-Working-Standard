@@ -13,6 +13,7 @@ set "HAWS_PAUSE=0"
 if "%~1"=="" set "HAWS_BARE=1"
 rem Keep a double-click window open so launcher errors and completion status are visible.
 if "%HAWS_BARE%"=="1" set "HAWS_PAUSE=1"
+if /i "%~1"=="sync" set "HAWS_PAUSE=1"
 
 if not exist "%HAWS_SCRIPT%" (
     echo [ERROR] haws.sh was not found at "%HAWS_SCRIPT%".

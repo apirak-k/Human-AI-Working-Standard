@@ -13,6 +13,7 @@ test_launcher_is_thin() {
     grep -F 'haws.sh' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
     grep -F 'title HAWS — Human-AI Working Standard' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
     grep -F 'if "%HAWS_BARE%"=="1" set "HAWS_PAUSE=1"' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
+    grep -iF 'if /i "%~1"=="sync" set "HAWS_PAUSE=1"' "${PROJECT_ROOT}/haws.bat" >/dev/null || return 1
     ! grep -iE 'run_sync|run_setup|run_doctor|git submodule' "${PROJECT_ROOT}/haws.bat" >/dev/null
 }
 
