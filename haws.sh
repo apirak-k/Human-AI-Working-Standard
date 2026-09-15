@@ -2545,6 +2545,22 @@ run_edit_gitmodules() {
     echo "  [✓] Submodule configuration synchronized."
 }
 
+_interactive_truncate() {
+    local value="$1"
+    local maximum="${2:-48}"
+    [ "${#value}" -le "${maximum}" ] && {
+        printf '%s\n' "${value}"
+        return 0
+    }
+    printf '%s...\n' "${value:0:$((maximum - 3))}"
+}
+
+_interactive_source_label() {
+    local source_path="${1%/}"
+    source_path="${source_path##*/}"
+    _interactive_truncate "${source_path}" 24
+}
+
 interactive_menu() {
     local mode="$1"
     local title_spec="$2"
@@ -2658,15 +2674,19 @@ interactive_menu() {
         elif [ "${mode}" = "settings" ]; then
             local state_mark=""
             local detail="${item_details[$idx]:-}"
+            local state_width=7
             case "${item_states[$idx]}" in
                 on) state_mark=" [ On ]" ;;
                 off) state_mark=" [ Off ]" ;;
             esac
             if [ -n "${detail}" ]; then
-                printf "\033[2K\r%s%-*s%s \033[90m- %s\033[0m\n" \
-                    "${ptr}" "${menu_label_width}" "${item_names[$idx]}" "${state_mark}" "${detail}"
+                printf "\033[2K\r%s%-*s %-*s - \033[90m%s\033[0m\n" \
+                    "${ptr}" "${menu_label_width}" "${item_names[$idx]}" \
+                    "${state_width}" "${state_mark}" "${detail}"
             else
-                printf "\033[2K\r%s%s%s\n" "${ptr}" "${item_names[$idx]}" "${state_mark}"
+                printf "\033[2K\r%s%-*s %-*s\n" \
+                    "${ptr}" "${menu_label_width}" "${item_names[$idx]}" \
+                    "${state_width}" "${state_mark}"
             fi
         else
             local detail="${item_details[$idx]:-}"
@@ -2680,10 +2700,7 @@ interactive_menu() {
     }
 
     echo ""
-    if [ "${mode}" = "checklist" ]; then
-        echo "=== ${title} ==="
-        [ -n "${purpose}" ] && echo "${purpose}"
-    elif [ "${mode}" = "settings" ]; then
+    if [ "${mode}" = "checklist" ] || [ "${mode}" = "settings" ]; then
         echo "============================================================="
         echo "                       ${title}"
         echo "============================================================="
@@ -4240,15 +4257,16 @@ _settings_skill_selector() {
     local rows="$2"
     local wanted_source="${3:-}"
     local source_id id display description entrypoint active source_path
-    local detail label
+    local detail label source_label
     local items=() ids=()
-    local -A source_paths=() display_counts=()
+    local -A source_paths=() source_labels=() display_counts=()
 
     local source_url source_revision
     while IFS=$'\t' read -r source_id source_path source_url source_revision ||
         [ -n "${source_id}" ]; do
         [ -n "${source_id}" ] || continue
         source_paths["${source_id}"]="${source_path}"
+        source_labels["${source_id}"]="$(_interactive_source_label "${source_path}")"
     done < <(_catalog_skill_sources)
 
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
@@ -4264,9 +4282,10 @@ _settings_skill_selector() {
             source_path="${source_paths[${source_id}]:-}"
             [[ "${source_path}" == skills/packs/* ]] && continue
         fi
-        label="${display}"
+        label="$(_interactive_truncate "${display}")"
         if [ "${display_counts[${display}]:-0}" -gt 1 ]; then
-            label="${display} [${source_id}::${entrypoint}]"
+            source_label="${source_labels[${source_id}]:-${source_id}}"
+            label="$(_interactive_truncate "${display}" 36) [${source_label}]"
         fi
         detail="${description}"
         [ -n "${detail}" ] || detail="${source_id}"
@@ -4341,7 +4360,7 @@ settings_skills_page() {
     echo "  [✓] Skills catalog ready."
     local source_id id display description entrypoint active source_path
     local pack_ids=() pack_names=()
-    local -A source_counts=() source_active_counts=() source_paths=()
+    local -A source_counts=() source_active_counts=() source_paths=() source_labels=()
     local -A pack_name_counts=() seen_sources=()
 
     local source_url source_revision
@@ -4349,6 +4368,7 @@ settings_skills_page() {
         [ -n "${source_id}" ]; do
         [ -n "${source_id}" ] || continue
         source_paths["${source_id}"]="${source_path}"
+        source_labels["${source_id}"]="$(_interactive_source_label "${source_path}")"
     done < <(_catalog_skill_sources)
 
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
@@ -4366,7 +4386,7 @@ settings_skills_page() {
         [ -z "${seen_sources[${source_id}]:-}" ] || continue
         seen_sources["${source_id}"]=1
         pack_ids+=("${source_id}")
-        local pack_name="${source_path##*/}"
+        local pack_name="${source_labels[${source_id}]:-${source_id}}"
         pack_names+=("${pack_name}")
         pack_name_counts["${pack_name}"]=$(( ${pack_name_counts[${pack_name}]:-0} + 1 ))
     done <<< "${rows}"
@@ -4386,34 +4406,31 @@ settings_skills_page() {
     for ((i=0; i<${#pack_names[@]}; i++)); do
         summary_name="${pack_names[$i]}"
         if [ "${pack_name_counts[${summary_name}]:-0}" -gt 1 ]; then
-            summary_name="${summary_name} [${pack_ids[$i]}]"
+            summary_name="${summary_name} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
         fi
         [ "${#summary_name}" -gt "${summary_width}" ] && summary_width="${#summary_name}"
     done
     summary_width=$((summary_width + 2))
 
     while true; do
-        echo ""
-        echo "Skill Summary"
-        printf "  %-*s [Active: %d / %d skills]\n" \
-            "${summary_width}" "Single Skills" "${single_active}" "${single_total}"
-        printf "  %s\n" "Multi-Skill Packs"
+        local summary="Choose a skill category to edit the current draft."
+        summary+=$'\n\nSkill Summary\n  Single Skills\n  Multi-Skill Packs'
         if [ "${#pack_names[@]}" -eq 0 ]; then
-            printf "    (none)\n"
+            summary+=$'\n    (none)'
         else
             for ((i=0; i<${#pack_names[@]}; i++)); do
                 summary_name="${pack_names[$i]}"
                 if [ "${pack_name_counts[${summary_name}]:-0}" -gt 1 ]; then
-                    summary_name="${summary_name} [${pack_ids[$i]}]"
+                    summary_name="${summary_name} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
                 fi
-                printf "    %-*s [Active: %d / %d skills]\n" \
+                printf -v summary_name '    %-*s [Active: %d / %d skills]' \
                     "$((summary_width - 2))" "${summary_name}" \
                     "${source_active_counts[${pack_ids[$i]}]:-0}" \
                     "${source_counts[${pack_ids[$i]}]:-0}"
+                summary+=$'\n'"${summary_name}"
             done
         fi
-        echo ""
-        if interactive_menu menu "Configure Active Skills (Enable / Disable)|Choose a skill category to edit the current draft." \
+        if interactive_menu menu "Configure Active Skills (Enable / Disable)|${summary}" \
             "Single Skills|Configure individual skills" \
             "Multi-Skill Packs|Configure skills by pack"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
@@ -4425,10 +4442,10 @@ settings_skills_page() {
                     for ((i=0; i<${#pack_ids[@]}; i++)); do
                         pack_label="${pack_names[$i]}"
                         if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
-                            pack_label="${pack_label} [${pack_ids[$i]}]"
+                            pack_label="${pack_label} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
                         fi
                         pack_label="${pack_label} [Active: ${source_active_counts[${pack_ids[$i]}]:-0} / ${source_counts[${pack_ids[$i]}]:-0} skills]"
-                        pack_items+=("${pack_label}|Configure skills in this pack")
+                        pack_items+=("${pack_label}")
                     done
                     if interactive_menu menu "Select a Skill Pack to configure" \
                         "${pack_items[@]}"; then

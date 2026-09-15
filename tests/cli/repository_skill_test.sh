@@ -320,8 +320,7 @@ test_direct_skills_route_uses_the_settings_catalog() {
         HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" \
         bash "${FIXTURE_PROJECT}/haws.sh" skills >"${OUTPUT_FILE}" 2>&1 || return 1
     assert_output_contains 'Canonical source-one description.' || return 1
-    assert_output_contains \
-        'Shared Skill [source-one::skills/packs/source-one::shared-skill/SKILL.md]' || return 1
+    assert_output_contains 'Shared Skill [source-one]' || return 1
     grep -Fq 'settings_skills_page' "${FIXTURE_PROJECT}/haws.sh" || return 1
     ! grep -q '^run_configure_skills()' "${FIXTURE_PROJECT}/haws.sh"
 }
@@ -471,6 +470,8 @@ test_settings_skills_presents_logical_groups_and_keeps_state_draft_only() {
     assert_output_contains 'Canonical custom description.' || return 1
     assert_output_contains 'Canonical pack alpha description.' || return 1
     assert_output_contains 'source-one [Active: 1 / 2 skills]' || return 1
+    assert_output_not_contains 'Single Skills [Active:' || return 1
+    assert_output_not_contains 'Configure skills in this pack' || return 1
     assert_output_not_contains 'Filtered adapter description.' || return 1
     assert_output_not_contains 'Filtered vendor description.' || return 1
     assert_output_not_contains 'Status: [Active: 2 / 2 skills]' || return 1
@@ -513,13 +514,11 @@ test_settings_skills_preserves_old_single_and_pack_organization() {
     assert_output_contains 'Configure Active Skills' || return 1
     assert_output_contains 'Single Skills' || return 1
     assert_output_contains 'Multi-Skill Packs' || return 1
-    assert_output_contains 'Active: 1 / 1 skills' || return 1
     assert_output_contains 'Active: 2 / 2 skills' || return 1
-    local single_count_column pack_count_column
-    single_count_column="$(awk '/Single Skills[[:space:]]+\[Active:/ { print index($0, "[Active:"); exit }' "${OUTPUT_FILE}")"
+    assert_output_not_contains 'Single Skills [Active:' || return 1
+    local pack_count_column
     pack_count_column="$(awk '/pack[[:space:]]+\[Active:/ { print index($0, "[Active:"); exit }' "${OUTPUT_FILE}")"
-    [ -n "${single_count_column}" ] || return 1
-    [ "${single_count_column}" = "${pack_count_column}" ] || return 1
+    [ -n "${pack_count_column}" ] || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/skills.disabled"
 }
 
