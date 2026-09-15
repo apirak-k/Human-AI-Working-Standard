@@ -25,6 +25,12 @@ shell regression harness.
 - Do not auto-sync on exit, use Enter for a network/write/destructive default,
   duplicate Settings/Sync/Doctor state machines, or recursively treat every
   `SKILL.md` as a distinct selectable skill.
+- Treat every registered repository that contains `SKILL.md` as a HAWS skill
+  source, even when that repository also ships plugin metadata, hooks,
+  commands, references, templates, or other extensions. Keep those extensions
+  inside the source repository under `skills/packs/` or `skills/standalone/`;
+  do not create a separate Plugin catalog or move them into a root `plugins/`
+  tree. Only `SKILL.md`/`skill.md` files become selectable skill rows.
 - Retain draft-only Settings until confirmed Apply/Install/Update, bounded
   Sync, read-only Status/Doctor, and ownership-aware preview-first Uninstall.
 - Do not modify dirty skill submodules, reference checkouts, or user-owned
@@ -91,11 +97,20 @@ without changing the UI, Sync, or adapter behavior yet.
   resolver that:
 
   1. enumerates registered repositories plus the approved local custom source;
-  2. applies the existing historical filters from `get_repo_skills` before
-     classifying a file;
-  3. deduplicates by logical name only within one source;
-  4. retains same names in different sources; and
-  5. passes the canonical source-scoped identity to `_catalog_is_disabled`.
+  2. inventories all `SKILL.md`/`skill.md` files for source classification,
+     so a repository with multiple vendor-specific skill copies is still a
+     PACK while a repository with one skill file is a SINGLE;
+  3. applies the existing historical filters from `get_repo_skills` when
+     producing selectable canonical skills, without treating plugin metadata,
+     hooks, commands, references, or templates as skill rows;
+  4. deduplicates by logical name only within one source;
+  5. retains same names in different sources; and
+  6. passes the canonical source-scoped identity to `_catalog_is_disabled`.
+
+  The resolver must preserve extension files in their owning skill source.
+  A `.codex-plugin/plugin.json` or hook manifest is metadata for that source,
+  not a separate repository type and not a reason to remove the source from
+  the skill catalog.
 
   Keep output parsing localized: migrate callers in this checkpoint rather
   than making them guess old/new column layouts.
