@@ -340,7 +340,8 @@ test_auto_update_off_skips_remote_work_but_runs_explicit_sync() {
     [ "$(source_head disabled)" = "${old_head}" ] || return 1
     [ "$(source_remote_head disabled)" = "${remote_head}" ] || return 1
     assert_record "disabled::skills/packs/disabled" skipped || return 1
-    grep -F '[INFO] Auto Update is disabled; explicit synchronization remains available.' "${OUTPUT_FILE}" >/dev/null
+    grep -F '[INFO] Auto Update is disabled. Skipped checking' "${OUTPUT_FILE}" >/dev/null || return 1
+    ! grep -F 'Auto Update is disabled' "${OUTPUT_FILE}" | grep -F '[WARN]' >/dev/null
 }
 
 test_second_brain_update_applies_remote_revision() {

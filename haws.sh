@@ -1620,9 +1620,7 @@ _sync_present_result() {
     if [[ "${display_target}" == *"::"* ]]; then
         display_target="${display_target%%::*}"
     fi
-    label="$(_sync_result_label "${result}")"
-    marker="$(_sync_result_marker "${result}")"
-    printf '  %-28s %-18s %s\n' "${display_target}" "${marker} ${label}" "${detail:--}"
+    display_target="${display_target##*/}"
     case "${result}" in
         updated) SYNC_SUMMARY_UPDATED=$((SYNC_SUMMARY_UPDATED + 1)) ;;
         up-to-date) SYNC_SUMMARY_UP_TO_DATE=$((SYNC_SUMMARY_UP_TO_DATE + 1)) ;;
@@ -1631,6 +1629,12 @@ _sync_present_result() {
         failed) SYNC_SUMMARY_FAILED=$((SYNC_SUMMARY_FAILED + 1)) ;;
         timeout) SYNC_SUMMARY_TIMEOUT=$((SYNC_SUMMARY_TIMEOUT + 1)) ;;
     esac
+    if [ "${result}" = "skipped" ] && [ "${detail}" = "Auto Update is disabled" ]; then
+        return 0
+    fi
+    label="$(_sync_result_label "${result}")"
+    marker="$(_sync_result_marker "${result}")"
+    printf '  %-28s %-18s %s\n' "${display_target}" "${marker} ${label}" "${detail:--}"
 }
 
 _sync_legacy_echo() {
@@ -2051,9 +2055,18 @@ sync_run() {
     echo "TARGETS"
     printf '  %-28s %-18s %s\n' Target Result Detail
     if [ "${HAWS_AUTO_UPDATE:-on}" != on ]; then
-        echo "  [INFO] Auto Update is disabled; explicit synchronization remains available."
+        local skipped_repo_count=0
+        if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
+            skipped_repo_count=$((skipped_repo_count + 1))
+        fi
+        while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
+            [ -n "${source_id:-}" ] || continue
+            skipped_repo_count=$((skipped_repo_count + 1))
+        done < <(catalog_sources 2>/dev/null || true)
+        printf '  [INFO] Auto Update is disabled. Skipped checking %d remote repositories.\n' "${skipped_repo_count}"
+    else
+        echo "  [*] Checking configured remote targets, please wait..."
     fi
-    echo "  [*] Checking configured remote targets, please wait..."
     export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
     if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
         target_count=$((target_count + 1))
