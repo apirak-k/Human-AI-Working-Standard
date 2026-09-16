@@ -261,10 +261,18 @@ _haws_wait_for_result() {
     HAWS_RESULT_NAVIGATION=home
     export HAWS_RESULT_NAVIGATION
     [ "${HAWS_INTERACTIVE_RESULT:-0}" = 1 ] || return 0
-    [ -t 0 ] && [ -t 1 ] || return 0
-    printf '\n[Q] Return to Home\n[Any key] Exit CLI\n'
+    if [ ! -t 1 ] && [ ! -t 0 ]; then
+        return 0
+    fi
+    printf '\n[Q] Return to Home | [Any key] Exit CLI\n'
     local result_key=""
-    IFS= read -rsn1 result_key || true
+    if [ -t 0 ]; then
+        IFS= read -rsn1 result_key || true
+    elif [ -e /dev/tty ]; then
+        IFS= read -rsn1 result_key < /dev/tty 2>/dev/null || IFS= read -rsn1 result_key || true
+    else
+        IFS= read -rsn1 result_key || true
+    fi
     printf '\n'
     case "${result_key}" in
         q|Q) HAWS_RESULT_NAVIGATION=home ;;
@@ -4955,7 +4963,7 @@ settings_apply_final() {
     fi
 
     local action key value rest
-    while IFS=$'\t' read -r action key value rest || [ -n "${action:-}" ]; do
+    while IFS=$'\t' read -u 3 -r action key value rest || [ -n "${action:-}" ]; do
         [ -n "${action:-}" ] || continue
         case "${action}" in
             setting|environment) ;;
@@ -4994,7 +5002,7 @@ settings_apply_final() {
                 return 3
                 ;;
         esac
-    done < "${plan}"
+    done 3< "${plan}"
     local marker_temporary="${state}/install.complete.stage.$$"
     printf 'schema=1\tcompleted_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker_temporary}" || return 1
     _haws_state_replace "${marker_temporary}" "${state}/install.complete"
