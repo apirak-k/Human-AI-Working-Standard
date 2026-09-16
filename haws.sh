@@ -1455,20 +1455,37 @@ _manifest_has_skill_target() {
     return 1
 }
 
-_haws_skill_link_owned_record() {
-    local wanted="${1:-}"
-    local wanted_native="$(_uninstall_native_path "${wanted}")"
+declare -gA HAWS_OWNERSHIP_SKILLS_CACHE=()
+declare -g HAWS_OWNERSHIP_SKILLS_LOADED=0
+
+_haws_ownership_skills_load() {
+    [ "${HAWS_OWNERSHIP_SKILLS_LOADED:-0}" -eq 1 ] && return 0
+    [[ "$(declare -p HAWS_OWNERSHIP_SKILLS_CACHE 2>/dev/null)" =~ "declare -A" ]] || declare -gA HAWS_OWNERSHIP_SKILLS_CACHE=()
     local group kind path source fingerprint extra path_native
-    while IFS=$'\t' read -r group kind path source fingerprint extra ||
-        [ -n "${group}" ]; do
+    while IFS=$'\t' read -r group kind path source fingerprint extra || [ -n "${group}" ]; do
         [ "${group}" = skills ] || continue
         path_native="$(_uninstall_native_path "${path}")"
-        [ "${path_native}" = "${wanted_native}" ] || continue
         if ownership_verify "${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}"; then
-            printf '%s\t%s\t%s\t%s\n' "${kind}" "${path}" "${source}" "${fingerprint}"
-            return 0
+            HAWS_OWNERSHIP_SKILLS_CACHE["${path_native}"]="${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}"
         fi
     done < <(ownership_list skills)
+    HAWS_OWNERSHIP_SKILLS_LOADED=1
+}
+
+_haws_ownership_skills_invalidate() {
+    declare -gA HAWS_OWNERSHIP_SKILLS_CACHE=()
+    HAWS_OWNERSHIP_SKILLS_LOADED=0
+}
+
+_haws_skill_link_owned_record() {
+    local wanted="${1:-}"
+    [ -n "${wanted}" ] || return 1
+    local wanted_native="$(_uninstall_native_path "${wanted}")"
+    _haws_ownership_skills_load
+    if [[ -v HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"] ]]; then
+        printf '%s\n' "${HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]}"
+        return 0
+    fi
     return 1
 }
 
@@ -1481,6 +1498,8 @@ _haws_skill_link_remove_if_owned() {
     record="$(_haws_skill_link_owned_record "${1:-}" 2>/dev/null)" || return 1
     IFS=$'\t' read -r kind path source fingerprint <<< "${record}"
     _uninstall_remove_path "${kind}" "${path}"
+    local wanted_native="$(_uninstall_native_path "${1:-}")"
+    unset 'HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]' 2>/dev/null || true
 }
 
 _haws_record_skill_link() {
@@ -1490,6 +1509,7 @@ _haws_record_skill_link() {
     fingerprint="$(readlink "${dest}" 2>/dev/null || true)"
     [ -n "${fingerprint}" ] || fingerprint="${source}"
     ownership_record skills "${kind}" "${dest}" "${source}" "${fingerprint}"
+    _haws_ownership_skills_invalidate
 }
 
 catalog_validate_url() {
@@ -2227,7 +2247,6 @@ run_sync() {
         fi
         if [ -e "${dest}" ] || [ -L "${dest}" ]; then
             if ! _haws_skill_link_remove_if_owned "${dest}"; then
-                echo "  [SKIPPED] Preserved existing skill link: ${dest}"
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -2390,6 +2409,9 @@ run_sync() {
             fi
         fi
     done <<< "${skill_rows}"
+    if [ "${SKIPPED_COUNT:-0}" -gt 0 ]; then
+        echo "  [✓] ${SKIPPED_COUNT} existing skill links preserved (up-to-date)."
+    fi
 
     if [ "$DETECTED_GEMINI" = true ]; then
         local target_json="${HOME}/.gemini/config/skills.json"
