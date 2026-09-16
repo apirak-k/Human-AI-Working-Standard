@@ -788,8 +788,9 @@ extract_skill_desc() {
         local in_fm=0
         local capturing_multiline=0
         while IFS= read -r line || [ -n "$line" ]; do
-            local line_trim
-            line_trim="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            local line_trim="$line"
+            line_trim="${line_trim#"${line_trim%%[![:space:]]*}"}"
+            line_trim="${line_trim%"${line_trim##*[![:space:]]}"}"
             if [ "$line_trim" = "---" ]; then
                 if [ "$in_fm" -eq 0 ]; then
                     in_fm=1
@@ -811,7 +812,13 @@ extract_skill_desc() {
 
             if [[ "$line" =~ ^[[:space:]]*description:[[:space:]]*(.*) ]]; then
                 local val="${BASH_REMATCH[1]}"
-                val="$(echo "$val" | sed -E 's/^["'"'"']|["'"'"']$//g' | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                val="${val#\"}"
+                val="${val%\"}"
+                val="${val#\'}"
+                val="${val%\'}"
+                val="${val%$'\r'}"
+                val="${val#"${val%%[![:space:]]*}"}"
+                val="${val%"${val##*[![:space:]]}"}"
                 if [ "$val" = ">" ] || [ "$val" = "|" ] || [ -z "$val" ]; then
                     capturing_multiline=1
                 else
@@ -825,8 +832,9 @@ extract_skill_desc() {
         if [ -z "$sdesc" ]; then
             local fm_count=0
             while IFS= read -r line || [ -n "$line" ]; do
-                local lt
-                lt="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                local lt="$line"
+                lt="${lt#"${lt%%[![:space:]]*}"}"
+                lt="${lt%"${lt##*[![:space:]]}"}"
                 if [ "$lt" = "---" ]; then
                     fm_count=$((fm_count + 1))
                     continue
