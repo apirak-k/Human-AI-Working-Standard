@@ -155,7 +155,8 @@ test_settings_repositories_route_keeps_old_actions() {
     assert_output_contains 'Repositories' || return 1
     assert_output_contains 'Add Git Repository' || return 1
     assert_output_contains 'Remove Git Repository' || return 1
-    assert_output_contains 'Back to Settings' || return 1
+    assert_output_contains '[Q] Back' || return 1
+    ! grep -F 'Back to Settings' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.gitmodules"
 }
 

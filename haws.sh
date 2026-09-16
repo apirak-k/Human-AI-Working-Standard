@@ -4517,8 +4517,7 @@ settings_repositories_page() {
     while true; do
         if ! interactive_menu menu "Repositories|Manage repository sources in the current draft." \
             "Add Git Repository|Add a repository to the draft" \
-            "Remove Git Repository|Remove a repository from the draft" \
-            "Back to Settings|Return without changing the draft"; then
+            "Remove Git Repository|Remove a repository from the draft"; then
             return 0
         fi
         case "${INTERACTIVE_MENU_SELECTION}" in
@@ -5045,7 +5044,6 @@ home_run() {
         printf '  Last Sync     : %s\n' "$(_health_last_sync)"
         printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
         printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
-        printf '  Diagnostics   : Use Doctor for full diagnostics\n'
         echo ""
         export HAWS_MENU_SUPPRESS_HEADER=1
         if interactive_menu menu "HAWS Home|Choose an action for your installed HAWS environment.|1" \

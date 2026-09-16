@@ -107,7 +107,7 @@ test_home_shows_local_status_without_health_page() {
     assert_output_contains 'Never' || return 1
     assert_output_contains 'Auto Update' || return 1
     assert_output_contains 'Second Brain' || return 1
-    assert_output_contains 'Use Doctor for full diagnostics' || return 1
+    ! grep -F 'Diagnostics' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     ! grep -F 'Overall' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     ! grep -F 'HAWS Health' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     ! grep -F 'FINDINGS' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1

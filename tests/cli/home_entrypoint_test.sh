@@ -38,7 +38,7 @@ test_bare_launch_opens_home_from_local_state() {
     assert_output_contains 'Up to date' || return 1
     assert_output_contains 'Auto Update' || return 1
     assert_output_contains 'Second Brain' || return 1
-    assert_output_contains 'Use Doctor for full diagnostics' || return 1
+    ! grep -F 'Diagnostics' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
     ! grep -F '[*] Loading current status, please wait...' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
