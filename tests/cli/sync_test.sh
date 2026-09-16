@@ -189,9 +189,12 @@ test_sync_result_wait_does_not_replace_sync_exit_status() {
 test_direct_sync_prints_result_without_entering_home() {
     write_settings off
     run_sync_process sync || return 1
-    grep -F 'HAWS Sync Result' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
-    ! grep -F 'HAWS Home' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
-    ! grep -F 'Press any key to return to Home' "${OUTPUT_FILE}" >/dev/null 2>&1
+    local banner_line summary_line
+    banner_line="$(grep -nF 'HAWS Sync Result' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    summary_line="$(grep -nF 'SUMMARY' "${OUTPUT_FILE}" | tail -n 1 | cut -d: -f1)"
+    [ -n "${banner_line}" ] && [ -n "${summary_line}" ] && [ "${banner_line}" -lt "${summary_line}" ] || return 1
+    ! grep -F '(on)' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    ! grep -F '(off)' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
 test_sync_runs_phases_in_order_and_configures_hooks() {

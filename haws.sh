@@ -202,16 +202,12 @@ _health_print_summary() {
     for env in claude gemini agents; do
         env_path="$(_health_env_path "$env")"
         case "$env" in claude) label=Claude ;; gemini) label=Gemini ;; agents) label=Codex ;; esac
-        if [ -n "${DISABLED_ENVS[$env]-}" ]; then
-            label+=" (off)"
-        elif [ -d "$env_path" ]; then
-            label+=" (on)"
-        else
-            label+=" (not found)"
+        if [ -z "${DISABLED_ENVS[$env]-}" ] && [ -d "$env_path" ]; then
+            [ -n "$ai_summary" ] && ai_summary+=", "
+            ai_summary+="$label"
         fi
-        [ -n "$ai_summary" ] && ai_summary+=", "
-        ai_summary+="$label"
     done
+    [ -n "$ai_summary" ] || ai_summary="None"
     printf '  Overall       : %s\n' "$(health_classify)"
     printf '  AI            : %s\n' "$ai_summary"
     printf '  Skills        : %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
@@ -2494,6 +2490,16 @@ EOF
     fi
     echo ""
 
+    echo "============================================================="
+    echo "                    HAWS Sync Result"
+    echo "============================================================="
+    if [ "${sync_status}" -eq 0 ]; then
+        echo "[PASS] HAWS synchronization completed"
+    else
+        echo "[WARN] HAWS synchronization completed with target issues"
+    fi
+    echo ""
+
     # 9. Summary & Fast Status
     echo "SUMMARY"
     echo "Global Rules  : ${RULES_LINKED}"
@@ -2505,14 +2511,6 @@ EOF
     _health_collect
     _health_print_summary
     echo ""
-    echo "============================================================="
-    echo "                    HAWS Sync Result"
-    echo "============================================================="
-    if [ "${sync_status}" -eq 0 ]; then
-        echo "[PASS] HAWS synchronization completed"
-    else
-        echo "[WARN] HAWS synchronization completed with target issues"
-    fi
     local wait_status=0
     _haws_wait_for_result || wait_status=$?
     [ "${wait_status}" -eq 0 ] || return "${wait_status}"
