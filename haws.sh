@@ -4858,16 +4858,75 @@ settings_preview() {
     [ "${printed_source}" -eq 1 ] || echo "  Default"
     echo ""
     echo "Skills"
-    local skill_rows skill_id skill_display skill_source_id skill_description entrypoint active printed_skill=0
+    local skill_rows skill_id skill_display skill_source_id skill_description entrypoint active
+    local -A preview_source_counts=()
+    local -A preview_source_active=()
+    local -A preview_source_paths=()
+    local -A preview_source_names=()
+    local -a preview_pack_ids=()
+    local -a preview_single_skills=()
+    local source_path source_url source_revision
+
+    while IFS=$'\t' read -r source_id source_path source_url source_revision || [ -n "${source_id}" ]; do
+        [ -n "${source_id}" ] || continue
+        preview_source_paths["${source_id}"]="${source_path}"
+        preview_source_names["${source_id}"]="$(_interactive_source_label "${source_path}")"
+    done < <(_catalog_skill_sources)
+
     skill_rows="$(catalog_skills)"
-    while IFS=$'\t' read -r skill_source_id skill_id skill_display skill_description entrypoint active ||
-        [ -n "${skill_id}" ]; do
+    while IFS=$'\t' read -r skill_source_id skill_id skill_display skill_description entrypoint active || [ -n "${skill_id}" ]; do
         [ -n "${skill_id}" ] || continue
-        _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}" || continue
-        echo "  ${skill_display} [${skill_source_id}::${entrypoint}]"
-        printed_skill=1
+        preview_source_counts["${skill_source_id}"]=$(( ${preview_source_counts["${skill_source_id}"]:-0} + 1 ))
+        if _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}"; then
+            preview_source_active["${skill_source_id}"]=$(( ${preview_source_active["${skill_source_id}"]:-0} + 1 ))
+        fi
     done <<< "${skill_rows}"
-    [ "${printed_skill}" -eq 1 ] || echo "  Default"
+
+    local seen_packs=" "
+    while IFS=$'\t' read -r skill_source_id skill_id skill_display skill_description entrypoint active || [ -n "${skill_id}" ]; do
+        [ -n "${skill_id}" ] || continue
+        source_path="${preview_source_paths[${skill_source_id}]:-}"
+        local is_pack=0
+        if [[ "${source_path}" != skills/custom* ]]; then
+            if [[ "${source_path}" == skills/packs/* ]] || [ "${preview_source_counts[${skill_source_id}]:-0}" -gt 1 ]; then
+                is_pack=1
+            fi
+        fi
+
+        if [ "${is_pack}" -eq 1 ]; then
+            if [[ "${seen_packs}" != *" ${skill_source_id} "* ]]; then
+                seen_packs+="${skill_source_id} "
+                preview_pack_ids+=("${skill_source_id}")
+            fi
+        else
+            if _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}"; then
+                preview_single_skills+=("${skill_display}")
+            fi
+        fi
+    done <<< "${skill_rows}"
+
+    local printed_skills_section=0
+    if [ "${#preview_pack_ids[@]}" -gt 0 ]; then
+        echo "  Multi-Skill Packs:"
+        local pack_id pack_name active_count total_count
+        for pack_id in "${preview_pack_ids[@]}"; do
+            pack_name="${preview_source_names[${pack_id}]:-${pack_id##*/}}"
+            active_count="${preview_source_active[${pack_id}]:-0}"
+            total_count="${preview_source_counts[${pack_id}]:-0}"
+            echo "    • ${pack_name} (${active_count} / ${total_count} skills active)"
+        done
+        printed_skills_section=1
+    fi
+
+    if [ "${#preview_single_skills[@]}" -gt 0 ]; then
+        echo "  Single Skills:"
+        local single_list
+        single_list="$(IFS=,; echo "${preview_single_skills[*]}")"
+        echo "    • ${single_list//,/, }"
+        printed_skills_section=1
+    fi
+
+    [ "${printed_skills_section}" -eq 1 ] || echo "  Default"
     echo ""
     echo "AI Environments"
     local environment
@@ -5258,7 +5317,7 @@ run_lifecycle() {
     fi
 }
 
-if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ]; then
+if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
     haws_set_terminal_title
 case "${COMMAND}" in
     help|--help|-h)

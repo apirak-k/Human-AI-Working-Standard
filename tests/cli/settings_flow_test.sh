@@ -89,6 +89,22 @@ test_preview_enter_does_not_apply_by_default() {
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete"
 }
 
+test_preview_screen_renders_compact_packs_and_singles_without_paths() {
+    git -C "${FIXTURE_PROJECT}" init -q
+    git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-pack.path "skills/packs/demo-pack"
+    git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-pack.url "https://example.invalid/demo-pack.git"
+
+    run_haws_input $'\n\nq' || true
+    assert_output_contains 'HAWS — Preview Install' || return 1
+    assert_output_contains 'Skills' || return 1
+    assert_output_contains 'Multi-Skill Packs:' || return 1
+    assert_output_contains 'demo-pack (2 / 2 skills active)' || return 1
+    assert_output_contains 'Single Skills:' || return 1
+    assert_output_contains 'demo-one' || return 1
+    assert_output_not_contains '::' || return 1
+    assert_output_not_contains 'SKILL.md' || return 1
+}
+
 test_customize_setup_reaches_lifecycle_neutral_settings() {
     local down=$'\033[B'
     run_haws_input "${down}\nq" || return 1
@@ -495,6 +511,7 @@ fi
 run_test test_first_use_opens_setup_without_mutation
 run_test test_default_setup_reaches_preview_install_before_cancel
 run_test test_preview_enter_does_not_apply_by_default
+run_test test_preview_screen_renders_compact_packs_and_singles_without_paths
 run_test test_customize_setup_reaches_lifecycle_neutral_settings
 run_test test_settings_exposes_second_brain_detail_without_toggle
 run_test test_second_brain_local_only_cancel_preserves_local_only_mode
