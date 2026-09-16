@@ -4707,8 +4707,8 @@ settings_page() {
         "Repositories|Existing repository sources|-"
         "Skills|${skills_detail}|-"
         "AI Environments|${environment_count} selected|-"
-        "Second Brain|View status / Connect / Disconnect >|"
-        "Auto Update|Update HAWS sources during Sync|${HAWS_DRAFT_AUTO_UPDATE:-on}"
+        "Second Brain|[$(_second_brain_status_label)] Cloud sync / Configure|"
+        "Auto Update|[Toggle] Update HAWS sources during Sync|${HAWS_DRAFT_AUTO_UPDATE:-on}"
         "Apply|Accept the draft for preview|-"
         "Reset to Defaults|Replace the current draft|-"
     )

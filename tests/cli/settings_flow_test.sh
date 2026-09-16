@@ -94,9 +94,11 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     run_haws_input "${down}\nq" || return 1
     assert_output_contains 'HAWS Settings' || return 1
     assert_output_contains 'Second Brain' || return 1
-    assert_output_contains 'View status / Connect / Disconnect' || return 1
+    assert_output_contains '[Local-Only] Cloud sync / Configure' || return 1
+    assert_output_not_contains 'Disconnect >' || return 1
     assert_output_not_contains 'Second Brain Remote' || return 1
     assert_output_contains 'Auto Update' || return 1
+    assert_output_contains '[Toggle] Update HAWS sources during Sync' || return 1
     assert_output_contains 'Apply' || return 1
     assert_output_not_contains 'Discard Changes|Return without saving' || return 1
     assert_output_contains 'Existing repository sources' || return 1
@@ -108,8 +110,10 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
 test_settings_exposes_second_brain_detail_without_toggle() {
     run_haws_input 'q' settings || true
     assert_output_contains 'Second Brain' || return 1
-    assert_output_contains 'View status / Connect / Disconnect' || return 1
+    assert_output_contains '[Local-Only] Cloud sync / Configure' || return 1
+    assert_output_not_contains 'Disconnect >' || return 1
     assert_output_contains 'Auto Update' || return 1
+    assert_output_contains '[Toggle] Update HAWS sources during Sync' || return 1
     assert_output_not_contains 'Second Brain Remote' || return 1
     ! grep -E 'Second Brain[[:space:]]+\[ (On|Off) \]' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
@@ -129,6 +133,7 @@ test_second_brain_connected_detail_disconnects_after_yes() {
     local down=$'\033[B'
     local input="${down}${down}${down}\ny\nq"
     run_haws_input "${input}" settings || true
+    assert_output_contains '[Connected] Cloud sync / Configure' || return 1
     assert_output_contains 'ONLINE / CONNECTED' || return 1
     assert_output_contains 'Remote URL' || return 1
     assert_output_contains 'Total Commits' || return 1
