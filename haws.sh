@@ -1303,7 +1303,8 @@ catalog_source_kind() {
     local source_id="${1:-}"
     local path url revision source_dir raw_skill_count kind
     [ -n "${source_id}" ] || return 1
-    if [ -n "${HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]:-}" ]; then
+    [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]] || declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
+    if [[ -v HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"] ]]; then
         printf '%s\n' "${HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]}"
         return 0
     fi
@@ -4258,7 +4259,8 @@ _settings_ensure_skill_draft() {
 }
 
 settings_draft_load() {
-    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE HAWS_CATALOG_SOURCE_KIND_CACHE
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
     settings_load || return $?
     disabled_environments_load
     HAWS_PERSIST_AUTO_UPDATE="${HAWS_AUTO_UPDATE}"
@@ -4298,7 +4300,8 @@ settings_draft_discard() {
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED \
         HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE \
-        HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE HAWS_CATALOG_SOURCE_KIND_CACHE
+        HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
 }
 
 _settings_draft_is_dirty() {

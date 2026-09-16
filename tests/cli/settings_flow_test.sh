@@ -427,6 +427,27 @@ test_settings_repository_remove_shows_loading_status() {
     assert_output_contains '[*] Loading repository sources, please wait...' || return 1
 }
 
+test_settings_repository_remove_displays_pack_and_single_without_unbound_variable() {
+    git -C "${FIXTURE_PROJECT}" init -q
+    git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-pack.path "skills/packs/demo-pack"
+    git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-pack.url "https://example.invalid/demo-pack.git"
+    git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-single.path "skills/standalone/demo-single"
+    git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-single.url "https://example.invalid/demo-single.git"
+    mkdir -p "${FIXTURE_PROJECT}/skills/standalone/demo-single"
+    printf '%s\n' '---' 'name: demo-single' 'description: Single skill.' '---' \
+        > "${FIXTURE_PROJECT}/skills/standalone/demo-single/SKILL.md"
+
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="\n"
+    input+="${down}\n"
+    input+="qqq"
+    run_haws_input "${input}" || true
+    assert_output_not_contains 'unbound variable' || return 1
+    assert_output_contains '[PACK] skills/packs/demo-pack' || return 1
+    assert_output_contains '[SINGLE] skills/standalone/demo-single' || return 1
+}
+
 test_settings_auto_update_toggle_alignment_equal_columns() {
     local down=$'\033[B'
     local input="${down}\n"
@@ -499,6 +520,7 @@ run_test test_second_brain_detail_rejects_invalid_url
 run_test test_second_brain_settings_have_no_deferred_remote_validation
 run_test test_successful_install_records_completion_and_next_launch_home
 run_test test_settings_repository_remove_shows_loading_status
+run_test test_settings_repository_remove_displays_pack_and_single_without_unbound_variable
 run_test test_settings_auto_update_toggle_alignment_equal_columns
 
 echo "CLI settings-flow tests: ${passed} passed, ${failed} failed"
