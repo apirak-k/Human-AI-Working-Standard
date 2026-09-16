@@ -1324,11 +1324,21 @@ catalog_source_kind() {
         printf '%s\n' "${kind}"
         return 0
     fi
-    local skill_f
+    local skill_f skill_name
+    local -A seen_skill_names=()
     raw_skill_count=0
     while IFS= read -r -d '' skill_f; do
         [ -n "${skill_f}" ] || continue
         _catalog_skill_is_eligible "${skill_f}" || continue
+        skill_name="$(extract_skill_name "${skill_f}")"
+        [ -n "${skill_name}" ] || continue
+        case "${skill_name}" in
+            pi-planning-with-files|planning-with-files-v*|design-taste-frontend-v1)
+                continue
+                ;;
+        esac
+        [ -n "${seen_skill_names["${skill_name}"]:-}" ] && continue
+        seen_skill_names["${skill_name}"]=1
         raw_skill_count=$((raw_skill_count + 1))
     done < <(find "${source_dir}" -type f \( -name SKILL.md -o -name skill.md \) -print0 2>/dev/null)
     if [ "${raw_skill_count}" -eq 1 ]; then
