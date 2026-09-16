@@ -412,6 +412,28 @@ test_haws_update_preserves_the_current_branch() {
     assert_record haws updated
 }
 
+test_path_scoped_diff_skips_checkout_when_active_skills_unchanged() {
+    add_source partial
+    local seed="${FIXTURE_ROOT}/seed-partial"
+    local old_head
+    old_head="$(source_head partial)" || return 1
+    printf 'remote non-skill change\n' > "${seed}/README.md"
+    git -C "${seed}" add README.md
+    git -C "${seed}" commit -q -m "update docs only"
+    git -C "${seed}" push -q origin main || return 1
+    local new_head
+    new_head="$(git -C "${seed}" rev-parse HEAD)" || return 1
+
+    write_settings on
+    source_haws || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    [ "$(source_head partial)" = "${old_head}" ] || return 1
+    [ "$(source_head partial)" != "${new_head}" ] || return 1
+    assert_record "partial::skills/packs/partial" up-to-date || return 1
+    grep -F "active skills unchanged" "${FIXTURE_REPO}/.haws/state/sync-state.tsv" >/dev/null
+}
+
 test_lock_releases_after_success_and_failure() {
     add_source success
     write_settings off
@@ -486,6 +508,7 @@ else
     run_test test_second_brain_update_applies_remote_revision
     run_test test_explicit_update_uses_same_safe_application
     run_test test_haws_update_preserves_the_current_branch
+    run_test test_path_scoped_diff_skips_checkout_when_active_skills_unchanged
     run_test test_lock_releases_after_success_and_failure
     run_test test_lock_releases_after_interrupt
 fi

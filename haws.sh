@@ -1587,7 +1587,8 @@ _sync_fetch_candidate() {
     if [ -n "${HAWS_TEST_SYNC_FETCH_DELAY:-}" ]; then
         sleep "${HAWS_TEST_SYNC_FETCH_DELAY}"
     fi
-    git -C "${source_dir}" fetch --quiet "${fetch_remote}" "+${fetch_source}:${candidate_ref}"
+    git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 \
+        -C "${source_dir}" fetch --quiet "${fetch_remote}" "+${fetch_source}:${candidate_ref}"
 }
 
 _sync_result_label() {
@@ -1614,10 +1615,13 @@ _sync_result_marker() {
 
 _sync_present_result() {
     local target="${1:-}" result="${2:-}" detail="${3:-}"
-    local label marker
+    local label marker display_target="${target}"
+    if [[ "${display_target}" == *"::"* ]]; then
+        display_target="${display_target%%::*}"
+    fi
     label="$(_sync_result_label "${result}")"
     marker="$(_sync_result_marker "${result}")"
-    printf '  %-28s %-18s %s\n' "${target}" "${marker} ${label}" "${detail:--}"
+    printf '  %-28s %-18s %s\n' "${display_target}" "${marker} ${label}" "${detail:--}"
     case "${result}" in
         updated) SYNC_SUMMARY_UPDATED=$((SYNC_SUMMARY_UPDATED + 1)) ;;
         up-to-date) SYNC_SUMMARY_UP_TO_DATE=$((SYNC_SUMMARY_UP_TO_DATE + 1)) ;;
@@ -1693,17 +1697,24 @@ source_preflight() {
     source_dir="$(_catalog_repo_dir)/${source_path}"
     [ -d "${source_dir}" ] || return 4
     git -C "${source_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 4
-    if ! status="$(git -C "${source_dir}" status --porcelain --untracked-files=all 2>/dev/null)"; then
-        return 4
+
+    # Fast path: check in-memory skill catalog first; if source has no active skills, bypass git status
+    local catalog_data="${HAWS_CATALOG_SKILLS_CACHE:-}"
+    if [ -z "${catalog_data}" ]; then
+        catalog_data="$(catalog_skills 2>/dev/null || true)"
     fi
-    [ -z "${status}" ] || return 2
     while IFS=$'\t' read -r skill_source _ _ _ _ skill_active || [ -n "${skill_source:-}" ]; do
         if [ "${skill_source:-}" = "${source_id}" ] && [ "${skill_active:-0}" = 1 ]; then
             has_active=1
             break
         fi
-    done < <(catalog_skills 2>/dev/null || true)
+    done <<< "${catalog_data}"
     [ "${has_active}" -eq 1 ] || return 3
+
+    if ! status="$(git -C "${source_dir}" status --porcelain --untracked-files=all 2>/dev/null)"; then
+        return 4
+    fi
+    [ -z "${status}" ] || return 2
     return 0
 }
 
@@ -1715,6 +1726,10 @@ source_candidate_validate() {
     source_path="$(_sync_source_path "${source_id}")" || return 1
     source_dir="$(_catalog_repo_dir)/${source_path}"
     [ -d "${source_dir}" ] || return 1
+    local catalog_data="${HAWS_CATALOG_SKILLS_CACHE:-}"
+    if [ -z "${catalog_data}" ]; then
+        catalog_data="$(catalog_skills 2>/dev/null || true)"
+    fi
     while IFS=$'\t' read -r skill_source skill_id display _ entrypoint active ||
         [ -n "${skill_id:-}" ]; do
         [ "${skill_source:-}" = "${source_id}" ] && [ "${active:-0}" = 1 ] || continue
@@ -1722,7 +1737,7 @@ source_candidate_validate() {
         git -C "${source_dir}" cat-file -e "${revision}:${entrypoint}" >/dev/null 2>&1 || return 1
         candidate_content="$(git -C "${source_dir}" show "${revision}:${entrypoint}" 2>/dev/null || true)"
         [ -n "${candidate_content//[[:space:]]/}" ] || return 1
-    done < <(catalog_skills 2>/dev/null || true)
+    done <<< "${catalog_data}"
     [ "${found}" -eq 1 ]
 }
 
@@ -1863,6 +1878,34 @@ sync_target() {
         if [ "${target}" = haws ]; then
             git -C "${source_dir}" merge --ff-only "${candidate_revision}" >/dev/null 2>&1 || activation_status=$?
         else
+            # Path-scoped diff: check if candidate modified any active skills for this target
+            local active_paths=()
+            local catalog_data="${HAWS_CATALOG_SKILLS_CACHE:-}"
+            [ -n "${catalog_data}" ] || catalog_data="$(catalog_skills 2>/dev/null || true)"
+            local skill_src _1 _2 _3 entrypoint act
+            while IFS=$'\t' read -r skill_src _1 _2 _3 entrypoint act || [ -n "${skill_src:-}" ]; do
+                if [ "${skill_src:-}" = "${target}" ] && [ "${act:-0}" = 1 ]; then
+                    local skill_rel_dir
+                    skill_rel_dir="$(dirname "${entrypoint}")"
+                    if [ "${skill_rel_dir}" = "." ] || [ -z "${skill_rel_dir}" ]; then
+                        active_paths+=("${entrypoint}")
+                    else
+                        active_paths+=("${skill_rel_dir}")
+                    fi
+                fi
+            done <<< "${catalog_data}"
+
+            if [ "${#active_paths[@]}" -gt 0 ]; then
+                local active_diff
+                active_diff="$(git -C "${source_dir}" diff --name-only "${current}" "${candidate_revision}" -- "${active_paths[@]}" 2>/dev/null || true)"
+                if [ -z "${active_diff}" ]; then
+                    _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+                    sync_result_write "${target}" up-to-date "${current}" "active skills unchanged" || return 1
+                    _sync_legacy_echo "${target}: up-to-date"
+                    return 0
+                fi
+            fi
+
             git -C "${source_dir}" checkout --detach "${candidate_revision}" >/dev/null 2>&1 || activation_status=$?
         fi
         if [ "${activation_status}" -eq 0 ]; then
@@ -2005,11 +2048,12 @@ sync_run() {
     printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
     echo ""
     echo "TARGETS"
-    printf '  %-28s %-10s %s\n' Target Result Detail
+    printf '  %-28s %-18s %s\n' Target Result Detail
     if [ "${HAWS_AUTO_UPDATE:-on}" != on ]; then
         echo "  [INFO] Auto Update is disabled; explicit synchronization remains available."
     fi
     echo "  [*] Checking configured remote targets, please wait..."
+    export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
     if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
         target_count=$((target_count + 1))
         sync_target haws || status=1
@@ -2024,6 +2068,7 @@ sync_run() {
         sync_second_brain_target || status=1
     fi
     [ "${target_count}" -gt 0 ] || echo "  [INFO] No remote targets enabled"
+    unset HAWS_CATALOG_SKILLS_CACHE
 
     if sync_lock_release; then
         :
@@ -2098,6 +2143,12 @@ run_sync() {
         local label="$3"
         mkdir -p "$(dirname "${dest}")"
 
+        # Fast path: same inode / hardlink (0 processes spawned, microsecond test)
+        if [ -f "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+            return 0
+        fi
+
         if [ -L "${dest}" ]; then
             local current_target
             current_target="$(readlink "${dest}" || true)"
@@ -2107,7 +2158,7 @@ run_sync() {
             fi
             rm -f "${dest}"
         elif [ -f "${dest}" ]; then
-            if diff -q --strip-trailing-cr "${src}" "${dest}" >/dev/null 2>&1; then
+            if cmp -s "${src}" "${dest}" || diff -q --strip-trailing-cr "${src}" "${dest}" >/dev/null 2>&1; then
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -2145,6 +2196,15 @@ run_sync() {
         [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
         local dest_marker="${dest}/SKILL.md"
         [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
+
+        # Fast path: check if destination marker matches src marker (junction / same file)
+        if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ]; then
+            if [ "${src_marker}" -ef "${dest_marker}" ] || cmp -s "${src_marker}" "${dest_marker}" || diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
+                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                return 0
+            fi
+        fi
+
         local current_target=""
         [ -L "${dest}" ] && current_target="$(readlink "${dest}" 2>/dev/null || true)"
         if [ -n "${current_target}" ] && [ "${current_target}" = "${src}" ]; then
@@ -2157,10 +2217,6 @@ run_sync() {
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
-        elif [ -f "${src_marker}" ] && [ -f "${dest_marker}" ] &&
-            diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
-            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-            return 0
         fi
 
         if [ "$IS_WINDOWS" = true ]; then
