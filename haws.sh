@@ -4293,7 +4293,7 @@ _settings_skill_selector() {
     local source_id id display description entrypoint active source_path
     local detail label source_label
     local items=() ids=()
-    local -A source_paths=() source_labels=() display_counts=()
+    local -A source_paths=() source_labels=() display_counts=() source_skill_counts=()
 
     local source_url source_revision
     while IFS=$'\t' read -r source_id source_path source_url source_revision ||
@@ -4306,15 +4306,22 @@ _settings_skill_selector() {
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         display_counts["${display}"]=$(( ${display_counts[${display}]:-0} + 1 ))
+        source_skill_counts["${source_id}"]=$(( ${source_skill_counts[${source_id}]:-0} + 1 ))
     done <<< "${rows}"
 
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
+        source_path="${source_paths[${source_id}]:-}"
+        local is_pack=0
+        if [[ "${source_path}" != skills/custom* ]]; then
+            if [[ "${source_path}" == skills/packs/* ]] || [ "${source_skill_counts[${source_id}]:-0}" -gt 1 ]; then
+                is_pack=1
+            fi
+        fi
         if [ -n "${wanted_source}" ]; then
             [ "${source_id}" = "${wanted_source}" ] || continue
         else
-            source_path="${source_paths[${source_id}]:-}"
-            [[ "${source_path}" == skills/packs/* ]] && continue
+            [ "${is_pack}" -eq 0 ] || continue
         fi
         label="$(_interactive_truncate "${display}")"
         if [ "${display_counts[${display}]:-0}" -gt 1 ]; then
@@ -4430,7 +4437,13 @@ settings_skills_page() {
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         source_path="${source_paths[${source_id}]:-}"
-        [[ "${source_path}" == skills/packs/* ]] || continue
+        local is_pack=0
+        if [[ "${source_path}" != skills/custom* ]]; then
+            if [[ "${source_path}" == skills/packs/* ]] || [ "${source_counts[${source_id}]:-0}" -gt 1 ]; then
+                is_pack=1
+            fi
+        fi
+        [ "${is_pack}" -eq 1 ] || continue
         [ -z "${seen_sources[${source_id}]:-}" ] || continue
         seen_sources["${source_id}"]=1
         pack_ids+=("${source_id}")
@@ -4443,7 +4456,13 @@ settings_skills_page() {
     local single_source_id single_source_path
     for single_source_id in "${!source_counts[@]}"; do
         single_source_path="${source_paths[${single_source_id}]:-}"
-        [[ "${single_source_path}" == skills/packs/* ]] && continue
+        local is_pack=0
+        if [[ "${single_source_path}" != skills/custom* ]]; then
+            if [[ "${single_source_path}" == skills/packs/* ]] || [ "${source_counts[${single_source_id}]:-0}" -gt 1 ]; then
+                is_pack=1
+            fi
+        fi
+        [ "${is_pack}" -eq 1 ] && continue
         single_total=$((single_total + ${source_counts[${single_source_id}]:-0}))
         single_active=$((single_active + ${source_active_counts[${single_source_id}]:-0}))
     done
