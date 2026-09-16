@@ -71,6 +71,7 @@ populate_full_fixture() {
     cp -r "${PROJECT_ROOT}/core" "${FIXTURE_PROJECT}/" 2>/dev/null || mkdir -p "${FIXTURE_PROJECT}/core"
     cp -r "${PROJECT_ROOT}/agents" "${FIXTURE_PROJECT}/" 2>/dev/null || mkdir -p "${FIXTURE_PROJECT}/agents"
     cp -r "${PROJECT_ROOT}/ai-configs" "${FIXTURE_PROJECT}/" 2>/dev/null || mkdir -p "${FIXTURE_PROJECT}/ai-configs"
+    rm -f "${FIXTURE_PROJECT}/ai-configs/environments.disabled" "${FIXTURE_PROJECT}/skills/skills.disabled" 2>/dev/null || true
     cp -r "${PROJECT_ROOT}/.githooks" "${FIXTURE_PROJECT}/" 2>/dev/null || {
         mkdir -p "${FIXTURE_PROJECT}/.githooks"
         printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "${FIXTURE_PROJECT}/.githooks/commit-msg"
