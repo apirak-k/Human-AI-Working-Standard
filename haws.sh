@@ -1241,6 +1241,10 @@ _catalog_source_revision() {
 }
 
 catalog_sources() {
+    if [ -n "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
+        [ -n "${HAWS_CATALOG_SOURCES_CACHE}" ] && printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}"
+        return 0
+    fi
     local repo="$(_catalog_repo_dir)"
     local gitmodules="$(_catalog_gitmodules)"
     local record key name path source_id url revision
@@ -1348,6 +1352,10 @@ _catalog_skill_is_eligible() {
 }
 
 catalog_skills() {
+    if [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        [ -n "${HAWS_CATALOG_SKILLS_CACHE}" ] && printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}"
+        return 0
+    fi
     local row source_id path url revision source_dir skill_file entrypoint
     local logical_id display_name description active
     local -A seen_names=()
@@ -2676,7 +2684,7 @@ interactive_menu() {
         elif [ "${mode}" = "settings" ]; then
             local state_mark=""
             local detail="${item_details[$idx]:-}"
-            local state_width=7
+            local state_width=8
             case "${item_states[$idx]}" in
                 on) state_mark=" [ On ]" ;;
                 off) state_mark=" [ Off ]" ;;
@@ -4165,6 +4173,10 @@ settings_draft_remove_source() {
 _settings_ensure_skill_draft() {
     [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && return 0
     load_disabled_skills
+    if [ -z "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)"
+        export HAWS_CATALOG_SKILLS_CACHE
+    fi
     HAWS_DRAFT_SKILLS="$(catalog_skills | awk -F '\t' '$6 == 1 {print $2}')"
     HAWS_DRAFT_SKILLS_LOADED=1
     HAWS_PERSIST_SKILLS="${HAWS_DRAFT_SKILLS}"
@@ -4358,7 +4370,15 @@ settings_environments_page() {
 settings_skills_page() {
     echo "  [*] Loading skills catalog, please wait..."
     _settings_ensure_skill_draft || return 1
-    local rows="$(catalog_skills)"
+    if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
+        HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
+        export HAWS_CATALOG_SOURCES_CACHE
+    fi
+    if [ -z "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)"
+        export HAWS_CATALOG_SKILLS_CACHE
+    fi
+    local rows="${HAWS_CATALOG_SKILLS_CACHE}"
     echo "  [✓] Skills catalog ready."
     local source_id id display description entrypoint active source_path
     local pack_ids=() pack_names=()
@@ -4466,7 +4486,12 @@ settings_skills_page() {
 }
 
 _settings_repository_remove_page() {
-    local rows="$(catalog_sources)"
+    echo "  [*] Loading repository sources, please wait..."
+    if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
+        HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
+        export HAWS_CATALOG_SOURCES_CACHE
+    fi
+    local rows="${HAWS_CATALOG_SOURCES_CACHE}"
     local id path url revision name type label
     local items=() ids=()
     local -A name_counts=()
@@ -4936,6 +4961,9 @@ settings_apply_final() {
 settings_flow_run() {
     local start="${1:-settings}"
     local result
+    local HAWS_CATALOG_SOURCES_CACHE
+    local HAWS_CATALOG_SKILLS_CACHE
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
     while true; do
         if [ "${start}" = settings ]; then
             if settings_page; then

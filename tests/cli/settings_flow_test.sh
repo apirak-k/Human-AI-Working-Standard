@@ -417,6 +417,31 @@ test_successful_install_records_completion_and_next_launch_home() {
     assert_output_contains 'HAWS Home'
 }
 
+test_settings_repository_remove_shows_loading_status() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="\n"
+    input+="${down}\n"
+    input+="qqq"
+    run_haws_input "${input}" || true
+    assert_output_contains '[*] Loading repository sources, please wait...' || return 1
+}
+
+test_settings_auto_update_toggle_alignment_equal_columns() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}${down}${down}${down} "
+    input+=" "
+    input+="qq"
+    run_haws_input "${input}" || true
+    local on_detail_col off_detail_col
+    on_detail_col="$(awk '/Auto Update[[:space:]]+\[ On \]/ { print index($0, " - "); exit }' "${OUTPUT_FILE}")"
+    off_detail_col="$(awk '/Auto Update[[:space:]]+\[ Off \]/ { print index($0, " - "); exit }' "${OUTPUT_FILE}")"
+    [ -n "${on_detail_col}" ] || return 1
+    [ -n "${off_detail_col}" ] || return 1
+    [ "${on_detail_col}" -eq "${off_detail_col}" ]
+}
+
 run_test() {
     local test_name="$1"
     create_fixture
@@ -473,6 +498,8 @@ run_test test_second_brain_detail_rejects_blank_url_without_creating_remote
 run_test test_second_brain_detail_rejects_invalid_url
 run_test test_second_brain_settings_have_no_deferred_remote_validation
 run_test test_successful_install_records_completion_and_next_launch_home
+run_test test_settings_repository_remove_shows_loading_status
+run_test test_settings_auto_update_toggle_alignment_equal_columns
 
 echo "CLI settings-flow tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]
