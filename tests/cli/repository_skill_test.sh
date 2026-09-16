@@ -469,8 +469,8 @@ test_settings_skills_presents_logical_groups_and_keeps_state_draft_only() {
     assert_output_contains 'Canonical standalone description.' || return 1
     assert_output_contains 'Canonical custom description.' || return 1
     assert_output_contains 'Canonical pack alpha description.' || return 1
-    assert_output_contains 'source-one [Active: 1 / 2 skills]' || return 1
-    assert_output_not_contains 'Single Skills [Active:' || return 1
+    grep -E 'source-one[[:space:]]+\[Active: 1 / 2 skills\]' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    assert_output_contains 'Single Skills' || return 1
     assert_output_not_contains 'Configure skills in this pack' || return 1
     assert_output_not_contains 'Filtered adapter description.' || return 1
     assert_output_not_contains 'Filtered vendor description.' || return 1
@@ -515,10 +515,14 @@ test_settings_skills_preserves_old_single_and_pack_organization() {
     assert_output_contains 'Single Skills' || return 1
     assert_output_contains 'Multi-Skill Packs' || return 1
     assert_output_contains 'Active: 2 / 2 skills' || return 1
-    assert_output_not_contains 'Single Skills [Active:' || return 1
-    local pack_count_column
-    pack_count_column="$(awk '/pack[[:space:]]+\[Active:/ { print index($0, "[Active:"); exit }' "${OUTPUT_FILE}")"
+    local single_count_column pack_count_column submenu_pack_count_column
+    single_count_column="$(awk '/Single Skills[[:space:]]+\[Active:/ { print index($0, "[Active:"); exit }' "${OUTPUT_FILE}")"
+    pack_count_column="$(awk '/Multi-Skill Packs[[:space:]]+\[Active:/ { print index($0, "[Active:"); exit }' "${OUTPUT_FILE}")"
+    [ -n "${single_count_column}" ] || return 1
     [ -n "${pack_count_column}" ] || return 1
+    [ "${single_count_column}" -eq "${pack_count_column}" ] || return 1
+    submenu_pack_count_column="$(awk '/pack[[:space:]]+\[Active:/ { print index($0, "[Active:"); exit }' "${OUTPUT_FILE}")"
+    [ -n "${submenu_pack_count_column}" ] || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/skills.disabled"
 }
 
@@ -536,6 +540,13 @@ run_test() {
 }
 
 trap cleanup_fixture EXIT
+
+if [ -n "${HAWS_REPOSITORY_TEST_ONLY:-}" ]; then
+    run_test "${HAWS_REPOSITORY_TEST_ONLY}"
+    echo "CLI Batch 4 repository/skill tests: ${passed} passed, ${failed} failed"
+    [ "${failed}" -eq 0 ]
+    exit
+fi
 
 run_test test_catalog_resolves_source_scoped_logical_skills
 run_test test_catalog_classifies_inspected_sources_from_raw_skill_files

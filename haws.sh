@@ -4184,6 +4184,7 @@ _settings_ensure_skill_draft() {
 }
 
 settings_draft_load() {
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
     settings_load || return $?
     disabled_environments_load
     HAWS_PERSIST_AUTO_UPDATE="${HAWS_AUTO_UPDATE}"
@@ -4222,7 +4223,8 @@ settings_draft_discard() {
         HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED \
-        HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE
+        HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE \
+        HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
 }
 
 _settings_draft_is_dirty() {
@@ -4422,6 +4424,12 @@ settings_skills_page() {
         single_active=$((single_active + ${source_active_counts[${single_source_id}]:-0}))
     done
 
+    local pack_total=0 pack_active=0
+    for ((i=0; i<${#pack_ids[@]}; i++)); do
+        pack_total=$((pack_total + ${source_counts[${pack_ids[$i]}]:-0}))
+        pack_active=$((pack_active + ${source_active_counts[${pack_ids[$i]}]:-0}))
+    done
+
     local summary_label="Single Skills"
     local summary_width=${#summary_label}
     local summary_name i
@@ -4452,21 +4460,39 @@ settings_skills_page() {
                 summary+=$'\n'"${summary_name}"
             done
         fi
+        local single_item pack_item
+        local cat_width=18
+        printf -v single_item '%-*s [Active: %d / %d skills]|Configure individual skills' \
+            "${cat_width}" "Single Skills" "${single_active}" "${single_total}"
+        printf -v pack_item '%-*s [Active: %d / %d skills]|Configure skills by pack' \
+            "${cat_width}" "Multi-Skill Packs" "${pack_active}" "${pack_total}"
         if interactive_menu menu "Configure Active Skills (Enable / Disable)|${summary}" \
-            "Single Skills|Configure individual skills" \
-            "Multi-Skill Packs|Configure skills by pack"; then
+            "${single_item}" \
+            "${pack_item}"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0)
                     _settings_skill_selector "Configure Single Skills" "${rows}" || true
                     ;;
                 1)
                     local pack_items=() i pack_label
+                    local max_pack_len=0
                     for ((i=0; i<${#pack_ids[@]}; i++)); do
                         pack_label="${pack_names[$i]}"
                         if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
                             pack_label="${pack_label} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
                         fi
-                        pack_label="${pack_label} [Active: ${source_active_counts[${pack_ids[$i]}]:-0} / ${source_counts[${pack_ids[$i]}]:-0} skills]"
+                        [ "${#pack_label}" -gt "${max_pack_len}" ] && max_pack_len="${#pack_label}"
+                    done
+                    max_pack_len=$((max_pack_len + 2))
+                    for ((i=0; i<${#pack_ids[@]}; i++)); do
+                        pack_label="${pack_names[$i]}"
+                        if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
+                            pack_label="${pack_label} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
+                        fi
+                        printf -v pack_label '%-*s [Active: %d / %d skills]' \
+                            "${max_pack_len}" "${pack_label}" \
+                            "${source_active_counts[${pack_ids[$i]}]:-0}" \
+                            "${source_counts[${pack_ids[$i]}]:-0}"
                         pack_items+=("${pack_label}")
                     done
                     if interactive_menu menu "Select a Skill Pack to configure" \
@@ -4877,6 +4903,7 @@ settings_apply_skill_draft() {
     _haws_state_replace "${temporary}" "${destination}"
     local result=$?
     rm -f -- "${temporary}"
+    unset HAWS_CATALOG_SKILLS_CACHE
     return "${result}"
 }
 
