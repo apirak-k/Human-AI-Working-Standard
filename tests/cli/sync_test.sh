@@ -161,9 +161,9 @@ test_sync_uses_short_bootstrap_style_phases() {
     local source="${PROJECT_ROOT}/haws.sh"
     local sync_block
     sync_block="$(sed -n '/^run_sync() {/,/^run_edit_gitmodules() {/p' "${source}")"
-    printf '%s\n' "${sync_block}" | grep -Fq 'Step 1/5' || return 1
-    printf '%s\n' "${sync_block}" | grep -Fq 'Step 2/5' || return 1
-    printf '%s\n' "${sync_block}" | grep -Fq 'Step 5/5' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq 'Step 1:' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq 'Step 2:' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq 'Step 5:' || return 1
 }
 
 test_sync_result_defines_full_header_and_navigation_contract() {
@@ -205,15 +205,15 @@ test_sync_runs_phases_in_order_and_configures_hooks() {
     run_sync_process sync || return 1
 
     local step1 step2 step3 step4 step5
-    step1="$(grep -nF '[*] Step 1/5:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
-    step2="$(grep -nF '[*] Step 2/5:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
-    step3="$(grep -nF '[*] Step 3/5:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
-    step4="$(grep -nF '[*] Step 4/5:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
-    step5="$(grep -nF '[*] Step 5/5:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    step1="$(grep -nF '[*] Step 1:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    step2="$(grep -nF '[*] Step 2:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    step3="$(grep -nF '[*] Step 3:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    step4="$(grep -nF '[*] Step 4:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    step5="$(grep -nF '[*] Step 5:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
     [ -n "${step1}" ] && [ "${step1}" -lt "${step2}" ] || return 1
     [ "${step2}" -lt "${step3}" ] && [ "${step3}" -lt "${step4}" ] || return 1
     [ "${step4}" -lt "${step5}" ] || return 1
-    grep -F '[PASS] Step 5/5: Git safety hooks configured' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F '[PASS] Step 5: Git safety hooks configured' "${OUTPUT_FILE}" >/dev/null || return 1
     [ "$(git -C "${FIXTURE_REPO}" config --get core.hooksPath)" = .githooks ]
 }
 

@@ -2092,8 +2092,6 @@ sync_run() {
             skipped_repo_count=$((skipped_repo_count + 1))
         done < <(catalog_sources 2>/dev/null || true)
         printf '  [INFO] Auto Update is disabled. Skipped checking %d remote repositories.\n' "${skipped_repo_count}"
-    else
-        echo "  [*] Checking configured remote targets, please wait..."
     fi
     export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
     if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
@@ -2121,10 +2119,12 @@ sync_run() {
     trap - EXIT INT TERM
     echo ""
     echo "SUMMARY"
-    printf '  Updated: %-4s Up-to-date: %-4s Skipped: %-4s\n' \
-        "${SYNC_SUMMARY_UPDATED}" "${SYNC_SUMMARY_UP_TO_DATE}" "${SYNC_SUMMARY_SKIPPED}"
-    printf '  Blocked: %-4s Failed: %-4s Timeout: %-4s\n' \
-        "${SYNC_SUMMARY_BLOCKED}" "${SYNC_SUMMARY_FAILED}" "${SYNC_SUMMARY_TIMEOUT}"
+    printf '  %-14s: %s\n' "Updated" "${SYNC_SUMMARY_UPDATED}"
+    printf '  %-14s: %s\n' "Up-to-date" "${SYNC_SUMMARY_UP_TO_DATE}"
+    printf '  %-14s: %s\n' "Skipped" "${SYNC_SUMMARY_SKIPPED}"
+    printf '  %-14s: %s\n' "Blocked" "${SYNC_SUMMARY_BLOCKED}"
+    printf '  %-14s: %s\n' "Failed" "${SYNC_SUMMARY_FAILED}"
+    printf '  %-14s: %s\n' "Timeout" "${SYNC_SUMMARY_TIMEOUT}"
     HAWS_SYNC_PRESENTATION=0
     return "${status}"
 }
@@ -2136,18 +2136,18 @@ run_sync() {
     done
     shift || true
     local sync_status=0
-    echo "[*] Step 1/5: Preparing local state and synchronizing sources"
+    echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
     if [ "${sync_status}" -eq 0 ]; then
-        echo "[PASS] Step 1/5: Sources are synchronized or safely unchanged"
+        echo "[PASS] Step 1: Sources are synchronized or safely unchanged"
     else
-        echo "[WARN] Step 1/5: Source synchronization completed with target issues"
+        echo "[WARN] Step 1: Source synchronization completed with target issues"
     fi
 
     local SOURCE_DIR="${SCRIPT_DIR}"
 
     # 2. Detect AI Environments
-    echo "[*] Step 2/5: Detecting AI environments"
+    echo "[*] Step 2: Detecting AI environments"
     local DETECTED_CLAUDE=false
     local DETECTED_GEMINI=false
     local DETECTED_CURSOR=false
@@ -2165,7 +2165,7 @@ run_sync() {
     [ "$DETECTED_CURSOR" = true ] && echo "  [✓] Cursor IDE detected"
     [ "$DETECTED_COPILOT" = true ] && echo "  [✓] GitHub Copilot detected"
     [ "$DETECTED_CODEX" = true ] && echo "  [✓] OpenAI Codex detected (${HOME}/.codex)"
-    echo "[PASS] Step 2/5: AI environment detection complete"
+    echo "[PASS] Step 2: AI environment detection complete"
     echo ""
 
     # Helper Linking Functions
@@ -2325,7 +2325,7 @@ run_sync() {
     }
 
     # 3. Setup Global Pointers
-    echo "[*] Step 3/5: Configuring global environment pointers"
+    echo "[*] Step 3: Configuring global environment pointers"
     [ "$DETECTED_CLAUDE" = true ] && safe_append_pointer "${HOME}/.claude/CLAUDE.md"
     [ "$DETECTED_GEMINI" = true ] && safe_append_pointer "${HOME}/.gemini/GEMINI.md"
     if [ "$DETECTED_CURSOR" = true ]; then
@@ -2352,11 +2352,11 @@ run_sync() {
             safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
         fi
     fi
-    echo "[PASS] Step 3/5: Global environment pointers configured"
+    echo "[PASS] Step 3: Global environment pointers configured"
     echo ""
 
     # 4. Link Skills, profiles, and commands
-    echo "[*] Step 4/5: Linking skills, profiles, and commands"
+    echo "[*] Step 4: Linking skills, profiles, and commands"
     echo "  [*] Discovering and linking active skills to AI environments, please wait..."
     local skill_rows source_id skill_id skill_display skill_description entrypoint active
     local source_path source_dir skill_dir target_name source_label
@@ -2591,20 +2591,20 @@ EOF
             echo "  [✓] Purged ${UNMANAGED_PURGED} unmanaged foreign skill(s)."
         fi
     fi
-    echo "[PASS] Step 4/5: Skills, profiles, commands, and cleanup are ready"
+    echo "[PASS] Step 4: Skills, profiles, commands, and cleanup are ready"
     echo ""
 
     # 5. Configure hooks
-    echo "[*] Step 5/5: Configuring hooks"
+    echo "[*] Step 5: Configuring hooks"
     if [ -d "${SCRIPT_DIR}/.githooks" ]; then
         if run_hooks install >/dev/null; then
-            echo "[PASS] Step 5/5: Git safety hooks configured"
+            echo "[PASS] Step 5: Git safety hooks configured"
         else
-            echo "[FAIL] Step 5/5: Git safety hooks could not be configured"
+            echo "[FAIL] Step 5: Git safety hooks could not be configured"
             sync_status=1
         fi
     else
-        echo "[WARN] Step 5/5: Git safety hooks directory is not present"
+        echo "[WARN] Step 5: Git safety hooks directory is not present"
     fi
     echo ""
 
