@@ -72,10 +72,10 @@ test_first_use_opens_setup_without_mutation() {
 }
 
 test_default_setup_reaches_preview_install_before_cancel() {
-    run_haws_input $'\nq' || return 1
+    run_haws_input $'\n\n' || return 1
     assert_output_contains 'HAWS — Preview Install' || return 1
     assert_output_contains 'Install' || return 1
-    assert_output_contains 'Back to Settings' || return 1
+    assert_output_not_contains 'Back to Settings' || return 1
     assert_output_contains 'Cancel' || return 1
     assert_output_contains 'Cancelled. No changes saved.' || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv" || return 1
@@ -257,10 +257,10 @@ test_preview_back_to_settings_preserves_draft() {
     local down=$'\033[B'
     local input="${down}\n"
     input+="${down}${down}${down}${down} ${down}\n"
-    input+="\n"
+    input+="q"
     run_haws_input "${input}" || true
     assert_output_contains 'HAWS — Preview Install' || return 1
-    assert_output_contains 'Back to Settings' || return 1
+    assert_output_not_contains 'Back to Settings' || return 1
     grep -E 'Auto Update[[:space:]]+\[ Off \]' "${OUTPUT_FILE}" || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
 }
@@ -269,7 +269,7 @@ test_preview_cancel_discards_draft_and_returns_to_setup() {
     local down=$'\033[B'
     local input="${down}\n"
     input+="${down}${down}${down}${down} ${down}\n"
-    input+="${down}\n"
+    input+="\n"
     run_haws_input "${input}" || true
     assert_output_contains 'Cancelled. No changes saved.' || return 1
     assert_output_contains 'HAWS Setup' || return 1

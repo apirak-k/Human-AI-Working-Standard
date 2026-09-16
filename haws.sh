@@ -1289,25 +1289,35 @@ _catalog_source_fields() {
     return 1
 }
 
+declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
+
 catalog_source_kind() {
     local source_id="${1:-}"
-    local path url revision source_dir raw_skill_count
+    local path url revision source_dir raw_skill_count kind
     [ -n "${source_id}" ] || return 1
+    if [ -n "${HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]:-}" ]; then
+        printf '%s\n' "${HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]}"
+        return 0
+    fi
     IFS=$'\t' read -r path url revision <<< "$(_catalog_source_fields "${source_id}")" || return 1
     source_dir="$(_catalog_repo_dir)/${path}"
     if [ ! -d "${source_dir}" ]; then
-        printf '%s\n' UNVERIFIED
+        kind="UNVERIFIED"
+        HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
+        printf '%s\n' "${kind}"
         return 0
     fi
     raw_skill_count="$(find "${source_dir}" -type f \
         \( -name SKILL.md -o -name skill.md \) -print 2>/dev/null | awk 'END { print NR + 0 }')"
     if [ "${raw_skill_count}" -eq 1 ]; then
-        printf '%s\n' SINGLE
+        kind="SINGLE"
     elif [ "${raw_skill_count}" -gt 1 ]; then
-        printf '%s\n' PACK
+        kind="PACK"
     else
-        printf '%s\n' UNVERIFIED
+        kind="UNVERIFIED"
     fi
+    HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
+    printf '%s\n' "${kind}"
 }
 
 _catalog_is_disabled() {
@@ -2490,6 +2500,9 @@ EOF
     fi
     echo ""
 
+    echo "  [*] Collecting health summary, please wait..."
+    _health_collect
+
     echo "============================================================="
     echo "                    HAWS Sync Result"
     echo "============================================================="
@@ -2508,7 +2521,6 @@ EOF
     echo "Agents Linked : ${AGENTS_LINKED}"
     echo "Skipped Items : ${SKIPPED_COUNT}"
     echo ""
-    _health_collect
     _health_print_summary
     echo ""
     local wait_status=0
@@ -4182,7 +4194,7 @@ _settings_ensure_skill_draft() {
 }
 
 settings_draft_load() {
-    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE HAWS_CATALOG_SOURCE_KIND_CACHE
     settings_load || return $?
     disabled_environments_load
     HAWS_PERSIST_AUTO_UPDATE="${HAWS_AUTO_UPDATE}"
@@ -4222,7 +4234,7 @@ settings_draft_discard() {
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED \
         HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE \
-        HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+        HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE HAWS_CATALOG_SOURCE_KIND_CACHE
 }
 
 _settings_draft_is_dirty() {
@@ -4368,7 +4380,11 @@ settings_environments_page() {
 }
 
 settings_skills_page() {
-    echo "  [*] Loading skills catalog, please wait..."
+    local skills_cached=0
+    [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] && skills_cached=1
+    if [ "${skills_cached}" -eq 0 ]; then
+        echo "  [*] Loading skills catalog, please wait..."
+    fi
     _settings_ensure_skill_draft || return 1
     if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
         HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
@@ -4379,7 +4395,9 @@ settings_skills_page() {
         export HAWS_CATALOG_SKILLS_CACHE
     fi
     local rows="${HAWS_CATALOG_SKILLS_CACHE}"
-    echo "  [✓] Skills catalog ready."
+    if [ "${skills_cached}" -eq 0 ]; then
+        echo "  [✓] Skills catalog ready."
+    fi
     local source_id id display description entrypoint active source_path
     local pack_ids=() pack_names=()
     local -A source_counts=() source_active_counts=() source_paths=() source_labels=()
@@ -4724,12 +4742,10 @@ settings_preview() {
     if [ "${HAWS_PLAN_CHANGED:-1}" -eq 0 ]; then
         echo "No settings have changed."
         if interactive_menu menu "${title}" \
-            "Back to Settings|Review or edit the draft" \
             "Back to Home|Leave the settings flow"; then
-            [ "${INTERACTIVE_MENU_SELECTION}" -eq 0 ] && return 2
             return 1
         fi
-        return 1
+        return 2
     fi
     echo "No changes have been applied yet."
     echo ""
@@ -4784,15 +4800,13 @@ settings_preview() {
     echo "  $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE:-on}")"
     if interactive_menu menu "${title}" \
         "${HAWS_PLAN_KIND:-Install}|Apply this plan" \
-        "Back to Settings|Review or edit the draft" \
         "Cancel|Discard the draft and leave"; then
         case "${INTERACTIVE_MENU_SELECTION}" in
             0) return 0 ;;
-            1) return 2 ;;
             *) return 1 ;;
         esac
     fi
-    return 1
+    return 2
 }
 
 settings_apply_repository_action() {
@@ -4957,10 +4971,18 @@ settings_apply_final() {
             initialize|pointer|skill-link|integration)
                 if [ "${HAWS_TEST_NO_INTEGRATION:-0}" = 1 ]; then
                     echo "Skipped: ${action} (test fixture)"
-                elif ! run_sync; then
-                    echo "Partial failure"
-                    echo "Remaining: ${action}"
-                    return 3
+                else
+                    local sync_exit=0
+                    if [ -t 0 ] && [ -t 1 ]; then
+                        HAWS_INTERACTIVE_RESULT=1 run_sync || sync_exit=$?
+                    else
+                        run_sync || sync_exit=$?
+                    fi
+                    if [ "${sync_exit}" -gt 1 ]; then
+                        echo "Partial failure"
+                        echo "Remaining: ${action}"
+                        return 3
+                    fi
                 fi
                 printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
                 echo "Completed: ${action}"
@@ -5117,6 +5139,7 @@ home_run() {
                     settings_draft_load || return 1
                     if settings_flow_run settings; then
                         settings_load || return $?
+                        [ "${HAWS_RESULT_NAVIGATION:-home}" = exit ] && return 0
                     else
                         result=$?
                         [ "${result}" -eq 3 ] && return 3
