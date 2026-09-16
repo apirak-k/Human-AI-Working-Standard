@@ -34,6 +34,7 @@ fail() {
 run_haws() {
     env HOME="${FIXTURE_HOME}" CODEX_HOME="${FIXTURE_HOME}/.codex" \
         HAWS_REPO_DIR="${FIXTURE_PROJECT}" HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" \
+        HAWS_TEST_KEYS="${HAWS_TEST_KEYS:-}" \
         HAWS_CALL_LOG="${CALL_LOG:-}" PATH="${PATH}" \
         bash "${FIXTURE_PROJECT}/haws.sh" "$@" >"${OUTPUT_FILE}" 2>&1
 }
