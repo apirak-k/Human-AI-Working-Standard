@@ -1324,8 +1324,13 @@ catalog_source_kind() {
         printf '%s\n' "${kind}"
         return 0
     fi
-    raw_skill_count="$(find "${source_dir}" -type f \
-        \( -name SKILL.md -o -name skill.md \) -print 2>/dev/null | awk 'END { print NR + 0 }')"
+    local skill_f
+    raw_skill_count=0
+    while IFS= read -r -d '' skill_f; do
+        [ -n "${skill_f}" ] || continue
+        _catalog_skill_is_eligible "${skill_f}" || continue
+        raw_skill_count=$((raw_skill_count + 1))
+    done < <(find "${source_dir}" -type f \( -name SKILL.md -o -name skill.md \) -print0 2>/dev/null)
     if [ "${raw_skill_count}" -eq 1 ]; then
         kind="SINGLE"
     elif [ "${raw_skill_count}" -gt 1 ]; then
@@ -1365,6 +1370,7 @@ _catalog_is_disabled() {
 _catalog_skill_is_eligible() {
     local skill_file="$1"
     [[ "${skill_file}" =~ \.openclaw/ ]] && return 1
+    [[ "${skill_file}" =~ archify ]] && [[ "${skill_file}" =~ \.agents/skills ]] && return 1
     [[ "${skill_file}" =~ planning-with-files ]] && \
         [[ ! "${skill_file}" =~ \.agents/skills ]] && \
         [[ ! "${skill_file}" =~ skills/i18n ]] && return 1
@@ -1395,7 +1401,7 @@ catalog_skills() {
             display_name="$(extract_skill_name "${skill_file}")"
             [ -n "${display_name}" ] || continue
             case "${display_name}" in
-                pi-planning-with-files|planning-with-files-*|design-taste-frontend-v1)
+                pi-planning-with-files|planning-with-files-v*|design-taste-frontend-v1)
                     continue
                     ;;
             esac
@@ -4672,15 +4678,44 @@ _settings_repository_remove_page() {
         name="${path##*/}"
         name_counts["${name}"]=$(( ${name_counts[${name}]:-0} + 1 ))
     done <<< "${rows}"
+    local single_records=() pack_records=() other_records=()
     while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         name="${path##*/}"
         type="$(catalog_source_kind "${id}")"
         label="${name}"
         [ "${name_counts[${name}]:-0}" -gt 1 ] && label="${name} [${id}]"
-        items+=("${label}|[${type}] ${path}|0")
-        ids+=("${id}")
+        local entry="${label}"$'\t'"${label}|[${type}] ${path}|0"$'\t'"${id}"
+        if [ "${type}" = "SINGLE" ]; then
+            single_records+=("${entry}")
+        elif [ "${type}" = "PACK" ]; then
+            pack_records+=("${entry}")
+        else
+            other_records+=("${entry}")
+        fi
     done <<< "${rows}"
+
+    if [ "${#single_records[@]}" -gt 0 ]; then
+        while IFS=$'\t' read -r _ item id || [ -n "${item:-}" ]; do
+            [ -n "${item:-}" ] || continue
+            items+=("${item}")
+            ids+=("${id}")
+        done < <(printf '%s\n' "${single_records[@]}" | LC_ALL=C sort)
+    fi
+    if [ "${#pack_records[@]}" -gt 0 ]; then
+        while IFS=$'\t' read -r _ item id || [ -n "${item:-}" ]; do
+            [ -n "${item:-}" ] || continue
+            items+=("${item}")
+            ids+=("${id}")
+        done < <(printf '%s\n' "${pack_records[@]}" | LC_ALL=C sort)
+    fi
+    if [ "${#other_records[@]}" -gt 0 ]; then
+        while IFS=$'\t' read -r _ item id || [ -n "${item:-}" ]; do
+            [ -n "${item:-}" ] || continue
+            items+=("${item}")
+            ids+=("${id}")
+        done < <(printf '%s\n' "${other_records[@]}" | LC_ALL=C sort)
+    fi
 
     while IFS=$'\t' read -r url path || [ -n "${url}" ]; do
         [ -n "${url}" ] || continue
