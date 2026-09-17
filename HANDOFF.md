@@ -1,6 +1,18 @@
 # Current old-base Implementation Checkpoint
 
-## CURRENT OVERRIDE — 2026-09-15 follow-up audit
+## CURRENT CHECKPOINT — 2026-09-17 Lean Architecture & Usability Fixes
+
+The current continuation worktree is `C:\Users\ai-project\Desktop\SC0434\Human-AI-Working-Standard\.worktrees\cli-task1-remote` on branch `codex/remote-continuation`.
+
+All 6 tasks of the Lean Architecture & Usability Root-Cause Fixes have been implemented and verified:
+1. **Stale Sync Lock Auto-Recovery**: `sync_run()` automatically recovers code 2 stale locks from inactive PIDs via `sync_lock_release --recover` and re-acquires.
+2. **Safe [Q] Return-to-Home**: Navigation on `q` from Settings/Preview safely returns to Home without triggering false `Partial failure Remaining: integration` (code 3).
+3. **Scope-Scoped Adapter Linking**: Gated `DETECTED_<ENV>` against `DISABLED_ENVIRONMENTS` in `run_sync()`, eliminating redundant link/junction creation for disabled AI environments.
+4. **Settings Preview Grid Alignment**: Multi-Skill Packs align cleanly with column width 26 (`[Active: %2d / %2d]`). Single Skills display vertically with `(custom)` and `(standalone)` badges; redundant `(pack)` badge removed.
+5. **Dynamic Settings Skills Label**: Dynamically displays `${#DISABLED_SKILLS[@]} disabled` when disabled skills exist instead of misleading `all active (default)`. Step headers cleanly use `[Step X]` without `/5`.
+6. **Full-Suite Automated Verification**: 10 CLI test suites (`tests/cli/run.sh`) passed completely (0 failures).
+
+## HISTORICAL OVERRIDE — 2026-09-15 follow-up audit
 
 The current continuation worktree is `C:\Users\ai-project\Desktop\SC0434\Human-AI-Working-Standard\.worktrees\cli-task1-remote` on branch `codex/remote-continuation` at `421bd98`. Git reports a clean production worktree; the active audit ledger has uncommitted findings only. This section supersedes the historical branch/worktree labels below.
 

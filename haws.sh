@@ -2077,8 +2077,17 @@ sync_run() {
         :
     else
         local lock_status=$?
-        trap - INT TERM
-        return "${lock_status}"
+        if [ "${lock_status}" -eq 2 ]; then
+            echo "  [!] Auto-recovering stale sync lock..." >&2
+            sync_lock_release --recover >/dev/null 2>&1 || true
+            if sync_lock_acquire; then
+                lock_status=0
+            fi
+        fi
+        if [ "${lock_status}" -ne 0 ]; then
+            trap - INT TERM
+            return "${lock_status}"
+        fi
     fi
     HAWS_SYNC_LOCK_ACQUIRED=1
     export HAWS_SYNC_LOCK_ACQUIRED
@@ -2188,11 +2197,11 @@ run_sync() {
     local DETECTED_COPILOT=false
     local DETECTED_CODEX=false
 
-    [ -d "${HOME}/.claude" ] && DETECTED_CLAUDE=true
-    [ -d "${HOME}/.gemini" ] && DETECTED_GEMINI=true
-    { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && DETECTED_CURSOR=true
-    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && DETECTED_COPILOT=true
-    { [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; } && DETECTED_CODEX=true
+    [ -d "${HOME}/.claude" ] && [ -z "${DISABLED_ENVIRONMENTS[claude]:-}" ] && DETECTED_CLAUDE=true
+    [ -d "${HOME}/.gemini" ] && [ -z "${DISABLED_ENVIRONMENTS[gemini]:-}" ] && DETECTED_GEMINI=true
+    { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && [ -z "${DISABLED_ENVIRONMENTS[cursor]:-}" ] && DETECTED_CURSOR=true
+    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && [ -z "${DISABLED_ENVIRONMENTS[copilot]:-}" ] && DETECTED_COPILOT=true
+    { [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; } && [ -z "${DISABLED_ENVIRONMENTS[codex]:-}" ] && DETECTED_CODEX=true
 
     [ "$DETECTED_CLAUDE" = true ] && echo "  [✓] Claude Code detected (${HOME}/.claude)"
     [ "$DETECTED_GEMINI" = true ] && echo "  [✓] Google Antigravity detected (${HOME}/.gemini)"
@@ -4422,6 +4431,7 @@ settings_draft_load() {
     declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
     settings_load || return $?
     disabled_environments_load
+    load_disabled_skills
     HAWS_PERSIST_AUTO_UPDATE="${HAWS_AUTO_UPDATE}"
     HAWS_PERSIST_ENVIRONMENTS=""
     local environment
@@ -4890,7 +4900,11 @@ settings_page() {
         [ -n "${environment}" ] && environment_count=$((environment_count + 1))
     done <<< "${HAWS_DRAFT_ENVIRONMENTS:-}"
     local skills_detail="all active (default)"
-    [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && skills_detail="draft selection loaded"
+    if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
+        skills_detail="draft selection loaded"
+    elif [ "${#DISABLED_SKILLS[@]}" -gt 0 ]; then
+        skills_detail="${#DISABLED_SKILLS[@]} disabled"
+    fi
     local items=(
         "Repositories|Existing repository sources|-"
         "Skills|${skills_detail}|-"
@@ -5088,7 +5102,11 @@ settings_preview() {
             fi
         else
             if _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}"; then
-                preview_single_skills+=("${skill_display}")
+                local kind="standalone"
+                if [[ "${source_path}" == skills/custom* ]] || [[ "${skill_source_id}" == *custom* ]]; then
+                    kind="custom"
+                fi
+                preview_single_skills+=("${skill_display}	${kind}")
             fi
         fi
     done <<< "${skill_rows}"
@@ -5101,16 +5119,20 @@ settings_preview() {
             pack_name="${preview_source_names[${pack_id}]:-${pack_id##*/}}"
             active_count="${preview_source_active[${pack_id}]:-0}"
             total_count="${preview_source_counts[${pack_id}]:-0}"
-            echo "    • ${pack_name} (${active_count} / ${total_count} skills active)"
+            printf "    • %-26s [Active: %2d / %2d]\n" "${pack_name}" "${active_count}" "${total_count}"
         done
         printed_skills_section=1
     fi
 
     if [ "${#preview_single_skills[@]}" -gt 0 ]; then
         echo "  Single Skills:"
-        local single_list
-        single_list="$(IFS=,; echo "${preview_single_skills[*]}")"
-        echo "    • ${single_list//,/, }"
+        local single_entry single_name single_kind
+        for single_entry in "${preview_single_skills[@]}"; do
+            single_name="${single_entry%%	*}"
+            single_kind="${single_entry#*	}"
+            [ -n "${single_kind}" ] || single_kind="standalone"
+            printf "    • %-26s [Active] (%s)\n" "${single_name}" "${single_kind}"
+        done
         printed_skills_section=1
     fi
 
@@ -5312,6 +5334,10 @@ settings_apply_final() {
                         run_sync || sync_exit=$?
                     fi
                     if [ "${sync_exit}" -gt 1 ]; then
+                        if [ "${HAWS_RESULT_NAVIGATION:-home}" = home ]; then
+                            settings_load >/dev/null 2>&1 || true
+                            return 0
+                        fi
                         echo "Partial failure"
                         echo "Remaining: ${action}"
                         return 3
@@ -5475,6 +5501,10 @@ home_run() {
                         [ "${HAWS_RESULT_NAVIGATION:-home}" = exit ] && return 0
                     else
                         result=$?
+                        if [ "${HAWS_RESULT_NAVIGATION:-home}" = home ]; then
+                            settings_load >/dev/null 2>&1 || true
+                            continue
+                        fi
                         [ "${result}" -eq 3 ] && return 3
                     fi
                     ;;

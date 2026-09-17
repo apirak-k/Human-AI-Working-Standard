@@ -98,7 +98,8 @@ test_preview_screen_renders_compact_packs_and_singles_without_paths() {
     assert_output_contains 'HAWS — Preview Install' || return 1
     assert_output_contains 'Skills' || return 1
     assert_output_contains 'Multi-Skill Packs:' || return 1
-    assert_output_contains 'demo-pack (2 / 2 skills active)' || return 1
+    assert_output_contains 'demo-pack' || return 1
+    assert_output_contains '[Active:  2 /  2]' || return 1
     assert_output_contains 'Single Skills:' || return 1
     assert_output_contains 'demo-one' || return 1
     assert_output_not_contains '::' || return 1
@@ -484,6 +485,14 @@ test_settings_auto_update_toggle_alignment_equal_columns() {
     [ "${on_detail_col}" -eq "${off_detail_col}" ]
 }
 
+test_settings_skills_shows_disabled_count_when_skills_disabled() {
+    echo "demo-one" > "${FIXTURE_PROJECT}/skills.disabled"
+    local down=$'\033[B'
+    run_haws_input "${down}\nq" || return 1
+    assert_output_contains '1 disabled' || return 1
+    assert_output_not_contains 'all active (default)' || return 1
+}
+
 run_test() {
     local test_name="$1"
     create_fixture
@@ -544,6 +553,7 @@ run_test test_successful_install_records_completion_and_next_launch_home
 run_test test_settings_repository_remove_shows_loading_status
 run_test test_settings_repository_remove_displays_pack_and_single_without_unbound_variable
 run_test test_settings_auto_update_toggle_alignment_equal_columns
+run_test test_settings_skills_shows_disabled_count_when_skills_disabled
 
 echo "CLI settings-flow tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]
