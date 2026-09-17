@@ -1,0 +1,5 @@
+# HAWS Disabled AI Environments
+# Environments listed here will not receive global pointers or linked skills
+claude
+copilot
+cursor

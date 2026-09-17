@@ -1,0 +1,25 @@
+# HAWS Disabled Skills (source-aware)
+skills/standalone/caveman::skills/standalone/caveman::cavecrew
+skills/standalone/caveman::skills/standalone/caveman::caveman-commit
+skills/standalone/caveman::skills/standalone/caveman::caveman-compress
+skills/standalone/caveman::skills/standalone/caveman::caveman-discover
+skills/standalone/caveman::skills/standalone/caveman::caveman-evidence-review
+skills/standalone/caveman::skills/standalone/caveman::caveman-explore
+skills/standalone/caveman::skills/standalone/caveman::caveman-help
+skills/standalone/caveman::skills/standalone/caveman::caveman-learn
+skills/standalone/caveman::skills/standalone/caveman::caveman-manage
+skills/standalone/caveman::skills/standalone/caveman::caveman-optimize
+skills/standalone/caveman::skills/standalone/caveman::caveman-review
+skills/standalone/caveman::skills/standalone/caveman::caveman-setup
+skills/standalone/caveman::skills/standalone/caveman::caveman-stats
+skills/standalone/caveman::skills/standalone/caveman::investigate-first
+skills/standalone/caveman::skills/standalone/caveman::lean-build
+skills/standalone/caveman::skills/standalone/caveman::migration
+skills/standalone/caveman::skills/standalone/caveman::safe-refactor
+skills/standalone/caveman::skills/standalone/caveman::surgical-patch
+skills/standalone/caveman::skills/standalone/caveman::verify-and-stop
+skills/standalone/planning-with-files::skills/standalone/planning-with-files::planning-with-files-ar
+skills/standalone/planning-with-files::skills/standalone/planning-with-files::planning-with-files-de
+skills/standalone/planning-with-files::skills/standalone/planning-with-files::planning-with-files-es
+skills/standalone/planning-with-files::skills/standalone/planning-with-files::planning-with-files-zh
+skills/standalone/planning-with-files::skills/standalone/planning-with-files::planning-with-files-zht

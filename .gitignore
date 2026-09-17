@@ -19,7 +19,7 @@ ehthumbs.db
 worktrees/
 
 # Personal Second Brain & Backups
-/secondbrain/
+/secondbrain/.git
 .haws_backup/
 
 # Scratch & Temporary Testing
@@ -32,9 +32,9 @@ scratch/
 .notify.conf
 *.conf.local
 
-# Device-local HAWS state and environment selections
+# Device-local HAWS state
 /.haws/state/
-ai-configs/environments.disabled
-config/environments.disabled
-environments.disabled
-skills/skills.disabled
+/config/environments.disabled
+/environments.disabled
+
+
