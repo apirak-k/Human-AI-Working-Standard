@@ -1489,9 +1489,7 @@ _haws_ownership_skills_load() {
     while IFS=$'\t' read -r group kind path source fingerprint extra || [ -n "${group}" ]; do
         [ "${group}" = skills ] || continue
         path_native="$(_uninstall_native_path "${path}")"
-        if ownership_verify "${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}"; then
-            HAWS_OWNERSHIP_SKILLS_CACHE["${path_native}"]="${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}"
-        fi
+        HAWS_OWNERSHIP_SKILLS_CACHE["${path_native}"]="${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}"
     done < <(ownership_list skills)
     HAWS_OWNERSHIP_SKILLS_LOADED=1
 }
@@ -1504,8 +1502,13 @@ _haws_ownership_skills_invalidate() {
 _haws_skill_link_owned_record() {
     local wanted="${1:-}"
     [ -n "${wanted}" ] || return 1
-    local wanted_native="$(_uninstall_native_path "${wanted}")"
     _haws_ownership_skills_load
+    if [[ -v HAWS_OWNERSHIP_SKILLS_CACHE["${wanted}"] ]]; then
+        printf '%s\n' "${HAWS_OWNERSHIP_SKILLS_CACHE["${wanted}"]}"
+        return 0
+    fi
+    local wanted_native
+    wanted_native="$(_uninstall_native_path "${wanted}")"
     if [[ -v HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"] ]]; then
         printf '%s\n' "${HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]}"
         return 0
@@ -1518,22 +1521,34 @@ _haws_skill_link_is_owned() {
 }
 
 _haws_skill_link_remove_if_owned() {
-    local record kind path source fingerprint
-    record="$(_haws_skill_link_owned_record "${1:-}" 2>/dev/null)" || return 1
+    local wanted="${1:-}"
+    [ -n "${wanted}" ] || return 1
+    _haws_ownership_skills_load
+    local record="${HAWS_OWNERSHIP_SKILLS_CACHE["${wanted}"]:-}"
+    local wanted_native=""
+    if [ -z "${record}" ]; then
+        wanted_native="$(_uninstall_native_path "${wanted}")"
+        record="${HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]:-}"
+    fi
+    [ -n "${record}" ] || return 1
+    local kind path source fingerprint
     IFS=$'\t' read -r kind path source fingerprint <<< "${record}"
     _uninstall_remove_path "${kind}" "${path}"
-    local wanted_native="$(_uninstall_native_path "${1:-}")"
-    unset 'HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]' 2>/dev/null || true
+    unset 'HAWS_OWNERSHIP_SKILLS_CACHE["${wanted}"]' 2>/dev/null || true
+    [ -n "${wanted_native}" ] && unset 'HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]' 2>/dev/null || true
 }
 
 _haws_record_skill_link() {
     local kind="${1:-symlink}" dest="${2:-}" source="${3:-}" fingerprint
     [ -n "${dest}" ] && [ -n "${source}" ] || return 2
     [ -L "${dest}" ] || return 0
-    fingerprint="$(readlink "${dest}" 2>/dev/null || true)"
-    [ -n "${fingerprint}" ] || fingerprint="${source}"
+    fingerprint="${source}"
     ownership_record skills "${kind}" "${dest}" "${source}" "${fingerprint}"
-    _haws_ownership_skills_invalidate
+    HAWS_OWNERSHIP_SKILLS_CACHE["${dest}"]="${kind}"$'\t'"${dest}"$'\t'"${source}"$'\t'"${fingerprint}"
+    local wanted_native
+    wanted_native="$(_uninstall_native_path "${dest}")"
+    [ "${wanted_native}" != "${dest}" ] && HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]="${kind}"$'\t'"${dest}"$'\t'"${source}"$'\t'"${fingerprint}"
+    return 0
 }
 
 catalog_validate_url() {
@@ -2109,7 +2124,9 @@ sync_run() {
         done < <(catalog_sources 2>/dev/null || true)
         printf '  [INFO] Auto Update is disabled. Skipped checking %d remote repositories.\n' "${skipped_repo_count}"
     fi
-    export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
+    local caller_had_cache=1
+    [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || caller_had_cache=0
+    [ "${caller_had_cache}" -eq 1 ] || export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
     if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
         target_count=$((target_count + 1))
         sync_target haws || status=1
@@ -2123,8 +2140,9 @@ sync_run() {
         target_count=$((target_count + 1))
         sync_second_brain_target || status=1
     fi
-    [ "${target_count}" -gt 0 ] || echo "  [INFO] No remote targets enabled"
-    unset HAWS_CATALOG_SKILLS_CACHE
+    if [ "${caller_had_cache}" -eq 0 ] || [ "${SYNC_SUMMARY_UPDATED:-0}" -gt 0 ]; then
+        unset HAWS_CATALOG_SKILLS_CACHE
+    fi
 
     if sync_lock_release; then
         :
@@ -2225,8 +2243,8 @@ run_sync() {
 
         if [ "$IS_WINDOWS" = true ]; then
             local win_src win_dest
-            win_src="$(cygpath -w "${src}")"
-            win_dest="$(cygpath -w "${dest}")"
+            win_src="$(_haws_winpath "${src}")"
+            win_dest="$(_haws_winpath "${dest}")"
             rm -f "${dest}" 2>/dev/null || true
             if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" >/dev/null 2>&1; then
                 echo "  [HARDLINK] ${label}: ${dest} -> ${src}"
@@ -2250,25 +2268,35 @@ run_sync() {
         dest_dir="$(dirname "${dest}")"
         mkdir -p "${dest_dir}"
 
-        local src_marker="${src}/SKILL.md"
-        [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
-        local dest_marker="${dest}/SKILL.md"
-        [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
+        # Fast path 1: destination is already linked to src (junction / symlink / same dir)
+        if [ -d "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+            return 0
+        fi
 
-        # Fast path: check if destination marker matches src marker (junction / same file)
-        if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ]; then
-            if [ "${src_marker}" -ef "${dest_marker}" ] || cmp -s "${src_marker}" "${dest_marker}" || diff -q --strip-trailing-cr "${src_marker}" "${dest_marker}" >/dev/null 2>&1; then
+        # Fast path 2: destination is a symlink pointing to src
+        if [ -L "${dest}" ]; then
+            local current_target
+            current_target="$(readlink "${dest}" 2>/dev/null || true)"
+            if [ -n "${current_target}" ] && [ "${current_target}" = "${src}" ]; then
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
         fi
 
-        local current_target=""
-        [ -L "${dest}" ] && current_target="$(readlink "${dest}" 2>/dev/null || true)"
-        if [ -n "${current_target}" ] && [ "${current_target}" = "${src}" ]; then
-            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-            return 0
+        # Fast path 3: destination marker matches src marker inode
+        local src_marker="${src}/SKILL.md"
+        [ -f "${src}/skill.md" ] && src_marker="${src}/skill.md"
+        local dest_marker="${dest}/SKILL.md"
+        [ -f "${dest}/skill.md" ] && dest_marker="${dest}/skill.md"
+
+        if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ]; then
+            if [ "${src_marker}" -ef "${dest_marker}" ]; then
+                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                return 0
+            fi
         fi
+
         if [ -e "${dest}" ] || [ -L "${dest}" ]; then
             if ! _haws_skill_link_remove_if_owned "${dest}"; then
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
@@ -2278,8 +2306,8 @@ run_sync() {
 
         if [ "$IS_WINDOWS" = true ]; then
             local win_src win_dest
-            win_src="$(cygpath -w "${src}")"
-            win_dest="$(cygpath -w "${dest}")"
+            win_src="$(_haws_winpath "${src}")"
+            win_dest="$(_haws_winpath "${dest}")"
             if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /J "${win_dest}" "${win_src}" >/dev/null 2>&1; then
                 _haws_record_skill_link junction "${dest}" "${src}" || return 1
                 echo "  [JUNCTION] ${label}: ${dest} -> ${src}"
@@ -2405,7 +2433,10 @@ run_sync() {
         source_path="${source_paths[${source_id}]:-}"
         [ -n "${source_path}" ] || continue
         source_dir="${SOURCE_DIR}/${source_path}"
-        skill_dir="${source_dir}/$(dirname "${entrypoint}")"
+        case "${entrypoint}" in
+            */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
+            *) skill_dir="${source_dir}" ;;
+        esac
         target_name="${skill_display}"
         if [ "${display_counts[${skill_display}]:-0}" -gt 1 ]; then
             source_label="${source_path##*/}"
@@ -2447,18 +2478,31 @@ run_sync() {
             [ -n "${skill_id}" ] && [ "${active}" = 1 ] || continue
             source_path="${source_paths[${source_id}]:-}"
             source_dir="${SOURCE_DIR}/${source_path}"
-            skill_dir="${source_dir}/$(dirname "${entrypoint}")"
+            case "${entrypoint}" in
+                */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
+                *) skill_dir="${source_dir}" ;;
+            esac
             local target_dir="${skill_dir}"
             if [[ "${source_path}" == skills/packs/* ]]; then
-                local parent_dir="$(dirname "${skill_dir}")"
+                local parent_dir="${skill_dir%/*}"
                 target_dir="${parent_dir}"
-                if [ -d "${parent_dir}/skills" ] && [ "$(basename "${parent_dir}")" != skills ]; then
+                if [ -d "${parent_dir}/skills" ] && [ "${parent_dir##*/}" != skills ]; then
                     target_dir="${skill_dir}"
                 fi
             fi
             [[ "${source_path}" == skills/standalone/* ]] && target_dir="${skill_dir}"
             local win_target="${target_dir}"
-            command -v cygpath &>/dev/null && win_target="$(cygpath -m "${target_dir}")"
+            if [[ "${target_dir}" =~ ^/([a-zA-Z])/(.*) ]]; then
+                local drive="${BASH_REMATCH[1]}"
+                local rest="${BASH_REMATCH[2]}"
+                local upper_drive
+                case "$drive" in
+                    a) upper_drive="A" ;; b) upper_drive="B" ;; c) upper_drive="C" ;; d) upper_drive="D" ;;
+                    e) upper_drive="E" ;; f) upper_drive="F" ;; g) upper_drive="G" ;; h) upper_drive="H" ;;
+                    *) upper_drive="$drive" ;;
+                esac
+                win_target="${upper_drive}:/${rest}"
+            fi
             if [ -z "${seen_dirs[${win_target}]:-}" ]; then
                 seen_dirs["${win_target}"]=1
                 json_entries+=("    { \"path\": \"${win_target}\" }")
@@ -2551,9 +2595,15 @@ EOF
     echo "  [*] Pruning removed items"
     local PRUNED=0
     if [ -f "${PREV_MANIFEST}" ] && [ -f "${MANIFEST_FILE}" ]; then
+        local -A current_manifest_entries=()
+        local m_entry
+        while IFS= read -r m_entry || [ -n "$m_entry" ]; do
+            [ -n "$m_entry" ] && current_manifest_entries["$m_entry"]=1
+        done < "${MANIFEST_FILE}"
+
         while IFS= read -r entry || [ -n "$entry" ]; do
             [ -z "$entry" ] && continue
-            if ! grep -q -F "${entry}" "${MANIFEST_FILE}" 2>/dev/null; then
+            if [ -z "${current_manifest_entries["${entry}"]:-}" ]; then
                 local type="${entry%%:*}"
                 local name="${entry#*:}"
                 if [ "$type" = "skill" ]; then
@@ -2649,6 +2699,7 @@ EOF
     echo ""
     local wait_status=0
     _haws_wait_for_result || wait_status=$?
+    unset HAWS_CATALOG_SKILLS_CACHE 2>/dev/null || true
     [ "${wait_status}" -eq 0 ] || return "${wait_status}"
     return "${sync_status}"
 }
@@ -3779,6 +3830,36 @@ run_hooks() {
 }
 
 
+_haws_winpath() {
+    local p="$1"
+    if [[ "$p" =~ ^/([a-zA-Z])/(.*) ]]; then
+        local drive="${BASH_REMATCH[1]}"
+        local rest="${BASH_REMATCH[2]}"
+        local upper_drive
+        case "$drive" in
+            a) upper_drive="A" ;; b) upper_drive="B" ;; c) upper_drive="C" ;; d) upper_drive="D" ;;
+            e) upper_drive="E" ;; f) upper_drive="F" ;; g) upper_drive="G" ;; h) upper_drive="H" ;;
+            *) upper_drive="$drive" ;;
+        esac
+        local win="${upper_drive}:/${rest}"
+        printf '%s\n' "${win//\//\\}"
+    elif [[ "$p" =~ ^/tmp(/.*)?$ ]]; then
+        local temp_win="${HAWS_WIN_TEMP_ROOT:-}"
+        if [ -z "${temp_win}" ]; then
+            temp_win="$(cygpath -w /tmp 2>/dev/null || printf '%s' "C:\\Users\\${USER:-user}\\AppData\\Local\\Temp")"
+            HAWS_WIN_TEMP_ROOT="${temp_win}"
+        fi
+        local rest="${p#/tmp}"
+        printf '%s%s\n' "${temp_win}" "${rest//\//\\}"
+    else
+        if command -v cygpath >/dev/null 2>&1; then
+            cygpath -w "$p"
+        else
+            printf '%s\n' "${p//\//\\}"
+        fi
+    fi
+}
+
 _uninstall_native_path() {
     local path="$1"
     case "$path" in
@@ -3786,7 +3867,16 @@ _uninstall_native_path() {
             if command -v cygpath >/dev/null 2>&1; then
                 cygpath -u -- "$path"
             else
-                printf '%s\n' "$path"
+                local drive="${path:0:1}"
+                local rest="${path:2}"
+                local lower_drive
+                case "$drive" in
+                    A) lower_drive="a" ;; B) lower_drive="b" ;; C) lower_drive="c" ;; D) lower_drive="d" ;;
+                    E) lower_drive="e" ;; F) lower_drive="f" ;; G) lower_drive="g" ;; H) lower_drive="h" ;;
+                    *) lower_drive="$drive" ;;
+                esac
+                local posix="/${lower_drive}${rest}"
+                printf '%s\n' "${posix//\\//}"
             fi
             ;;
         *) printf '%s\n' "$path" ;;
@@ -3819,10 +3909,20 @@ _ownership_path_safe() {
         *"/../"*|*"/./"*|../*|./*) return 1 ;;
     esac
     local parent home_root repo_root state_root
+    if [ "${HAWS_OWNERSHIP_CACHED_HOME:-}" != "$HOME" ] || \
+       [ "${HAWS_OWNERSHIP_CACHED_REPO:-}" != "$repo" ] || \
+       [ "${HAWS_OWNERSHIP_CACHED_STATE:-}" != "$state" ]; then
+        HAWS_OWNERSHIP_HOME_ROOT="$(canonical_path "$HOME" 2>/dev/null || true)"
+        HAWS_OWNERSHIP_REPO_ROOT="$(canonical_path "$repo" 2>/dev/null || true)"
+        HAWS_OWNERSHIP_STATE_ROOT="$(canonical_path "$state" 2>/dev/null || true)"
+        HAWS_OWNERSHIP_CACHED_HOME="$HOME"
+        HAWS_OWNERSHIP_CACHED_REPO="$repo"
+        HAWS_OWNERSHIP_CACHED_STATE="$state"
+    fi
+    home_root="${HAWS_OWNERSHIP_HOME_ROOT}"
+    repo_root="${HAWS_OWNERSHIP_REPO_ROOT}"
+    state_root="${HAWS_OWNERSHIP_STATE_ROOT}"
     parent="$(canonical_path "$(dirname "$path")" 2>/dev/null || true)"
-    home_root="$(canonical_path "$HOME" 2>/dev/null || true)"
-    repo_root="$(canonical_path "$repo" 2>/dev/null || true)"
-    state_root="$(canonical_path "$state" 2>/dev/null || true)"
     [ -n "$parent" ] && [ -n "$home_root" ] && [ -n "$repo_root" ] || return 1
     case "$parent" in
         "$state_root"|"$state_root"/*) return 1 ;;
