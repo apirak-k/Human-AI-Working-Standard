@@ -1898,6 +1898,47 @@ _sync_root_candidate_validate() {
     [ "${size:-0}" -gt 0 ]
 }
 
+_sync_prefetch_target() {
+    local target="$1" source_dir source_path fetch_remote=origin fetch_source=HEAD candidate_ref current_branch
+    if [ "${target}" = haws ]; then
+        source_dir="$(_catalog_repo_dir)"
+        current_branch="$(git -C "${source_dir}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+        [ -n "${current_branch}" ] || return 0
+        fetch_remote="$(git -C "${source_dir}" config --get "branch.${current_branch}.remote" 2>/dev/null || true)"
+        fetch_source="$(git -C "${source_dir}" config --get "branch.${current_branch}.merge" 2>/dev/null || true)"
+        [ -n "${fetch_remote}" ] && [ -n "${fetch_source}" ] || return 0
+    else
+        source_path="$(_sync_source_path "${target}" 2>/dev/null || true)"
+        [ -n "${source_path}" ] || return 0
+        source_dir="$(_catalog_repo_dir)/${source_path}"
+        [ -d "${source_dir}" ] || return 0
+    fi
+    candidate_ref="$(_sync_candidate_ref "${target}")"
+    local timeout_seconds="$(_sync_timeout_seconds)"
+    run_with_deadline "${timeout_seconds}" _sync_fetch_candidate \
+        "${source_dir}" "${fetch_remote}" "${fetch_source}" "${candidate_ref}" >/dev/null 2>&1 || true
+}
+
+_sync_prefetch_all() {
+    [ "${HAWS_AUTO_UPDATE:-on}" = on ] || return 0
+    local pids=()
+    if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
+        _sync_prefetch_target haws &
+        pids+=($!)
+    fi
+    local source_id
+    while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
+        [ -n "${source_id:-}" ] || continue
+        _sync_prefetch_target "${source_id}" &
+        pids+=($!)
+    done < <(catalog_sources 2>/dev/null || true)
+    
+    local pid
+    for pid in "${pids[@]}"; do
+        wait "$pid" 2>/dev/null || true
+    done
+}
+
 sync_target() {
     local target="${1:-}" source_dir source_path candidate_ref candidate_revision
     local preflight_status fetch_status current final timeout_seconds activation_status=0
@@ -1969,13 +2010,18 @@ sync_target() {
 
     candidate_ref="$(_sync_candidate_ref "${target}")"
     timeout_seconds="$(_sync_timeout_seconds)"
-    if run_with_deadline "${timeout_seconds}" _sync_fetch_candidate \
-        "${source_dir}" "${fetch_remote}" "${fetch_source}" "${candidate_ref}"; then
+    candidate_revision="$(git -C "${source_dir}" rev-parse --verify "${candidate_ref}" 2>/dev/null || true)"
+    if [ -n "${candidate_revision}" ]; then
         fetch_status=0
     else
-        fetch_status=$?
+        if run_with_deadline "${timeout_seconds}" _sync_fetch_candidate \
+            "${source_dir}" "${fetch_remote}" "${fetch_source}" "${candidate_ref}"; then
+            fetch_status=0
+        else
+            fetch_status=$?
+        fi
+        candidate_revision="$(git -C "${source_dir}" rev-parse --verify "${candidate_ref}" 2>/dev/null || true)"
     fi
-    candidate_revision="$(git -C "${source_dir}" rev-parse --verify "${candidate_ref}" 2>/dev/null || true)"
     if [ "${fetch_status}" -eq 124 ]; then
         _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
         sync_result_write "${target}" skipped - "Local fallback; remote fetch exceeded ${timeout_seconds}s" || return 1
@@ -2208,6 +2254,8 @@ sync_run() {
             skipped_repo_count=$((skipped_repo_count + 1))
         done < <(catalog_sources 2>/dev/null || true)
         printf '  [INFO] Auto Update is disabled. Skipped checking %d remote repositories.\n' "${skipped_repo_count}"
+    else
+        _sync_prefetch_all
     fi
     local caller_had_cache=1
     [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || caller_had_cache=0
