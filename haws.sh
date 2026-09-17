@@ -1385,11 +1385,17 @@ declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
 
 catalog_source_kind() {
     local source_id="${1:-}"
+    local out_var="${2:-}"
     local path url revision source_dir raw_skill_count kind
     [ -n "${source_id}" ] || return 1
     [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]] || declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
     if [[ -v HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"] ]]; then
-        printf '%s\n' "${HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]}"
+        kind="${HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]}"
+        if [ -n "${out_var}" ]; then
+            printf -v "${out_var}" '%s' "${kind}"
+        else
+            printf '%s\n' "${kind}"
+        fi
         return 0
     fi
     IFS=$'\t' read -r path url revision <<< "$(_catalog_source_fields "${source_id}")" || return 1
@@ -1397,7 +1403,11 @@ catalog_source_kind() {
     if [ ! -d "${source_dir}" ]; then
         kind="UNVERIFIED"
         HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
-        printf '%s\n' "${kind}"
+        if [ -n "${out_var}" ]; then
+            printf -v "${out_var}" '%s' "${kind}"
+        else
+            printf '%s\n' "${kind}"
+        fi
         return 0
     fi
     local skill_f skill_name
@@ -1425,7 +1435,11 @@ catalog_source_kind() {
         kind="UNVERIFIED"
     fi
     HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
-    printf '%s\n' "${kind}"
+    if [ -n "${out_var}" ]; then
+        printf -v "${out_var}" '%s' "${kind}"
+    else
+        printf '%s\n' "${kind}"
+    fi
 }
 
 _catalog_is_disabled() {
@@ -4582,7 +4596,11 @@ settings_draft_load() {
     HAWS_DRAFT_ENVIRONMENTS="${HAWS_PERSIST_ENVIRONMENTS}"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=0
     HAWS_DRAFT_PLAN=""
-    HAWS_PERSIST_SOURCES="$(catalog_sources | cut -f1)"
+    if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
+        HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
+        export HAWS_CATALOG_SOURCES_CACHE
+    fi
+    HAWS_PERSIST_SOURCES="$(printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}" | cut -f1)"
     HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES}"
     HAWS_DRAFT_ADDED_REPOSITORIES=""
     HAWS_DRAFT_ADDED_PATHS=""
@@ -4939,7 +4957,7 @@ _settings_repository_remove_page() {
     while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         name="${path##*/}"
-        type="$(catalog_source_kind "${id}")"
+        catalog_source_kind "${id}" type
         label="${name}"
         [ "${name_counts[${name}]:-0}" -gt 1 ] && label="${name} [${id}]"
         local entry="${label}"$'\t'"${label}|[${type}] ${path}|0"$'\t'"${id}"
@@ -5036,12 +5054,31 @@ settings_page() {
     while IFS= read -r environment; do
         [ -n "${environment}" ] && environment_count=$((environment_count + 1))
     done <<< "${HAWS_DRAFT_ENVIRONMENTS:-}"
-    local skills_detail="all active (default)"
-    if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
-        skills_detail="draft selection loaded"
-    elif [ "${#DISABLED_SKILLS[@]}" -gt 0 ]; then
-        skills_detail="[ Active ] - ${#DISABLED_SKILLS[@]} disabled by user"
+    local skills_total=0 skills_active=0
+    if [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] && [ -n "${HAWS_CATALOG_SKILLS_CACHE}" ]; then
+        skills_total="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | grep -c $'\t' || true)"
+        if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
+            skills_active="$(printf '%s\n' "${HAWS_DRAFT_SKILLS:-}" | grep -c . || true)"
+        else
+            skills_active="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | awk -F $'\t' '$6 == "1" { count++ } END { print count+0 }')"
+        fi
+    elif [ -n "${HAWS_HEALTH_SKILLS_TOTAL:-}" ] && [ "${HAWS_HEALTH_SKILLS_TOTAL}" -gt 0 ]; then
+        skills_total="${HAWS_HEALTH_SKILLS_TOTAL}"
+        if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
+            skills_active="$(printf '%s\n' "${HAWS_DRAFT_SKILLS:-}" | grep -c . || true)"
+        else
+            skills_active="${HAWS_HEALTH_SKILLS_ACTIVE:-0}"
+        fi
+    else
+        _health_collect
+        skills_total="${HAWS_HEALTH_SKILLS_TOTAL:-0}"
+        if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
+            skills_active="$(printf '%s\n' "${HAWS_DRAFT_SKILLS:-}" | grep -c . || true)"
+        else
+            skills_active="${HAWS_HEALTH_SKILLS_ACTIVE:-0}"
+        fi
     fi
+    local skills_detail="active ${skills_active}/${skills_total}"
     local items=(
         "Repositories|Existing repository sources|-"
         "Skills|${skills_detail}|-"

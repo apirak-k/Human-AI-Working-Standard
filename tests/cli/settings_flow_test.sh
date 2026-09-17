@@ -119,7 +119,7 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     assert_output_contains 'Apply' || return 1
     assert_output_not_contains 'Discard Changes|Return without saving' || return 1
     assert_output_contains 'Existing repository sources' || return 1
-    assert_output_contains 'all active (default)' || return 1
+    assert_output_contains 'active 1/1' || return 1
     assert_output_contains 'Accept the draft for preview' || return 1
     assert_output_not_contains 'HAWS Settings — First Install'
 }
@@ -489,8 +489,8 @@ test_settings_skills_shows_disabled_count_when_skills_disabled() {
     echo "demo-one" > "${FIXTURE_PROJECT}/skills.disabled"
     local down=$'\033[B'
     run_haws_input "${down}\nq" || return 1
-    assert_output_contains '1 disabled' || return 1
-    assert_output_not_contains 'all active (default)' || return 1
+    assert_output_contains 'active 0/1' || return 1
+    assert_output_not_contains 'active 1/1' || return 1
 }
 
 run_test() {
