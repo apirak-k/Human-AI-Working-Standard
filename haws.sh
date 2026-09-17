@@ -4277,7 +4277,31 @@ uninstall_apply() {
     local threshold
     threshold="$(printenv HAWS_TEST_UNINSTALL_INTERRUPT_AFTER 2>/dev/null || true)"
     local interrupted=0
-    _uninstall_interrupt() { interrupted=1; }
+    local -A removed_keys=()
+    local removed_count=0
+    _uninstall_flush_ownership() {
+        [ "${removed_count}" -gt 0 ] || return 0
+        local state="$(_health_state)"
+        local file="$state/ownership.tsv"
+        local temporary="$state/ownership.stage.$$"
+        [ -f "$file" ] || return 0
+        local keys_file="$state/ownership.removed.$$"
+        printf '%s\n' "${!removed_keys[@]}" > "$keys_file"
+        if awk -F $'\t' '
+            NR == FNR { removed[$0] = 1; next }
+            { key = $1 "\t" $2 "\t" $3 }
+            !(key in removed) { print }
+        ' "$keys_file" "$file" > "$temporary" 2>/dev/null; then
+            _haws_state_replace "$temporary" "$file"
+        fi
+        rm -f -- "$keys_file" "$temporary"
+        removed_keys=()
+        removed_count=0
+    }
+    _uninstall_interrupt() {
+        interrupted=1
+        _uninstall_flush_ownership
+    }
     trap _uninstall_interrupt INT TERM
     local action group kind path source fingerprint extra record verify_record verify_status
     while IFS=$'\t' read -r action group kind path source fingerprint extra ||
@@ -4298,7 +4322,8 @@ uninstall_apply() {
         verify_record="$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
         if ownership_verify "$verify_record"; then
             if _uninstall_remove_path "$kind" "$path"; then
-                _ownership_remove_record "$record" || status=1
+                removed_keys["$group"$'\t'"$kind"$'\t'"$path"]=1
+                removed_count=$((removed_count + 1))
                 printf 'Removed: %s %s %s\n' "$group" "$kind" "$path"
             else
                 printf 'Preserved: %s %s %s (removal failed)\n' "$group" "$kind" "$path"
@@ -4316,6 +4341,7 @@ uninstall_apply() {
         fi
         processed=$((processed + 1))
     done < "$plan"
+    _uninstall_flush_ownership || status=1
     trap - INT TERM
     return "$status"
 }
