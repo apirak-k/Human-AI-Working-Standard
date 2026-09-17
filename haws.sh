@@ -1006,10 +1006,13 @@ settings_defaults() {
     HAWS_SECOND_BRAIN_ENABLED="off"
     HAWS_SECOND_BRAIN_REMOTE=""
     HAWS_AUTO_UPDATE="on"
+    HAWS_AUTO_UPDATE_SKILLS="on"
+    HAWS_AUTO_UPDATE_BRAIN="on"
     SECOND_BRAIN_ENABLED="off"
     AUTO_UPDATE="on"
     export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE \
-        HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+        HAWS_AUTO_UPDATE HAWS_AUTO_UPDATE_SKILLS HAWS_AUTO_UPDATE_BRAIN \
+        SECOND_BRAIN_ENABLED AUTO_UPDATE
 }
 
 _haws_setting_is_toggle() {
@@ -1033,6 +1036,7 @@ settings_load() {
     [ -f "${file}" ] || return 0
 
     local key value extra
+    local skills_explicit=0
     while IFS=$'\t' read -r key value extra || [ -n "${key:-}" ]; do
         [ -n "${key:-}" ] || continue
         case "${key}" in
@@ -1050,6 +1054,20 @@ settings_load() {
                 _haws_setting_is_toggle "${value}" && [ -z "${extra:-}" ] || return 2
                 HAWS_AUTO_UPDATE="${value}"
                 AUTO_UPDATE="${value}"
+                if [ "${skills_explicit}" -eq 0 ]; then
+                    HAWS_AUTO_UPDATE_SKILLS="${value}"
+                fi
+                ;;
+            auto_update_skills)
+                _haws_setting_is_toggle "${value}" && [ -z "${extra:-}" ] || return 2
+                HAWS_AUTO_UPDATE_SKILLS="${value}"
+                HAWS_AUTO_UPDATE="${value}"
+                AUTO_UPDATE="${value}"
+                skills_explicit=1
+                ;;
+            auto_update_brain)
+                _haws_setting_is_toggle "${value}" && [ -z "${extra:-}" ] || return 2
+                HAWS_AUTO_UPDATE_BRAIN="${value}"
                 ;;
             *)
                 return 2
@@ -1058,14 +1076,26 @@ settings_load() {
     done < "${file}"
     _second_brain_refresh_state
     export HAWS_SECOND_BRAIN_ENABLED HAWS_SECOND_BRAIN_REMOTE \
-        HAWS_AUTO_UPDATE SECOND_BRAIN_ENABLED AUTO_UPDATE
+        HAWS_AUTO_UPDATE HAWS_AUTO_UPDATE_SKILLS HAWS_AUTO_UPDATE_BRAIN \
+        SECOND_BRAIN_ENABLED AUTO_UPDATE
 }
 
 settings_save() {
-    local auto_update="${HAWS_AUTO_UPDATE:-on}"
+    local auto_update_skills="${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}"
+    local auto_update_brain="${HAWS_AUTO_UPDATE_BRAIN:-on}"
     case "${1:-}" in
         auto_update)
-            auto_update="${2:-}"
+            auto_update_skills="${2:-}"
+            ;;
+        auto_update_skills)
+            auto_update_skills="${2:-}"
+            ;;
+        auto_update_brain)
+            auto_update_brain="${2:-}"
+            ;;
+        auto_update_all)
+            auto_update_skills="${2:-}"
+            auto_update_brain="${3:-}"
             ;;
         second_brain|second_brain_enabled)
             _haws_setting_is_toggle "${2:-}" || return 2
@@ -1074,13 +1104,16 @@ settings_save() {
             _haws_remote_is_valid "${2:-}" || return 2
             ;;
         *)
-            [ "$#" -lt 2 ] || auto_update="$2"
+            if [ "$#" -ge 2 ]; then
+                auto_update_skills="$2"
+            fi
             if [ "$#" -ge 3 ]; then
                 _haws_remote_is_valid "$3" || return 2
             fi
             ;;
     esac
-    _haws_setting_is_toggle "${auto_update}" || return 2
+    _haws_setting_is_toggle "${auto_update_skills}" || return 2
+    _haws_setting_is_toggle "${auto_update_brain}" || return 2
 
     local state="$(_haws_state_dir)"
     local file="${state}/settings.tsv"
@@ -1088,7 +1121,9 @@ settings_save() {
     mkdir -p "${state}" || return 1
     {
         printf 'schema_version\t1\n'
-        printf 'auto_update\t%s\n' "${auto_update}"
+        printf 'auto_update_skills\t%s\n' "${auto_update_skills}"
+        printf 'auto_update_brain\t%s\n' "${auto_update_brain}"
+        printf 'auto_update\t%s\n' "${auto_update_skills}"
     } > "${temporary}" || {
         rm -f -- "${temporary}"
         return 1
@@ -1097,10 +1132,12 @@ settings_save() {
     local result=$?
     rm -f -- "${temporary}"
     [ "${result}" -eq 0 ] || return "${result}"
-    HAWS_AUTO_UPDATE="${auto_update}"
-    AUTO_UPDATE="${auto_update}"
+    HAWS_AUTO_UPDATE_SKILLS="${auto_update_skills}"
+    HAWS_AUTO_UPDATE_BRAIN="${auto_update_brain}"
+    HAWS_AUTO_UPDATE="${auto_update_skills}"
+    AUTO_UPDATE="${auto_update_skills}"
     _second_brain_refresh_state
-    export HAWS_AUTO_UPDATE AUTO_UPDATE
+    export HAWS_AUTO_UPDATE_SKILLS HAWS_AUTO_UPDATE_BRAIN HAWS_AUTO_UPDATE AUTO_UPDATE
 }
 
 disabled_environments_load() {
@@ -4695,6 +4732,8 @@ settings_draft_load() {
     disabled_environments_load
     load_disabled_skills
     HAWS_PERSIST_AUTO_UPDATE="${HAWS_AUTO_UPDATE}"
+    HAWS_PERSIST_AUTO_UPDATE_SKILLS="${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}"
+    HAWS_PERSIST_AUTO_UPDATE_BRAIN="${HAWS_AUTO_UPDATE_BRAIN:-on}"
     HAWS_PERSIST_ENVIRONMENTS=""
     local environment
     while IFS= read -r environment; do
@@ -4702,6 +4741,8 @@ settings_draft_load() {
         HAWS_PERSIST_ENVIRONMENTS+="${environment}"$'\n'
     done < <(_haws_detected_environments)
     HAWS_DRAFT_AUTO_UPDATE="${HAWS_PERSIST_AUTO_UPDATE}"
+    HAWS_DRAFT_AUTO_UPDATE_SKILLS="${HAWS_PERSIST_AUTO_UPDATE_SKILLS}"
+    HAWS_DRAFT_AUTO_UPDATE_BRAIN="${HAWS_PERSIST_AUTO_UPDATE_BRAIN}"
     HAWS_DRAFT_ENVIRONMENTS="${HAWS_PERSIST_ENVIRONMENTS}"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=0
     HAWS_DRAFT_PLAN=""
@@ -4715,9 +4756,10 @@ settings_draft_load() {
     HAWS_DRAFT_ADDED_PATHS=""
     HAWS_DRAFT_SKILLS=""
     HAWS_DRAFT_SKILLS_LOADED=0
-    export HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
-        HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
-        HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN
+    export HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_AUTO_UPDATE_SKILLS HAWS_PERSIST_AUTO_UPDATE_BRAIN \
+        HAWS_PERSIST_ENVIRONMENTS \
+        HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
+        HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN
     export HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
@@ -4728,9 +4770,10 @@ settings_draft_discard() {
     rm -f -- "${state}/settings.plan" "${state}/apply.result"
     rmdir -- "${state}" 2>/dev/null || true
     rmdir -- "$(dirname "${state}")" 2>/dev/null || true
-    unset HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_ENVIRONMENTS \
-        HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
-        HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN \
+    unset HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_AUTO_UPDATE_SKILLS HAWS_PERSIST_AUTO_UPDATE_BRAIN \
+        HAWS_PERSIST_ENVIRONMENTS \
+        HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
+        HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN \
         HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED \
@@ -4747,6 +4790,8 @@ _settings_draft_is_dirty() {
         return 0
     fi
     [ "${HAWS_DRAFT_AUTO_UPDATE:-}" != "${HAWS_PERSIST_AUTO_UPDATE:-}" ] && return 0
+    [ "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-}" != "${HAWS_PERSIST_AUTO_UPDATE_SKILLS:-}" ] && return 0
+    [ "${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-}" != "${HAWS_PERSIST_AUTO_UPDATE_BRAIN:-}" ] && return 0
     [ "$( _settings_list_signature "${HAWS_DRAFT_ENVIRONMENTS:-}" )" != \
         "$( _settings_list_signature "${HAWS_PERSIST_ENVIRONMENTS:-}" )" ]
 }
@@ -4763,6 +4808,8 @@ settings_draft_reset() {
         return 1
     }
     HAWS_DRAFT_AUTO_UPDATE="on"
+    HAWS_DRAFT_AUTO_UPDATE_SKILLS="on"
+    HAWS_DRAFT_AUTO_UPDATE_BRAIN="on"
     HAWS_DRAFT_ENVIRONMENTS="$(_haws_detected_environments)"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
     HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES:-}"
@@ -4770,8 +4817,8 @@ settings_draft_reset() {
     HAWS_DRAFT_ADDED_PATHS=""
     HAWS_DRAFT_SKILLS=""
     HAWS_DRAFT_SKILLS_LOADED=0
-    export HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_ENVIRONMENTS \
-        HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_SOURCES \
+    export HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
+        HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_SOURCES \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
     echo "The draft now contains default values. Nothing has changed on this computer yet."
@@ -5583,7 +5630,9 @@ settings_apply_final() {
     local environment_file="${HAWS_DISABLED_ENVIRONMENTS_FILE:-$(_haws_compat_file environments.disabled)}"
     [ -f "${plan}" ] || return 1
     echo "  [*] Applying settings draft..."
-    settings_save auto_update "${HAWS_DRAFT_AUTO_UPDATE:-on}" || return 1
+    local draft_skills="${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}"
+    local draft_brain="${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"
+    settings_save auto_update_all "${draft_skills}" "${draft_brain}" || return 1
     if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
         local disabled=()
         local environment
