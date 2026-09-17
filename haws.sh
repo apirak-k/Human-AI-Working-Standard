@@ -1724,7 +1724,7 @@ _sync_fetch_candidate() {
         sleep "${HAWS_TEST_SYNC_FETCH_DELAY}"
     fi
     git -c http.connectTimeout=3 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=4 \
-        -C "${source_dir}" fetch --quiet "${fetch_remote}" "+${fetch_source}:${candidate_ref}"
+        -C "${source_dir}" fetch --quiet "${fetch_remote}" "+${fetch_source}:${candidate_ref}" 2>/dev/null
 }
 
 _sync_result_label() {
@@ -1937,6 +1937,7 @@ _sync_prefetch_all() {
     for pid in "${pids[@]}"; do
         wait "$pid" 2>/dev/null || true
     done
+    export HAWS_SYNC_PREFETCH_DONE=1
 }
 
 sync_target() {
@@ -2013,6 +2014,8 @@ sync_target() {
     candidate_revision="$(git -C "${source_dir}" rev-parse --verify "${candidate_ref}" 2>/dev/null || true)"
     if [ -n "${candidate_revision}" ]; then
         fetch_status=0
+    elif [ "${HAWS_SYNC_PREFETCH_DONE:-0}" -eq 1 ]; then
+        fetch_status=1
     else
         if run_with_deadline "${timeout_seconds}" _sync_fetch_candidate \
             "${source_dir}" "${fetch_remote}" "${fetch_source}" "${candidate_ref}"; then
@@ -2213,7 +2216,7 @@ sync_run() {
     fi
     HAWS_SYNC_LOCK_ACQUIRED=1
     export HAWS_SYNC_LOCK_ACQUIRED
-    trap 'if [ "${HAWS_SYNC_LOCK_ACQUIRED:-0}" -eq 1 ]; then sync_lock_release >/dev/null 2>&1 || true; HAWS_SYNC_LOCK_ACQUIRED=0; fi' EXIT
+    trap 'if [ "${HAWS_SYNC_LOCK_ACQUIRED:-0}" -eq 1 ]; then sync_lock_release >/dev/null 2>&1 || true; HAWS_SYNC_LOCK_ACQUIRED=0; fi; unset HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true' EXIT
     if settings_load; then
         :
     else
@@ -2234,10 +2237,6 @@ sync_run() {
     SYNC_SUMMARY_BLOCKED=0
     SYNC_SUMMARY_FAILED=0
     SYNC_SUMMARY_TIMEOUT=0
-    echo "============================================================="
-    echo "                         HAWS SYNC"
-    echo "============================================================="
-    echo ""
     echo "OPTIONS"
     printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
     printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
@@ -2293,6 +2292,7 @@ sync_run() {
     printf '  %-14s: %s\n' "Failed" "${SYNC_SUMMARY_FAILED}"
     printf '  %-14s: %s\n' "Timeout" "${SYNC_SUMMARY_TIMEOUT}"
     HAWS_SYNC_PRESENTATION=0
+    unset HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
     return "${status}"
 }
 
@@ -2302,6 +2302,10 @@ run_sync() {
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
     done
     shift || true
+    echo "============================================================="
+    echo "                         HAWS SYNC"
+    echo "============================================================="
+    echo ""
     local sync_status=0
     echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
@@ -2310,6 +2314,7 @@ run_sync() {
     else
         echo "[WARN] Source synchronization completed with target issues"
     fi
+    echo ""
 
     local SOURCE_DIR="${SCRIPT_DIR}"
 
@@ -2833,6 +2838,7 @@ EOF
     local wait_status=0
     _haws_wait_for_result || wait_status=$?
     unset HAWS_CATALOG_SKILLS_CACHE 2>/dev/null || true
+    unset HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
     [ "${wait_status}" -eq 0 ] || return "${wait_status}"
     return "${sync_status}"
 }

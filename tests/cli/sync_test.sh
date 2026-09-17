@@ -35,7 +35,7 @@ cleanup_fixture() {
         rm -rf -- "${FIXTURE_ROOT}"
     fi
     unset HAWS_REPO_DIR HAWS_STATE_DIR HAWS_SOURCE_ONLY HAWS_TEST_SYNC_DELAY \
-        HAWS_AUTO_UPDATE AUTO_UPDATE HAWS_SECOND_BRAIN_ENABLED
+        HAWS_AUTO_UPDATE AUTO_UPDATE HAWS_SECOND_BRAIN_ENABLED HAWS_SYNC_PREFETCH_DONE
     FIXTURE_ROOT=""
     FIXTURE_HOME=""
     FIXTURE_REPO=""
@@ -204,13 +204,15 @@ test_sync_runs_phases_in_order_and_configures_hooks() {
     write_settings off
     run_sync_process sync || return 1
 
-    local step1 step2 step3 step4 step5
+    local banner_line step1 step2 step3 step4 step5
+    banner_line="$(grep -nF 'HAWS SYNC' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
     step1="$(grep -nF '[*] Step 1:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
     step2="$(grep -nF '[*] Step 2:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
     step3="$(grep -nF '[*] Step 3:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
     step4="$(grep -nF '[*] Step 4:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
     step5="$(grep -nF '[*] Step 5:' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
-    [ -n "${step1}" ] && [ "${step1}" -lt "${step2}" ] || return 1
+    [ -n "${banner_line}" ] && [ -n "${step1}" ] && [ "${banner_line}" -lt "${step1}" ] || return 1
+    [ "${step1}" -lt "${step2}" ] || return 1
     [ "${step2}" -lt "${step3}" ] && [ "${step3}" -lt "${step4}" ] || return 1
     [ "${step4}" -lt "${step5}" ] || return 1
     grep -F '[PASS] Git safety hooks configured' "${OUTPUT_FILE}" >/dev/null || return 1
