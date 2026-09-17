@@ -3227,6 +3227,14 @@ interactive_menu() {
     [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25h" 2>/dev/null || true
 
     echo ""
+    if [ "${mode}" = "settings" ]; then
+        declare -gA INTERACTIVE_MENU_STATES=()
+        for ((i=0; i<count; i++)); do
+            INTERACTIVE_MENU_STATES["${item_names[$i]}"]="${item_states[$i]}"
+        done
+        INTERACTIVE_MENU_SELECTION="${cursor}"
+    fi
+
     if [ "$cancelled" -eq 1 ]; then
         return 1
     fi
@@ -3237,11 +3245,7 @@ interactive_menu() {
             CHECKLIST_RESULTS["${item_names[$i]}"]="${item_states[$i]}"
         done
     elif [ "${mode}" = "settings" ]; then
-        declare -gA INTERACTIVE_MENU_STATES=()
-        for ((i=0; i<count; i++)); do
-            INTERACTIVE_MENU_STATES["${item_names[$i]}"]="${item_states[$i]}"
-        done
-        INTERACTIVE_MENU_SELECTION="${cursor}"
+        :
     else
         INTERACTIVE_MENU_SELECTION="${cursor}"
     fi
@@ -5210,6 +5214,37 @@ settings_repositories_page() {
     done
 }
 
+settings_auto_update_page() {
+    local brain_remote="$(_second_brain_remote_url)"
+    local brain_state="-"
+    local brain_desc="[Local-Only] Connect remote in Second Brain to enable"
+    if [ -n "${brain_remote}" ]; then
+        brain_state="${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"
+        brain_desc="Sync Second Brain with remote during Sync"
+    fi
+
+    local start_idx=0
+    while true; do
+        local items=(
+            "Skills|Update central skills & HAWS core during Sync|${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-on}"
+            "Second Brain|${brain_desc}|${brain_state}"
+        )
+        local ret=0
+        interactive_menu settings "Auto Update Settings|Review the draft; Apply is the only way to save changes.|${start_idx}" "${items[@]}" || ret=$?
+        HAWS_DRAFT_AUTO_UPDATE_SKILLS="${INTERACTIVE_MENU_STATES[Skills]:-${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-on}}"
+        HAWS_DRAFT_AUTO_UPDATE="${HAWS_DRAFT_AUTO_UPDATE_SKILLS}"
+        export HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS
+        if [ -n "${brain_remote}" ]; then
+            HAWS_DRAFT_AUTO_UPDATE_BRAIN="${INTERACTIVE_MENU_STATES[Second Brain]:-${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}}"
+            export HAWS_DRAFT_AUTO_UPDATE_BRAIN
+        fi
+        if [ "${ret}" -ne 0 ]; then
+            return 0
+        fi
+        start_idx="${INTERACTIVE_MENU_SELECTION:-0}"
+    done
+}
+
 settings_page() {
     local environment_count=0
     local environment
@@ -5241,18 +5276,22 @@ settings_page() {
         fi
     fi
     local skills_detail="Active ${skills_active}/${skills_total}"
+    local auto_update_detail
+    if [ -n "$(_second_brain_remote_url)" ]; then
+        auto_update_detail="(Skills: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}"), Brain: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"))"
+    else
+        auto_update_detail="(Skills: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}"))"
+    fi
     local items=(
         "Repositories|Existing repository sources|-"
         "Skills|${skills_detail}|-"
-        "AI Environments|${environment_count} selected|-"
-        "Second Brain|[$(_second_brain_status_label)] Cloud sync / Configure|"
-        "Auto Update|[Toggle] Update HAWS sources during Sync|${HAWS_DRAFT_AUTO_UPDATE:-on}"
+        "AI Environments|${environment_count} Selected|-"
+        "Second Brain|[$(_second_brain_status_label)] Cloud sync / Configure|-"
+        "Auto Update|${auto_update_detail}|-"
         "Apply|Accept the draft for preview|-"
         "Reset to Defaults|Replace the current draft|-"
     )
     if interactive_menu settings "HAWS Settings|Review the draft; Apply is the only way to save changes." "${items[@]}"; then
-        HAWS_DRAFT_AUTO_UPDATE="${INTERACTIVE_MENU_STATES[Auto Update]:-${HAWS_DRAFT_AUTO_UPDATE}}"
-        export HAWS_DRAFT_AUTO_UPDATE
         case "${INTERACTIVE_MENU_SELECTION}" in
             0)
                 settings_repositories_page || true
@@ -5271,6 +5310,7 @@ settings_page() {
                 return 2
                 ;;
             4)
+                settings_auto_update_page || true
                 return 2
                 ;;
             5)
@@ -5279,6 +5319,9 @@ settings_page() {
             6)
                 settings_draft_reset || true
                 return 2
+                ;;
+            *)
+                return 0
                 ;;
         esac
     fi
@@ -5502,7 +5545,12 @@ settings_preview() {
     echo "  $(_second_brain_status_label)"
     echo ""
     echo "Auto Update"
-    echo "  $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE:-on}")"
+    if [ -n "$(_second_brain_remote_url)" ]; then
+        echo "  Skills: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}")"
+        echo "  Brain: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}")"
+    else
+        echo "  $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}")"
+    fi
     if interactive_menu menu "${title}" \
         "${HAWS_PLAN_KIND:-Install}|Apply this plan" \
         "Cancel|Discard the draft and leave"; then

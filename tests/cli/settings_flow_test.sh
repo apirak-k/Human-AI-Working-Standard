@@ -115,7 +115,7 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     assert_output_not_contains 'Disconnect >' || return 1
     assert_output_not_contains 'Second Brain Remote' || return 1
     assert_output_contains 'Auto Update' || return 1
-    assert_output_contains '[Toggle] Update HAWS sources during Sync' || return 1
+    assert_output_contains '(Skills: On)' || return 1
     assert_output_contains 'Apply' || return 1
     assert_output_not_contains 'Discard Changes|Return without saving' || return 1
     assert_output_contains 'Existing repository sources' || return 1
@@ -130,7 +130,7 @@ test_settings_exposes_second_brain_detail_without_toggle() {
     assert_output_contains '[Local-Only] Cloud sync / Configure' || return 1
     assert_output_not_contains 'Disconnect >' || return 1
     assert_output_contains 'Auto Update' || return 1
-    assert_output_contains '[Toggle] Update HAWS sources during Sync' || return 1
+    assert_output_contains '(Skills: On)' || return 1
     assert_output_not_contains 'Second Brain Remote' || return 1
     ! grep -E 'Second Brain[[:space:]]+\[ (On|Off) \]' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
@@ -231,12 +231,6 @@ test_interactive_skill_pages_use_settings_header_and_fixed_state_columns() {
     run_haws_input "${input}" || true
     assert_output_contains '                       Configure Single Skills' || return 1
     assert_output_not_contains '=== Configure Single Skills ===' || return 1
-    local state_column detail_column
-    state_column="$(awk '/Auto Update[[:space:]]+\[ On \]/ { print index($0, "[ On ]"); exit }' "${OUTPUT_FILE}")"
-    detail_column="$(awk '/Auto Update[[:space:]]+\[ On \]/ { print index($0, " - "); exit }' "${OUTPUT_FILE}")"
-    [ -n "${state_column}" ] || return 1
-    [ -n "${detail_column}" ] || return 1
-    [ "${detail_column}" -gt "${state_column}" ]
 }
 
 test_settings_ai_environments_opens_an_actionable_selector() {
@@ -247,6 +241,7 @@ test_settings_ai_environments_opens_an_actionable_selector() {
     input+="qq"
     run_haws_input "${input}" || true
     assert_output_contains 'Configure AI Environments' || return 1
+    assert_output_contains '2 Selected' || return 1
     assert_output_contains 'Claude Code' || return 1
     assert_output_contains 'OpenAI Codex' || return 1
     assert_output_not_contains 'This Settings draft row is preserved for the next catalog batch.'
@@ -255,10 +250,12 @@ test_settings_ai_environments_opens_an_actionable_selector() {
 test_settings_enter_toggles_auto_update_and_reaches_preview() {
     local down=$'\033[B'
     local input="${down}${down}${down}${down}\n"
-    input+="${down}\nq"
+    input+="\nq"
+    input+="${down}${down}${down}${down}${down}\nq"
     run_haws_input "${input}" settings || true
+    assert_output_contains 'Auto Update Settings' || return 1
     assert_output_contains 'HAWS — Preview Install' || return 1
-    grep -E 'Auto Update[[:space:]]+\[ Off \]' "${OUTPUT_FILE}" >/dev/null 2>&1 || return 1
+    assert_output_contains '(Skills: Off)' || return 1
 }
 
 test_settings_apply_reaches_preview_without_persisting() {
@@ -278,12 +275,14 @@ test_settings_apply_reaches_preview_without_persisting() {
 test_preview_back_to_settings_preserves_draft() {
     local down=$'\033[B'
     local input="${down}\n"
-    input+="${down}${down}${down}${down} ${down}\n"
+    input+="${down}${down}${down}${down}\n"
+    input+=" q"
+    input+="${down}${down}${down}${down}${down}\n"
     input+="q"
     run_haws_input "${input}" || true
     assert_output_contains 'HAWS — Preview Install' || return 1
     assert_output_not_contains 'Back to Settings' || return 1
-    grep -E 'Auto Update[[:space:]]+\[ Off \]' "${OUTPUT_FILE}" || return 1
+    assert_output_contains '(Skills: Off)' || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
 }
 
@@ -473,13 +472,16 @@ test_settings_repository_remove_displays_pack_and_single_without_unbound_variabl
 test_settings_auto_update_toggle_alignment_equal_columns() {
     local down=$'\033[B'
     local input="${down}\n"
-    input+="${down}${down}${down}${down} "
+    input+="${down}${down}${down}${down}\n"
     input+=" "
-    input+="qq"
+    input+=" "
+    input+="qqq"
     run_haws_input "${input}" || true
+    assert_output_contains 'Auto Update Settings' || return 1
+    assert_output_contains '[Local-Only] Connect remote in Second Brain to enable' || return 1
     local on_detail_col off_detail_col
-    on_detail_col="$(awk '/Auto Update[[:space:]]+\[ On \]/ { print index($0, " - "); exit }' "${OUTPUT_FILE}")"
-    off_detail_col="$(awk '/Auto Update[[:space:]]+\[ Off \]/ { print index($0, " - "); exit }' "${OUTPUT_FILE}")"
+    on_detail_col="$(awk '/Skills[[:space:]]+\[ On \]/ { print index($0, " - "); exit }' "${OUTPUT_FILE}")"
+    off_detail_col="$(awk '/Skills[[:space:]]+\[ Off \]/ { print index($0, " - "); exit }' "${OUTPUT_FILE}")"
     [ -n "${on_detail_col}" ] || return 1
     [ -n "${off_detail_col}" ] || return 1
     [ "${on_detail_col}" -eq "${off_detail_col}" ]
