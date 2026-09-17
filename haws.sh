@@ -4055,12 +4055,19 @@ _ownership_path_safe() {
     home_root="${HAWS_OWNERSHIP_HOME_ROOT}"
     repo_root="${HAWS_OWNERSHIP_REPO_ROOT}"
     state_root="${HAWS_OWNERSHIP_STATE_ROOT}"
-    parent="$(canonical_path "$(dirname "$path")" 2>/dev/null || true)"
-    [ -n "$parent" ] && [ -n "$home_root" ] && [ -n "$repo_root" ] || return 1
+    parent="${path%/*}"
     case "$parent" in
         "$state_root"|"$state_root"/*) return 1 ;;
         "$home_root"|"$home_root"/*|"$repo_root"|"$repo_root"/*) return 0 ;;
-        *) return 1 ;;
+        *)
+            parent="$(canonical_path "$parent" 2>/dev/null || true)"
+            [ -n "$parent" ] && [ -n "$home_root" ] && [ -n "$repo_root" ] || return 1
+            case "$parent" in
+                "$state_root"|"$state_root"/*) return 1 ;;
+                "$home_root"|"$home_root"/*|"$repo_root"|"$repo_root"/*) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
     esac
 }
 
