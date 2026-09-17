@@ -2182,9 +2182,9 @@ run_sync() {
     echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
     if [ "${sync_status}" -eq 0 ]; then
-        echo "[PASS] Step 1: Sources are synchronized or safely unchanged"
+        echo "[PASS] Sources are synchronized or safely unchanged"
     else
-        echo "[WARN] Step 1: Source synchronization completed with target issues"
+        echo "[WARN] Source synchronization completed with target issues"
     fi
 
     local SOURCE_DIR="${SCRIPT_DIR}"
@@ -2208,7 +2208,7 @@ run_sync() {
     [ "$DETECTED_CURSOR" = true ] && echo "  [✓] Cursor IDE detected"
     [ "$DETECTED_COPILOT" = true ] && echo "  [✓] GitHub Copilot detected"
     [ "$DETECTED_CODEX" = true ] && echo "  [✓] OpenAI Codex detected (${HOME}/.codex)"
-    echo "[PASS] Step 2: AI environment detection complete"
+    echo "[PASS] AI environment detection complete"
     echo ""
 
     # Helper Linking Functions
@@ -2405,7 +2405,7 @@ run_sync() {
             safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
         fi
     fi
-    echo "[PASS] Step 3: Global environment pointers configured"
+    echo "[PASS] Global environment pointers configured"
     echo ""
 
     # 4. Link Skills, profiles, and commands
@@ -2666,20 +2666,20 @@ EOF
             echo "  [✓] Purged ${UNMANAGED_PURGED} unmanaged foreign skill(s)."
         fi
     fi
-    echo "[PASS] Step 4: Skills, profiles, commands, and cleanup are ready"
+    echo "[PASS] Skills, profiles, commands, and cleanup are ready"
     echo ""
 
     # 5. Configure hooks
     echo "[*] Step 5: Configuring hooks"
     if [ -d "${SCRIPT_DIR}/.githooks" ]; then
         if run_hooks install >/dev/null; then
-            echo "[PASS] Step 5: Git safety hooks configured"
+            echo "[PASS] Git safety hooks configured"
         else
-            echo "[FAIL] Step 5: Git safety hooks could not be configured"
+            echo "[FAIL] Git safety hooks could not be configured"
             sync_status=1
         fi
     else
-        echo "[WARN] Step 5: Git safety hooks directory is not present"
+        echo "[WARN] Git safety hooks directory is not present"
     fi
     echo ""
 
@@ -4903,7 +4903,7 @@ settings_page() {
     if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
         skills_detail="draft selection loaded"
     elif [ "${#DISABLED_SKILLS[@]}" -gt 0 ]; then
-        skills_detail="${#DISABLED_SKILLS[@]} disabled"
+        skills_detail="[ Active ] - ${#DISABLED_SKILLS[@]} disabled by user"
     fi
     local items=(
         "Repositories|Existing repository sources|-"
