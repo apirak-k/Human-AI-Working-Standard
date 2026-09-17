@@ -1,29 +1,25 @@
 # Current old-base Implementation Checkpoint
 
-## CURRENT CHECKPOINT — 2026-09-17 Performance Optimization & Architecture Polish
+## CURRENT CHECKPOINT — 2026-09-17 Phase 7 Deep Architecture & Performance Optimization
 
 The current continuation worktree is `C:\Users\ai-project\Desktop\SC0434\Human-AI-Working-Standard\.worktrees\cli-task1-remote` on branch `codex/remote-continuation`.
 
-All 5 core architectural bottlenecks and usability issues reported from real-world testing have been resolved, verified, and committed locally across 5 incremental checkpoint commits:
-1. **Dynamic Skills Label & Clean Result Headers** (`b485bc2`):
-   - Settings skills detail displays honest dynamic counts: `[ Active ] - X disabled by user` or `all active (default)`.
-   - Stripped redundant `Step X:` prefix from `[PASS]`, `[WARN]`, and `[FAIL]` result lines in `run_sync`.
-2. **In-Memory Session Cache & Fast Navigation** (`6cb8f4f`):
-   - In-memory session cache for catalog sources and skills avoids repeated multi-second disk traversals when moving between Settings, Skills, and Repositories.
-   - Initial loading banner is only displayed on first cold scan.
-3. **Instant Uninstall Preview & Strict Safety Verification** (`a82b03b`, `f260da4`):
-   - Added lightweight existence verification mode to `ownership_verify` during preview.
-   - Eliminated redundant `realpath.exe` subprocess spawning inside `_ownership_path_safe` by utilizing fast pure-bash prefix matching (`${path%/*}`), accelerating 300+ item verification from seconds to 0.045s.
-   - Strict SHA256 safety verification remains 100% enforced during `uninstall_apply`.
-4. **Doctor State-Fingerprint & Delta Check** (`011ac1e`):
-   - Added state fingerprinting (`_health_fingerprint`) tracking git HEAD, hooks path, state timestamps, and managed targets.
-   - Non-polluting cache stored in system temp dir accelerates `haws doctor` and `haws status` from 25.6s to 1.7s (93% speedup).
-   - `--deep` flag available to force complete diagnostic re-scan.
-5. **Parallel Remote Repository Prefetch** (`eee1241`):
-   - Remote repository candidate fetching is parallelized in `_sync_prefetch_all`, eliminating the sequential network stall under `TARGETS`.
-   - Evaluates all 13 submodules simultaneously in 1-2s instead of 15s.
+All Phase 7 architecture optimizations and UAT refinements have been implemented, verified, and committed locally:
+1. **Sync Banner & Step Spacing** (`f693274`):
+   - Hoisted `HAWS SYNC` box banner to the very top before Step 1 in `run_sync`.
+   - Added uniform blank line spacing after Step 1 and before each step.
+2. **Clean Offline Sync & Parallel Prefetch Fallback** (`f693274`):
+   - Silenced Git fatal network stderr (`2>/dev/null`) during candidate prefetch.
+   - Skipped redundant sequential retry loop in `sync_target` when parallel prefetch has already evaluated sources.
+3. **Dynamic Skills Description in Settings** (`dcc9f82`):
+   - Settings skills option description displays real numbers unconditionally: `active x/n` (e.g. `active 120/146`, `active 146/146`, or `active 2/3` in fixtures).
+4. **Session Cache Retention & Subshell Elimination** (`dcc9f82`):
+   - Eliminated subshell cache loss in `_settings_repository_remove_page` using `printf -v "${out_var}"`, preserving `HAWS_CATALOG_SOURCE_KIND_CACHE` in parent shell memory.
+   - Reused `HAWS_CATALOG_SOURCES_CACHE` in `settings_draft_load` to avoid repeated `git rev-parse` across submodules when opening Settings.
+5. **Uninstall Apply Single-Pass Batch Update** (`156b493`):
+   - Eliminated the 150x `awk` disk rewrite loop in `uninstall_apply`, replacing it with in-memory key collection and a single-pass atomic update on `ownership.tsv`.
 
-Full regression test suite (`tests/cli/run.sh`) passed: all 10 test suites passed (0 failures).
+Full regression test suite (`tests/cli/run.sh`) passed: all 10 test suites passed (0 failures, 100% green).
 
 ## PREVIOUS CHECKPOINT — 2026-09-17 Lean Architecture & Usability Fixes
 
