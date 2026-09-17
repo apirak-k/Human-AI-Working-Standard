@@ -11,8 +11,9 @@ All 5 core architectural bottlenecks and usability issues reported from real-wor
 2. **In-Memory Session Cache & Fast Navigation** (`6cb8f4f`):
    - In-memory session cache for catalog sources and skills avoids repeated multi-second disk traversals when moving between Settings, Skills, and Repositories.
    - Initial loading banner is only displayed on first cold scan.
-3. **Instant Uninstall Preview & Strict Safety Verification** (`a82b03b`):
-   - Added lightweight existence verification mode to `ownership_verify` during preview (0.02s instead of 12s on MSYS2/Git Bash Windows).
+3. **Instant Uninstall Preview & Strict Safety Verification** (`a82b03b`, `f260da4`):
+   - Added lightweight existence verification mode to `ownership_verify` during preview.
+   - Eliminated redundant `realpath.exe` subprocess spawning inside `_ownership_path_safe` by utilizing fast pure-bash prefix matching (`${path%/*}`), accelerating 300+ item verification from seconds to 0.045s.
    - Strict SHA256 safety verification remains 100% enforced during `uninstall_apply`.
 4. **Doctor State-Fingerprint & Delta Check** (`011ac1e`):
    - Added state fingerprinting (`_health_fingerprint`) tracking git HEAD, hooks path, state timestamps, and managed targets.
