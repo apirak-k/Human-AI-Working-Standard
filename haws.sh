@@ -4562,12 +4562,9 @@ _haws_detected_environments() {
 }
 
 _settings_list_contains() {
-    local list="${1:-}"
-    local wanted="${2:-}"
-    local value
-    while IFS= read -r value || [ -n "${value}" ]; do
-        [ "${value}" = "${wanted}" ] && return 0
-    done <<< "${list}"
+    case "$1" in
+        "$2"|"$2"$'\n'*|*$'\n'"$2"|*$'\n'"$2"$'\n'*) return 0 ;;
+    esac
     return 1
 }
 
@@ -4687,7 +4684,7 @@ _settings_ensure_skill_draft() {
         HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)"
         export HAWS_CATALOG_SKILLS_CACHE
     fi
-    HAWS_DRAFT_SKILLS="$(catalog_skills | awk -F '\t' '$6 == 1 {print $2}')"
+    HAWS_DRAFT_SKILLS="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | awk -F '\t' '$6 == 1 {print $2}')"
     HAWS_DRAFT_SKILLS_LOADED=1
     HAWS_PERSIST_SKILLS="${HAWS_DRAFT_SKILLS}"
     export HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
@@ -4921,10 +4918,16 @@ settings_skills_page() {
         source_labels["${source_id}"]="$(_interactive_source_label "${source_path}")"
     done < <(_catalog_skill_sources)
 
+    local -A active_draft_map=()
+    local draft_item
+    while IFS= read -r draft_item || [ -n "${draft_item}" ]; do
+        [ -n "${draft_item}" ] && active_draft_map["${draft_item}"]=1
+    done <<< "${HAWS_DRAFT_SKILLS:-}"
+
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         source_counts["${source_id}"]=$(( ${source_counts[${source_id}]:-0} + 1 ))
-        if _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${id}"; then
+        if [ -n "${active_draft_map["${id}"]:-}" ]; then
             local current_active="${source_active_counts[${source_id}]:-0}"
             source_active_counts["${source_id}"]=$((current_active + 1))
         fi
@@ -5674,8 +5677,7 @@ settings_flow_run() {
     local start="${1:-settings}"
     local result
     local HAWS_CATALOG_SOURCES_CACHE
-    local HAWS_CATALOG_SKILLS_CACHE
-    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    unset HAWS_CATALOG_SOURCES_CACHE
     while true; do
         if [ "${start}" = settings ]; then
             if settings_page; then
