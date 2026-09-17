@@ -5140,7 +5140,7 @@ settings_page() {
             skills_active="${HAWS_HEALTH_SKILLS_ACTIVE:-0}"
         fi
     fi
-    local skills_detail="active ${skills_active}/${skills_total}"
+    local skills_detail="Active ${skills_active}/${skills_total}"
     local items=(
         "Repositories|Existing repository sources|-"
         "Skills|${skills_detail}|-"
