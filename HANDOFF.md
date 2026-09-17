@@ -1,38 +1,30 @@
 # Current old-base Implementation Checkpoint
 
-## CURRENT CHECKPOINT — 2026-09-17 Phase 7 & UAT Polish Complete
+## CURRENT CHECKPOINT — 2026-09-17 Phase 8: Performance & UX Polish Complete
 
-The current continuation worktree is `C:\Users\ai-project\Desktop\SC0434\Human-AI-Working-Standard\.worktrees\cli-task1-remote` on branch `codex/remote-continuation`.
-The branch is **15 local commits ahead of origin**. Working tree is completely clean.
+The current continuation worktree is `E:\Human-AI-Working-Standard\.worktrees\codex-haws-old-base-selected` on branch `codex/remote-continuation`.
+All 10 CLI test suites in `tests/cli/run.sh` pass with 100% green.
 
-### Summary of Completed Commits in this Session:
-1. **Sync Banner & Step Spacing** (`f693274`):
-   - Hoisted `HAWS SYNC` box banner to the very top before Step 1 in `run_sync`.
-   - Added uniform blank line spacing after Step 1 and before each step.
-2. **Clean Offline Sync & Parallel Prefetch Fallback** (`f693274`):
-   - Silenced Git fatal network stderr (`2>/dev/null`) during candidate prefetch.
-   - Skipped redundant sequential retry loop in `sync_target` when parallel prefetch has already evaluated sources.
-3. **Dynamic Skills Description in Settings (`Active x/n`)** (`dcc9f82`, `6393cfe`):
-   - Settings skills option description displays real numbers unconditionally: `Active x/n` (e.g. `Active 128/152`, `Active 152/152`, or `Active 1/1` in fixtures) with capital 'A'.
-4. **Session Cache Retention & Subshell Elimination** (`dcc9f82`):
-   - Eliminated subshell cache loss in `_settings_repository_remove_page` using `printf -v "${out_var}"`, preserving `HAWS_CATALOG_SOURCE_KIND_CACHE` in parent shell memory.
-   - Reused `HAWS_CATALOG_SOURCES_CACHE` in `settings_draft_load` to avoid repeated `git rev-parse` across submodules when opening Settings.
-5. **Uninstall Apply Single-Pass Batch Update** (`156b493`):
-   - Eliminated the 150x `awk` disk rewrite loop in `uninstall_apply`, replacing it with in-memory key collection and a single-pass atomic update on `ownership.tsv`.
-6. **Uninstall Clean Summary & Suppress Line Spam** (`9e3c9e0`):
-   - Preview shows categorized breakdown (`Skills: 146 items, Environments: 5 items`) instead of 150 scrolling lines.
-   - Apply outputs concise single-line confirmation: `[PASS] Successfully detached and removed 154 managed items.`
+### Summary of Completed Improvements in this Session:
+1. **Sync Table Formatting & Visual Polish**:
+   - Replaced redundant `TARGETS` header + `Target Result Detail` with a single unified row: `TARGET   RESULT   DETAIL`.
+   - Formatted Auto Update Off mode into a single clean row in the table (`remote repositories (n)   [INFO] Skipped   Auto Update is disabled`) instead of redundant rows or log spam.
+   - Suppressed internal CLI logs (`Completed: integration`, `Installation state completed.`) from polluting the interactive `HAWS Sync Result` menu when triggered via Settings.
+2. **Delta-Only Execution in Settings**:
+   - Added change-detection guard (`needs_integration`) in `settings_plan_build`.
+   - Modifying options (e.g. toggling Auto Update) only updates the configuration file in <0.05s and **skips triggering full system re-sync (`integration`)**. Full re-sync is only invoked when repositories, skills, or AI environments actually change.
+3. **Scoped Interest & Filter Early (Step 1 & Step 4 Cache Sharing)**:
+   - Reused `HAWS_CATALOG_SKILLS_CACHE` between Step 1 and Step 4 when no submodules updated (`SYNC_SUMMARY_UPDATED == 0`), eliminating redundant disk scans.
+   - Added manifest change-detection guard in Step 4 to bypass checking 128 NTFS junction folders when `.haws_manifest` is unchanged (`[✓] All active skill links verified and preserved (manifest unchanged)`).
+   - Ensured safe cache scoping: `HAWS_CATALOG_SKILLS_CACHE` is cleaned up reliably upon return.
+4. **Subshell Elimination & Uninstall Preview Optimization**:
+   - Eliminated per-record `$(_uninstall_native_path ...)` subshell forks in `_ownership_path_safe` and `ownership_verify`, replacing them with pure bash parameter expansions (`${path//\\//}`) and cached root paths.
+   - Uninstall Preview execution time dropped from **~8.2 seconds to ~1.1 seconds** (eliminating the freezing delay).
+   - Removed temporary mock entries (`/dest/1` through `/10`) from `.haws/state/ownership.tsv`.
+5. **Full Test Suite Verification**:
+   - All 10 CLI test suites in `tests/cli/run.sh` executed and passed 100% green (17 launcher, 14 state, 6 catalog, 16 repo/skill, 21 sync, 12 status/doctor, 13 uninstall, 37 settings flow, 12 fast path, 6 lifecycle/E2E).
 
-### User Feedback & Next-Session Optimization Roadmap (To Continue at Home):
-1. **Step 1 & Step 4 Cache Sharing:**
-   - Problem: `catalog_skills` runs in Step 1, but is unset at the end of Step 1, forcing Step 4 to re-scan all 152 `SKILL.md` files on disk (spawning 450 subprocesses on Windows).
-   - Solution: Preserve `HAWS_CATALOG_SKILLS_CACHE` between Step 1 and Step 4 when no submodules updated (`SYNC_SUMMARY_UPDATED == 0`).
-2. **Step 4.2 Manifest Fast-Check (Take Action ONLY on Changes):**
-   - Problem: Step 4 loops over 128 folders checking Junctions/symlinks on Windows NTFS every run.
-   - Solution: Architectural change-detection guard — if `Updated == 0` and `.haws_manifest` is unchanged, skip the 128-iteration loop and preserve existing links instantly.
-3. **Fast Safety Verification on Uninstall Apply:**
-   - Problem: `uninstall_apply` runs `_haws_sha256` and `canonical_path` sequentially 154 times before deleting.
-   - Solution: Add fast-mode verification in apply mode to verify target existence without spawning heavy hashing subprocesses.
+## PREVIOUS CHECKPOINT — 2026-09-17 Phase 7 & UAT Polish Complete
 
 ## PREVIOUS CHECKPOINT — 2026-09-17 Lean Architecture & Usability Fixes
 

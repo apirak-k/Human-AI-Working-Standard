@@ -152,7 +152,7 @@ test_sync_output_has_sections_and_summary() {
     local sync_block
     sync_block="$(sed -n '/^sync_run() {/,/^run_sync() {/p' "${source}")"
     printf '%s\n' "${sync_block}" | grep -Fq 'OPTIONS' || return 1
-    printf '%s\n' "${sync_block}" | grep -Fq 'TARGETS' || return 1
+    printf '%s\n' "${sync_block}" | grep -Fq 'TARGET' || return 1
     printf '%s\n' "${sync_block}" | grep -Fq 'SUMMARY' || return 1
     printf '%s\n' "${sync_block}" | grep -Fq 'Updated' || return 1
 }
@@ -342,7 +342,8 @@ test_auto_update_off_skips_remote_work_but_runs_explicit_sync() {
     [ "$(source_head disabled)" = "${old_head}" ] || return 1
     [ "$(source_remote_head disabled)" = "${remote_head}" ] || return 1
     assert_record "disabled::skills/packs/disabled" skipped || return 1
-    grep -F '[INFO] Auto Update is disabled. Skipped checking' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F '[INFO] Skipped' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F 'Auto Update is disabled' "${OUTPUT_FILE}" >/dev/null || return 1
     ! grep -F 'Auto Update is disabled' "${OUTPUT_FILE}" | grep -F '[WARN]' >/dev/null
 }
 

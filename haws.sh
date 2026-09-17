@@ -2255,8 +2255,7 @@ sync_run() {
     printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
     printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
     echo ""
-    echo "TARGETS"
-    printf '  %-28s %-18s %s\n' Target Result Detail
+    printf '  %-28s %-18s %s\n' "TARGET" "RESULT" "DETAIL"
     if [ "${HAWS_AUTO_UPDATE:-on}" != on ]; then
         local skipped_repo_count=0
         if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
@@ -2266,7 +2265,7 @@ sync_run() {
             [ -n "${source_id:-}" ] || continue
             skipped_repo_count=$((skipped_repo_count + 1))
         done < <(catalog_sources 2>/dev/null || true)
-        printf '  [INFO] Auto Update is disabled. Skipped checking %d remote repositories.\n' "${skipped_repo_count}"
+        printf '  %-28s %-18s %s\n' "remote repositories (${skipped_repo_count})" "[INFO] Skipped" "Auto Update is disabled"
     else
         _sync_prefetch_all
     fi
@@ -2320,6 +2319,11 @@ run_sync() {
     echo "                         HAWS SYNC"
     echo "============================================================="
     echo ""
+    local run_sync_had_cache=1
+    [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || run_sync_had_cache=0
+    if [ "${run_sync_had_cache}" -eq 0 ]; then
+        export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
+    fi
     local sync_status=0
     echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
@@ -2577,6 +2581,7 @@ run_sync() {
     rm -f "${TMP_MANIFEST}"
     touch "${TMP_MANIFEST}"
 
+    local -a active_skill_records=()
     while IFS=$'\t' read -r source_id skill_id skill_display skill_description entrypoint active ||
         [ -n "${skill_id}" ]; do
         [ -n "${skill_id}" ] && [ "${active}" = 1 ] || continue
@@ -2584,11 +2589,6 @@ run_sync() {
         processed_skills["${skill_id}"]=1
         source_path="${source_paths[${source_id}]:-}"
         [ -n "${source_path}" ] || continue
-        source_dir="${SOURCE_DIR}/${source_path}"
-        case "${entrypoint}" in
-            */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
-            *) skill_dir="${source_dir}" ;;
-        esac
         target_name="${skill_display}"
         if [ "${display_counts[${skill_display}]:-0}" -gt 1 ]; then
             source_label="${source_path##*/}"
@@ -2596,28 +2596,58 @@ run_sync() {
         fi
         active_count=$((active_count + 1))
         printf 'skill:%s\t%s\n' "${skill_id}" "${target_name}" >> "${TMP_MANIFEST}"
+        active_skill_records+=("${source_path}"$'\t'"${entrypoint}"$'\t'"${target_name}"$'\t'"${skill_display}")
+    done <<< "${skill_rows}"
 
+    local can_fast_skip_skills=0
+    if [ "${SYNC_SUMMARY_UPDATED:-0}" -eq 0 ] && [ -f "${MANIFEST_FILE}" ]; then
+        if cmp -s <(grep '^skill:' "${MANIFEST_FILE}" 2>/dev/null || true) "${TMP_MANIFEST}"; then
+            can_fast_skip_skills=1
+        fi
+    fi
+
+    if [ "${can_fast_skip_skills}" -eq 1 ]; then
         if [ "$DETECTED_CLAUDE" = true ]; then
-            safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${target_name}" \
-                "Claude Skill [${target_name}]"
-            SKILLS_LINKED=$((SKILLS_LINKED + 1))
+            SKILLS_LINKED=$((SKILLS_LINKED + active_count))
+            SKIPPED_COUNT=$((SKIPPED_COUNT + active_count))
         fi
         if [ "$DETECTED_CODEX" = true ]; then
-            local plugin_dir=""
-            if [ "${skill_display}" = ponytail ]; then
-                plugin_dir="$(_codex_plugin_skill_dir "${skill_display}" 2>/dev/null || true)"
-            fi
-            if [ -n "${plugin_dir}" ]; then
-                echo "  [SKIPPED] Codex Skill [${target_name}] (plugin-owned: ${plugin_dir})"
-            else
-                safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${target_name}" \
-                    "Codex Skill [${target_name}]"
+            SKILLS_LINKED=$((SKILLS_LINKED + active_count))
+            SKIPPED_COUNT=$((SKIPPED_COUNT + active_count))
+        fi
+        echo "  [✓] All ${active_count} active skill links verified and preserved (manifest unchanged)."
+    else
+        local rec
+        for rec in "${active_skill_records[@]}"; do
+            IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${rec}"
+            source_dir="${SOURCE_DIR}/${source_path}"
+            case "${entrypoint}" in
+                */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
+                *) skill_dir="${source_dir}" ;;
+            esac
+
+            if [ "$DETECTED_CLAUDE" = true ]; then
+                safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${target_name}" \
+                    "Claude Skill [${target_name}]"
                 SKILLS_LINKED=$((SKILLS_LINKED + 1))
             fi
+            if [ "$DETECTED_CODEX" = true ]; then
+                local plugin_dir=""
+                if [ "${skill_display}" = ponytail ]; then
+                    plugin_dir="$(_codex_plugin_skill_dir "${skill_display}" 2>/dev/null || true)"
+                fi
+                if [ -n "${plugin_dir}" ]; then
+                    echo "  [SKIPPED] Codex Skill [${target_name}] (plugin-owned: ${plugin_dir})"
+                else
+                    safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${target_name}" \
+                        "Codex Skill [${target_name}]"
+                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
+                fi
+            fi
+        done
+        if [ "${SKIPPED_COUNT:-0}" -gt 0 ]; then
+            echo "  [✓] ${SKIPPED_COUNT} existing skill links preserved (up-to-date)."
         fi
-    done <<< "${skill_rows}"
-    if [ "${SKIPPED_COUNT:-0}" -gt 0 ]; then
-        echo "  [✓] ${SKIPPED_COUNT} existing skill links preserved (up-to-date)."
     fi
 
     if [ "$DETECTED_GEMINI" = true ]; then
@@ -4052,19 +4082,23 @@ canonical_path() {
 }
 
 _ownership_path_safe() {
-    local path="$(_uninstall_native_path "$1")"
-    local repo="$(_health_repo)"
-    local state="$(_health_state)"
-    [ -n "$path" ] || return 1
-    [ "$path" != / ] && [ "$path" != "$HOME" ] &&
-        [ "$path" != "$repo" ] && [ "$path" != "$state" ] || return 1
-    case "$path" in
-        *"/../"*|*"/./"*|../*|./*) return 1 ;;
+    local raw_path="$1"
+    local path
+    case "$raw_path" in
+        [A-Za-z]:[\\/]*)
+            local drive="${raw_path:0:1}"
+            local rest="${raw_path:2}"
+            local lower_drive="${drive,,}"
+            local posix="/${lower_drive}${rest}"
+            path="${posix//\\//}"
+            ;;
+        *) path="$raw_path" ;;
     esac
-    local parent home_root repo_root state_root
-    if [ "${HAWS_OWNERSHIP_CACHED_HOME:-}" != "$HOME" ] || \
-       [ "${HAWS_OWNERSHIP_CACHED_REPO:-}" != "$repo" ] || \
-       [ "${HAWS_OWNERSHIP_CACHED_STATE:-}" != "$state" ]; then
+    local repo="${HAWS_OWNERSHIP_CACHED_REPO:-}"
+    local state="${HAWS_OWNERSHIP_CACHED_STATE:-}"
+    if [ -z "$repo" ] || [ -z "$state" ] || [ "${HAWS_OWNERSHIP_CACHED_HOME:-}" != "$HOME" ]; then
+        repo="$(_health_repo)"
+        state="$(_health_state)"
         HAWS_OWNERSHIP_HOME_ROOT="$(canonical_path "$HOME" 2>/dev/null || true)"
         HAWS_OWNERSHIP_REPO_ROOT="$(canonical_path "$repo" 2>/dev/null || true)"
         HAWS_OWNERSHIP_STATE_ROOT="$(canonical_path "$state" 2>/dev/null || true)"
@@ -4072,6 +4106,13 @@ _ownership_path_safe() {
         HAWS_OWNERSHIP_CACHED_REPO="$repo"
         HAWS_OWNERSHIP_CACHED_STATE="$state"
     fi
+    [ -n "$path" ] || return 1
+    [ "$path" != / ] && [ "$path" != "$HOME" ] &&
+        [ "$path" != "$repo" ] && [ "$path" != "$state" ] || return 1
+    case "$path" in
+        *"/../"*|*"/./"*|../*|./*) return 1 ;;
+    esac
+    local parent home_root repo_root state_root
     home_root="${HAWS_OWNERSHIP_HOME_ROOT}"
     repo_root="${HAWS_OWNERSHIP_REPO_ROOT}"
     state_root="${HAWS_OWNERSHIP_STATE_ROOT}"
@@ -4097,8 +4138,17 @@ ownership_verify() {
     local kind path source fingerprint extra
     IFS=$'\t' read -r kind path source fingerprint extra <<< "$record"
     [ -n "$kind" ] && [ -n "$path" ] || return 1
-    local actual="$(_uninstall_native_path "$path")"
-    _ownership_path_safe "$actual" || return 3
+    _ownership_path_safe "$path" || return 3
+    local actual="$path"
+    case "$actual" in
+        [A-Za-z]:[\\/]*)
+            local drive="${actual:0:1}"
+            local rest="${actual:2}"
+            local lower_drive="${drive,,}"
+            local posix="/${lower_drive}${rest}"
+            actual="${posix//\\//}"
+            ;;
+    esac
 
     case "$kind" in
         symlink|junction|directory-link)
@@ -5234,7 +5284,21 @@ settings_plan_build() {
         done < <(paste -d $'\t' \
             <(printf '%s\n' "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" | sed '/^$/d') \
             <(printf '%s\n' "${HAWS_DRAFT_ADDED_PATHS:-}" | sed '/^$/d'))
-        if [ "${changed}" -eq 1 ]; then
+        local needs_integration=0
+        if [ "${action_kind}" = Install ]; then
+            needs_integration=1
+        elif [ -n "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" ]; then
+            needs_integration=1
+        elif [ "$(_settings_list_signature "${HAWS_DRAFT_SOURCES:-}")" != "$(_settings_list_signature "${HAWS_PERSIST_SOURCES:-}")" ]; then
+            needs_integration=1
+        elif [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && \
+             [ "$(_settings_list_signature "${HAWS_DRAFT_SKILLS:-}")" != "$(_settings_list_signature "${HAWS_PERSIST_SKILLS:-}")" ]; then
+            needs_integration=1
+        elif [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ] && \
+             [ "$(_settings_list_signature "${HAWS_DRAFT_ENVIRONMENTS:-}")" != "$(_settings_list_signature "${HAWS_PERSIST_ENVIRONMENTS:-}")" ]; then
+            needs_integration=1
+        fi
+        if [ "${needs_integration}" -eq 1 ]; then
             printf 'integration\t%s\told HAWS integration\n' "${action_kind,,}"
         fi
     } > "${temporary}" || {
@@ -5580,7 +5644,7 @@ settings_apply_final() {
                     fi
                 fi
                 printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
-                echo "Completed: ${action}"
+                [ "${HAWS_INTERACTIVE_RESULT:-0}" -eq 1 ] || echo "Completed: ${action}"
                 ;;
             *)
                 echo "Partial failure"
@@ -5596,7 +5660,13 @@ settings_apply_final() {
     local result=$?
     rm -f -- "${marker_temporary}"
     [ "${result}" -eq 0 ] || return "${result}"
-    echo "Installation state completed."
+    if [ "${HAWS_INTERACTIVE_RESULT:-0}" -ne 1 ]; then
+        if [ "${HAWS_PLAN_KIND:-Install}" = Install ]; then
+            echo "Installation state completed."
+        else
+            echo "Update completed."
+        fi
+    fi
     return 0
 }
 
