@@ -3942,6 +3942,7 @@ _ownership_path_safe() {
 
 ownership_verify() {
     local record="$1"
+    local verify_mode="${2:-full}"
     local kind path source fingerprint extra
     IFS=$'\t' read -r kind path source fingerprint extra <<< "$record"
     [ -n "$kind" ] && [ -n "$path" ] || return 1
@@ -3951,6 +3952,7 @@ ownership_verify() {
     case "$kind" in
         symlink|junction|directory-link)
             [ -L "$actual" ] || return 1
+            [ "$verify_mode" = preview ] && return 0
             local current current_path source_path current_canonical source_canonical
             current="$(readlink "$actual" 2>/dev/null || true)"
             [ -n "$current" ] || return 1
@@ -3981,11 +3983,13 @@ ownership_verify() {
             ;;
         generated-file|file|hardlink)
             [ -f "$actual" ] && [ ! -L "$actual" ] || return 1
+            [ "$verify_mode" = preview ] && return 0
             [ -n "$fingerprint" ] || return 1
             [ "$(_haws_sha256 "$actual")" = "$fingerprint" ]
             ;;
         repository)
             [ -d "$actual" ] && [ ! -L "$actual" ] || return 1
+            [ "$verify_mode" = preview ] && return 0
             git -C "$actual" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
             local head repo_status
             repo_status="$(git -C "$actual" status --porcelain --untracked-files=all 2>/dev/null || true)"
@@ -4054,7 +4058,7 @@ uninstall_preview() {
         [ -n "$action" ]; do
         [ "$action" = remove ] || continue
         verify_record="$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
-        if ownership_verify "$verify_record"; then
+        if ownership_verify "$verify_record" preview; then
             printf 'Remove: %s %s %s\n' "$group" "$kind" "$path"
         else
             verify_status="$?"
