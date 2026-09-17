@@ -284,7 +284,12 @@ _health_print_summary() {
     printf '  Skills        : %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
     printf '  Last Sync     : %s\n' "$(_health_last_sync)"
     printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
-    printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
+    if [ -n "$(_second_brain_remote_url)" ]; then
+        printf '  Auto Update (Skills) : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}")"
+        printf '  Auto Update (Brain)  : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_BRAIN:-on}")"
+    else
+        printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}")"
+    fi
 }
 
 _health_print_findings() {
@@ -365,7 +370,12 @@ status_run() {
     printf 'Skills: %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
     printf 'Last sync: %s\n' "$(_health_last_sync)"
     printf 'Second Brain: %s\n' "$(_second_brain_status_label)"
-    printf 'Auto Update: %s\n' "${HAWS_AUTO_UPDATE:-on}"
+    if [ -n "$(_second_brain_remote_url)" ]; then
+        printf 'Auto Update (Skills): %s\n' "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}"
+        printf 'Auto Update (Brain): %s\n' "${HAWS_AUTO_UPDATE_BRAIN:-on}"
+    else
+        printf 'Auto Update: %s\n' "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}"
+    fi
     if [ "$details" -eq 1 ]; then
         _health_print_details "AI Environments"
         _health_print_details Sources
@@ -2177,11 +2187,11 @@ sync_target() {
 sync_second_brain_target() {
     local brain_dir="${SCRIPT_DIR}/secondbrain"
     local current remote_head final before status timeout_seconds
-    [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ] || {
-        sync_result_write secondbrain skipped - "Second Brain is disabled" || return 1
-        _sync_legacy_echo "secondbrain: skipped (disabled)"
+    if [ "${HAWS_AUTO_UPDATE_BRAIN:-on}" != on ]; then
+        sync_result_write secondbrain skipped - "Auto Update is disabled" || return 1
+        _sync_legacy_echo "secondbrain: skipped (auto update disabled)"
         return 0
-    }
+    fi
     [ -d "${brain_dir}/.git" ] || {
         sync_result_write secondbrain failed - "Second Brain checkout is unavailable" || return 1
         _sync_legacy_echo "secondbrain: failed (checkout is unavailable)"
@@ -2208,29 +2218,30 @@ sync_second_brain_target() {
         :
     else
         local sync_status=$?
-        if [ "${sync_status}" -eq 124 ]; then
-            sync_result_write secondbrain timeout - "remote sync exceeded ${timeout_seconds}s" || return 1
-            _sync_legacy_echo "secondbrain: timeout"
-        else
-            sync_result_write secondbrain failed - "remote sync failed" || return 1
-            _sync_legacy_echo "secondbrain: failed (remote sync)"
-        fi
+        sync_result_write secondbrain failed - "user sync hook failed" || return 1
+        _sync_legacy_echo "secondbrain: failed (hook returned ${sync_status})"
+        return "${sync_status}"
+    fi
+    remote_head="$(git -C "${brain_dir}" ls-remote origin -h HEAD 2>/dev/null | awk '{print $1}')"
+    if [ -n "${remote_head}" ] && [ "${current}" = "${remote_head}" ]; then
+        sync_result_write secondbrain up-to-date "${current}" "already at latest remote commit" || return 1
+        _sync_legacy_echo "secondbrain: up-to-date (${current})"
+        return 0
+    fi
+    before="${current}"
+    if ! git -C "${brain_dir}" pull --ff-only origin HEAD >/dev/null 2>&1; then
+        sync_result_write secondbrain failed - "fast-forward pull failed" || return 1
+        _sync_legacy_echo "secondbrain: failed (fast-forward pull failed)"
         return 1
     fi
     final="$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
-    remote_head="$(git -C "${brain_dir}" rev-parse --verify refs/remotes/origin/main 2>/dev/null || true)"
-    [ -n "${remote_head}" ] && [ "${final}" = "${remote_head}" ] || {
-        sync_result_write secondbrain failed "${final:--}" "final HEAD did not equal origin/main" || return 1
-        _sync_legacy_echo "secondbrain: failed (final HEAD did not equal origin/main)"
-        return 1
-    }
-    if [ "${final}" = "${current}" ]; then
-        sync_result_write secondbrain up-to-date "${final}" "final HEAD equals origin/main" || return 1
-        _sync_legacy_echo "secondbrain: up-to-date"
-    else
-        sync_result_write secondbrain updated "${final}" "final HEAD equals origin/main" || return 1
-        _sync_legacy_echo "secondbrain: updated"
+    if [ "${before}" = "${final}" ]; then
+        sync_result_write secondbrain up-to-date "${final}" "no new commits on remote" || return 1
+        _sync_legacy_echo "secondbrain: up-to-date (${final})"
+        return 0
     fi
+    sync_result_write secondbrain updated "${before}..${final}" "fast-forwarded from remote" || return 1
+    _sync_legacy_echo "secondbrain: updated (${before}..${final})"
     return 0
 }
 
@@ -2289,11 +2300,14 @@ sync_run() {
     SYNC_SUMMARY_FAILED=0
     SYNC_SUMMARY_TIMEOUT=0
     echo "OPTIONS"
-    printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
-    printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
+    printf '  Second Brain Remote  : %s\n' "$(_second_brain_status_label)"
+    printf '  Auto Update (Skills) : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}")"
+    if [ -n "$(_second_brain_remote_url)" ]; then
+        printf '  Auto Update (Brain)  : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_BRAIN:-on}")"
+    fi
     echo ""
     printf '  %-28s %-18s %s\n' "TARGET" "RESULT" "DETAIL"
-    if [ "${HAWS_AUTO_UPDATE:-on}" != on ]; then
+    if [ "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}" != on ]; then
         local skipped_repo_count=0
         if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
             skipped_repo_count=$((skipped_repo_count + 1))
@@ -2318,7 +2332,7 @@ sync_run() {
         target_count=$((target_count + 1))
         sync_target "${source_id}" || status=1
     done < <(catalog_sources 2>/dev/null || true)
-    if [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; then
+    if [ -n "$(_second_brain_remote_url)" ] || [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; then
         target_count=$((target_count + 1))
         sync_second_brain_target || status=1
     fi

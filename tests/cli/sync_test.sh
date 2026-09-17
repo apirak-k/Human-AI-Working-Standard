@@ -357,13 +357,29 @@ test_second_brain_update_applies_remote_revision() {
     git -C "${seed}" push -q origin main || return 1
     new_head="$(git -C "${seed}" rev-parse HEAD)" || return 1
     mkdir -p "${FIXTURE_REPO}/.haws/state"
-    printf 'schema_version\t1\nsecond_brain\ton\nauto_update\toff\n' \
+    printf 'schema_version\t1\nsecond_brain\ton\nauto_update\toff\nauto_update_brain\ton\n' \
         > "${FIXTURE_REPO}/.haws/state/settings.tsv"
     source_haws || return 1
     sync_run >"${OUTPUT_FILE}" 2>&1 || return 1
     [ "$(git -C "${FIXTURE_REPO}/secondbrain" rev-parse HEAD)" = "${new_head}" ] || return 1
     [ -f "${FIXTURE_REPO}/secondbrain/REMOTE_NOTE.md" ] || return 1
     assert_record secondbrain updated
+}
+
+test_auto_update_brain_off_skips_brain_sync() {
+    add_second_brain
+    local seed="${FIXTURE_ROOT}/seed-secondbrain"
+    printf '%s\n' 'remote note 2' > "${seed}/REMOTE_NOTE_2.md"
+    git -C "${seed}" add REMOTE_NOTE_2.md
+    git -C "${seed}" commit -q -m "remote brain update 2"
+    git -C "${seed}" push -q origin main || return 1
+    mkdir -p "${FIXTURE_REPO}/.haws/state"
+    printf 'schema_version\t1\nauto_update_skills\ton\nauto_update_brain\toff\n' \
+        > "${FIXTURE_REPO}/.haws/state/settings.tsv"
+    source_haws || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ ! -f "${FIXTURE_REPO}/secondbrain/REMOTE_NOTE_2.md" ] || return 1
+    assert_record secondbrain skipped
 }
 
 test_explicit_update_uses_same_safe_application() {
@@ -510,6 +526,7 @@ else
     run_test test_timeout_uses_local_fallback_without_failure
     run_test test_auto_update_off_skips_remote_work_but_runs_explicit_sync
     run_test test_second_brain_update_applies_remote_revision
+    run_test test_auto_update_brain_off_skips_brain_sync
     run_test test_explicit_update_uses_same_safe_application
     run_test test_haws_update_preserves_the_current_branch
     run_test test_path_scoped_diff_skips_checkout_when_active_skills_unchanged
