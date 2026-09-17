@@ -4205,22 +4205,54 @@ uninstall_preview() {
     [ -f "$plan" ] || return 2
     printf '%s\n' "Uninstall preview"
     local action group kind path source fingerprint extra record verify_record verify_status
+    local remove_count=0 blocked_count=0 preserved_count=0
+    local -A group_counts=()
+    local issues=()
     while IFS=$'\t' read -r action group kind path source fingerprint extra ||
         [ -n "$action" ]; do
         [ "$action" = remove ] || continue
         verify_record="$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
         if ownership_verify "$verify_record" preview; then
-            printf 'Remove: %s %s %s\n' "$group" "$kind" "$path"
+            remove_count=$((remove_count + 1))
+            group_counts["$group"]=$(( ${group_counts["$group"]:-0} + 1 ))
         else
             verify_status="$?"
             if [ "$verify_status" -eq 2 ]; then
-                printf 'Blocked: %s %s %s (repository is dirty)\n' "$group" "$kind" "$path"
+                blocked_count=$((blocked_count + 1))
+                issues+=("Blocked: ${group} ${kind} ${path} (repository is dirty)")
             else
-                printf 'Preserved: %s %s %s (type or fingerprint changed)\n' \
-                    "$group" "$kind" "$path"
+                preserved_count=$((preserved_count + 1))
+                issues+=("Preserved: ${group} ${kind} ${path} (type or fingerprint changed)")
             fi
         fi
     done < "$plan"
+
+    if [ "${remove_count}" -gt 0 ]; then
+        echo "Items queued for removal (${remove_count} total):"
+        local grp
+        for grp in "${!group_counts[@]}"; do
+            local grp_label="${grp}"
+            case "${grp}" in
+                skills) grp_label="Skills" ;;
+                environments) grp_label="Environments" ;;
+                pointers) grp_label="Global Pointers" ;;
+                subagents) grp_label="Subagents" ;;
+                *) grp_label="${grp^}" ;;
+            esac
+            printf '  • %-16s : %d items\n' "${grp_label}" "${group_counts["$grp"]}"
+        done
+    else
+        echo "No items queued for removal."
+    fi
+
+    if [ "${#issues[@]}" -gt 0 ]; then
+        echo ""
+        echo "Exceptions & Warnings:"
+        local issue
+        for issue in "${issues[@]}"; do
+            printf '  %s\n' "${issue}"
+        done
+    fi
 }
 
 _ownership_remove_record() {
@@ -4324,7 +4356,6 @@ uninstall_apply() {
             if _uninstall_remove_path "$kind" "$path"; then
                 removed_keys["$group"$'\t'"$kind"$'\t'"$path"]=1
                 removed_count=$((removed_count + 1))
-                printf 'Removed: %s %s %s\n' "$group" "$kind" "$path"
             else
                 printf 'Preserved: %s %s %s (removal failed)\n' "$group" "$kind" "$path"
                 status=1
@@ -4343,6 +4374,11 @@ uninstall_apply() {
     done < "$plan"
     _uninstall_flush_ownership || status=1
     trap - INT TERM
+    if [ "$status" -eq 0 ]; then
+        printf '[PASS] Successfully detached and removed %d managed items.\n' "${removed_count}"
+    elif [ "$status" -ne 130 ]; then
+        printf '[WARN] Uninstall finished with exceptions (%d removed).\n' "${removed_count}"
+    fi
     return "$status"
 }
 
