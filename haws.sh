@@ -4427,8 +4427,6 @@ _settings_ensure_skill_draft() {
 }
 
 settings_draft_load() {
-    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
-    declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
     settings_load || return $?
     disabled_environments_load
     load_disabled_skills
@@ -4468,9 +4466,7 @@ settings_draft_discard() {
         HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED \
-        HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE \
-        HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
-    declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
+        HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE
 }
 
 _settings_draft_is_dirty() {
@@ -4783,8 +4779,8 @@ settings_skills_page() {
 }
 
 _settings_repository_remove_page() {
-    echo "  [*] Loading repository sources, please wait..."
     if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
+        echo "  [*] Loading repository sources, please wait..."
         HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
         export HAWS_CATALOG_SOURCES_CACHE
     fi
