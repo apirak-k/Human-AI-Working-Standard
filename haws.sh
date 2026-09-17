@@ -5255,6 +5255,20 @@ settings_auto_update_page() {
         if [ "${ret}" -ne 0 ]; then
             return 0
         fi
+        if [ "${INTERACTIVE_MENU_SELECTION:-0}" -eq 1 ] && [ -z "${brain_remote}" ]; then
+            if interactive_menu menu "Connect Second Brain Remote|Auto Update requires a connected Git Remote. Currently in [Local-Only] mode." \
+                "Connect Remote Repository now" \
+                "Back to Auto Update Settings"; then
+                if [ "${INTERACTIVE_MENU_SELECTION:-0}" -eq 0 ]; then
+                    second_brain_detail_page || true
+                    brain_remote="$(_second_brain_remote_url)"
+                    if [ -n "${brain_remote}" ]; then
+                        brain_state="${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"
+                        brain_desc="Sync Second Brain with remote during Sync"
+                    fi
+                fi
+            fi
+        fi
         start_idx="${INTERACTIVE_MENU_SELECTION:-0}"
     done
 }

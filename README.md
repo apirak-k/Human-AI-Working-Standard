@@ -14,68 +14,24 @@ The actual goal and required outcome always take priority over following rigid p
 
 ## Quick Install and Setup
 
-### Windows launcher
-Double-click **`haws.bat`** in the HAWS repository root. It locates Git Bash and opens the shared old-style HAWS menu.
+### Launching HAWS
 
-- First launch opens **HAWS Setup**.
-- After installation, launch opens **HAWS Home**.
-- Use `Up`/`Down` to move, `Enter` to select, `Space` for checklist items, and the footer `Q` action to go back or exit.
-- Setup, Sync, Health, and Uninstall run only after the matching menu action. Launch does not auto-sync or auto-run Health.
-- Selectable rows include a short action description, and actions report when
-  they start and complete.
-- Skills and AI Environments show an explicit loading/result state. If the
-  Skills draft has not been loaded, Settings shows `all active (default)`.
+- **Windows**: Double-click **`haws.bat`** in the repository root (or run `.\haws.bat` from terminal). It automatically locates Git Bash and opens the interactive HAWS interface.
+- **macOS & Linux**: Run `./haws.sh` in your terminal.
 
-The main-menu Skills category and pack selectors use the same Up/Down/Enter
-controls as the other interactive menus. Numeric shortcuts remain accepted for
-compatibility.
+#### Interactive Menu System (TUI)
+- **First Launch**: Opens **HAWS Setup** to configure AI environments, skills, and settings.
+- **Subsequent Launches**: Opens **HAWS Home** with direct actions:
+  - **`Sync`**: Synchronizes skills, updates AI profiles, and pulls remote updates.
+  - **`Health`**: Runs instant diagnostic checks across AI environments and links.
+  - **`Settings`**: Configures Repositories, Skills (Enable/Disable), AI Environments, Second Brain, and Auto Update in a non-destructive draft mode (press `Apply` to save).
+  - **`Uninstall`**: Safely detaches HAWS links and profiles with preview and confirmation.
 
-`haws.bat` is the Windows launcher. macOS and Linux use `./haws.sh`; the shared shell engine keeps behavior and state semantics aligned without requiring one launcher file for every OS.
-
-The physical Explorer launch and full Windows menu walkthrough remain
-`[Unverified]` at this final automated checkpoint. Automated launcher coverage
-and CLI results are recorded below.
-
-### Old-base verification checkpoint
-
-Executed on 2026-09-15 in the old-base worktree with Git Bash 5.3.15 and Node.js
-v22.14.0:
-
-```bash
-bash -n haws.sh && bash tests/cli/run.sh && node --test \
-  ai-configs/codex/agents.test.mjs tests/windows_launcher_execution.test.mjs \
-  && git diff --check && cmd.exe /c haws.bat --help
-```
-
-- CLI aggregate: 110/110 passed; the command exited 0 (17 + 14 + 27 + 6 +
-  10 + 17 + 9 + 10).
-- Node aggregate: 26 passed and 1 skipped; the command exited 0. The skipped
-  case requires Windows file-symlink privilege and remains `[Unverified]`.
-- Home now shows the one-click banner, compact status, and only Sync, Health,
-  Settings, and Uninstall. Health combines compact status with grouped,
-  path-free findings; result screens from Home wait for one key before returning,
-  and Settings uses `Q` plus a dirty-draft prompt instead of a duplicate discard row.
-  read-only findings; compatibility `status` and `doctor` commands remain.
-- Explicit Sync/Install integration follows five concise phases: prepare local
-  state, detect/configure environments, link skills and profiles, configure the
-  `commit-msg` hook, and show the result. Sync target rows use fixed columns
-  with batch-style `[PASS]`, `[WARN]`, `[BLOCKED]`, and `[FAIL]` markers.
-- Settings Single Skills uses the shared checklist renderer; redraw keeps all
-  rows and the footer in one frame. Opening HAWS still does not auto-sync or
-  auto-run Doctor.
-- The current working-tree Windows test includes two pre-existing local tests;
-  they were executed but were not included in the code checkpoint commit.
-- The bootstrap-aligned orchestration implementation is committed locally as
-  `1bb1f0b` after the prior checkpoint; the branch remains ahead of its tracking
-  remote at `95e9733` because no push or merge was performed.
-- Settings-flow coverage includes the actionable AI Environments selector and
-  verifies that opening Skills without edits does not show a false discard
-  prompt.
-- `ai-configs/codex/skills.test.mjs` is not present, so no unmeasured adapter
-  coverage is claimed.
-
-These automated results do not constitute physical Windows verification or
-human acceptance.
+#### Controls
+- `Up` / `Down` (or `k` / `j`): Navigate items.
+- `Enter`: Select item, open sub-menu, or toggle settings.
+- `Space` / `x`: Toggle checkboxes in checklists.
+- `Q`: Return to previous screen or exit without changes.
 
 ---
 
@@ -228,17 +184,17 @@ HAWS organizes skills into two main tiers:
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
-├── templates/                           # Documentation & governance blueprints
-│   └── docs/                            # SOT blueprints (PROJECT, ARCHITECTURE, CONSTRAINTS, etc.)
-├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot, Codex)
-├── containers/                          # Container & DevContainer blueprints (Dockerfile, compose, devcontainer)
-├── skills.disabled                      # Disabled skills configuration (root level)
 ├── skills/                              # Curated Skill Repository (3 Clean Categories)
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
 │   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
-├── haws.sh                              # Shared CLI command engine
+├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot, Codex)
+├── templates/                           # Documentation & governance blueprints (PROJECT, ARCHITECTURE, etc.)
+├── containers/                          # Container & DevContainer blueprints (Dockerfile, compose, devcontainer)
+├── tests/                               # Comprehensive automated test suites (CLI & integration tests)
+├── docs/                                # Additional documentation and development history
+├── haws.sh                              # Shared CLI command engine (Linux / macOS / Git Bash)
 └── haws.bat                             # Windows launcher for the shared engine
 ```
 

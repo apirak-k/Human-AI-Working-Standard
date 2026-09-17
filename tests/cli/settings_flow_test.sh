@@ -495,6 +495,19 @@ test_settings_skills_shows_disabled_count_when_skills_disabled() {
     assert_output_not_contains 'Active 1/1' || return 1
 }
 
+test_settings_auto_update_second_brain_local_only_prompts_guided_menu() {
+    local down=$'\033[B'
+    local input="${down}\n"
+    input+="${down}${down}${down}${down}\n"
+    input+="${down}\n"
+    input+="qq"
+    run_haws_input "${input}" || true
+    assert_output_contains 'Connect Second Brain Remote' || return 1
+    assert_output_contains 'Auto Update requires a connected Git Remote. Currently in [Local-Only] mode.' || return 1
+    assert_output_contains 'Connect Remote Repository now' || return 1
+    assert_output_contains 'Back to Auto Update Settings' || return 1
+}
+
 run_test() {
     local test_name="$1"
     create_fixture
@@ -556,6 +569,8 @@ run_test test_settings_repository_remove_shows_loading_status
 run_test test_settings_repository_remove_displays_pack_and_single_without_unbound_variable
 run_test test_settings_auto_update_toggle_alignment_equal_columns
 run_test test_settings_skills_shows_disabled_count_when_skills_disabled
+run_test test_settings_auto_update_second_brain_local_only_prompts_guided_menu
 
 echo "CLI settings-flow tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]
+

@@ -1,11 +1,32 @@
 # Current old-base Implementation Checkpoint
 
-## CURRENT CHECKPOINT — 2026-09-17 Phase 9: Granular Auto-Update & Loop Elimination Complete
+## CURRENT CHECKPOINT — 2026-09-18 Phase 10: Guided Second Brain Remote Pop-up & Release Polish
 
 The current continuation worktree is `E:\Human-AI-Working-Standard\.worktrees\codex-haws-old-base-selected` on branch `codex/remote-continuation`.
-All 10 CLI test suites in `tests/cli/run.sh` pass with 100% green (155 tests passed, 0 failed).
+All 10 CLI test suites in `tests/cli/run.sh` pass with 100% green (156 tests passed, 0 failed).
 
-### Summary of Completed Improvements in Phase 9:
+### Summary of Completed Improvements in Phase 10:
+1. **Guided Second Brain Remote Pop-up (Option 2)**:
+   - When user presses `Enter` on `Second Brain - [Local-Only]` row in `Auto Update Settings`, system opens a guided prompt dialog:
+     ```text
+     =============================================================
+                      Connect Second Brain Remote
+     =============================================================
+     Auto Update requires a connected Git Remote. Currently in [Local-Only] mode.
+
+     > Connect Remote Repository now
+       Back to Auto Update Settings
+     ```
+   - Selecting `Connect Remote Repository now` routes directly to `second_brain_detail_page`. Upon successful connection, Second Brain automatically unlocks and toggles to `[ On ]`.
+   - Selecting `Back to Auto Update Settings` returns seamlessly to the Auto Update menu.
+2. **Comprehensive Test Verification**:
+   - Added `test_settings_auto_update_second_brain_local_only_prompts_guided_menu` in `tests/cli/settings_flow_test.sh`.
+   - All 156 CLI tests pass 100% green across all 10 batches.
+3. **Documentation & Release Polish**:
+   - Organized historical report files (`BATCH1_REPORT.md`, `IMPLEMENTATION_PROGRESS.md`) into `docs/history/`.
+   - Cleaned up `README.md` to remove raw test logs and provide clean, modern v2.0 instructions.
+
+## PREVIOUS CHECKPOINT — 2026-09-17 Phase 9: Granular Auto-Update & Loop Elimination Complete
 1. **Performance & Loop Elimination (Committed `42a35ca`)**:
    - Replaced $O(N)$ Here-String (`<<<`) while-loops in `_settings_list_contains` with pure bash pattern matching.
    - Removed redundant subprocess fork of `catalog_skills`, reusing in-memory session cache `${HAWS_CATALOG_SKILLS_CACHE}`.
