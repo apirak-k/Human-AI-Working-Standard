@@ -1,9 +1,29 @@
 # Current old-base Implementation Checkpoint
 
-## CURRENT CHECKPOINT — 2026-09-17 Phase 8: Performance & UX Polish Complete
+## CURRENT CHECKPOINT — 2026-09-17 Phase 9: Granular Auto-Update & Loop Elimination Complete
 
 The current continuation worktree is `E:\Human-AI-Working-Standard\.worktrees\codex-haws-old-base-selected` on branch `codex/remote-continuation`.
-All 10 CLI test suites in `tests/cli/run.sh` pass with 100% green.
+All 10 CLI test suites in `tests/cli/run.sh` pass with 100% green (155 tests passed, 0 failed).
+
+### Summary of Completed Improvements in Phase 9:
+1. **Performance & Loop Elimination (Committed `42a35ca`)**:
+   - Replaced $O(N)$ Here-String (`<<<`) while-loops in `_settings_list_contains` with pure bash pattern matching.
+   - Removed redundant subprocess fork of `catalog_skills`, reusing in-memory session cache `${HAWS_CATALOG_SKILLS_CACHE}`.
+   - Implemented $O(1)$ active draft lookup via associative map `active_draft_map` in `settings_skills_page`.
+2. **State & Settings Persistence Decoupling (Committed `1be3c59`)**:
+   - Decoupled `auto_update_skills` and `auto_update_brain` in `settings.tsv`.
+   - Updated `settings_defaults`, `settings_load`, `settings_save`, and `settings_draft_*` with full backward compatibility.
+3. **Auto Update Sub-menu & UI Polish (Committed `6c0d713`)**:
+   - Replaced inline toggle in Settings with an `Auto Update Settings` sub-menu matching exact Settings formatting.
+   - Polished AI Environments summary label to `2 Selected` (capital 'S').
+   - Handled Second Brain Local-Only baseline: omitted toggle box `[ ]` (`Second Brain              - [Local-Only] Connect remote in Second Brain to enable`) and blocked toggling.
+4. **Context-Aware Sync & Status (Committed `a69a551`)**:
+   - Updated Sync `OPTIONS` banner to show `Second Brain Remote: (connected/local-only)`, `Auto Update (Skills): (on/off)`, and dynamically hides `Auto Update (Brain)` when in Local-Only mode.
+   - Updated `sync_second_brain_target` to honor `HAWS_AUTO_UPDATE_BRAIN`.
+5. **Full Test Suite 100% Green**:
+   - Executed all 10 CLI test batches via `tests/cli/run.sh` (155 passed, 0 failed).
+
+## PREVIOUS CHECKPOINT — 2026-09-17 Phase 8: Performance & UX Polish Complete
 
 ### Summary of Completed Improvements in this Session:
 1. **Sync Table Formatting & Visual Polish**:
