@@ -63,7 +63,65 @@ health_classify() {
     fi
 }
 
+_health_fingerprint() {
+    local repo state
+    repo="$(_health_repo)"
+    state="$(_health_state)"
+    local git_head hooks_cfg state_stamp env_stamp=""
+    git_head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)"
+    hooks_cfg="$(git -C "$repo" config --get core.hooksPath 2>/dev/null || true)"
+    state_stamp="$(ls -ld "$state/settings.tsv" "$state/skills.disabled" "$state/environments.disabled" "$state/ownership.tsv" "$state/install.complete" 2>/dev/null | tr '\n' ';' || true)"
+    if [ -f "$state/ownership.tsv" ]; then
+        local p
+        while IFS= read -r p || [ -n "$p" ]; do
+            [ -n "$p" ] || continue
+            if [ -e "$p" ] || [ -L "$p" ]; then
+                env_stamp+="$p:$(ls -ld "$p" 2>/dev/null | tr '\n' ';');"
+            else
+                env_stamp+="missing:$p;"
+            fi
+        done < <(awk -F $'\t' '$1 == "environments" {print $2}' "$state/ownership.tsv" 2>/dev/null)
+    fi
+    printf '%s|%s|%s|%s\n' "$git_head" "$hooks_cfg" "$state_stamp" "$env_stamp"
+}
+
 _health_collect() {
+    local force_deep=0 arg
+    for arg in "$@"; do
+        [ "$arg" = "--deep" ] && force_deep=1
+    done
+
+    local repo state cache_file current_fp cached_fp repo_hash
+    repo="$(_health_repo)"
+    state="$(_health_state)"
+    repo_hash="$(printf '%s' "$repo" | cksum 2>/dev/null | awk '{print $1}')"
+    cache_file="${TMPDIR:-${TEMP:-${TMP:-/tmp}}}/haws_health_${repo_hash:-0}.tsv"
+
+    if [ "$force_deep" -eq 0 ]; then
+        current_fp="$(_health_fingerprint)"
+        if [ -n "${HAWS_HEALTH_CACHE_FP:-}" ] && [ "${HAWS_HEALTH_CACHE_FP}" = "${current_fp}" ] && [ -n "${HAWS_HEALTH_CACHE_FINDINGS:-}" ]; then
+            HAWS_HEALTH_FINDINGS="${HAWS_HEALTH_CACHE_FINDINGS}"
+            HAWS_HEALTH_SKILLS_ACTIVE="${HAWS_HEALTH_CACHE_ACTIVE:-0}"
+            HAWS_HEALTH_SKILLS_TOTAL="${HAWS_HEALTH_CACHE_TOTAL:-0}"
+            return 0
+        fi
+        if [ -f "$cache_file" ]; then
+            cached_fp="$(head -n 1 "$cache_file" 2>/dev/null || true)"
+            if [ -n "$cached_fp" ] && [ "$cached_fp" = "#FP:${current_fp}" ]; then
+                local counts_line
+                counts_line="$(sed -n '2p' "$cache_file" 2>/dev/null || true)"
+                HAWS_HEALTH_SKILLS_ACTIVE="$(printf '%s' "$counts_line" | awk -F $'\t' '{print $2}')"
+                HAWS_HEALTH_SKILLS_TOTAL="$(printf '%s' "$counts_line" | awk -F $'\t' '{print $3}')"
+                HAWS_HEALTH_FINDINGS="$(tail -n +3 "$cache_file" 2>/dev/null || true)"
+                HAWS_HEALTH_CACHE_FP="${current_fp}"
+                HAWS_HEALTH_CACHE_FINDINGS="${HAWS_HEALTH_FINDINGS}"
+                HAWS_HEALTH_CACHE_ACTIVE="${HAWS_HEALTH_SKILLS_ACTIVE}"
+                HAWS_HEALTH_CACHE_TOTAL="${HAWS_HEALTH_SKILLS_TOTAL}"
+                return 0
+            fi
+        fi
+    fi
+
     HAWS_HEALTH_FINDINGS=""
     if settings_load; then
         _health_add Ready Settings "settings.tsv parsed successfully"
@@ -109,7 +167,6 @@ _health_collect() {
         fi
     done < <(ownership_list environments)
 
-    local repo="$(_health_repo)"
     local source_rows=0
     local source_id source_path source_url source_revision
     local -A health_source_paths=()
@@ -150,6 +207,17 @@ _health_collect() {
     [ "$skill_rows" -eq 1 ] ||
         _health_add Ready Skills "no active skills"
 
+    HAWS_HEALTH_CACHE_FP="${current_fp:-$(_health_fingerprint)}"
+    HAWS_HEALTH_CACHE_FINDINGS="${HAWS_HEALTH_FINDINGS}"
+    HAWS_HEALTH_CACHE_ACTIVE="${HAWS_HEALTH_SKILLS_ACTIVE}"
+    HAWS_HEALTH_CACHE_TOTAL="${HAWS_HEALTH_SKILLS_TOTAL}"
+
+    {
+        printf '#FP:%s\n' "$HAWS_HEALTH_CACHE_FP"
+        printf '#COUNTS\t%s\t%s\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
+        printf '%s\n' "$HAWS_HEALTH_FINDINGS"
+    } > "$cache_file" 2>/dev/null || true
+
     return 0
 }
 
@@ -182,6 +250,9 @@ _health_print_details() {
 }
 
 _health_collect_hooks() {
+    if printf '%s' "$HAWS_HEALTH_FINDINGS" | grep -q $'\tHooks\t'; then
+        return 0
+    fi
     local repo hook_path
     repo="$(_health_repo)"
     if hook_path="$(git -C "$repo" config --get core.hooksPath 2>/dev/null)"; then
@@ -294,7 +365,7 @@ status_run() {
     printf 'Skills: %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
     printf 'Last sync: %s\n' "$(_health_last_sync)"
     printf 'Second Brain: %s\n' "$(_second_brain_status_label)"
-    printf 'Auto Update: %s\n' "$HAWS_AUTO_UPDATE"
+    printf 'Auto Update: %s\n' "${HAWS_AUTO_UPDATE:-on}"
     if [ "$details" -eq 1 ]; then
         _health_print_details "AI Environments"
         _health_print_details Sources
@@ -304,9 +375,10 @@ status_run() {
 }
 
 doctor_run() {
-    local json=0 arg
+    local json=0 deep=0 arg
     for arg in "$@"; do
         [ "$arg" = --json ] && json=1
+        [ "$arg" = --deep ] && deep=1
     done
     if [ "$json" -eq 0 ]; then
         echo ""
@@ -316,7 +388,11 @@ doctor_run() {
         echo ""
         echo "[*] Running diagnostics, please wait..."
     fi
-    _health_collect
+    if [ "$deep" -eq 1 ]; then
+        _health_collect --deep
+    else
+        _health_collect
+    fi
     _health_collect_hooks
     local overall
     overall="$(health_classify)"
