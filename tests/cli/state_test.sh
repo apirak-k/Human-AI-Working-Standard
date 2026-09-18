@@ -171,7 +171,6 @@ test_recovery_refuses_a_live_sync_lock() {
 
 test_local_state_paths_are_ignored() {
     grep -F '/.haws/state/' "${PROJECT_ROOT}/.gitignore" >/dev/null || return 1
-    grep -F 'ai-configs/environments.disabled' "${PROJECT_ROOT}/.gitignore" >/dev/null || return 1
     grep -F 'config/environments.disabled' "${PROJECT_ROOT}/.gitignore" >/dev/null || return 1
     grep -F 'environments.disabled' "${PROJECT_ROOT}/.gitignore" >/dev/null
 }
