@@ -1981,7 +1981,7 @@ _sync_prefetch_target() {
 }
 
 _sync_prefetch_all() {
-    [ "${HAWS_AUTO_UPDATE:-on}" = on ] || return 0
+    [ "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}" = on ] || return 0
     local pids=()
     if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
         _sync_prefetch_target haws &
@@ -2006,7 +2006,8 @@ sync_target() {
     local preflight_status fetch_status current final timeout_seconds activation_status=0
     local fetch_remote=origin fetch_source=HEAD current_branch
     [ -n "${target}" ] || return 2
-    if [ "${HAWS_AUTO_UPDATE:-${AUTO_UPDATE:-on}}" != on ]; then
+    local auto_update_flag="${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-${AUTO_UPDATE:-on}}}"
+    if [ "${auto_update_flag}" != on ]; then
         sync_result_write "${target}" skipped - "Auto Update is disabled" || return 1
         _sync_legacy_echo "${target}: skipped (Auto Update is disabled)"
         return 0
@@ -2323,15 +2324,27 @@ sync_run() {
     local caller_had_cache=1
     [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || caller_had_cache=0
     [ "${caller_had_cache}" -eq 1 ] || export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
-    if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
-        target_count=$((target_count + 1))
-        sync_target haws || status=1
+    if [ "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}" = on ]; then
+        if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
+            target_count=$((target_count + 1))
+            sync_target haws || status=1
+        fi
+        while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
+            [ -n "${source_id:-}" ] || continue
+            target_count=$((target_count + 1))
+            sync_target "${source_id}" || status=1
+        done < <(catalog_sources 2>/dev/null || true)
+    else
+        if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
+            target_count=$((target_count + 1))
+            sync_result_write haws skipped - "Auto Update is disabled" || status=1
+        fi
+        while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
+            [ -n "${source_id:-}" ] || continue
+            target_count=$((target_count + 1))
+            sync_result_write "${source_id}" skipped - "Auto Update is disabled" || status=1
+        done < <(catalog_sources 2>/dev/null || true)
     fi
-    while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
-        [ -n "${source_id:-}" ] || continue
-        target_count=$((target_count + 1))
-        sync_target "${source_id}" || status=1
-    done < <(catalog_sources 2>/dev/null || true)
     if [ -n "$(_second_brain_remote_url)" ] || [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; then
         target_count=$((target_count + 1))
         sync_second_brain_target || status=1
@@ -2477,6 +2490,7 @@ run_sync() {
 
         # Fast path 1: destination is already linked to src (junction / symlink / same dir)
         if [ -d "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
+            _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || true
             SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
             return 0
         fi
@@ -2486,6 +2500,7 @@ run_sync() {
             local current_target
             current_target="$(readlink "${dest}" 2>/dev/null || true)"
             if [ -n "${current_target}" ] && [ "${current_target}" = "${src}" ]; then
+                _haws_record_skill_link symlink "${dest}" "${src}" 2>/dev/null || true
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -2499,6 +2514,7 @@ run_sync() {
 
         if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ]; then
             if [ "${src_marker}" -ef "${dest_marker}" ]; then
+                _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || true
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -5907,7 +5923,12 @@ home_run() {
         settings_load || return $?
         echo "CURRENT STATUS"
         printf '  Last Sync     : %s\n' "$(_health_last_sync)"
-        printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE:-on}")"
+        if [ -n "$(_second_brain_remote_url)" ]; then
+            printf '  Auto Update (Skills) : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}")"
+            printf '  Auto Update (Brain)  : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_BRAIN:-on}")"
+        else
+            printf '  Auto Update   : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}")"
+        fi
         printf '  Second Brain  : %s\n' "$(_second_brain_status_label)"
         echo ""
         export HAWS_MENU_SUPPRESS_HEADER=1
