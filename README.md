@@ -102,11 +102,14 @@ Native format reference: [OpenAI custom subagents](https://learn.chatgpt.com/doc
 
 Focused regression checks: `node --test ai-configs/codex/agents.test.mjs`.
 
-## Cross-Device Sync (Work and Home)
+## The 3-Tier Architecture & Cross-Device Sync
 
-HAWS physically decouples the **upstream framework (`core/`)** from your **personal Second Brain (`secondbrain/`)**:
-- `secondbrain/` is **gitignored** from the upstream HAWS repository, guaranteeing that upstream framework pulls never overwrite, conflict with, or erase your personal notes.
-- `secondbrain/` is managed as an independent local Git repository.
+HAWS physically enforces the **3-Tier Data Separation Model**:
+1. **Global Core (`core/`, `skills/`, `ai-configs/`)**: Upstream framework tracked by Git. Safely updated anytime via `Sync`.
+2. **Device-Local State (`.haws/state/`)**: Machine-specific junction registrations and toggle settings. Kept 100% out of Git.
+3. **Personal Second Brain (`secondbrain/`)**: Your private developer memory (`USER_PREFERENCES.md`, `ANTI_PATTERNS.md`, and `WORKFLOW.md`). Guarded by `--skip-worktree` so upstream framework updates NEVER overwrite your custom habits.
+
+- `secondbrain/` can also be managed as an independent private Git repository for seamless cross-machine synchronization.
 
 > [!IMPORTANT]
 > **Privacy Invariant**: Your Second Brain repository on GitHub **MUST be created as PRIVATE**. Never connect `secondbrain/` to a public repository to ensure that your personal notes, communication preferences, and recorded anti-patterns remain strictly confidential.
@@ -171,15 +174,18 @@ HAWS organizes skills into two main tiers:
 ## Repository Structure
 
 ```text
-├── core/                                # Universal Standard Specifications (Copy-pasteable for any AI)
+├── haws.bat                             # Windows launcher & interactive menu (Single Entrypoint)
+├── haws.sh                              # Universal CLI command engine (Linux / macOS / Git Bash)
+├── README.md                            # Quickstart guide & operating instructions
+├── core/                                # Universal Standard Specifications (Universal for any AI)
 │   ├── HAWS.md                          # Core principles, empirical grounding, Ponytail ladder & safeguards
-│   ├── WORK_INSTRUCTIONS.md             # Context loading, context discipline, Git protocols & SWE rules
-│   └── WORKFLOW.md                      # 6-phase engineering lifecycle & deterministic skill mapping
-├── secondbrain/                         # Personal Second Brain (Decoupled local Git repository)
+│   └── WORK_INSTRUCTIONS.md             # Context loading, context discipline, Git protocols & SWE rules
+├── secondbrain/                         # Personal Second Brain (Protected, decoupled local Git repository)
 │   ├── USER_PREFERENCES.md              # Personal habits, communication style & architectural preferences
-│   └── ANTI_PATTERNS.md                 # Learned safeguards, forbidden libraries & operational constraints
+│   ├── ANTI_PATTERNS.md                 # Learned safeguards with YYYY-MM-DD HH:mm timestamps
+│   └── WORKFLOW.md                      # [Adaptive Workflow] Personal 6-phase lifecycle & custom tool habits
 ├── agents/                              # Unified Subagent Source (Harness-Enforced)
-│   ├── organizer.md                     # Skill inventory health, workspace hygiene & learning ledger
+│   ├── organizer.md                     # Skill inventory health, workspace hygiene & adaptive workflow habits
 │   ├── frontend-engineer.md             # UI components, client state, styling, responsive design & a11y
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
@@ -188,15 +194,13 @@ HAWS organizes skills into two main tiers:
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
-│   └── standalone/                      # Single-purpose standalone skills (drawio, taste-skill, etc.)
+│   ├── standalone/                      # Single-purpose standalone skills (archify, drawio, taste-skill, etc.)
+│   └── skills.disabled                  # Disabled skills blacklist (filter gate)
 ├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot, Codex)
-├── templates/                           # Documentation & governance blueprints (PROJECT, ARCHITECTURE, etc.)
-├── containers/                          # Container & DevContainer blueprints (Dockerfile, compose, devcontainer)
-├── tests/                               # Comprehensive automated test suites (CLI & integration tests)
-├── docs/                                # Additional documentation and development history
-├── haws.sh                              # Shared CLI command engine (Linux / macOS / Git Bash)
-└── haws.bat                             # Windows launcher for the shared engine
+│   └── environments.disabled            # Disabled AI environments blacklist (filter gate)
+└── templates/                           # Documentation & governance blueprints (PROJECT, ARCHITECTURE, etc.)
 ```
+
 
 ---
 

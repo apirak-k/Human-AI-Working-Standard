@@ -15,7 +15,7 @@ At the beginning of a new thread or work context:
 
 1. read the latest `HAWS.md`
 2. read the latest `WORK_INSTRUCTIONS.md`
-3. read `secondbrain/USER_PREFERENCES.md` and `secondbrain/ANTI_PATTERNS.md` (Personal Second Brain)
+3. read `secondbrain/USER_PREFERENCES.md`, `secondbrain/ANTI_PATTERNS.md`, and `secondbrain/WORKFLOW.md` (Personal Second Brain & Adaptive Workflow)
 4. inspect the current project source
 5. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
 6. read `design.md` if it exists (system architecture & design blueprint)
@@ -54,7 +54,6 @@ For a new project or major feature:
 - connect your active AI assistant by scaffolding the corresponding environment adapter from `ai-configs/`: `gemini/GEMINI.md.template` for Google Antigravity, `claude/CLAUDE.md.template` for Claude Code, `cursor/haws.mdc.template` for Cursor, `copilot/copilot-instructions.md.template` for GitHub Copilot, or `codex/AGENTS.override.md.template` for OpenAI Codex. Codex uses user skills in `~/.agents/skills` and native role profiles in `~/.codex/agents`; install/check those profiles with `bash haws.sh codex-agents install` / `check` in the HAWS checkout.
 - during discovery and ideation, define project scope, roadmap, and live system state in `PROJECT.md` (from `templates/PROJECT.md`), system boundaries in `ARCHITECTURE.md` (from `templates/ARCHITECTURE.md`), and visual tokens in `DESIGN.md` (from `templates/DESIGN.md`)
 - before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` (from `templates/CONSTRAINTS.md`) and agent permission boundaries in `AGENTS.md` (from `templates/AGENTS.md`)
-- for containerized applications, scaffold from `containers/`: `Dockerfile.template` to `Dockerfile`, `.dockerignore.template` to `.dockerignore`, and `docker-compose.yml.template` to `docker-compose.yml`
 - create or update `HANDOFF.md` when work must pause or transfer across sessions
 
 
@@ -326,19 +325,20 @@ the user's local repository or remote (e.g. a sandboxed AI session).
 Prompting without curated context causes model failure. Context Engineering ensures high-fidelity execution through a 3-step lifecycle:
 
 1. **Ideation (`INITIAL.md`)**: The user provides high-level intent, feature ideas, or business requirements.
-2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using `templates/docs/ARCHITECTURE.md` and `templates/docs/PROJECT.md` as reference blueprints). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
+2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using `templates/ARCHITECTURE.md` and `templates/PROJECT.md` as reference blueprints). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
 3. **Execution Loop (`/execute-prp`)**: The implementing agent or subagent executes the tasks under a self-correcting validation loop:
    - Run tests / build checks.
    - If tests fail, diagnose systematically (trace input ➔ state ➔ output).
    - Iterate autonomously until all verification commands pass 100% before requesting user acceptance.
 
-## 10. Persistent Second Brain (Decoupled Cross-Tool Memory)
+## 10. Persistent Second Brain & Adaptive Workflow
 
 To ensure the AI remembers user preferences, habits, and past mistakes across sessions, machines, and AI tools without risking data loss during upstream updates:
 
 - **`secondbrain/USER_PREFERENCES.md`**: Stores stable preferences, preferred frameworks, architectural patterns, and communication style (chat-first, clean responses). Managed in an independent local Git repository.
-- **`secondbrain/ANTI_PATTERNS.md`**: Stores hard constraints, forbidden libraries, and past mistakes (via autonomous self-learning or learning skills/tools). When a correction, mistake, or operational constraint occurs, the AI autonomously records the root cause and prohibition here.
-- **Loading Rule**: All tools under HAWS load these files from `secondbrain/` during session initialization, guaranteeing continuity and zero repetition of past errors.
+- **`secondbrain/ANTI_PATTERNS.md`**: Stores hard constraints, forbidden libraries, and past mistakes with standardized `YYYY-MM-DD HH:mm` timestamps. When a correction, mistake, or operational constraint occurs, the AI autonomously records the root cause and prohibition here.
+- **`secondbrain/WORKFLOW.md`**: Stores the user's personal 6-phase engineering lifecycle, preferred tool/skill selections, and Git cadence. Dynamically observed and refined by `@organizer`.
+- **Loading Rule**: All tools under HAWS load these files from `secondbrain/` during session initialization, guaranteeing continuity, custom workflow alignment, and zero repetition of past errors.
 
 
 ---
@@ -347,18 +347,18 @@ To ensure the AI remembers user preferences, habits, and past mistakes across se
 
 The Main Agent (the primary session conversing directly with the user) serves as the Lead Software Architect, Project Manager, and Central Coordinator of specialized subagents. It enforces end-to-end Software Engineering (SWE) rigor across every phase.
 
-### Professional SWE Lifecycle & Operating Workflow
+### Professional SWE Lifecycle & Adaptive Operating Workflow
 
-The Main Agent and Subagents execute software engineering work strictly according to the 6-phase engineering lifecycle and deterministic skill mapping defined in [`core/WORKFLOW.md`](WORKFLOW.md):
+The Main Agent and Subagents execute software engineering work according to the user's personal 6-phase engineering lifecycle in `secondbrain/WORKFLOW.md` (falling back to the standard discovery-to-delivery lifecycle if uninitialized):
 
-1. **Phase 1: Discovery & Clarification** (`/interview-me`, `/grill-me`, `/research`)
-2. **Phase 2: Ideation & Architecture** (`/brainstorming`, `/idea-refine`, `/domain-modeling`, `/drawio-skill`)
-3. **Phase 3: Specification & Task Breakdown** (`/writing-plans`, `/planning-with-files`, `/spec-driven-development`)
-4. **Phase 4: Implementation** (`/tdd`, `/test-driven-development`, `/ui-ux-pro-max`, `/source-driven-development`)
-5. **Phase 5: Verification & Quality Audit** (`/verification-before-completion`, `/systematic-debugging`, `/code-review`)
-6. **Phase 6: Delivery & Handoff** (`/humanizer`, `/caveman`, `/documentation-and-adrs`, `/haws`)
+1. **Phase 1: Discovery & Clarification**
+2. **Phase 2: Ideation & Architecture**
+3. **Phase 3: Specification & Task Breakdown**
+4. **Phase 4: Implementation**
+5. **Phase 5: Verification & Quality Audit**
+6. **Phase 6: Delivery, Documentation & Handoff**
 
-Refer to [`core/WORKFLOW.md`](WORKFLOW.md) for exit criteria and detailed procedural definitions.
+Refer to `secondbrain/WORKFLOW.md` for the user's personalized skill mapping and exit criteria.
 
 ---
 

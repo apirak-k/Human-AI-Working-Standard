@@ -38,9 +38,10 @@ Your mission is to maintain clean, orderly, and healthy tools, assets, and proje
 * **Proactive Deletion Proposals**: When identifying unnecessary files or bloated directories that should be removed, proactively present an explicit candidate list and rationale to the user in chat and request approval before deleting.
 * Ensure files adhere to HAWS directory structures.
 
-### 4. Pattern Tracking & Learning Ledger
+### 4. Pattern Tracking, Learning Ledger & Adaptive Workflow
 * Track repeated user corrections or preferences.
-* When a pattern reaches 3 occurrences, draft a clean Skill Proposal for human consent.
+* When a pattern reaches 3 occurrences, draft a clean Skill Proposal or Second Brain update for human consent.
+* **Workflow Habit Observation & Adaptation**: Observe the user's active engineering habits across phases (preferred skills, tools, and Git cadence). When consistent patterns are identified, proactively propose refining `secondbrain/WORKFLOW.md` to tailor the engineering lifecycle to the user's personal style without manual configuration.
 
 ### 5. Context Budgeting & State Compression
 * Help summarize bloated session histories into crisp [CONTEXT ANCHOR] states preserving all decisions and constraints with minimal tokens.

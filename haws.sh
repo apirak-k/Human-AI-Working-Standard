@@ -635,7 +635,7 @@ legacy_run_doctor() {
 
     # 5. Check Personal Second Brain & Plugins
     [ "$json_mode" = false ] && echo "" && echo "5. Checking Personal Second Brain & Plugins..."
-    if [ -d "${SCRIPT_DIR}/secondbrain/.git" ] && [ -s "${SCRIPT_DIR}/secondbrain/USER_PREFERENCES.md" ] && [ -s "${SCRIPT_DIR}/secondbrain/ANTI_PATTERNS.md" ]; then
+    if [ -d "${SCRIPT_DIR}/secondbrain/.git" ] && [ -s "${SCRIPT_DIR}/secondbrain/USER_PREFERENCES.md" ] && [ -s "${SCRIPT_DIR}/secondbrain/ANTI_PATTERNS.md" ] && [ -s "${SCRIPT_DIR}/secondbrain/WORKFLOW.md" ]; then
         passed=$((passed + 1))
         [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ (decoupled local git repository)"
         details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"PASS\"}")
@@ -2926,8 +2926,8 @@ EOF
     echo "[PASS] Skills, profiles, commands, and cleanup are ready"
     echo ""
 
-    # 5. Configure hooks
-    echo "[*] Step 5: Configuring hooks"
+    # 5. Configure hooks & secondbrain git protection
+    echo "[*] Step 5: Configuring hooks & second brain protection"
     if [ -d "${SCRIPT_DIR}/.githooks" ]; then
         if run_hooks install >/dev/null; then
             echo "[PASS] Git safety hooks configured"
@@ -2937,6 +2937,16 @@ EOF
         fi
     else
         echo "[WARN] Git safety hooks directory is not present"
+    fi
+
+    # Protect secondbrain user files from upstream framework pull clobbering
+    if [ -d "${SCRIPT_DIR}/.git" ] || [ -f "${SCRIPT_DIR}/.git" ]; then
+        for b_file in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
+            if [ -f "${SCRIPT_DIR}/secondbrain/${b_file}" ]; then
+                git -C "${SCRIPT_DIR}" update-index --skip-worktree "secondbrain/${b_file}" 2>/dev/null || true
+            fi
+        done
+        echo "[PASS] Second brain files guarded (--skip-worktree active)"
     fi
     echo ""
 
