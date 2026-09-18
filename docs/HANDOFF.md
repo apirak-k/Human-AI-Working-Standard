@@ -1,11 +1,49 @@
 # Current old-base Implementation Checkpoint
 
-## CURRENT CHECKPOINT — 2026-09-18 Phase 10: Guided Second Brain Remote Pop-up & Release Polish
+## CURRENT CHECKPOINT — 2026-09-18 Phase 11: Production Main Packaging, 3-Tier Data Architecture & Adaptive Second Brain Workflow
 
-The current continuation worktree is `E:\Human-AI-Working-Standard\.worktrees\codex-haws-old-base-selected` on branch `codex/remote-continuation`.
-All 10 CLI test suites in `tests/cli/run.sh` pass with 100% green (156 tests passed, 0 failed).
+The current continuation worktree is on branch `codex/remote-continuation`.
+Production `main` branch has been cleanly packaged and successfully pushed to `origin/main` (`f5bfe98`).
 
-### Summary of Completed Improvements in Phase 10:
+### Summary of Completed Improvements in Phase 11:
+1. **Production Main Release Packaging (`origin/main`)**:
+   - Cleaned root entrypoint: Single Windows launcher (`haws.bat`) and universal CLI (`haws.sh`).
+   - Excluded internal developer noise from `main`: `containers/`, `docs/`, `spec.md`, `tests/`, and `.planning/`.
+   - Updated `README.md` to be 100% end-user focused (simplified Minimalist Engineering, removed confusing Codex/internal test text).
+2. **3-Tier Data Separation Model**:
+   - **Tier 1 (Global Core)**: `core/`, `skills/`, `ai-configs/`, `haws.sh`, `haws.bat` (Tracked upstream).
+   - **Tier 2 (Device-Local State)**: `.haws/state/` (100% gitignored, generated automatically per machine).
+   - **Tier 3 (Personal Second Brain)**: `secondbrain/` protected with `git update-index --skip-worktree` in `haws.sh sync/setup`. Upstream framework updates will NEVER overwrite local user modifications.
+3. **Adaptive Workflow in Second Brain**:
+   - **Decoupled from Core**: Permanently deleted `core/WORKFLOW.md`.
+   - **Relocated to User Memory**: Initialized `secondbrain/WORKFLOW.md` with 6-phase engineering lifecycle and customizable preferred skills.
+   - **Expanded `@organizer`**: Updated `agents/organizer.md` Responsibility 4 to observe user workflow habits across phases and propose refining `secondbrain/WORKFLOW.md`.
+   - **Standardized Timestamps**: Standardized `secondbrain/ANTI_PATTERNS.md` to `YYYY-MM-DD HH:mm` for clean cross-device (morning/evening) synchronization.
+4. **Documentation & Reference Alignment**:
+   - Updated `core/HAWS.md` and `core/WORK_INSTRUCTIONS.md` to point to `secondbrain/WORKFLOW.md` and fixed `templates/` blueprint paths.
+   - Verified 100% health check via `haws doctor` (Overall: Ready, 129 active skills PASS).
+
+### Exact Resume Instructions for Home Machine:
+1. Fetch latest changes from remote:
+   ```bash
+   git fetch origin
+   ```
+2. For working on framework development:
+   ```bash
+   git checkout codex/remote-continuation
+   git pull origin codex/remote-continuation
+   ```
+3. For inspecting or testing the clean Production Main:
+   ```bash
+   git checkout main
+   git pull origin main
+   .\haws.bat doctor
+   ```
+
+---
+
+## PREVIOUS CHECKPOINT — 2026-09-18 Phase 10: Guided Second Brain Remote Pop-up & Release Polish
+
 1. **Guided Second Brain Remote Pop-up (Option 2)**:
    - When user presses `Enter` on `Second Brain - [Local-Only]` row in `Auto Update Settings`, system opens a guided prompt dialog:
      ```text
