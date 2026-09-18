@@ -2307,16 +2307,17 @@ sync_run() {
         printf '  Auto Update (Brain)  : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_BRAIN:-on}")"
     fi
     echo ""
+    local -a cached_source_ids=()
+    while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
+        [ -n "${source_id:-}" ] && cached_source_ids+=("${source_id}")
+    done < <(catalog_sources 2>/dev/null || true)
+
     printf '  %-28s %-18s %s\n' "TARGET" "RESULT" "DETAIL"
     if [ "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}" != on ]; then
-        local skipped_repo_count=0
+        local skipped_repo_count=${#cached_source_ids[@]}
         if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
             skipped_repo_count=$((skipped_repo_count + 1))
         fi
-        while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
-            [ -n "${source_id:-}" ] || continue
-            skipped_repo_count=$((skipped_repo_count + 1))
-        done < <(catalog_sources 2>/dev/null || true)
         printf '  %-28s %-18s %s\n' "remote repositories (${skipped_repo_count})" "[INFO] Skipped" "Auto Update is disabled"
     else
         _sync_prefetch_all
@@ -2329,21 +2330,34 @@ sync_run() {
             target_count=$((target_count + 1))
             sync_target haws || status=1
         fi
-        while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
-            [ -n "${source_id:-}" ] || continue
+        for source_id in "${cached_source_ids[@]}"; do
             target_count=$((target_count + 1))
             sync_target "${source_id}" || status=1
-        done < <(catalog_sources 2>/dev/null || true)
+        done
     else
+        local state="$(_haws_state_dir)"
+        local file="${state}/sync-state.tsv"
+        local temporary="${state}/sync-state.stage.$$"
+        mkdir -p "${state}" || status=1
+        if [ -f "${file}" ]; then
+            cp -- "${file}" "${temporary}" || status=1
+        else
+            : > "${temporary}" || status=1
+        fi
+        local now_iso
+        now_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
             target_count=$((target_count + 1))
-            sync_result_write haws skipped - "Auto Update is disabled" || status=1
+            printf '%s\thaws\tskipped\t-\tAuto Update is disabled\n' "${now_iso}" >> "${temporary}"
+            SYNC_SUMMARY_SKIPPED=$((SYNC_SUMMARY_SKIPPED + 1))
         fi
-        while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
-            [ -n "${source_id:-}" ] || continue
+        for source_id in "${cached_source_ids[@]}"; do
             target_count=$((target_count + 1))
-            sync_result_write "${source_id}" skipped - "Auto Update is disabled" || status=1
-        done < <(catalog_sources 2>/dev/null || true)
+            printf '%s\t%s\tskipped\t-\tAuto Update is disabled\n' "${now_iso}" "${source_id}" >> "${temporary}"
+            SYNC_SUMMARY_SKIPPED=$((SYNC_SUMMARY_SKIPPED + 1))
+        done
+        _haws_state_replace "${temporary}" "${file}" || status=1
+        rm -f -- "${temporary}"
     fi
     if [ -n "$(_second_brain_remote_url)" ] || [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; then
         target_count=$((target_count + 1))
