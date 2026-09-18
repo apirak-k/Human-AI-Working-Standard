@@ -67,14 +67,6 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 ---
 
 
-## Multi-AI Subagent Profiles (OpenAI Codex, Claude, Antigravity)
-
-HAWS automatically distributes canonical subagent profiles from `agents/` to your installed AI assistants during `haws sync`. 
-For OpenAI Codex, native TOML profiles can also be installed or updated individually:
-```bash
-bash haws.sh codex-agents install
-```
-
 ## The 3-Tier Architecture & Cross-Device Sync
 
 HAWS physically enforces the **3-Tier Data Separation Model**:
@@ -180,8 +172,7 @@ HAWS organizes skills into two main tiers:
 ## Core Engineering Safeguards
 
 1. **Empirical Grounding (`core/HAWS.md:Sec 3.1`)**: Claims of code completion require actual execution proof (commands run, exit codes, and test assertions). Never claim a feature works without running it. Unverified items must be explicitly labeled `[Unverified]`.
-2. **Minimalist Engineering (The Ponytail Lazy Dev Ladder)**: Stop at the first rung:
-   1. *Does this need to exist?* -> 2. *Already in this codebase?* -> 3. *Stdlib does it?* -> 4. *Native platform feature?* -> 5. *Installed dependency?* -> 6. *Can it be one line?* -> 7. *Only then write code.*
+2. **Minimalist Engineering (YAGNI & Simplicity First)**: Question whether new code needs to exist at all. Prefer standard libraries, native platform features, and existing utilities over adding external dependencies or boilerplate.
 3. **Bounded Self-Correction Loop**: Capped at a maximum of **3 autonomous repair iterations**; if still failing, halt immediately, report diagnostic logs, and request human guidance. Never silence linters (`@ts-ignore`) or skip tests to fake green builds.
 4. **Package & Dependency Invariant**: Lockfiles (`package-lock.json`, `poetry.lock`, `Cargo.lock`) must always be committed. Dependency vulnerability audits (`npm audit`, `pip-audit`) must pass with zero High/Critical vulnerabilities.
 5. **Git Remote Push Protection**: AI agents must **NEVER** run `git push` to GitHub or any remote repository autonomously without explicit user confirmation in chat.
