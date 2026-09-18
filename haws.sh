@@ -2379,15 +2379,18 @@ run_sync() {
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
     done
     shift || true
+
+    local run_sync_had_cache=1
+    [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || run_sync_had_cache=0
+    if [ "${run_sync_had_cache}" -eq 0 ]; then
+        echo "  [*] Initializing sync environment, please wait..."
+        export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
+    fi
+
     echo "============================================================="
     echo "                         HAWS SYNC"
     echo "============================================================="
     echo ""
-    local run_sync_had_cache=1
-    [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || run_sync_had_cache=0
-    if [ "${run_sync_had_cache}" -eq 0 ]; then
-        export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
-    fi
     local sync_status=0
     echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
