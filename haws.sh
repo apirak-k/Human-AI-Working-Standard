@@ -563,15 +563,15 @@ legacy_run_doctor() {
 
     [ "$json_mode" = false ] && echo "=== HAWS System Doctor & Environment Diagnostics ===" && echo ""
 
-    # 1. Check Core Standard Files (3 Canonical Files)
-    [ "$json_mode" = false ] && echo "1. Checking Core Standards (3 Canonical Files)..."
-    local core_files=("HAWS.md" "WORK_INSTRUCTIONS.md" "WORKFLOW.md")
+    # 1. Check Core Standard Files (2 Canonical Files)
+    [ "$json_mode" = false ] && echo "1. Checking Core Standards (2 Canonical Files)..."
+    local core_files=("HAWS.md" "WORK_INSTRUCTIONS.md")
     for f in "${core_files[@]}"; do
         check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
     done
 
-    # 2. Check Project Templates & Blueprints (15 Blueprints)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (15 Blueprints)..."
+    # 2. Check Project Templates & Blueprints (11 Blueprints)
+    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (11 Blueprints)..."
     local doc_tpls=("PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "AGENTS.md" "DESIGN.md")
     for f in "${doc_tpls[@]}"; do
         if [ -f "${SCRIPT_DIR}/templates/${f}" ]; then
@@ -585,10 +585,12 @@ legacy_run_doctor() {
     check_item "${SCRIPT_DIR}/ai-configs/gemini/GEMINI.md.template" "ai-configs/gemini/GEMINI.md.template"
     check_item "${SCRIPT_DIR}/ai-configs/copilot/copilot-instructions.md.template" "ai-configs/copilot/copilot-instructions.md.template"
     check_item "${SCRIPT_DIR}/ai-configs/codex/AGENTS.override.md.template" "ai-configs/codex/AGENTS.override.md.template"
-    local container_tpls=("devcontainer.json" "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
-    for f in "${container_tpls[@]}"; do
-        check_item "${SCRIPT_DIR}/containers/${f}" "containers/${f}"
-    done
+    if [ -d "${SCRIPT_DIR}/containers" ]; then
+        local container_tpls=("devcontainer.json" "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
+        for f in "${container_tpls[@]}"; do
+            check_item "${SCRIPT_DIR}/containers/${f}" "containers/${f}"
+        done
+    fi
 
     # 3. Check Subagents (5 Canonical Specialists)
     [ "$json_mode" = false ] && echo "" && echo "3. Checking Subagents (5 Canonical Specialists)..."

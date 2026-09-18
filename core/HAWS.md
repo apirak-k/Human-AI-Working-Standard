@@ -265,7 +265,7 @@ Use these functional purposes:
 - **Agent Governance (`templates/AGENTS.md`)** — matrix of agent roles, authorized scopes, forbidden actions, and project anti-patterns
 - **Architecture Blueprint (`templates/ARCHITECTURE.md`)** — system boundaries, component diagrams, and technical specifications
 - **Design Spec (`templates/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
-- **Engineering Workflow (`WORKFLOW.md`)** — 6-phase engineering lifecycle and deterministic skill mapping
+- **Personal Engineering Workflow (`secondbrain/WORKFLOW.md`)** — adaptive 6-phase engineering lifecycle and user preferred skills
 - **User Preferences (`secondbrain/USER_PREFERENCES.md`)** — personal habits, communication style, preferred architectures, and conventions preserved across sessions and tools
 - **Anti-Patterns & Learned Safeguards (`secondbrain/ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors
 - **Personal Knowledge & Notes (`secondbrain/notes/`)** — domain knowledge, technical cheat sheets, references, and personal notes preserved across sessions
