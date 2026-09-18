@@ -4533,12 +4533,12 @@ uninstall_run() {
     fi
 
     echo ""
-    echo "============================================================="
+    echo "-------------------------------------------------------------"
     echo "[SAFETY GUARD] Uninstallation will detach global AI pointers,"
     echo "linked skills, subagents, and Git hooks."
     echo ""
     echo "Your project code and Second Brain will NOT be deleted."
-    echo "============================================================="
+    echo "-------------------------------------------------------------"
     echo ""
 
     if [ "$confirmed" -eq 0 ]; then
