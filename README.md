@@ -100,8 +100,6 @@ or files matching their recorded installed hashes are removable. Skill counts al
 
 Native format reference: [OpenAI custom subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
 
-Focused regression checks: `node --test ai-configs/codex/agents.test.mjs`.
-
 ## The 3-Tier Architecture & Cross-Device Sync
 
 HAWS physically enforces the **3-Tier Data Separation Model**:
@@ -225,7 +223,6 @@ Located at `skills/custom/keyboard-layout-fixer/`:
 - **Case 3 (Inverted CapsLock English)**: `hELLO wORLD` -> `Hello World`
 - **Case 4 (CapsLock Active on EN Layout typing Thai)**: `FDFD` -> `ดกดก`, `GRNHV` -> `เพื้อ` (without shifted vowel/tone mark distortion)
 - **Safety Guard (Acronym Bypass)**: Common English acronyms (`API`, `SQL`, `HTML`, `README`, `JSON`, `URL`, etc.) are detected and preserved without conversion.
-- Focused keyboard-layout-fixer test: `node skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`
 
 ---
 
@@ -238,4 +235,5 @@ When instructions or information conflict, always resolve in this order:
 3. **HAWS (`core/HAWS.md`)**
 4. **Confirmed Project Specific requirements**
 5. **Applicable Work Instructions (`core/WORK_INSTRUCTIONS.md`)**
-6. **[HANDOFF.md](HANDOFF.md)** as a description of current work state
+6. **Active task context or project handoff** (when continuing existing work)
+
