@@ -268,17 +268,23 @@ _health_collect_hooks() {
     fi
 }
 
-_health_print_summary() {
-    local ai_summary="" env env_path label
+_health_active_ai_names() {
+    [[ "$(declare -p DISABLED_ENVS 2>/dev/null)" =~ "declare -A" ]] || declare -A DISABLED_ENVS=()
+    local result="" env env_path label
     for env in claude gemini agents; do
         env_path="$(_health_env_path "$env")"
         case "$env" in claude) label=Claude ;; gemini) label=Gemini ;; agents) label=Codex ;; esac
         if [ -z "${DISABLED_ENVS[$env]-}" ] && [ -d "$env_path" ]; then
-            [ -n "$ai_summary" ] && ai_summary+=", "
-            ai_summary+="$label"
+            [ -n "$result" ] && result+=", "
+            result+="$label"
         fi
     done
-    [ -n "$ai_summary" ] || ai_summary="None"
+    printf '%s' "${result:-None}"
+}
+
+_health_print_summary() {
+    local ai_summary
+    ai_summary="$(_health_active_ai_names)"
     printf '  Overall       : %s\n' "$(health_classify)"
     printf '  AI            : %s\n' "$ai_summary"
     printf '  Skills        : %s / %s active\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
@@ -313,7 +319,7 @@ _health_print_findings() {
         if [ "$issues" -eq 0 ]; then
             case "$section" in
                 Settings) short_detail="settings ready" ;;
-                "AI Environments") short_detail="${total} environment checks passed" ;;
+                "AI Environments") short_detail="$(_health_active_ai_names)" ;;
                 "AI Environment ownership") short_detail="${total} managed item(s) verified" ;;
                 Sources) short_detail="${total} source(s) available" ;;
                 Skills) short_detail="${total} active skill check(s) passed" ;;
@@ -5081,7 +5087,12 @@ _settings_skill_selector() {
                 is_pack=1
             fi
         fi
-        if [ -n "${wanted_source}" ]; then
+        if [ "${wanted_source}" = "__custom__" ]; then
+            [[ "${source_path}" == skills/custom* ]] || continue
+        elif [ "${wanted_source}" = "__single__" ]; then
+            [[ "${source_path}" == skills/custom* ]] && continue
+            [ "${is_pack}" -eq 0 ] || continue
+        elif [ -n "${wanted_source}" ]; then
             [ "${source_id}" = "${wanted_source}" ] || continue
         else
             [ "${is_pack}" -eq 0 ] || continue
@@ -5221,6 +5232,7 @@ settings_skills_page() {
         pack_name_counts["${pack_name}"]=$(( ${pack_name_counts[${pack_name}]:-0} + 1 ))
     done <<< "${rows}"
 
+    local custom_total=0 custom_active=0
     local single_total=0 single_active=0
     local single_source_id single_source_path
     for single_source_id in "${!source_counts[@]}"; do
@@ -5232,8 +5244,13 @@ settings_skills_page() {
             fi
         fi
         [ "${is_pack}" -eq 1 ] && continue
-        single_total=$((single_total + ${source_counts[${single_source_id}]:-0}))
-        single_active=$((single_active + ${source_active_counts[${single_source_id}]:-0}))
+        if [[ "${single_source_path}" == skills/custom* ]]; then
+            custom_total=$((custom_total + ${source_counts[${single_source_id}]:-0}))
+            custom_active=$((custom_active + ${source_active_counts[${single_source_id}]:-0}))
+        else
+            single_total=$((single_total + ${source_counts[${single_source_id}]:-0}))
+            single_active=$((single_active + ${source_active_counts[${single_source_id}]:-0}))
+        fi
     done
 
     local pack_total=0 pack_active=0
@@ -5242,78 +5259,97 @@ settings_skills_page() {
         pack_active=$((pack_active + ${source_active_counts[${pack_ids[$i]}]:-0}))
     done
 
-    local summary_label="Single Skills"
-    local summary_width=${#summary_label}
-    local summary_name i
-    for ((i=0; i<${#pack_names[@]}; i++)); do
-        summary_name="${pack_names[$i]}"
-        if [ "${pack_name_counts[${summary_name}]:-0}" -gt 1 ]; then
-            summary_name="${summary_name} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
-        fi
-        [ "${#summary_name}" -gt "${summary_width}" ] && summary_width="${#summary_name}"
-    done
-    summary_width=$((summary_width + 2))
+    _skills_recalc_active_counts() {
+        local -A recount_map=()
+        local ri rd
+        while IFS= read -r ri || [ -n "${ri}" ]; do
+            [ -n "${ri}" ] && recount_map["${ri}"]=1
+        done <<< "${HAWS_DRAFT_SKILLS:-}"
+        local rs_id r_id r_disp r_desc r_ep r_act
+        for rs_id in "${!source_active_counts[@]}"; do
+            source_active_counts["${rs_id}"]=0
+        done
+        custom_active=0; single_active=0; pack_active=0
+        while IFS=$'\t' read -r rs_id r_id r_disp r_desc r_ep r_act || [ -n "${r_id}" ]; do
+            [ -n "${r_id}" ] || continue
+            [ -n "${recount_map["${r_id}"]:-}" ] || continue
+            source_active_counts["${rs_id}"]=$(( ${source_active_counts["${rs_id}"]:-0} + 1 ))
+        done <<< "${rows}"
+        local rp
+        for rp in "${!source_counts[@]}"; do
+            local rp_path="${source_paths[${rp}]:-}"
+            local rp_pack=0
+            if [[ "${rp_path}" != skills/custom* ]]; then
+                if [[ "${rp_path}" == skills/packs/* ]] || [ "${source_counts[${rp}]:-0}" -gt 1 ]; then
+                    rp_pack=1
+                fi
+            fi
+            if [ "${rp_pack}" -eq 1 ]; then
+                pack_active=$((pack_active + ${source_active_counts[${rp}]:-0}))
+            elif [[ "${rp_path}" == skills/custom* ]]; then
+                custom_active=$((custom_active + ${source_active_counts[${rp}]:-0}))
+            else
+                single_active=$((single_active + ${source_active_counts[${rp}]:-0}))
+            fi
+        done
+    }
 
     while true; do
-        local summary="Choose a skill category to edit the current draft."
-        summary+=$'\n\nSkill Summary\n  Single Skills\n  Multi-Skill Packs'
-        if [ "${#pack_names[@]}" -eq 0 ]; then
-            summary+=$'\n    (none)'
-        else
-            for ((i=0; i<${#pack_names[@]}; i++)); do
-                summary_name="${pack_names[$i]}"
-                if [ "${pack_name_counts[${summary_name}]:-0}" -gt 1 ]; then
-                    summary_name="${summary_name} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
-                fi
-                printf -v summary_name '    %-*s [Active: %d / %d skills]' \
-                    "$((summary_width - 2))" "${summary_name}" \
-                    "${source_active_counts[${pack_ids[$i]}]:-0}" \
-                    "${source_counts[${pack_ids[$i]}]:-0}"
-                summary+=$'\n'"${summary_name}"
-            done
-        fi
-        local single_item pack_item
+        local custom_item single_item pack_item
         local cat_width=18
-        printf -v single_item '%-*s [Active: %d / %d skills]|Configure individual skills' \
+        printf -v custom_item '%-*s [Active: %3d / %3d skills]|Configure custom skills' \
+            "${cat_width}" "Custom Skills" "${custom_active}" "${custom_total}"
+        printf -v single_item '%-*s [Active: %3d / %3d skills]|Configure individual skills' \
             "${cat_width}" "Single Skills" "${single_active}" "${single_total}"
-        printf -v pack_item '%-*s [Active: %d / %d skills]|Configure skills by pack' \
+        printf -v pack_item '%-*s [Active: %3d / %3d skills]|Configure skills by pack' \
             "${cat_width}" "Multi-Skill Packs" "${pack_active}" "${pack_total}"
-        if interactive_menu menu "Configure Active Skills (Enable / Disable)|${summary}" \
+        if interactive_menu menu "Configure Active Skills (Enable / Disable)" \
+            "${custom_item}" \
             "${single_item}" \
             "${pack_item}"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0)
-                    _settings_skill_selector "Configure Single Skills" "${rows}" || true
+                    _settings_skill_selector "Configure Custom Skills" "${rows}" "__custom__" || true
+                    _skills_recalc_active_counts
                     ;;
                 1)
-                    local pack_items=() i pack_label
-                    local max_pack_len=0
-                    for ((i=0; i<${#pack_ids[@]}; i++)); do
-                        pack_label="${pack_names[$i]}"
-                        if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
-                            pack_label="${pack_label} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
+                    _settings_skill_selector "Configure Single Skills" "${rows}" "__single__" || true
+                    _skills_recalc_active_counts
+                    ;;
+                2)
+                    while true; do
+                        local pack_items=() i pack_label
+                        local max_pack_len=0
+                        for ((i=0; i<${#pack_ids[@]}; i++)); do
+                            pack_label="${pack_names[$i]}"
+                            if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
+                                pack_label="${pack_label} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
+                            fi
+                            [ "${#pack_label}" -gt "${max_pack_len}" ] && max_pack_len="${#pack_label}"
+                        done
+                        max_pack_len=$((max_pack_len + 2))
+                        for ((i=0; i<${#pack_ids[@]}; i++)); do
+                            pack_label="${pack_names[$i]}"
+                            if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
+                                pack_label="${pack_label} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
+                            fi
+                            printf -v pack_label '%-*s [Active: %3d / %3d skills]' \
+                                "${max_pack_len}" "${pack_label}" \
+                                "${source_active_counts[${pack_ids[$i]}]:-0}" \
+                                "${source_counts[${pack_ids[$i]}]:-0}"
+                            pack_items+=("${pack_label}")
+                        done
+                        if interactive_menu menu "Select a Skill Pack to configure" \
+                            "${pack_items[@]}"; then
+                            [ "${INTERACTIVE_MENU_SELECTION}" -lt "${#pack_ids[@]}" ] || continue
+                            _settings_skill_selector \
+                                "Configure Skills in ${pack_names[$INTERACTIVE_MENU_SELECTION]}" \
+                                "${rows}" "${pack_ids[$INTERACTIVE_MENU_SELECTION]}" || true
+                            _skills_recalc_active_counts
+                        else
+                            break
                         fi
-                        [ "${#pack_label}" -gt "${max_pack_len}" ] && max_pack_len="${#pack_label}"
                     done
-                    max_pack_len=$((max_pack_len + 2))
-                    for ((i=0; i<${#pack_ids[@]}; i++)); do
-                        pack_label="${pack_names[$i]}"
-                        if [ "${pack_name_counts[${pack_label}]:-0}" -gt 1 ]; then
-                            pack_label="${pack_label} [$(_interactive_truncate "${pack_ids[$i]}" 24)]"
-                        fi
-                        printf -v pack_label '%-*s [Active: %d / %d skills]' \
-                            "${max_pack_len}" "${pack_label}" \
-                            "${source_active_counts[${pack_ids[$i]}]:-0}" \
-                            "${source_counts[${pack_ids[$i]}]:-0}"
-                        pack_items+=("${pack_label}")
-                    done
-                    if interactive_menu menu "Select a Skill Pack to configure" \
-                        "${pack_items[@]}"; then
-                        [ "${INTERACTIVE_MENU_SELECTION}" -lt "${#pack_ids[@]}" ] || continue
-                        _settings_skill_selector \
-                            "Configure Skills in ${pack_names[$INTERACTIVE_MENU_SELECTION]}" \
-                            "${rows}" "${pack_ids[$INTERACTIVE_MENU_SELECTION]}" || true
-                    fi
                     ;;
                 *) return 0 ;;
             esac
@@ -5746,7 +5782,7 @@ settings_preview() {
             pack_name="${preview_source_names[${pack_id}]:-${pack_id##*/}}"
             active_count="${preview_source_active[${pack_id}]:-0}"
             total_count="${preview_source_counts[${pack_id}]:-0}"
-            printf "    • %-26s [Active: %2d / %2d]\n" "${pack_name}" "${active_count}" "${total_count}"
+            printf "    • %-26s [Active: %3d / %3d]\n" "${pack_name}" "${active_count}" "${total_count}"
         done
         printed_skills_section=1
     fi
