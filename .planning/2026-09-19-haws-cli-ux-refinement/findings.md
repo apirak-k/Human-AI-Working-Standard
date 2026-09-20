@@ -251,3 +251,17 @@ selector delimiter fix and category totals.
 - Doctor JSON remains `{"status":"Ready"}`.
 - The fix changes only the successful Skills summary to use
   `HAWS_HEALTH_SKILLS_ACTIVE`; it does not alter catalog rows or health status.
+
+## Uninstall Count Label Verification (2026-09-20)
+
+- Read-only `bash haws.sh uninstall --dry-run` reported `426` records in the
+  `Skills` group and `5` records in the Agents group.
+- The `skills` group is populated from `ownership_list skills`; each record is
+  an HAWS-managed target/link, so the number can exceed the number of unique
+  catalog skills because multiple AI environments may have links for the same
+  skill.
+- The current output label `Skills` is misleading. The intended display label
+  is `Skill Links`.
+- Auto prune is present in the Sync path (`run_sync`) and is intentionally not
+  part of Uninstall preview/removal. No behavior change is planned for that
+  separation.

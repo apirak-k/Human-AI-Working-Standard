@@ -490,3 +490,15 @@ JSON status remains Ready.
 **Implementation completed in `e195bb2`:** Doctor now reports the active
 counter (`153`) instead of counting the parse-health row (`154`). Deep human
 Doctor and JSON verification both pass.
+
+### Newly confirmed UX issue — Uninstall label counts links, not unique skills
+
+`uninstall_preview()` counts ownership records in the internal `skills` group.
+On the current installation the dry-run reports `426` such records, while
+those records represent managed links/targets across environments, not 426
+unique skill definitions or AI environments. The user-facing label `Skills`
+is therefore misleading.
+
+**Minimal implementation direction:** change only the displayed group label to
+`Skill Links`. Keep Auto prune in Sync; Uninstall and Sync have different
+ownership/cleanup semantics.

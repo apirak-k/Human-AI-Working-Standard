@@ -151,6 +151,9 @@ implementation commits.
   (`e195bb2`).
 - [x] Verify human Doctor reports `153 active skill check(s) passed` and JSON
   remains `{"status":"Ready"}`.
+- [x] Confirmed Uninstall's `426` count is managed Skill Links, not unique
+  skills or AI environments; Auto prune remains a Sync-only operation.
+- [ ] Rename the Uninstall display label from `Skills` to `Skill Links`.
 
 ### Harness notes
 
