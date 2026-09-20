@@ -2680,7 +2680,7 @@ run_sync() {
     done <<< "${skill_rows}"
 
     local can_fast_skip_skills=0
-    if [ "${SYNC_SUMMARY_UPDATED:-0}" -eq 0 ] && [ -f "${MANIFEST_FILE}" ]; then
+    if [ -f "${MANIFEST_FILE}" ]; then
         if cmp -s <(grep '^skill:' "${MANIFEST_FILE}" 2>/dev/null || true) "${TMP_MANIFEST}"; then
             can_fast_skip_skills=1
         fi
