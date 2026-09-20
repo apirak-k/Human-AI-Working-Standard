@@ -5106,8 +5106,10 @@ _settings_skill_selector() {
     local i
     for ((i=0; i<${#ids[@]}; i++)); do
         if [ "${CHECKLIST_RESULTS[${i}]:-0}" -eq 1 ]; then
-            _settings_list_contains "${selected}" "${ids[$i]}" || \
+            if ! _settings_list_contains "${selected}" "${ids[$i]}"; then
+                [ -n "${selected}" ] && selected="${selected}"$'\n'
                 selected="${selected}${ids[$i]}"$'\n'
+            fi
         else
             selected="$(_settings_list_without "${selected}" "${ids[$i]}")"
         fi
