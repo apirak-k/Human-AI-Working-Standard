@@ -61,7 +61,7 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 
 ### Cross-Platform Setup Details
 
-- **Windows 10 / 11**: Double-click `haws.bat`. It delegates to Git Bash and preserves the shared menu behavior. No administrator privileges are required for the launcher; Windows link capabilities depend on the host and are reported as `[Unverified]` when unavailable. Antigravity uses declarative JSON mapping (`skills.json`); Claude Code, Cursor, Copilot, and Codex use their existing adapters.
+- **Windows 10 / 11**: Double-click `haws.bat`. It delegates to Git Bash and preserves the shared menu behavior. No administrator privileges are required for the launcher; Windows link capabilities depend on the host and are reported as `[Unverified]` when unavailable. Antigravity uses declarative JSON mapping (`skills.json`); Claude Code, Cursor, and Codex use their existing adapters.
 - **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
 
 ---
@@ -70,9 +70,9 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 ## The 3-Tier Architecture & Cross-Device Sync
 
 HAWS physically enforces the **3-Tier Data Separation Model**:
-1. **Global Core (`core/`, `skills/`, `ai-configs/`)**: Upstream framework tracked by Git. Safely updated anytime via `Sync`.
+1. **Global Core (`core/`, `skills/`, `ai-configs/`)**: Public upstream framework tracked by Git. Safely updated anytime via `Sync`.
 2. **Device-Local State (`.haws/state/`)**: Machine-specific junction registrations and toggle settings. Kept 100% out of Git.
-3. **Personal Second Brain (`secondbrain/`)**: Your private developer memory (`USER_PREFERENCES.md`, `ANTI_PATTERNS.md`, and `WORKFLOW.md`). Guarded by `--skip-worktree` so upstream framework updates NEVER overwrite your custom habits.
+3. **Personal DEV Overlay (`secondbrain/`)**: Optional private developer memory (`USER_PREFERENCES.md`, `ANTI_PATTERNS.md`, and `WORKFLOW.md`). Public `main` does not contain a user's personal files; a fresh checkout receives neutral starters from `templates/secondbrain/` when needed.
 
 - `secondbrain/` can also be managed as an independent private Git repository for seamless cross-machine synchronization.
 
@@ -119,20 +119,21 @@ Use `haws.bat`, then choose the matching Home action:
 
 ### Managing Skills (Add & Remove)
 
-HAWS organizes skills into two main tiers:
+HAWS organizes skills into three explicit categories:
 
-1. **External Git Submodules (Multi-Skill Packs & Standalone Skills)**:
-   - **Interactive CLI Wizard**: Run `bash haws.sh kit setup` (or choose `2) Setup` during initial `bash haws.sh setup`). The CLI lists all current packs with their Git URLs, allows entering numbers to cleanly remove (prune), and prompts for Git URLs to add new packs or standalone skills.
+1. **Custom Skills (`skills/custom/`)**: HAWS-owned local skills with the highest linking priority. Add a folder containing a valid `SKILL.md`, then run `bash haws.sh sync`.
+2. **Single Skills (`skills/standalone/`)**: One-purpose external skill repositories.
+3. **Multi-Skill Packs (`skills/packs/`)**: External repositories that provide multiple related skills.
+
+For Single Skills and Multi-Skill Packs:
+   - **Interactive CLI Wizard**: Run `bash haws.sh kit setup` (or choose `2) Setup` during initial `bash haws.sh setup`). The CLI lists configured sources with their Git URLs and lets you add or prune them.
    - **Direct CLI Commands**:
      - Add repository: `bash haws.sh kit add <git-url> [name]`
      - Remove repository: `bash haws.sh kit prune <name>`
      - List active submodules: `bash haws.sh kit list`
      - Update from remotes: `bash haws.sh kit update [name]`
 
-2. **In-House Custom Skills (`skills/custom/`)**:
-   - **To Add**: Create a folder under `skills/custom/<skill-name>/` containing a valid `SKILL.md`. Then run `bash haws.sh sync`.
-   - **To Remove**: Delete the folder under `skills/custom/<skill-name>/` and run `bash haws.sh sync --clean`.
-   - Local custom skills have top linking priority and are never overwritten by upstream framework updates.
+Custom skills can be removed by deleting the folder and running `bash haws.sh sync --clean`.
 
 ---
 
@@ -145,10 +146,6 @@ HAWS organizes skills into two main tiers:
 ├── core/                                # Universal Standard Specifications (Universal for any AI)
 │   ├── HAWS.md                          # Core principles, empirical grounding, Ponytail ladder & safeguards
 │   └── WORK_INSTRUCTIONS.md             # Context loading, context discipline, Git protocols & SWE rules
-├── secondbrain/                         # Personal Second Brain (Protected, decoupled local Git repository)
-│   ├── USER_PREFERENCES.md              # Personal habits, communication style & architectural preferences
-│   ├── ANTI_PATTERNS.md                 # Learned safeguards with YYYY-MM-DD HH:mm timestamps
-│   └── WORKFLOW.md                      # [Adaptive Workflow] Personal 6-phase lifecycle & custom tool habits
 ├── agents/                              # Unified Subagent Source (Harness-Enforced)
 │   ├── organizer.md                     # Skill inventory health, workspace hygiene & adaptive workflow habits
 │   ├── frontend-engineer.md             # UI components, client state, styling, responsive design & a11y
@@ -161,9 +158,9 @@ HAWS organizes skills into two main tiers:
 │   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
 │   ├── standalone/                      # Single-purpose standalone skills (archify, drawio, taste-skill, etc.)
 │   └── skills.disabled                  # Disabled skills blacklist (filter gate)
-├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Copilot, Codex)
-│   └── environments.disabled            # Disabled AI environments blacklist (filter gate)
-└── templates/                           # Documentation & governance blueprints (PROJECT, ARCHITECTURE, etc.)
+├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Codex)
+└── templates/                           # Public blueprints, including neutral Second Brain starters
+    └── secondbrain/                      # Generic defaults; personal DEV data is not stored here
 ```
 
 
@@ -202,4 +199,3 @@ When instructions or information conflict, always resolve in this order:
 4. **Confirmed Project Specific requirements**
 5. **Applicable Work Instructions (`core/WORK_INSTRUCTIONS.md`)**
 6. **Active task context or project handoff** (when continuing existing work)
-

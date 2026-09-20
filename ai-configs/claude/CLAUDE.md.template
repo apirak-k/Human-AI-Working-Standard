@@ -6,7 +6,7 @@ This workspace operates under the Human-AI Working Standard (HAWS).
 ## Operating Standards
 - **Core Standard**: `core/HAWS.md`
 - **Work Instructions**: `core/WORK_INSTRUCTIONS.md`
-- **Second Brain**: `secondbrain/` (or `core/USER_PREFERENCES.md` and `core/ANTI_PATTERNS.md`)
+- **Personal DEV overlay**: `secondbrain/` when present; otherwise use the neutral starters in `templates/secondbrain/`
 
 ## Repository Contracts
 - **Quality Gates**: `CONSTRAINTS.md`

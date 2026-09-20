@@ -15,7 +15,7 @@ At the beginning of a new thread or work context:
 
 1. read the latest `HAWS.md`
 2. read the latest `WORK_INSTRUCTIONS.md`
-3. read `secondbrain/USER_PREFERENCES.md`, `secondbrain/ANTI_PATTERNS.md`, and `secondbrain/WORKFLOW.md` (Personal Second Brain & Adaptive Workflow)
+3. read the optional personal DEV overlay in `secondbrain/` when present; otherwise use the neutral starters in `templates/secondbrain/`
 4. inspect the current project source
 5. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
 6. read `design.md` if it exists (system architecture & design blueprint)
@@ -51,7 +51,7 @@ For a new project or major feature:
 
 - do not invent project rules blindly
 - scaffold necessary blueprints from `templates/` based on project requirements
-- connect your active AI assistant by scaffolding the corresponding environment adapter from `ai-configs/`: `gemini/GEMINI.md.template` for Google Antigravity, `claude/CLAUDE.md.template` for Claude Code, `cursor/haws.mdc.template` for Cursor, `copilot/copilot-instructions.md.template` for GitHub Copilot, or `codex/AGENTS.override.md.template` for OpenAI Codex. Codex uses user skills in `~/.agents/skills` and native role profiles in `~/.codex/agents`; install/check those profiles with `bash haws.sh codex-agents install` / `check` in the HAWS checkout.
+- connect your active AI assistant by scaffolding the corresponding environment adapter from `ai-configs/`: `gemini/GEMINI.md.template` for Google Antigravity, `claude/CLAUDE.md.template` for Claude Code, `cursor/haws.mdc.template` for Cursor, or `codex/AGENTS.override.md.template` for OpenAI Codex. Codex uses user skills in `~/.agents/skills` and native role profiles in `~/.codex/agents`; install/check those profiles with `bash haws.sh codex-agents install` / `check` in the HAWS checkout.
 - during discovery and ideation, define project scope, roadmap, and live system state in `PROJECT.md` (from `templates/PROJECT.md`), system boundaries in `ARCHITECTURE.md` (from `templates/ARCHITECTURE.md`), and visual tokens in `DESIGN.md` (from `templates/DESIGN.md`)
 - before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` (from `templates/CONSTRAINTS.md`) and agent permission boundaries in `AGENTS.md` (from `templates/AGENTS.md`)
 - create or update `HANDOFF.md` when work must pause or transfer across sessions
@@ -335,10 +335,11 @@ Prompting without curated context causes model failure. Context Engineering ensu
 
 To ensure the AI remembers user preferences, habits, and past mistakes across sessions, machines, and AI tools without risking data loss during upstream updates:
 
-- **`secondbrain/USER_PREFERENCES.md`**: Stores stable preferences, preferred frameworks, architectural patterns, and communication style (chat-first, clean responses). Managed in an independent local Git repository.
-- **`secondbrain/ANTI_PATTERNS.md`**: Stores hard constraints, forbidden libraries, and past mistakes with standardized `YYYY-MM-DD HH:mm` timestamps. When a correction, mistake, or operational constraint occurs, the AI autonomously records the root cause and prohibition here.
-- **`secondbrain/WORKFLOW.md`**: Stores the user's personal 6-phase engineering lifecycle, preferred tool/skill selections, and Git cadence. Dynamically observed and refined by `@organizer`.
-- **Loading Rule**: All tools under HAWS load these files from `secondbrain/` during session initialization, guaranteeing continuity, custom workflow alignment, and zero repetition of past errors.
+- **`templates/secondbrain/`**: Contains neutral starters for preferences, safeguards, and workflow. They are public defaults and contain no personal data or fixed skill list.
+- **`secondbrain/USER_PREFERENCES.md`**: Optional private overlay for stable user preferences, architectural conventions, and communication style.
+- **`secondbrain/ANTI_PATTERNS.md`**: Optional private overlay for hard constraints, forbidden patterns, and learned safeguards.
+- **`secondbrain/WORKFLOW.md`**: Optional private overlay for a user's preferred lifecycle and working cadence. It may refine the generic default, but it must not be required for a fresh public checkout.
+- **Loading Rule**: Load the personal overlay when present; otherwise follow the neutral starters and the public core. Never copy personal data into public `main`.
 
 
 ---
@@ -349,7 +350,7 @@ The Main Agent (the primary session conversing directly with the user) serves as
 
 ### Professional SWE Lifecycle & Adaptive Operating Workflow
 
-The Main Agent and Subagents execute software engineering work according to the user's personal 6-phase engineering lifecycle in `secondbrain/WORKFLOW.md` (falling back to the standard discovery-to-delivery lifecycle if uninitialized):
+The Main Agent and Subagents execute software engineering work according to `secondbrain/WORKFLOW.md` when a personal overlay is present, falling back to the generic discovery-to-delivery lifecycle in `templates/secondbrain/WORKFLOW.md`:
 
 1. **Phase 1: Discovery & Clarification**
 2. **Phase 2: Ideation & Architecture**
@@ -358,7 +359,7 @@ The Main Agent and Subagents execute software engineering work according to the 
 5. **Phase 5: Verification & Quality Audit**
 6. **Phase 6: Delivery, Documentation & Handoff**
 
-Refer to `secondbrain/WORKFLOW.md` for the user's personalized skill mapping and exit criteria.
+Refer to the active workflow file for project-specific preferences; select skills dynamically rather than treating a fixed skill list as a requirement.
 
 ---
 

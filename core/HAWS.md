@@ -265,10 +265,9 @@ Use these functional purposes:
 - **Agent Governance (`templates/AGENTS.md`)** — matrix of agent roles, authorized scopes, forbidden actions, and project anti-patterns
 - **Architecture Blueprint (`templates/ARCHITECTURE.md`)** — system boundaries, component diagrams, and technical specifications
 - **Design Spec (`templates/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
-- **Personal Engineering Workflow (`secondbrain/WORKFLOW.md`)** — adaptive 6-phase engineering lifecycle and user preferred skills
-- **User Preferences (`secondbrain/USER_PREFERENCES.md`)** — personal habits, communication style, preferred architectures, and conventions preserved across sessions and tools
-- **Anti-Patterns & Learned Safeguards (`secondbrain/ANTI_PATTERNS.md`)** — recorded mistakes, explicit prohibitions, and lessons learned to prevent repeating past errors
-- **Personal Knowledge & Notes (`secondbrain/notes/`)** — domain knowledge, technical cheat sheets, references, and personal notes preserved across sessions
+- **Default Workflow (`templates/secondbrain/WORKFLOW.md`)** — neutral six-phase lifecycle that selects tools and skills dynamically
+- **Optional Personal DEV Overlay (`secondbrain/`)** — a user's private workflow, preferences, and safeguards when present; it is not part of public `main`
+- **Personal Knowledge & Notes (`secondbrain/notes/`)** — private notes kept in the user's DEV overlay, never required by the public core
 - **History** — superseded information retained through Git history and version control
 
 
@@ -374,5 +373,3 @@ To maximize signal-to-noise ratio and optimize token consumption:
 - **Short Status Updates**: Use **Lite mode** (concise, direct, grammatically sound, zero conversational pleasantries or filler).
 - **Deep Technical Analysis / Architecture Plans**: Provide full structural depth and precision, but strip filler prose, marketing claims, and repetitive apologies.
 - **Language Boundaries**: UI chat with the human user may use direct Thai. All system-level notifications, commit messages, code comments, and formal artifacts must remain **100% English**.
-
-

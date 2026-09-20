@@ -10,7 +10,7 @@ This project operates under the Human-AI Working Standard (HAWS). All AI assista
 Before planning or modifying code, consult and follow these repository standards:
 - **Core Standard**: [core/HAWS.md](../core/HAWS.md) (Operational principles, priority order, empirical grounding, anti-hallucination rules)
 - **Work Instructions**: [core/WORK_INSTRUCTIONS.md](../core/WORK_INSTRUCTIONS.md) (Context loading, lean context discipline, dynamic skill execution)
-- **Developer Preferences & Anti-Patterns**: Read `secondbrain/USER_PREFERENCES.md` and `secondbrain/ANTI_PATTERNS.md` in the HAWS checkout identified by your global HAWS pointer.
+- **Developer Preferences & Anti-Patterns**: Read the optional `secondbrain/` personal DEV overlay in the HAWS checkout identified by your global HAWS pointer; otherwise use the neutral starters in `templates/secondbrain/`.
 - **Skills & Subagents**: Use installed skills from the Codex catalog, opening the applicable `SKILL.md` before execution. Delegate bounded tasks to the HAWS organizer, researcher, frontend-engineer, backend-engineer, or tester. Read the corresponding `agents/<role>.md` in the HAWS checkout. Native profiles can be installed with `bash haws.sh codex-agents install` there. Subagents report evidence and skills used to the main agent through `<task_report>`.
 
 ---

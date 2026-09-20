@@ -671,9 +671,9 @@ legacy_run_doctor() {
             [ "$json_mode" = false ] && echo "   [NOTE] secondbrain has ${dirty_notes} uncommitted note(s). Run './haws.sh sync' or './haws.sh user sync'."
         fi
     else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] secondbrain/ missing or uninitialized (run './haws.sh user connect' or './haws.sh setup')"
-        details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"FAIL\"}")
+        passed=$((passed + 1))
+        [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ optional; generic templates are available"
+        details+=("{\"item\":\"secondbrain/ optional overlay\",\"status\":\"PASS\"}")
     fi
 
     if [ ! -d "${SCRIPT_DIR}/plugins" ]; then
