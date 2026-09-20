@@ -2607,7 +2607,7 @@ run_sync() {
         pointer_content+="This environment operates under HAWS. Read and adhere to:\n"
         pointer_content+="- Core Standard: ${SOURCE_DIR}/core/HAWS.md\n"
         pointer_content+="- Work Instructions: ${SOURCE_DIR}/core/WORK_INSTRUCTIONS.md\n"
-        pointer_content+="- User Preferences & Second Brain: ${SOURCE_DIR}/secondbrain/USER_PREFERENCES.md and ${SOURCE_DIR}/secondbrain/ANTI_PATTERNS.md\n"
+        pointer_content+="- Optional personal DEV overlay: ${SOURCE_DIR}/secondbrain/USER_PREFERENCES.md, ${SOURCE_DIR}/secondbrain/ANTI_PATTERNS.md, and ${SOURCE_DIR}/secondbrain/WORKFLOW.md when present; otherwise use the generic defaults in ${SOURCE_DIR}/templates/secondbrain/\n"
         pointer_content+="- Subagent roles: ${SOURCE_DIR}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.\n"
         pointer_content+="${marker_end}\n"
 
@@ -3923,6 +3923,20 @@ run_merge("'"${brain_dir}"'")
     git -C "${brain_dir}" commit --amend --no-edit 2>/dev/null || git -C "${brain_dir}" commit -m "chore(brain): symmetrical merge and deduplication" --quiet 2>/dev/null || true
 }
 
+_second_brain_bootstrap_missing() {
+    local brain_dir="$1"
+    local name template
+    for name in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
+        [ -f "${brain_dir}/${name}" ] && continue
+        template="${SCRIPT_DIR}/templates/secondbrain/${name}"
+        if [ ! -s "${template}" ]; then
+            echo "  [ERROR] Missing Second Brain starter template: ${template}" >&2
+            return 1
+        fi
+        cp "${template}" "${brain_dir}/${name}" || return 1
+    done
+}
+
 run_user() {
     local action="${1:-status}"
     shift || true
@@ -3934,180 +3948,15 @@ run_user() {
         git -C "${brain_dir}" init -b main --quiet 2>/dev/null || git -C "${brain_dir}" init --quiet
         git -C "${brain_dir}" config user.name "HAWS User" 2>/dev/null || true
         git -C "${brain_dir}" config user.email "user@haws.local" 2>/dev/null || true
-        if [ ! -f "${brain_dir}/USER_PREFERENCES.md" ]; then
-            cat << 'EOF' > "${brain_dir}/USER_PREFERENCES.md"
-# Personal User Preferences
-
-> **Purpose**: Preserves personal developer preferences, habits, architectural styles, and communication rules across all AI tools and sessions.
-
-## Communication Style
-- Concise, clear, direct.
-- Explain reasoning and trade-offs.
-
-## Technology Preferences
-- Coding Conventions: Clean modular architecture, standard libraries first.
-EOF
-        fi
-        if [ ! -f "${brain_dir}/ANTI_PATTERNS.md" ]; then
-            cat << 'EOF' > "${brain_dir}/ANTI_PATTERNS.md"
-# Permanent Anti-Patterns & Operational Safeguards
-
-> **Purpose**: Records learned mistakes, forbidden patterns, and operational constraints to prevent regressions across sessions.
-
-## Operational Safeguards
-- No destructive git operations without human confirmation.
-- Evidence before assertions: run verification tests before claiming success.
-EOF
-        fi
-        if [ ! -f "${brain_dir}/WORKFLOW.md" ]; then
-            cat << 'EOF' > "${brain_dir}/WORKFLOW.md"
-# HAWS Core Engineering Workflow & Skill Mapping
-
-This document specifies the standard 6-phase software engineering lifecycle under HAWS and defines the primary and secondary skills to be executed during each phase.
-
----
-
-## 🧭 The 6-Phase Lifecycle Overview
-
-```text
-[Phase 1: Discovery] ➔ [Phase 2: Ideation] ➔ [Phase 3: Spec & Plan]
-       │
-       ▼
-[Phase 6: Handoff]   ◀─ [Phase 5: Verification] ◀─ [Phase 4: Implementation]
-```
-
----
-
-## 📋 Phase-by-Phase Skill Mapping
-
-### Phase 1: Discovery & Clarification
-- **Goal**: Uncover true intent, eliminate unexamined assumptions, probe ambiguities, and establish clear scope.
-- **Primary Skills**:
-  - `/interview-me` ➔ Extract what the user actually wants through focused questions before planning.
-  - `/grill-me` ➔ Stress-test assumptions and probe potential pitfalls.
-  - `/research` ➔ Investigate primary documentation and codebase facts.
-- **Exit Criteria**: Problem statement, non-goals, and boundary constraints confirmed.
-
-### Phase 2: Ideation & System Architecture
-- **Goal**: Explore alternative approaches, model domains, and design resilient systems.
-- **Primary Skills**:
-  - `/brainstorming` ➔ Collaborative design, trade-off evaluation, and architecture exploration.
-  - `/idea-refine` ➔ Divergent and convergent conceptual refinement.
-  - `/domain-modeling` ➔ Define ubiquitous domain vocabulary, entities, and relationships.
-  - `/drawio-skill` ➔ Generate architecture diagrams, sequence diagrams, and component flows.
-- **Exit Criteria**: Architecture approach chosen, domain models documented in `templates/ARCHITECTURE.md` or design artifacts.
-
-### Phase 3: Specification & Task Breakdown
-- **Goal**: Write deterministic specifications and break work into ordered, testable increments.
-- **Primary Skills**:
-  - `/writing-plans` ➔ Structured implementation plans with clear review checkpoints.
-  - `/planning-with-files` ➔ Persistent file-based task tracking for multi-step work.
-  - `/spec-driven-development` ➔ Formal capability mapping before touching code.
-- **Exit Criteria**: Approved implementation plan and task checklist.
-
-### Phase 4: Implementation (Test-Driven & Disciplined)
-- **Goal**: Execute changes incrementally with automated tests, clean boundaries, and zero unrequested churn.
-- **Primary Skills**:
-  - `/tdd` / `/test-driven-development` ➔ Red-Green-Refactor cycle; unit and integration test-first.
-  - `/incremental-implementation` ➔ Small, reviewable, verifiable slices.
-  - `/frontend-design` / `/ui-ux-pro-max` ➔ Production UI/UX components matching design tokens.
-  - `/source-driven-development` ➔ Ground all framework patterns in verified official docs.
-- **Exit Criteria**: Code builds cleanly, tests pass, and functionality matches spec.
-
-### Phase 5: Verification & Quality Audit
-- **Goal**: Prove correctness with empirical evidence before declaring completion.
-- **Primary Skills**:
-  - `/verification-before-completion` ➔ Evidence before assertions; run test suites and verify outputs.
-  - `/systematic-debugging` ➔ Root-cause debugging when behavior deviates from expectations.
-  - `/code-review` / `/code-review-and-quality` ➔ Multi-axis review (Standards, Spec, Security, Performance).
-- **Exit Criteria**: 100% tests passing, zero lint regressions, security verified.
-
-### Phase 6: Delivery, Documentation & Handoff
-- **Goal**: Ship changes cleanly and maintain operational continuity across sessions.
-- **Primary Skills**:
-  - `/git-workflow-and-versioning` ➔ Atomic commits, clean branch history, and PR workflows.
-  - `/documentation-and-adrs` ➔ Record architectural decisions and API changes.
-  - `/humanizer` ➔ Ensure natural, readable documentation and user-facing communications.
-- **Exit Criteria**: Clean commit history, documentation updated, and handoff recorded.
-EOF
-        fi
+        _second_brain_bootstrap_missing "${brain_dir}" || return 1
         git -C "${brain_dir}" add . 2>/dev/null || true
         git -C "${brain_dir}" commit -m "Initialize second brain" --quiet 2>/dev/null || true
     else
         local need_commit=0
-        if [ ! -f "${brain_dir}/WORKFLOW.md" ]; then
-            cat << 'EOF' > "${brain_dir}/WORKFLOW.md"
-# HAWS Core Engineering Workflow & Skill Mapping
-
-This document specifies the standard 6-phase software engineering lifecycle under HAWS and defines the primary and secondary skills to be executed during each phase.
-
----
-
-## 🧭 The 6-Phase Lifecycle Overview
-
-```text
-[Phase 1: Discovery] ➔ [Phase 2: Ideation] ➔ [Phase 3: Spec & Plan]
-       │
-       ▼
-[Phase 6: Handoff]   ◀─ [Phase 5: Verification] ◀─ [Phase 4: Implementation]
-```
-
----
-
-## 📋 Phase-by-Phase Skill Mapping
-
-### Phase 1: Discovery & Clarification
-- **Goal**: Uncover true intent, eliminate unexamined assumptions, probe ambiguities, and establish clear scope.
-- **Primary Skills**:
-  - `/interview-me` ➔ Extract what the user actually wants through focused questions before planning.
-  - `/grill-me` ➔ Stress-test assumptions and probe potential pitfalls.
-  - `/research` ➔ Investigate primary documentation and codebase facts.
-- **Exit Criteria**: Problem statement, non-goals, and boundary constraints confirmed.
-
-### Phase 2: Ideation & System Architecture
-- **Goal**: Explore alternative approaches, model domains, and design resilient systems.
-- **Primary Skills**:
-  - `/brainstorming` ➔ Collaborative design, trade-off evaluation, and architecture exploration.
-  - `/idea-refine` ➔ Divergent and convergent conceptual refinement.
-  - `/domain-modeling` ➔ Define ubiquitous domain vocabulary, entities, and relationships.
-  - `/drawio-skill` ➔ Generate architecture diagrams, sequence diagrams, and component flows.
-- **Exit Criteria**: Architecture approach chosen, domain models documented in `templates/ARCHITECTURE.md` or design artifacts.
-
-### Phase 3: Specification & Task Breakdown
-- **Goal**: Write deterministic specifications and break work into ordered, testable increments.
-- **Primary Skills**:
-  - `/writing-plans` ➔ Structured implementation plans with clear review checkpoints.
-  - `/planning-with-files` ➔ Persistent file-based task tracking for multi-step work.
-  - `/spec-driven-development` ➔ Formal capability mapping before touching code.
-- **Exit Criteria**: Approved implementation plan and task checklist.
-
-### Phase 4: Implementation (Test-Driven & Disciplined)
-- **Goal**: Execute changes incrementally with automated tests, clean boundaries, and zero unrequested churn.
-- **Primary Skills**:
-  - `/tdd` / `/test-driven-development` ➔ Red-Green-Refactor cycle; unit and integration test-first.
-  - `/incremental-implementation` ➔ Small, reviewable, verifiable slices.
-  - `/frontend-design` / `/ui-ux-pro-max` ➔ Production UI/UX components matching design tokens.
-  - `/source-driven-development` ➔ Ground all framework patterns in verified official docs.
-- **Exit Criteria**: Code builds cleanly, tests pass, and functionality matches spec.
-
-### Phase 5: Verification & Quality Audit
-- **Goal**: Prove correctness with empirical evidence before declaring completion.
-- **Primary Skills**:
-  - `/verification-before-completion` ➔ Evidence before assertions; run test suites and verify outputs.
-  - `/systematic-debugging` ➔ Root-cause debugging when behavior deviates from expectations.
-  - `/code-review` / `/code-review-and-quality` ➔ Multi-axis review (Standards, Spec, Security, Performance).
-- **Exit Criteria**: 100% tests passing, zero lint regressions, security verified.
-
-### Phase 6: Delivery, Documentation & Handoff
-- **Goal**: Ship changes cleanly and maintain operational continuity across sessions.
-- **Primary Skills**:
-  - `/git-workflow-and-versioning` ➔ Atomic commits, clean branch history, and PR workflows.
-  - `/documentation-and-adrs` ➔ Record architectural decisions and API changes.
-  - `/humanizer` ➔ Ensure natural, readable documentation and user-facing communications.
-- **Exit Criteria**: Clean commit history, documentation updated, and handoff recorded.
-EOF
-            need_commit=1
-        fi
+        for name in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
+            [ -f "${brain_dir}/${name}" ] || need_commit=1
+        done
+        _second_brain_bootstrap_missing "${brain_dir}" || return 1
         if [ "${need_commit}" -eq 1 ]; then
             git -C "${brain_dir}" add . 2>/dev/null || true
             git -C "${brain_dir}" commit -m "feat(brain): provision default workflow for upgrade compatibility" --quiet 2>/dev/null || true

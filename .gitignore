@@ -19,7 +19,7 @@ ehthumbs.db
 worktrees/
 
 # Personal Second Brain & Backups
-/secondbrain/.git
+/secondbrain/
 .haws_backup/
 
 # Scratch & Temporary Testing
@@ -36,5 +36,5 @@ scratch/
 /.haws/state/
 /config/environments.disabled
 /environments.disabled
-
+/ai-configs/environments.disabled
 
