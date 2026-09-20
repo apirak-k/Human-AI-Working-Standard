@@ -1458,7 +1458,7 @@ declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
 catalog_source_kind() {
     local source_id="${1:-}"
     local out_var="${2:-}"
-    local path url revision source_dir raw_skill_count kind
+    local path url revision kind
     [ -n "${source_id}" ] || return 1
     [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]] || declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
     if [[ -v HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"] ]]; then
@@ -1471,41 +1471,13 @@ catalog_source_kind() {
         return 0
     fi
     IFS=$'\t' read -r path url revision <<< "$(_catalog_source_fields "${source_id}")" || return 1
-    source_dir="$(_catalog_repo_dir)/${path}"
-    if [ ! -d "${source_dir}" ]; then
-        kind="UNVERIFIED"
-        HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
-        if [ -n "${out_var}" ]; then
-            printf -v "${out_var}" '%s' "${kind}"
-        else
-            printf '%s\n' "${kind}"
-        fi
-        return 0
-    fi
-    local skill_f skill_name
-    local -A seen_skill_names=()
-    raw_skill_count=0
-    while IFS= read -r -d '' skill_f; do
-        [ -n "${skill_f}" ] || continue
-        _catalog_skill_is_eligible "${skill_f}" || continue
-        skill_name="$(extract_skill_name "${skill_f}")"
-        [ -n "${skill_name}" ] || continue
-        case "${skill_name}" in
-            pi-planning-with-files|planning-with-files-v*|design-taste-frontend-v1)
-                continue
-                ;;
-        esac
-        [ -n "${seen_skill_names["${skill_name}"]:-}" ] && continue
-        seen_skill_names["${skill_name}"]=1
-        raw_skill_count=$((raw_skill_count + 1))
-    done < <(find "${source_dir}" -type f \( -name SKILL.md -o -name skill.md \) -print0 2>/dev/null)
-    if [ "${raw_skill_count}" -eq 1 ]; then
-        kind="SINGLE"
-    elif [ "${raw_skill_count}" -gt 1 ]; then
-        kind="PACK"
-    else
-        kind="UNVERIFIED"
-    fi
+    path="${path%/}"
+    case "${path}" in
+        skills/custom|skills/custom/*) kind="CUSTOM" ;;
+        skills/standalone|skills/standalone/*) kind="SINGLE" ;;
+        skills/packs|skills/packs/*) kind="PACK" ;;
+        *) kind="UNVERIFIED" ;;
+    esac
     HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
     if [ -n "${out_var}" ]; then
         printf -v "${out_var}" '%s' "${kind}"
