@@ -155,6 +155,12 @@ implementation commits.
   skills or AI environments; Auto prune remains a Sync-only operation.
 - [x] Rename the Uninstall display label from `Skills` to `Skill Links`
   (`78901fc`) and verify the dry-run output.
+- [x] Reproduced disabled-Claude stale-link retention in a two-run disposable
+  Sync fixture: unchanged manifest fast-skipped and left the old owned link.
+- [ ] Plan/implement owned-link pruning for disabled Claude/Codex roots before
+  Step 4 fast-skip; preserve user-owned or modified paths.
+- [ ] Verify disabled-environment cleanup and enabled-environment regression
+  in disposable Sync fixtures without running real Sync.
 
 ### Harness notes
 

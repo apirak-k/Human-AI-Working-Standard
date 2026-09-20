@@ -506,3 +506,23 @@ ownership/cleanup semantics.
 **Implementation completed in `78901fc`:** Uninstall dry-run now displays
 `Skill Links : 426 items`; no removal behavior changed and no real uninstall
 was run.
+
+### Newly confirmed bug — disabled environment links survive Sync fast-skip
+
+The skill manifest is environment-agnostic. If Claude is disabled while the
+active skill manifest remains unchanged, Step 4 can fast-skip because the
+manifest still matches. The old HAWS-owned Claude skill links are not present
+in the new manifest diff, so the existing obsolete-entry prune loop never sees
+them.
+
+**Red evidence (2026-09-20):** a disposable two-run fixture created one Claude
+skill link and a one-skill manifest with Claude enabled. The second run disabled
+Claude, reported no Claude detection and one `manifest unchanged` fast-skip,
+but the old link remained present. Both runs used a temporary HOME/state and
+Auto Update Off; the user's installation was not touched.
+
+**Implementation direction:** before the Step 4 fast-skip decision, enumerate
+only HAWS-owned skill-link records under disabled environment roots and remove
+those records safely. Do not remove user-owned or modified paths. Keep the
+manifest format unchanged and test Claude-disabled fast-skip plus an enabled
+environment regression.

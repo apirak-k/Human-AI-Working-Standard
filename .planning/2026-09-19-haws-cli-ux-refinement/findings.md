@@ -273,3 +273,36 @@ selector delimiter fix and category totals.
 - The same read-only dry-run now reports `Skill Links : 426 items` while
   leaving the count and preservation warnings unchanged.
 - `bash -n haws.sh` passed. No uninstall action was executed.
+
+## Confirmed Disabled-Environment Link Retention (2026-09-20)
+
+The Claude stale-link report is a real Sync bug, separate from Copilot
+detection/removal.
+
+- Disposable Run 1: Claude enabled; one real `superpowers::brainstorming`
+  catalog row was linked into a temporary HOME and registered in a temporary
+  manifest.
+- Disposable Run 2: the same manifest/catalog was reused, but `claude` was
+  added to a temporary `environments.disabled` file.
+- Run 2 reported no Claude detection and one `manifest unchanged` fast-skip.
+- The old Claude link remained present after Run 2.
+- The fixture returned target/link states as `present` on both runs. Its sync
+  return code was `1` because it deliberately used a reduced disposable
+  integration setup; the link-retention observation is independent and passed
+  the explicit assertions.
+
+### Root cause
+
+The manifest records active skill definitions, not per-environment link
+ownership. The fast-skip predicate therefore remains true when only the
+environment selection changes. The obsolete-manifest loop cannot remove the
+old Claude link because the skill entry is still current. Cleanup must instead
+use HAWS ownership records scoped to the disabled environment's link root.
+
+### Safety requirement for the fix
+
+Pruning must call the existing owned-path verification/removal path and must
+not delete a user-owned, modified, or unrelated link. The first implementation
+should cover the Claude/Codex skill-link roots used by Step 4; Gemini's JSON
+configuration is a separate generated-file contract and should not be changed
+speculatively in this slice.
