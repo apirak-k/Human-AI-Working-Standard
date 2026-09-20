@@ -72,7 +72,7 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 HAWS physically enforces the **3-Tier Data Separation Model**:
 1. **Global Core (`core/`, `skills/`, `ai-configs/`)**: Public upstream framework tracked by Git. Safely updated anytime via `Sync`.
 2. **Device-Local State (`.haws/state/`)**: Machine-specific junction registrations and toggle settings. Kept 100% out of Git.
-3. **Personal DEV Overlay (`secondbrain/`)**: Optional private developer memory (`USER_PREFERENCES.md`, `ANTI_PATTERNS.md`, and `WORKFLOW.md`). Public `main` does not contain a user's personal files; a fresh checkout receives neutral starters from `templates/secondbrain/` when needed.
+3. **Second Brain Documents (`secondbrain/`)**: Public `main` contains only neutral starter documents (`USER_PREFERENCES.md`, `ANTI_PATTERNS.md`, and `WORKFLOW.md`); the DEV checkout may contain personalized versions and private notes.
 
 - `secondbrain/` can also be managed as an independent private Git repository for seamless cross-machine synchronization.
 
@@ -152,15 +152,24 @@ Custom skills can be removed by deleting the folder and running `bash haws.sh sy
 │   ├── backend-engineer.md              # REST/GraphQL APIs, domain logic, DB schemas, auth & security
 │   ├── tester.md                        # Automated test suites, edge cases, regression & boundary testing
 │   └── researcher.md                    # Codebase reconnaissance, doc lookup & dependency verification
-├── skills/                              # Curated Skill Repository (3 Clean Categories)
+├── secondbrain/                          # Neutral public defaults; personalized DEV versions stay in DEV
+│   ├── USER_PREFERENCES.md
+│   ├── ANTI_PATTERNS.md
+│   └── WORKFLOW.md
+├── skills/                              # Curated capability repository (3 clean categories)
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
 │   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
-│   ├── packs/                           # Multi-skill submodule packs (agent-skills, superpowers, ponytail, etc.)
-│   ├── standalone/                      # Single-purpose standalone skills (archify, drawio, taste-skill, etc.)
+│   ├── packs/                           # Repositories that provide multiple related capabilities
+│   ├── standalone/                      # Single-purpose external repositories
 │   └── skills.disabled                  # Disabled skills blacklist (filter gate)
 ├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Codex)
-└── templates/                           # Public blueprints, including neutral Second Brain starters
-    └── secondbrain/                      # Generic defaults; personal DEV data is not stored here
+└── templates/                           # Public project/document blueprints only
+    ├── AGENTS.md
+    ├── ARCHITECTURE.md
+    ├── CONSTRAINTS.md
+    ├── DESIGN.md
+    ├── HANDOFF.md
+    └── PROJECT.md
 ```
 
 

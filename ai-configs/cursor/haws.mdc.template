@@ -15,7 +15,7 @@ This repository operates under the Human-AI Working Standard (HAWS). All Cursor 
 Before proposing edits or writing code, adhere to:
 - **Core Standard**: [core/HAWS.md](../../core/HAWS.md) (Empirical grounding, anti-hallucination rules, priority order)
 - **Work Instructions**: [core/WORK_INSTRUCTIONS.md](../../core/WORK_INSTRUCTIONS.md) (Context loading, lean execution discipline)
-- **Preferences & Anti-Patterns**: `secondbrain/` when a personal DEV overlay is connected; otherwise use [templates/secondbrain/](../../templates/secondbrain/)
+- **Preferences, safeguards, and workflow**: Use the documents in [`secondbrain/`](../../secondbrain/); the DEV checkout may contain personalized versions.
 
 ---
 

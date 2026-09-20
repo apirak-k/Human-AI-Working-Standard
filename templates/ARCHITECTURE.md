@@ -22,11 +22,10 @@ graph TD
   - **API / Service Layer**: Domain logic, business workflows, authentication, and validation.
   - **Persistence Layer**: Database models, migrations, caching, and storage.
 
-## 3. Machine-Readable Architecture Graph (Archify IR)
-*Optional for complex systems: generate or synchronize an `archify.json` graph representation for automated validation and agent navigation.*
+## 3. Machine-Readable Architecture Graph
+*Optional for complex systems: generate or synchronize a structured graph representation for automated validation and agent navigation.*
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/tt-a1i/archify/main/schema.json",
   "name": "System Architecture Graph",
   "version": "1.0.0",
   "nodes": [
@@ -53,4 +52,3 @@ graph TD
 ## 6. Verification & Acceptance Criteria
 - **Definition of Done**: Criteria confirming production readiness.
 - **Testing Strategy**: Unit tests, integration tests, boundary checks, and regression verification.
-

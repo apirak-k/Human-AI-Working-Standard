@@ -124,10 +124,10 @@ To prevent common automated coding errors and preserve context integrity:
 - **Multi-Stage Efficiency**: Container builds should separate compilation from runtime to minimize image attack surface and artifact weight.
 
 ### 3.5 Graph Engineering & Architecture Topology
-- **Topological Navigation over Flat Dumps**: In multi-module codebases, agents must navigate via dependency graphs rather than loading flat source files into context. Use AST extractors or graph tools (e.g. `graphify`, `archify`, or Mermaid diagrams in `templates/docs/ARCHITECTURE.md`).
+- **Topological Navigation over Flat Dumps**: In multi-module codebases, agents must navigate via an appropriate dependency map rather than loading flat source files into context. Use the project's architecture document, an AST/dependency analysis, or another suitable representation when the task needs it.
 - **Blast Radius Analysis**: Before modifying public interfaces, shared utilities, or database schemas, calculate the blast radius to identify downstream callers and dependent services before touching code.
 - **God Node Identification**: Map and protect high-degree central nodes (architectural hubs) of the codebase. Changes to God nodes require explicit architectural review and targeted regression verification.
-- **Machine-Readable Graph Persistence**: For complex systems, maintain a structured architecture graph (`graphify-out/` or `archify.json`) so agents can query paths and boundaries with minimal token overhead.
+- **Machine-Readable Architecture Persistence**: For complex systems, maintain a structured architecture/dependency representation when it provides durable value for querying paths and boundaries.
 
 ## 4. Flow and information organization
 
@@ -265,9 +265,8 @@ Use these functional purposes:
 - **Agent Governance (`templates/AGENTS.md`)** — matrix of agent roles, authorized scopes, forbidden actions, and project anti-patterns
 - **Architecture Blueprint (`templates/ARCHITECTURE.md`)** — system boundaries, component diagrams, and technical specifications
 - **Design Spec (`templates/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
-- **Default Workflow (`templates/secondbrain/WORKFLOW.md`)** — neutral six-phase lifecycle that selects tools and skills dynamically
-- **Optional Personal DEV Overlay (`secondbrain/`)** — a user's private workflow, preferences, and safeguards when present; it is not part of public `main`
-- **Personal Knowledge & Notes (`secondbrain/notes/`)** — private notes kept in the user's DEV overlay, never required by the public core
+- **Second Brain Documents (`secondbrain/`)** — the default document set for preferences, safeguards, and workflow; the DEV checkout may contain the user's private versions
+- **Personal Knowledge & Notes** — private notes kept in the DEV checkout when needed, never required by the public core
 - **History** — superseded information retained through Git history and version control
 
 
@@ -319,42 +318,42 @@ visible "missing" or "N/A" status) rather than a misleading number. This is
 a Pokayoke measure to prevent unhandled errors from propagating and
 producing misleading results.
 
-## 9. Autonomous skill selection and capability discovery
+## 9. Autonomous capability selection and discovery
 
-Skill-grounded reasoning and execution is the **foundational operating baseline** of HAWS — never an optional afterthought or isolated specialty trick. AI assistants and agents operating under HAWS must proactively discover and match available skills with the current task context as their natural default, rather than falling back to unstructured conversational guessing.
+Capability-grounded reasoning and execution is the **foundational operating baseline** of HAWS — never an optional afterthought or isolated specialty trick. AI assistants and agents operating under HAWS must proactively discover and match available tools, methods, and instructions with the current task context rather than falling back to unstructured conversational guessing.
 
 ### 9.1 Context-to-description matching & invocation rule
-On each turn, evaluate whether the task situation aligns with the `description` and purpose of installed skills:
-- **Direct Skill Match**: Execute the skill's actual methodology directly and seamlessly whenever a task aligns with its purpose.
-- **Ambiguous / Borderline Inquiries**: If uncertain whether the user intends a quick casual answer or a structured skill workflow, provide a concise direct answer and proactively recommend the matching skill.
+On each turn, evaluate whether the task situation aligns with the purpose of available capabilities:
+- **Direct Capability Match**: Execute the applicable methodology directly and seamlessly whenever the task aligns with it.
+- **Ambiguous / Borderline Inquiries**: If uncertain whether the user intends a quick casual answer or a structured method, provide a concise direct answer and proactively recommend the matching approach.
 - **Trivial / Simple Work**: Direct single-value answers execute immediately without overhead.
-- **Workflow, Audit, or Review Queries**: Automatically anchor in audit and review skills (`code-review`, `verification-before-completion`, `diagnosing-bugs`).
+- **Workflow, Audit, or Review Queries**: Use an appropriate audit, review, or diagnostic method.
 - **Substantial / Milestone Work**:
-  1. **Project / Feature Kickoff**: Naturally invoke brainstorming and planning capabilities to formulate `design.md`.
-  2. **Session Checkpoint / Pause**: Naturally invoke session persistence capabilities and update `HANDOFF.md`.
-  3. **Domain Implementation**: Match context with domain skills (e.g. `taste-skill` / `ui-ux-pro-max` for UI, `superpowers` for TDD / debugging, `humanizer` for copy, `graphify` / `drawio-skill` for architecture).
+  1. **Project / Feature Kickoff**: Use an appropriate discovery and planning method to formulate `design.md` when needed.
+  2. **Session Checkpoint / Pause**: Preserve resumable state and update `HANDOFF.md` when needed.
+  3. **Domain Implementation**: Match the context with the available domain capabilities without prescribing a particular provider or package.
 
 ### 9.2 Proactive and seamless execution
 When a context match occurs, the AI must execute the capability rigorously and seamlessly:
-- **Seamless Execution**: Execute the skill's actual methodology directly and cleanly without artificial or performative announcement banners in user chat.
-- **Mandatory File-Level Ingestion**: Before executing any skill protocol, the agent MUST explicitly invoke its file-reading tool (`view_file` / `read`) to read the target `SKILL.md`. Claiming a skill without an auditable read in the execution transcript is prohibited.
-- **Universal Subagent Transparency**: Every subagent dispatched must record all invoked skills in its returned `<task_report>`.
-- **Zero Vanity Tags**: Agents must only declare or report skills in `<skills_used>` that were physically opened, read, and actively executed during that assignment. Inventing or appending unrelated skills is classified as synthetic hallucination.
-- **Genuine Execution**: Apply the skill's actual methodology (e.g. Red-Green-Refactor for TDD, root-cause isolation for debugging) rather than superficial chat responses.
+- **Seamless Execution**: Execute the chosen methodology directly and cleanly without artificial or performative announcement banners in user chat.
+- **Mandatory Instruction Ingestion**: Before executing a specialized protocol, the agent MUST read its applicable instruction source with an auditable file-reading action.
+- **Universal Subagent Transparency**: Every subagent dispatched must record the methods actually used in its returned `<task_report>`.
+- **Zero Vanity Tags**: Agents must only declare or report methods that were actually opened, read, and executed during that assignment. Inventing or appending unrelated methods is classified as synthetic hallucination.
+- **Genuine Execution**: Apply the chosen methodology rather than producing a superficial chat response.
 
-### 9.3 Autonomous Subagent Dispatch & Dual-Tier Skill Autonomy
-- **Autonomous Subagent Delegation & Action Bias**: The Main Agent must automatically evaluate task complexity and domain affinity, dispatching specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) autonomously without waiting for explicit user prompting. Just like skill selection, if there is a plausible opportunity or rationale to delegate to a subagent, dispatch immediately. If uncertain whether the user prefers a rapid solo response or a delegated subagent workflow, the Main Agent proactively asks or recommends delegating in chat.
+### 9.3 Autonomous Subagent Dispatch & Dual-Tier Capability Autonomy
+- **Autonomous Subagent Delegation & Action Bias**: The Main Agent must automatically evaluate task complexity and domain affinity, dispatching specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) autonomously without waiting for explicit user prompting. As with capability selection, if there is a plausible opportunity or rationale to delegate to a subagent, dispatch immediately. If uncertain whether the user prefers a rapid solo response or a delegated subagent workflow, the Main Agent proactively asks or recommends delegating in chat.
 - **Single Point of User Contact (Main Agent Exclusivity)**: Dispatched subagents communicate **strictly with the Main Agent** via `<task_assignment>` and `<task_report>` — NEVER directly interrupting or asking questions to the human user. If a subagent encounters ambiguity or design trade-offs, it reports findings back to the Main Agent, who synthesizes and presents options to the user.
-- **Autonomous Skill Execution for Subagents (Tier-2 Autonomy)**: Subagents have full autonomous authority to match, read (`SKILL.md`), and execute any installed skills relevant to their assignment. Subagents execute matching skills immediately without asking for user confirmation, reporting all executed skills in their `<task_report>`.
+- **Autonomous Capability Execution for Subagents (Tier-2 Autonomy)**: Subagents have authority to match, read, and execute available capabilities relevant to their assignment, reporting the methods actually used in their `<task_report>`.
 - **Delegation Thresholds (Solo vs Subagent)**:
   - **Execute Solo**: Pure conceptual queries, architectural reasoning, single-file trivial tweaks (<30 LOC), and quick diagnostic status checks (<3 tool calls).
   - **Autonomous Delegation**: Multi-file modifications, domain-specific implementations (UI, backend logic, DB schemas), deep web/doc research, refactoring, and all test/QA execution suites.
-- **Dual-Tier Autonomous Skill Selection**:
-  - **Tier 1 (Main Agent)**: Autonomously invokes planning, architecture, orchestration, and handoff skills (`brainstorming`, `spec-driven-development`, `writing-plans`, `caveman`).
-  - **Tier 2 (Dispatched Subagents)**: Autonomously select and execute specialist skills from installed skill packs during implementation, recording all applied skills in their `<task_report>`.
+- **Dual-Tier Autonomous Capability Selection**:
+  - **Tier 1 (Main Agent)**: Autonomously selects planning, architecture, orchestration, and handoff methods when relevant.
+  - **Tier 2 (Dispatched Subagents)**: Autonomously select and execute specialist capabilities available in their environment, recording the methods applied in their `<task_report>`.
 
 ### 9.4 Autonomous External Tool & MCP Utilization Standard
-External tools (CLI binaries, diagnostic scripts, and MCP servers) provide operational capabilities distinct from cognitive skills (`skills/`):
+External tools (CLI binaries, diagnostic scripts, and MCP servers) provide operational capabilities distinct from repository-based guidance (`skills/`):
 - **Tier 1 — Autonomous Read & Diagnostic Tools (Zero Risk)**:
   - Linters, static analysis tools, read-only MCP queries, Chrome DevTools DOM inspection, schema validators, and diagnostic scripts (`haws.sh doctor`, `haws.sh status`).
   - **Policy**: Autonomous execution is **encouraged and expected**. Agents should invoke these tools immediately whenever relevant without waiting for human prompting.

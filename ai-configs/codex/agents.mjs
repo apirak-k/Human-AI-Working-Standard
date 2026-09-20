@@ -56,7 +56,7 @@ try {
       `You are the HAWS ${name} specialist.`,
       `Before acting, read your canonical role: ${pathText(rolePath)}.`,
       `Read applicable standards: ${pathText(join(source, 'core/HAWS.md'))} and ${pathText(join(source, 'core/WORK_INSTRUCTIONS.md'))}.`,
-      `Read the optional personal DEV overlay under ${pathText(join(source, 'secondbrain'))} when present; otherwise use neutral starters under ${pathText(join(source, 'templates', 'secondbrain'))}.`,
+      `Read the current Second Brain documents under ${pathText(join(source, 'secondbrain'))}; a DEV checkout may contain personalized versions.`,
       'Accept a bounded <task_assignment> from the main agent. Use only the tools actually available in this Codex session; the role YAML is not Codex configuration.',
       'Choose relevant installed skills, open their SKILL.md before using them, and execute their methodology. Use the skill catalog and ~/.agents/skills for discovery.',
       'Return <task_report> with results, command evidence, skills actually used, and [Unverified] limitations. Report questions to the main agent, who communicates with the user.',

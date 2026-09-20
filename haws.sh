@@ -672,7 +672,7 @@ legacy_run_doctor() {
         fi
     else
         passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ optional; generic templates are available"
+        [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ optional; default documents are available"
         details+=("{\"item\":\"secondbrain/ optional overlay\",\"status\":\"PASS\"}")
     fi
 

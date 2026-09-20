@@ -15,9 +15,9 @@ At the beginning of a new thread or work context:
 
 1. read the latest `HAWS.md`
 2. read the latest `WORK_INSTRUCTIONS.md`
-3. read the optional personal DEV overlay in `secondbrain/` when present; otherwise use the neutral starters in `templates/secondbrain/`
+3. read the current documents in `secondbrain/` when present; use the generic lifecycle in this document when no overlay is available
 4. inspect the current project source
-5. inspect available skills (in `skills/` directory, plugin manifests, or environment catalog) and their descriptions
+5. inspect available tools, methods, and capability descriptions only when the task needs them
 6. read `design.md` if it exists (system architecture & design blueprint)
 7. read `PROJECT_SPECIFIC.md` if it exists
 8. read `HANDOFF.md` when continuing existing work
@@ -42,7 +42,7 @@ To prevent context rot, maintain high reasoning precision, and keep execution fa
 - **Modular Markdown Partitioning**: Keep markdown documentation modular (~200–300 lines limit per file). Use the **Summary + Pointer pattern (Progressive Disclosure)**: parent documents provide a clear structural overview and link to deep implementation details in `references/` or `docs/`.
 - **On-Demand Loading & Lazy Context**: Load specialized domain specifications, API references, and schemas Just-in-Time only when the active task touches that area. Persist findings to disk and do not retain heavy unparsed text in conversation memory.
 - **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`HANDOFF.md`, task checklists, or implementation plans).
-- **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Query or build a dependency graph (`graphify`, `archify`, or `templates/docs/ARCHITECTURE.md`) to isolate the blast radius, target only affected callers, and preserve context budget.
+- **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Use an appropriate architecture/dependency map or `templates/ARCHITECTURE.md` when the task needs one, isolate the blast radius, target affected callers, and preserve context budget.
 - **Proactive session compaction**: When a task phase completes, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
 
 ## 2. Starting and performing work
@@ -66,21 +66,21 @@ Before substantial changes:
 3. identify dependencies, risks, and appropriate checks
 4. follow confirmed instructions and methods
 
-### 2.1 Autonomous skill selection and invocation (Dynamic Discovery & Genuine Execution)
+### 2.1 Autonomous capability selection and invocation (Dynamic Discovery & Genuine Execution)
 
-Skill usage is **dynamic, non-rigid, and proportional** — evaluate each task against available skills in `skills/`:
-1. **Dual Invocation Modes**:
-   - **User Slash Commands**: The user triggers skills explicitly via slash commands (e.g. `/grill-me`, `/brainstorming`, `/tdd`, `/drawio`, `/review`).
-   - **Autonomous Agent Execution**: The AI proactively matches task context against installed skill workflows and executes their protocols directly.
+Capability usage is **dynamic, non-rigid, and proportional** — evaluate each task against available tools, methods, and instructions:
+1. **Two Invocation Modes**:
+   - **User Preference**: The user may request a particular method or tool explicitly.
+   - **Autonomous Execution**: The AI proactively matches task context against available capability descriptions and executes the applicable protocol directly.
 2. **Genuine Protocol Execution & Seamless Transparency**:
-   - **Seamless Execution**: Execute the skill's actual methodology directly and cleanly without artificial announcement banners (e.g. avoid `Applying /...` or `[Auto-Skill: ...]`) in user chat.
-   - **Mandatory File-Level Ingestion**: The first tool call when applying any skill MUST be `view_file` (or read tool) on the target `SKILL.md`. Never execute a skill blindly from memory without opening its instructions.
+   - **Seamless Execution**: Execute the chosen methodology directly and cleanly without artificial announcement banners in user chat.
+   - **Mandatory Instruction Ingestion**: Before applying a specialized protocol, read its instruction source with a file-reading action. Never execute a specialized protocol blindly from memory.
    - Do NOT use hollow vanity tags.
-   - Execute the actual rigorous workflow of the skill (e.g. `ask_question` one-by-one for `/grill-me`, Red-Green-Refactor for `/tdd`, 5-axis checks for `/review`).
-   - All dispatched subagents must log invoked skills in their returned `<task_report>`, listing ONLY skills that were explicitly opened and executed.
+   - Execute the actual rigorous workflow required by the chosen method.
+   - All dispatched subagents must log the methods actually used in their returned `<task_report>`.
 3. **Proportionality & Recommendation Rule**:
-   - **Direct Skill Match**: (e.g. feature implementation, UI creation, bug fixing, code review, diagramming) ➔ Execute the matching domain skill automatically and seamlessly.
-   - **Ambiguous / Borderline Tasks**: If uncertain whether the user wants a quick conceptual answer or a full skill execution, provide a concise direct answer and proactively recommend the matching skill.
+   - **Direct Capability Match**: (e.g. feature implementation, UI creation, bug fixing, code review, diagramming) ➔ Execute the matching method automatically and seamlessly.
+   - **Ambiguous / Borderline Tasks**: If uncertain whether the user wants a quick conceptual answer or a structured method, provide a concise direct answer and proactively recommend the matching approach.
    - **Simple / Trivial Tasks**: (e.g. direct single-value lookup, 1-2 line typo fix) ➔ Execute directly and immediately without overhead.
 4. **Sub-Second Native Inspection**:
    - For skill counts and health auditing, always run the native fast checker (`bash haws.sh status`) to obtain instant results (< 0.5s) without slow shell loops.
@@ -101,7 +101,7 @@ AI agents operating under HAWS must utilize the full capabilities of Git to ensu
 
 To avoid both under-delegation (cluttering main context) and over-delegation (wasteful subagent spawning latency):
 1. **Action Bias & Uncertainty Prompting Rule**:
-   - **Action Bias**: Just like skill selection, if there is a plausible opportunity or rationale to delegate to a subagent, dispatch autonomously and immediately.
+   - **Action Bias**: If there is a plausible opportunity or rationale to delegate to a subagent, dispatch autonomously and immediately.
    - **Uncertainty Rule**: If uncertain whether the user wants a quick solo answer or a full delegated subagent workflow, proactively ask or recommend delegating in chat.
 2. **Execute Solo (Main Agent Direct Execution)**:
    - Direct conceptual Q&A, architectural explanations, and guidance.
@@ -112,9 +112,9 @@ To avoid both under-delegation (cluttering main context) and over-delegation (wa
    - **Frontend UI / React / Styling / Accessibility**: Dispatch `@frontend-engineer`.
    - **Testing, Verification Suites & Quality Gates**: Dispatch `@tester`.
    - **Deep Research, Primary Source Investigations & External Docs**: Dispatch `@researcher`.
-   - **Skills Management, Directory Hygiene & Blueprint Scaffolding**: Dispatch `@organizer`.
-4. **Subagent Skill Autonomy & Single Point of User Contact**:
-   - **Autonomous Skill Execution**: Dispatched subagents have full autonomous authority to match, read (`SKILL.md`), and execute relevant skills without asking for permission.
+   - **Capability Management, Directory Hygiene & Blueprint Scaffolding**: Dispatch `@organizer`.
+4. **Subagent Capability Autonomy & Single Point of User Contact**:
+   - **Autonomous Capability Execution**: Dispatched subagents have authority to match, read, and execute relevant capabilities without asking for permission.
    - **Zero User Interruption**: Subagents communicate strictly with the Main Agent through `<task_report>` and never prompt or interrupt the human user directly. The Main Agent is the single point of contact who synthesizes results and presents choices to the user.
 
 ### 2.4 Autonomous External Tool & MCP Utilization Protocol
@@ -123,7 +123,7 @@ To avoid both under-delegation (cluttering main context) and over-delegation (wa
    - Linters, format checkers, read-only MCP servers, Chrome DevTools DOM inspection, and `haws.sh doctor/status`.
    - **Rule**: Run autonomously without user prompt whenever relevant to diagnosis or verification.
 2. **Non-Destructive Local Transformers (Auto-Execute with Verification)**:
-   - Local code formatters, diagram compilers (`archify`), isolated test runners.
+   - Local code formatters, diagram/architecture tools, isolated test runners.
    - **Rule**: Run autonomously within clean or isolated git worktrees.
 3. **High-Risk / Mutating Operations (Human Gate Required)**:
    - Production deployments, cloud provisioning, database truncation, and `git push origin`.
@@ -293,7 +293,7 @@ change and wait for review and confirmation.
 Use when code changes are drafted by an AI that has no direct write access to
 the user's local repository or remote (e.g. a sandboxed AI session).
 
-1. Confirm scope conversationally (use brainstorming or clarifying questions if underspecified) before
+1. Confirm scope conversationally (use clarifying questions or an appropriate discovery method if underspecified) before
    requesting a patch.
 2. The AI must state the exact base state the patch is generated from (e.g.
    "based on the file(s) you uploaded on [date]"). If the local repository may
@@ -335,11 +335,10 @@ Prompting without curated context causes model failure. Context Engineering ensu
 
 To ensure the AI remembers user preferences, habits, and past mistakes across sessions, machines, and AI tools without risking data loss during upstream updates:
 
-- **`templates/secondbrain/`**: Contains neutral starters for preferences, safeguards, and workflow. They are public defaults and contain no personal data or fixed skill list.
-- **`secondbrain/USER_PREFERENCES.md`**: Optional private overlay for stable user preferences, architectural conventions, and communication style.
-- **`secondbrain/ANTI_PATTERNS.md`**: Optional private overlay for hard constraints, forbidden patterns, and learned safeguards.
-- **`secondbrain/WORKFLOW.md`**: Optional private overlay for a user's preferred lifecycle and working cadence. It may refine the generic default, but it must not be required for a fresh public checkout.
-- **Loading Rule**: Load the personal overlay when present; otherwise follow the neutral starters and the public core. Never copy personal data into public `main`.
+- **`secondbrain/USER_PREFERENCES.md`**: Default document slot for stable preferences, communication style, and project conventions.
+- **`secondbrain/ANTI_PATTERNS.md`**: Default document slot for safeguards, forbidden patterns, and learned lessons.
+- **`secondbrain/WORKFLOW.md`**: Default document slot for the working lifecycle and cadence.
+- **Loading Rule**: Use the neutral documents in a public checkout; the DEV checkout may contain personalized versions. Never copy personal data into public `main`.
 
 
 ---
@@ -350,7 +349,7 @@ The Main Agent (the primary session conversing directly with the user) serves as
 
 ### Professional SWE Lifecycle & Adaptive Operating Workflow
 
-The Main Agent and Subagents execute software engineering work according to `secondbrain/WORKFLOW.md` when a personal overlay is present, falling back to the generic discovery-to-delivery lifecycle in `templates/secondbrain/WORKFLOW.md`:
+The Main Agent and Subagents execute software engineering work according to the current `secondbrain/WORKFLOW.md`, using the generic discovery-to-delivery lifecycle as the baseline when no personal refinement is present:
 
 1. **Phase 1: Discovery & Clarification**
 2. **Phase 2: Ideation & Architecture**
@@ -359,13 +358,13 @@ The Main Agent and Subagents execute software engineering work according to `sec
 5. **Phase 5: Verification & Quality Audit**
 6. **Phase 6: Delivery, Documentation & Handoff**
 
-Refer to the active workflow file for project-specific preferences; select skills dynamically rather than treating a fixed skill list as a requirement.
+Refer to the active workflow file for project-specific preferences; select tools and methods dynamically rather than treating a fixed list as a requirement.
 
 ---
 
 ### Flexible Delegation Model & Direct Intervention
 - **Autonomous Proactive Delegation**: The Main Agent evaluates incoming work and autonomously delegates domain-specific tasks to specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) without waiting for explicit human requests.
-- **Dual-Tier Autonomous Skill Selection**: Both Main Agent and Subagents automatically match task context against installed skills in `skills/` and execute their workflows. The Main Agent announces via `Applying /<skill-name>...`; Subagents declare applied skills in `<task_report>`.
+- **Dual-Tier Autonomous Capability Selection**: Both Main Agent and Subagents match task context against available capabilities and execute their workflows. Subagents declare the methods applied in `<task_report>`.
 - **Dynamic Routing Over Rigid Sequences**: Delegation decisions must be driven by standard software engineering judgment rather than rigid, hardcoded multi-agent pipelines.
 - **Direct Intervention Protocol**: The Main Agent may resolve a problem directly without delegating when a subagent is blocked, unavailable, or when a targeted direct fix is significantly faster.
 - **Context Isolation**: When delegating to subagents, the Main Agent sends only the atomic task assignment (via `<task_assignment>`), never dumping the entire conversation history. Subagents return concise summaries (via `<task_report>`), keeping all context windows lean and free from rot.
