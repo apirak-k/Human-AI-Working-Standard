@@ -5783,6 +5783,7 @@ settings_preview() {
     local -A preview_source_paths=()
     local -A preview_source_names=()
     local -a preview_pack_ids=()
+    local -a preview_custom_skills=()
     local -a preview_single_skills=()
     local source_path source_url source_revision
 
@@ -5815,16 +5816,34 @@ settings_preview() {
             fi
         else
             if _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}"; then
-                local kind="standalone"
                 if [[ "${source_path}" == skills/custom* ]] || [[ "${skill_source_id}" == *custom* ]]; then
-                    kind="custom"
+                    preview_custom_skills+=("${skill_display}")
+                else
+                    preview_single_skills+=("${skill_display}")
                 fi
-                preview_single_skills+=("${skill_display}	${kind}")
             fi
         fi
     done <<< "${skill_rows}"
 
     local printed_skills_section=0
+    if [ "${#preview_custom_skills[@]}" -gt 0 ]; then
+        echo "  Custom Skills:"
+        local custom_name
+        for custom_name in "${preview_custom_skills[@]}"; do
+            printf "    • %-26s [Active]\n" "${custom_name}"
+        done
+        printed_skills_section=1
+    fi
+
+    if [ "${#preview_single_skills[@]}" -gt 0 ]; then
+        echo "  Single Skills:"
+        local single_name
+        for single_name in "${preview_single_skills[@]}"; do
+            printf "    • %-26s [Active]\n" "${single_name}"
+        done
+        printed_skills_section=1
+    fi
+
     if [ "${#preview_pack_ids[@]}" -gt 0 ]; then
         echo "  Multi-Skill Packs:"
         local pack_id pack_name active_count total_count
@@ -5833,18 +5852,6 @@ settings_preview() {
             active_count="${preview_source_active[${pack_id}]:-0}"
             total_count="${preview_source_counts[${pack_id}]:-0}"
             printf "    • %-26s [Active: %3d / %3d]\n" "${pack_name}" "${active_count}" "${total_count}"
-        done
-        printed_skills_section=1
-    fi
-
-    if [ "${#preview_single_skills[@]}" -gt 0 ]; then
-        echo "  Single Skills:"
-        local single_entry single_name single_kind
-        for single_entry in "${preview_single_skills[@]}"; do
-            single_name="${single_entry%%	*}"
-            single_kind="${single_entry#*	}"
-            [ -n "${single_kind}" ] || single_kind="standalone"
-            printf "    • %-26s [Active] (%s)\n" "${single_name}" "${single_kind}"
         done
         printed_skills_section=1
     fi
