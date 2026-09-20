@@ -526,3 +526,20 @@ only HAWS-owned skill-link records under disabled environment roots and remove
 those records safely. Do not remove user-owned or modified paths. Keep the
 manifest format unchanged and test Claude-disabled fast-skip plus an enabled
 environment regression.
+
+**Implementation completed in `07b20b1`:** Step 4 now prunes only
+ownership-verified HAWS skill links under disabled Claude/Codex roots before
+the manifest fast-skip decision. The fast-skip path also checks that active
+targets still exist for enabled environments, so re-enabling an environment
+after pruning recreates its missing links. The manifest format is unchanged;
+Codex plugin-owned `ponytail` remains excluded from the ordinary target
+presence check.
+
+**Green verification (2026-09-20):** a disposable four-run fixture covered
+enabled → fast-skip, disabled → owned-link prune, preservation of an unowned
+link and a modified owned record, then re-enabled → relink. Results were
+`RUN2_FAST_SKIP=1`, `RUN3_PRUNED=1`, `RUN3_OWNED_REMOVED=1`,
+`RUN3_USER_PRESENT=0`, `RUN3_MODIFIED_PRESENT=0`, `RUN4_FAST_SKIP=0`, and
+`RUN4_RELINKED=1`. The `0` presence values mean the asserted path was present;
+the removed owned path returned `1`. The fixture used temporary HOME/state and
+did not touch the user's installation.

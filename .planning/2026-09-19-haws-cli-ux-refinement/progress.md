@@ -15,6 +15,7 @@
 - [x] Bug C: Reset + Apply verified to clear `skills.disabled`
 - [x] Bug D: Copilot removed from the `haws.sh` runtime surface
 - [x] Bug E: Step 4 fast-skip decoupled from pointer refresh
+- [x] Disabled-environment skill links prune safely and re-link after re-enable
 
 ## Commits on Branch
 
@@ -157,10 +158,11 @@ implementation commits.
   (`78901fc`) and verify the dry-run output.
 - [x] Reproduced disabled-Claude stale-link retention in a two-run disposable
   Sync fixture: unchanged manifest fast-skipped and left the old owned link.
-- [ ] Plan/implement owned-link pruning for disabled Claude/Codex roots before
-  Step 4 fast-skip; preserve user-owned or modified paths.
-- [ ] Verify disabled-environment cleanup and enabled-environment regression
-  in disposable Sync fixtures without running real Sync.
+- [x] Implement owned-link pruning for disabled Claude/Codex roots before
+  Step 4 fast-skip; preserve user-owned or modified paths (`07b20b1`).
+- [x] Verify disabled-environment cleanup, preservation, and
+  enabled-environment re-link regression in disposable Sync fixtures without
+  running real Sync.
 
 ### Harness notes
 
@@ -176,6 +178,7 @@ implementation commits.
 
 - `a1999f7 docs: record skill toggle root cause evidence`
 - `f53b435 fix(cli): preserve skill draft item boundaries`
+- `07b20b1 fix(sync): prune disabled environment skill links`
 
 ### Current safety boundary
 

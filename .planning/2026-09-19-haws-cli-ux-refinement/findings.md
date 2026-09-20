@@ -306,3 +306,24 @@ not delete a user-owned, modified, or unrelated link. The first implementation
 should cover the Claude/Codex skill-link roots used by Step 4; Gemini's JSON
 configuration is a separate generated-file contract and should not be changed
 speculatively in this slice.
+
+## Disabled-Environment Cleanup Green Verification (2026-09-20)
+
+- Product fix commit: `07b20b1` (`fix(sync): prune disabled environment skill links`).
+- A disposable four-run fixture used a temporary repository root, HOME, state,
+  and one active catalog row. Auto Update was Off, so no remote source update
+  or real environment was involved.
+- Run 2 kept the enabled Claude junction and used the manifest fast-skip:
+  `RUN2_TARGET_PRESENT=0`, `RUN2_FAST_SKIP=1`.
+- Run 3 disabled Claude and removed only the ownership-verified HAWS target:
+  `RUN3_OWNED_REMOVED=1`, `RUN3_PRUNED=1`.
+- The same run preserved an unowned user link and a link whose target no longer
+  matched its ownership fingerprint: `RUN3_USER_PRESENT=0`,
+  `RUN3_MODIFIED_PRESENT=0`.
+- Run 4 re-enabled Claude. The missing target prevented an unsafe fast-skip and
+  was recreated: `RUN4_FAST_SKIP=0`, `RUN4_RELINKED=1`.
+- A separate red/green probe showed that without the target-presence guard,
+  re-enabling Claude left the pruned link missing while still reporting
+  `manifest unchanged`; the guard closes that regression.
+- `bash -n haws.sh` and `git diff --check` passed. No real `setup`, `sync`,
+  `brain`, uninstall, remote, or user-environment mutation was performed.
