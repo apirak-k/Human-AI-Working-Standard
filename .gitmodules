@@ -16,8 +16,8 @@
 [submodule "skills/standalone/archify"]
 	path = skills/standalone/archify
 	url = https://github.com/tt-a1i/archify.git
-[submodule "skills/standalone/caveman"]
-	path = skills/standalone/caveman
+[submodule "skills/packs/caveman"]
+	path = skills/packs/caveman
 	url = https://github.com/JuliusBrussee/caveman.git
 [submodule "skills/standalone/drawio-skill"]
 	path = skills/standalone/drawio-skill
@@ -28,12 +28,12 @@
 [submodule "skills/standalone/humanizer"]
 	path = skills/standalone/humanizer
 	url = https://github.com/blader/humanizer.git
-[submodule "skills/standalone/planning-with-files"]
-	path = skills/standalone/planning-with-files
+[submodule "skills/packs/planning-with-files"]
+	path = skills/packs/planning-with-files
 	url = https://github.com/OthmanAdi/planning-with-files.git
-[submodule "skills/standalone/taste-skill"]
-	path = skills/standalone/taste-skill
+[submodule "skills/packs/taste-skill"]
+	path = skills/packs/taste-skill
 	url = https://github.com/Leonxlnx/taste-skill.git
-[submodule "skills/standalone/ui-ux-pro-max"]
-	path = skills/standalone/ui-ux-pro-max
+[submodule "skills/packs/ui-ux-pro-max"]
+	path = skills/packs/ui-ux-pro-max
 	url = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git

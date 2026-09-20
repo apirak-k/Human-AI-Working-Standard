@@ -355,7 +355,7 @@ The following chronological sequence documents everything committed from `cceb21
 2. **Top-Line Skill Declaration & Mandatory File Ingestion** (`core/WORK_INSTRUCTIONS.md` Sec 2.1):
    - Every skill execution must declare `Applying /<skill-name>...` on the first line.
    - First tool call must be `view_file` on target `SKILL.md`. Zero vanity tags.
-3. **Caveman Communication Engine** (`skills/standalone/caveman/`):
+3. **Caveman Communication Engine** (`skills/packs/caveman/`):
    - Multi-level token compression (`lite`, `full`, `ultra`).
 4. **Context Window & Markdown Partitioning** (`core/WORK_INSTRUCTIONS.md` Sec 1.1):
    - 200–300 line modular document limits. Summary + Pointer pattern (Progressive Disclosure).
