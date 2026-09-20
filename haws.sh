@@ -1681,6 +1681,42 @@ _haws_skill_link_remove_if_owned() {
     [ -n "${wanted_native}" ] && unset 'HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]' 2>/dev/null || true
 }
 
+_prune_disabled_environment_skill_links() {
+    local -a records=()
+    local record group kind path source fingerprint extra native_path root environment
+    while IFS= read -r record || [ -n "${record}" ]; do
+        [ -n "${record}" ] && records+=("${record}")
+    done < <(ownership_list skills)
+
+    DISABLED_ENVIRONMENT_LINKS_PRUNED=0
+    for environment in claude codex; do
+        [ -n "${DISABLED_ENVIRONMENTS[${environment}]:-}" ] || continue
+        case "${environment}" in
+            claude) root="${HOME}/.claude/skills" ;;
+            codex) root="${HOME}/.agents/skills" ;;
+            *) continue ;;
+        esac
+
+        for record in "${records[@]}"; do
+            IFS=$'\t' read -r group kind path source fingerprint extra <<< "${record}"
+            [ "${group}" = skills ] || continue
+            native_path="$(_uninstall_native_path "${path}")"
+            case "${native_path}" in
+                "${root}"/*)
+                    if ownership_verify \
+                        "${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}" &&
+                        _uninstall_remove_path "${kind}" "${path}"; then
+                        _ownership_remove_record "${record}" || true
+                        DISABLED_ENVIRONMENT_LINKS_PRUNED=$((DISABLED_ENVIRONMENT_LINKS_PRUNED + 1))
+                        printf '  [PRUNED] Disabled %s skill link [%s] (owned)\n' \
+                            "${environment}" "${native_path}"
+                    fi
+                    ;;
+            esac
+        done
+    done
+}
+
 _haws_record_skill_link() {
     local kind="${1:-symlink}" dest="${2:-}" source="${3:-}" fingerprint
     [ -n "${dest}" ] && [ -n "${source}" ] || return 2
@@ -2679,10 +2715,36 @@ run_sync() {
         active_skill_records+=("${source_path}"$'\t'"${entrypoint}"$'\t'"${target_name}"$'\t'"${skill_display}")
     done <<< "${skill_rows}"
 
+    _prune_disabled_environment_skill_links
+
     local can_fast_skip_skills=0
     if [ -f "${MANIFEST_FILE}" ]; then
         if cmp -s <(grep '^skill:' "${MANIFEST_FILE}" 2>/dev/null || true) "${TMP_MANIFEST}"; then
             can_fast_skip_skills=1
+            local link_record existing_skill_dir plugin_dir
+            for link_record in "${active_skill_records[@]}"; do
+                IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${link_record}"
+                if [ "$DETECTED_CLAUDE" = true ]; then
+                    existing_skill_dir="${HOME}/.claude/skills/${target_name}"
+                    if [ ! -d "${existing_skill_dir}" ]; then
+                        can_fast_skip_skills=0
+                        break
+                    fi
+                fi
+                if [ "$DETECTED_CODEX" = true ]; then
+                    plugin_dir=""
+                    if [ "${skill_display}" = ponytail ]; then
+                        plugin_dir="$(_codex_plugin_skill_dir "${skill_display}" 2>/dev/null || true)"
+                    fi
+                    if [ -z "${plugin_dir}" ]; then
+                        existing_skill_dir="${HOME}/.agents/skills/${target_name}"
+                        if [ ! -d "${existing_skill_dir}" ]; then
+                            can_fast_skip_skills=0
+                            break
+                        fi
+                    fi
+                fi
+            done
         fi
     fi
 
