@@ -138,6 +138,12 @@ implementation commits.
   checkpoint.
 - [ ] Run the remaining full-catalog and real UI acceptance checks before
   declaring the broader UX work complete.
+- [x] Full-catalog Settings fixture re-enabled one real Pack skill after the
+  delimiter fix; active count returned to `153/153` and the ID signature
+  matched the all-active catalog.
+- [x] Category totals are `Custom 1/1`, `Single 4/4`, and `Packs 148/148`.
+- [x] Read-only Preview lists all four standalone skills and the custom skill;
+  moved `caveman` and `planning-with-files` appear as Packs.
 
 ### Harness notes
 

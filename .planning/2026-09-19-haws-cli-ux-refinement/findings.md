@@ -199,3 +199,27 @@ is gone.
   `E:/Human-AI-Working-Standard/skills/skills.disabled` file was not written.
 - Verification passed: `bash -n haws.sh`, human Doctor (`Overall: Ready`), and
   Doctor JSON (`{"status":"Ready"}`).
+
+## Full Catalog and Preview Regression (2026-09-20)
+
+- The real `settings_skills_page` fixture started with one skill disabled in
+  the first real Pack, selected Multi-Skill Packs, entered the first Pack,
+  used Toggle All + Confirm, then used `q` to leave the Pack and the category
+  page. The target skill became ON, active count returned to `153`, and the
+  newline-delimited draft signature exactly matched the all-active catalog.
+- The current full-catalog category totals are:
+
+```text
+Custom Skills      1 / 1
+Single Skills      4 / 4
+Multi-Skill Packs 148 / 148
+```
+
+- Read-only Preview output includes the four standalone skills (`archify`,
+  `drawio-skill`, `graphify`, `humanizer`) and the custom
+  `keyboard-layout-fixer` entry.
+- Preview reports `caveman` as `20 / 20` and `planning-with-files` as `6 / 6`
+  under Multi-Skill Packs, consistent with their current `skills/packs/*`
+  source paths.
+- These checks used in-memory drafts and a temporary Apply fixture only; the
+  real disabled-skills file and installed links were not changed.

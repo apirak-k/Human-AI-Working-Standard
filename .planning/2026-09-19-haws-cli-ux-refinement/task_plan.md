@@ -463,3 +463,9 @@ newline before a new ID whenever the existing selection is non-empty. The red
 fixture is green, and a disposable Apply fixture writes only the disabled-file
 header when all rows are active. The user's real disabled file was not used for
 the Apply check.
+
+**Full-catalog regression completed:** A real Settings-page fixture re-enabled
+one disabled Pack skill through category → Pack → Toggle All → Confirm → `q`
+navigation. The draft returned to the all-active `153`-skill signature, and the
+category/Preview totals remained consistent (`Custom 1/1`, `Single 4/4`, Packs
+`148/148`).
