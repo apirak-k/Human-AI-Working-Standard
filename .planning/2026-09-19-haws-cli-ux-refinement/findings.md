@@ -265,3 +265,11 @@ selector delimiter fix and category totals.
 - Auto prune is present in the Sync path (`run_sync`) and is intentionally not
   part of Uninstall preview/removal. No behavior change is planned for that
   separation.
+
+## Uninstall Label Fix Green Verification (2026-09-20)
+
+- Product fix commit: `78901fc` (`fix(cli): label uninstall skill links
+  clearly`).
+- The same read-only dry-run now reports `Skill Links : 426 items` while
+  leaving the count and preservation warnings unchanged.
+- `bash -n haws.sh` passed. No uninstall action was executed.

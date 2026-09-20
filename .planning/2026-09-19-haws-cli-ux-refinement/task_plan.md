@@ -502,3 +502,7 @@ is therefore misleading.
 **Minimal implementation direction:** change only the displayed group label to
 `Skill Links`. Keep Auto prune in Sync; Uninstall and Sync have different
 ownership/cleanup semantics.
+
+**Implementation completed in `78901fc`:** Uninstall dry-run now displays
+`Skill Links : 426 items`; no removal behavior changed and no real uninstall
+was run.

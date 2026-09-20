@@ -153,7 +153,8 @@ implementation commits.
   remains `{"status":"Ready"}`.
 - [x] Confirmed Uninstall's `426` count is managed Skill Links, not unique
   skills or AI environments; Auto prune remains a Sync-only operation.
-- [ ] Rename the Uninstall display label from `Skills` to `Skill Links`.
+- [x] Rename the Uninstall display label from `Skills` to `Skill Links`
+  (`78901fc`) and verify the dry-run output.
 
 ### Harness notes
 
