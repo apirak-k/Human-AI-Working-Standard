@@ -4540,7 +4540,7 @@ uninstall_preview() {
         for grp in "${!group_counts[@]}"; do
             local grp_label="${grp}"
             case "${grp}" in
-                skills) grp_label="Skills" ;;
+                skills) grp_label="Skill Links" ;;
                 environments) grp_label="Environments" ;;
                 pointers) grp_label="Global Pointers" ;;
                 subagents) grp_label="Subagents" ;;
