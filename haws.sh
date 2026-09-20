@@ -322,7 +322,7 @@ _health_print_findings() {
                 "AI Environments") short_detail="$(_health_active_ai_names)" ;;
                 "AI Environment ownership") short_detail="${total} managed item(s) verified" ;;
                 Sources) short_detail="${total} source(s) available" ;;
-                Skills) short_detail="${total} active skill check(s) passed" ;;
+                Skills) short_detail="${HAWS_HEALTH_SKILLS_ACTIVE} active skill check(s) passed" ;;
                 Hooks) short_detail="commit-msg active" ;;
             esac
             printf '  [PASS] %-20s - %s\n' "$section" "$short_detail"
