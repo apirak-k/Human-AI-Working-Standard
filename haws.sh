@@ -589,7 +589,6 @@ legacy_run_doctor() {
     check_item "${SCRIPT_DIR}/ai-configs/claude/CLAUDE.md.template" "ai-configs/claude/CLAUDE.md.template"
     check_item "${SCRIPT_DIR}/ai-configs/cursor/haws.mdc.template" "ai-configs/cursor/haws.mdc.template"
     check_item "${SCRIPT_DIR}/ai-configs/gemini/GEMINI.md.template" "ai-configs/gemini/GEMINI.md.template"
-    check_item "${SCRIPT_DIR}/ai-configs/copilot/copilot-instructions.md.template" "ai-configs/copilot/copilot-instructions.md.template"
     check_item "${SCRIPT_DIR}/ai-configs/codex/AGENTS.override.md.template" "ai-configs/codex/AGENTS.override.md.template"
     if [ -d "${SCRIPT_DIR}/containers" ]; then
         local container_tpls=("devcontainer.json" "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
@@ -806,7 +805,6 @@ legacy_run_doctor() {
     [ -d "${HOME}/.gemini" ] && detected_ais+=("Antigravity")
     [ -d "${HOME}/.claude" ] && detected_ais+=("Claude Code")
     { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && detected_ais+=("Cursor")
-    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && detected_ais+=("Codex/Copilot")
 
     local ai_summary="None detected"
     [ "${#detected_ais[@]}" -gt 0 ] && ai_summary="${detected_ais[*]}"
@@ -2430,19 +2428,16 @@ run_sync() {
     local DETECTED_CLAUDE=false
     local DETECTED_GEMINI=false
     local DETECTED_CURSOR=false
-    local DETECTED_COPILOT=false
     local DETECTED_CODEX=false
 
     [ -d "${HOME}/.claude" ] && [ -z "${DISABLED_ENVIRONMENTS[claude]:-}" ] && DETECTED_CLAUDE=true
     [ -d "${HOME}/.gemini" ] && [ -z "${DISABLED_ENVIRONMENTS[gemini]:-}" ] && DETECTED_GEMINI=true
     { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && [ -z "${DISABLED_ENVIRONMENTS[cursor]:-}" ] && DETECTED_CURSOR=true
-    { [ -d "${HOME}/.config/github-copilot" ] || [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/AppData/Local/github-copilot" ]; } && [ -z "${DISABLED_ENVIRONMENTS[copilot]:-}" ] && DETECTED_COPILOT=true
     { [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; } && [ -z "${DISABLED_ENVIRONMENTS[codex]:-}" ] && DETECTED_CODEX=true
 
     [ "$DETECTED_CLAUDE" = true ] && echo "  [✓] Claude Code detected (${HOME}/.claude)"
     [ "$DETECTED_GEMINI" = true ] && echo "  [✓] Google Antigravity detected (${HOME}/.gemini)"
     [ "$DETECTED_CURSOR" = true ] && echo "  [✓] Cursor IDE detected"
-    [ "$DETECTED_COPILOT" = true ] && echo "  [✓] GitHub Copilot detected"
     [ "$DETECTED_CODEX" = true ] && echo "  [✓] OpenAI Codex detected (${HOME}/.codex)"
     echo "[PASS] AI environment detection complete"
     echo ""
@@ -2626,13 +2621,6 @@ run_sync() {
             safe_append_pointer "${HOME}/.cursor/rules/haws.mdc"
         else
             safe_append_pointer "${HOME}/.cursorrules"
-        fi
-    fi
-    if [ "$DETECTED_COPILOT" = true ]; then
-        if [ -d "${HOME}/.copilot" ]; then
-            safe_append_pointer "${HOME}/.copilot/copilot-instructions.md"
-        elif [ -d "${HOME}/.config/github-copilot" ]; then
-            safe_append_pointer "${HOME}/.config/github-copilot/copilot-instructions.md"
         fi
     fi
     if [ "$DETECTED_CODEX" = true ]; then
@@ -4786,7 +4774,7 @@ install_is_complete() {
 }
 
 _haws_all_environments() {
-    printf '%s\n' claude gemini cursor copilot codex
+    printf '%s\n' claude gemini cursor codex
 }
 
 _haws_environment_label() {
@@ -4794,7 +4782,6 @@ _haws_environment_label() {
         claude) echo "Claude Code" ;;
         gemini) echo "Google Antigravity" ;;
         cursor) echo "Cursor" ;;
-        copilot) echo "GitHub Copilot" ;;
         codex) echo "OpenAI Codex" ;;
         *) echo "${1:-Unknown}" ;;
     esac
@@ -4816,9 +4803,6 @@ _haws_detected_environments() {
             gemini) [ -d "${HOME}/.gemini" ] || continue ;;
             cursor) {
                 [ -d "${HOME}/.cursor" ] || [ -f "${HOME}/.cursorrules" ]
-            } || continue ;;
-            copilot) {
-                [ -d "${HOME}/.copilot" ] || [ -d "${HOME}/.config/github-copilot" ]
             } || continue ;;
             codex) {
                 [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]
