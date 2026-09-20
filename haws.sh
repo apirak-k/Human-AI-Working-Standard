@@ -3307,7 +3307,7 @@ interactive_menu() {
     if [ "${mode}" = "checklist" ]; then
         CHECKLIST_RESULTS=()
         for ((i=0; i<count; i++)); do
-            CHECKLIST_RESULTS["${item_names[$i]}"]="${item_states[$i]}"
+            CHECKLIST_RESULTS["${i}"]="${item_states[$i]}"
         done
     elif [ "${mode}" = "settings" ]; then
         :
@@ -3462,7 +3462,7 @@ run_remove_git_repo() {
 
     for ((i=0; i<${#repos[@]}; i++)); do
         local rname="${repos[$i]}"
-        if [ "${CHECKLIST_RESULTS[$rname]:-0}" -eq 1 ]; then
+        if [ "${CHECKLIST_RESULTS[${i}]:-0}" -eq 1 ]; then
             selected_repos+=("${rname}")
             selected_paths+=("${repo_paths[$i]}")
             selected_types+=("${repo_types[$i]}")
@@ -5121,7 +5121,7 @@ _settings_skill_selector() {
     local selected="${HAWS_DRAFT_SKILLS:-}"
     local i
     for ((i=0; i<${#ids[@]}; i++)); do
-        if [ "${CHECKLIST_RESULTS[${items[$i]%%|*}]:-0}" -eq 1 ]; then
+        if [ "${CHECKLIST_RESULTS[${i}]:-0}" -eq 1 ]; then
             _settings_list_contains "${selected}" "${ids[$i]}" || \
                 selected="${selected}${ids[$i]}"$'\n'
         else
@@ -5157,7 +5157,7 @@ settings_environments_page() {
 
     local selected="" i
     for ((i=0; i<${#environments[@]}; i++)); do
-        if [ "${CHECKLIST_RESULTS[${items[$i]%%|*}]:-0}" -eq 1 ]; then
+        if [ "${CHECKLIST_RESULTS[${i}]:-0}" -eq 1 ]; then
             selected="${selected}${environments[$i]}"$'\n'
         fi
     done
@@ -5422,7 +5422,7 @@ _settings_repository_remove_page() {
     fi
     local i
     for ((i=0; i<${#ids[@]}; i++)); do
-        [ "${CHECKLIST_RESULTS[${items[$i]%%|*}]:-0}" -eq 1 ] || continue
+        [ "${CHECKLIST_RESULTS[${i}]:-0}" -eq 1 ] || continue
         settings_draft_remove_source "${ids[$i]}" || true
     done
 }
