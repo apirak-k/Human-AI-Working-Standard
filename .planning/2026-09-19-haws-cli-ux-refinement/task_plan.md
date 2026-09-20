@@ -486,3 +486,7 @@ total finding count.
 **Minimal implementation direction:** change only the successful Skills summary
 to use `HAWS_HEALTH_SKILLS_ACTIVE`, then verify human Doctor reports 153 while
 JSON status remains Ready.
+
+**Implementation completed in `e195bb2`:** Doctor now reports the active
+counter (`153`) instead of counting the parse-health row (`154`). Deep human
+Doctor and JSON verification both pass.

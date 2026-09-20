@@ -147,8 +147,9 @@ implementation commits.
 - [x] Confirmed the Doctor count mismatch: health counters and catalog are
   `153`, but the Skills findings section is `154` because it includes the
   `skills.disabled parsed successfully` health row.
-- [ ] Patch Doctor's successful Skills summary to use the active counter.
-- [ ] Verify human Doctor reports `153 active skill check(s) passed` and JSON
+- [x] Patch Doctor's successful Skills summary to use the active counter
+  (`e195bb2`).
+- [x] Verify human Doctor reports `153 active skill check(s) passed` and JSON
   remains `{"status":"Ready"}`.
 
 ### Harness notes

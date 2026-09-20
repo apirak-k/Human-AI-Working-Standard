@@ -241,3 +241,13 @@ not in the catalog/category model.
 
 This is a confirmed display-count bug. It must be fixed independently from the
 selector delimiter fix and category totals.
+
+## Doctor Count Fix Green Verification (2026-09-20)
+
+- Product fix commit: `e195bb2` (`fix(cli): report active skill count
+  accurately`).
+- `_health_collect --deep` still reports both internal counters as `153`.
+- Human Doctor now reports `Skills - 153 active skill check(s) passed`.
+- Doctor JSON remains `{"status":"Ready"}`.
+- The fix changes only the successful Skills summary to use
+  `HAWS_HEALTH_SKILLS_ACTIVE`; it does not alter catalog rows or health status.
