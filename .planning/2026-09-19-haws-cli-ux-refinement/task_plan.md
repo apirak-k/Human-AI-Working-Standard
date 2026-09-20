@@ -469,3 +469,20 @@ one disabled Pack skill through category → Pack → Toggle All → Confirm →
 navigation. The draft returned to the all-active `153`-skill signature, and the
 category/Preview totals remained consistent (`Custom 1/1`, `Single 4/4`, Packs
 `148/148`).
+
+### Newly confirmed root cause — Doctor adds the parse check to the skill count
+
+Doctor's internal counters are correct (`HAWS_HEALTH_SKILLS_ACTIVE=153`,
+`HAWS_HEALTH_SKILLS_TOTAL=153`), but `_health_print_findings()` counts every
+`Skills` finding. That section includes one non-skill finding,
+`skills.disabled parsed successfully`, plus one finding per active skill. The
+summary therefore prints `154 active skill check(s) passed`.
+
+**Red evidence (2026-09-20):** the same run reported
+`SKILLS_FINDINGS=154` while both health counters were `153`; human Doctor
+printed 154. The display must use the health active counter, not the section's
+total finding count.
+
+**Minimal implementation direction:** change only the successful Skills summary
+to use `HAWS_HEALTH_SKILLS_ACTIVE`, then verify human Doctor reports 153 while
+JSON status remains Ready.

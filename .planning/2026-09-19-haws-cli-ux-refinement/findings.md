@@ -223,3 +223,21 @@ Multi-Skill Packs 148 / 148
   source paths.
 - These checks used in-memory drafts and a temporary Apply fixture only; the
   real disabled-skills file and installed links were not changed.
+
+## Confirmed Doctor Count Mismatch (2026-09-20)
+
+The reported numeric mismatch is real, but it is in Doctor's display summary,
+not in the catalog/category model.
+
+- `catalog_skills` active rows: `153`.
+- `_health_collect --deep` counters: `HAWS_HEALTH_SKILLS_ACTIVE=153`,
+  `HAWS_HEALTH_SKILLS_TOTAL=153`.
+- `HAWS_HEALTH_FINDINGS` rows whose section is Skills: `154`.
+- The extra row is the parse-health check:
+  `Ready Skills skills.disabled parsed successfully`.
+- The remaining 153 rows are the individual active skill entrypoint checks.
+- `_health_print_findings()` currently uses the section `total` for the
+  successful Skills label, producing `154 active skill check(s) passed`.
+
+This is a confirmed display-count bug. It must be fixed independently from the
+selector delimiter fix and category totals.

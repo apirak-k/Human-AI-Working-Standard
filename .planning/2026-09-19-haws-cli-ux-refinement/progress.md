@@ -144,6 +144,12 @@ implementation commits.
 - [x] Category totals are `Custom 1/1`, `Single 4/4`, and `Packs 148/148`.
 - [x] Read-only Preview lists all four standalone skills and the custom skill;
   moved `caveman` and `planning-with-files` appear as Packs.
+- [x] Confirmed the Doctor count mismatch: health counters and catalog are
+  `153`, but the Skills findings section is `154` because it includes the
+  `skills.disabled parsed successfully` health row.
+- [ ] Patch Doctor's successful Skills summary to use the active counter.
+- [ ] Verify human Doctor reports `153 active skill check(s) passed` and JSON
+  remains `{"status":"Ready"}`.
 
 ### Harness notes
 
