@@ -1016,7 +1016,11 @@ _second_brain_dir() {
 }
 
 _second_brain_remote_url() {
-    git -C "$(_second_brain_dir)" remote get-url origin 2>/dev/null || true
+    local brain_dir="$(_second_brain_dir)"
+    if [ ! -d "${brain_dir}/.git" ] && [ ! -f "${brain_dir}/.git" ]; then
+        return 0
+    fi
+    git -C "${brain_dir}" remote get-url origin 2>/dev/null || true
 }
 
 _second_brain_refresh_state() {
