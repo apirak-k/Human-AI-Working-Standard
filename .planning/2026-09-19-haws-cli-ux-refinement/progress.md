@@ -130,12 +130,14 @@ implementation commits.
   error (`path` was passed where the full `path::path` source ID was required).
 - [x] Red reproduction: Toggle All + Confirm with one real row initially OFF
   left that row OFF and concatenated its ID to the previous draft entry.
-- [ ] Patch the newline-delimited draft append at the smallest responsible
-  code location.
-- [ ] Rerun the red fixture as green, then test individual toggle, Toggle All,
-  `q` cancellation, re-entry, and Apply persistence.
-- [ ] Commit the focused product fix separately from the evidence/planning
+- [x] Patch the newline-delimited draft append at the smallest responsible
+  code location (`f53b435`).
+- [x] Rerun the red fixture as green, then test individual toggle, Toggle All,
+  `q` cancellation, re-entry, and Apply persistence in disposable fixtures.
+- [x] Commit the focused product fix separately from the evidence/planning
   checkpoint.
+- [ ] Run the remaining full-catalog and real UI acceptance checks before
+  declaring the broader UX work complete.
 
 ### Harness notes
 
@@ -144,6 +146,13 @@ implementation commits.
   not product evidence.
 - The corrected fixture used the full source ID and reproduced the malformed
   newline-delimited draft without touching `skills.disabled`.
+- The fixed fixture reports the first row ON after Toggle All + Confirm, and
+  the disposable Apply fixture leaves no disabled IDs when all rows are active.
+
+### Commits in this investigation slice
+
+- `a1999f7 docs: record skill toggle root cause evidence`
+- `f53b435 fix(cli): preserve skill draft item boundaries`
 
 ### Current safety boundary
 

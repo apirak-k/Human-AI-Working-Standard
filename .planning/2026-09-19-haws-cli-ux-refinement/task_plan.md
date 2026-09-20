@@ -457,3 +457,9 @@ Confirm produced `RED_EXPECTED_FIRST_ON_ACTUAL=OFF` and a raw draft containing
 **Minimal implementation direction:** preserve newline-delimited list
 invariants when appending an enabled skill, then rerun the same red fixture as
 green. Do not broaden this fix into a new count model or UI redesign.
+
+**Implementation completed in `f53b435`:** The append path now inserts a
+newline before a new ID whenever the existing selection is non-empty. The red
+fixture is green, and a disposable Apply fixture writes only the disabled-file
+header when all rows are active. The user's real disabled file was not used for
+the Apply check.

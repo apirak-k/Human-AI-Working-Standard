@@ -181,3 +181,21 @@ This is now the first implementation slice. Fix only the list-delimiter
 invariant, then rerun the same fixture and the full persistence checks. Keep
 the broader Preview/count/manifest issues separate until this state corruption
 is gone.
+
+## Delimiter Fix Green Verification (2026-09-20)
+
+- Product fix commit: `f53b435` (`fix(cli): preserve skill draft item
+  boundaries`).
+- The same three-row real-source fixture now reports
+  `GREEN_EXPECTED_FIRST_ON_ACTUAL=ON`.
+- The raw draft is newline-delimited; the previously fused ID is now a
+  separate entry.
+- Direct row toggle, Toggle All + Confirm, Toggle All + `q` cancellation,
+  re-entry after save, and all-on → Toggle All were exercised. Results were
+  `ON ON ON`, `OFF ON ON` for cancellation, `ON ON ON` after saved re-entry,
+  and `OFF OFF OFF` for the all-on inverse toggle respectively.
+- A disposable `settings_apply_skill_draft` fixture with all rows active wrote
+  only `# HAWS Disabled Skills (source-aware)`. The real
+  `E:/Human-AI-Working-Standard/skills/skills.disabled` file was not written.
+- Verification passed: `bash -n haws.sh`, human Doctor (`Overall: Ready`), and
+  Doctor JSON (`{"status":"Ready"}`).
