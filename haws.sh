@@ -5066,7 +5066,7 @@ _settings_skill_selector() {
     local source_id id display description entrypoint active source_path
     local detail label source_label
     local items=() ids=()
-    local -A source_paths=() source_labels=() display_counts=() source_skill_counts=()
+    local -A source_paths=() source_labels=() display_counts=()
 
     local source_url source_revision
     while IFS=$'\t' read -r source_id source_path source_url source_revision ||
@@ -5079,18 +5079,13 @@ _settings_skill_selector() {
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         display_counts["${display}"]=$(( ${display_counts[${display}]:-0} + 1 ))
-        source_skill_counts["${source_id}"]=$(( ${source_skill_counts[${source_id}]:-0} + 1 ))
     done <<< "${rows}"
 
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
         source_path="${source_paths[${source_id}]:-}"
         local is_pack=0
-        if [[ "${source_path}" != skills/custom* ]]; then
-            if [[ "${source_path}" == skills/packs/* ]] || [ "${source_skill_counts[${source_id}]:-0}" -gt 1 ]; then
-                is_pack=1
-            fi
-        fi
+        [[ "${source_path}" == skills/packs/* ]] && is_pack=1
         if [ "${wanted_source}" = "__custom__" ]; then
             [[ "${source_path}" == skills/custom* ]] || continue
         elif [ "${wanted_source}" = "__single__" ]; then
@@ -5222,11 +5217,7 @@ settings_skills_page() {
         [ -n "${id}" ] || continue
         source_path="${source_paths[${source_id}]:-}"
         local is_pack=0
-        if [[ "${source_path}" != skills/custom* ]]; then
-            if [[ "${source_path}" == skills/packs/* ]] || [ "${source_counts[${source_id}]:-0}" -gt 1 ]; then
-                is_pack=1
-            fi
-        fi
+        [[ "${source_path}" == skills/packs/* ]] && is_pack=1
         [ "${is_pack}" -eq 1 ] || continue
         [ -z "${seen_sources[${source_id}]:-}" ] || continue
         seen_sources["${source_id}"]=1
@@ -5242,11 +5233,7 @@ settings_skills_page() {
     for single_source_id in "${!source_counts[@]}"; do
         single_source_path="${source_paths[${single_source_id}]:-}"
         local is_pack=0
-        if [[ "${single_source_path}" != skills/custom* ]]; then
-            if [[ "${single_source_path}" == skills/packs/* ]] || [ "${source_counts[${single_source_id}]:-0}" -gt 1 ]; then
-                is_pack=1
-            fi
-        fi
+        [[ "${single_source_path}" == skills/packs/* ]] && is_pack=1
         [ "${is_pack}" -eq 1 ] && continue
         if [[ "${single_source_path}" == skills/custom* ]]; then
             custom_total=$((custom_total + ${source_counts[${single_source_id}]:-0}))
@@ -5283,11 +5270,7 @@ settings_skills_page() {
         for rp in "${!source_counts[@]}"; do
             local rp_path="${source_paths[${rp}]:-}"
             local rp_pack=0
-            if [[ "${rp_path}" != skills/custom* ]]; then
-                if [[ "${rp_path}" == skills/packs/* ]] || [ "${source_counts[${rp}]:-0}" -gt 1 ]; then
-                    rp_pack=1
-                fi
-            fi
+            [[ "${rp_path}" == skills/packs/* ]] && rp_pack=1
             if [ "${rp_pack}" -eq 1 ]; then
                 pack_active=$((pack_active + ${source_active_counts[${rp}]:-0}))
             elif [[ "${rp_path}" == skills/custom* ]]; then
@@ -5756,11 +5739,7 @@ settings_preview() {
         [ -n "${skill_id}" ] || continue
         source_path="${preview_source_paths[${skill_source_id}]:-}"
         local is_pack=0
-        if [[ "${source_path}" != skills/custom* ]]; then
-            if [[ "${source_path}" == skills/packs/* ]] || [ "${preview_source_counts[${skill_source_id}]:-0}" -gt 1 ]; then
-                is_pack=1
-            fi
-        fi
+        [[ "${source_path}" == skills/packs/* ]] && is_pack=1
 
         if [ "${is_pack}" -eq 1 ]; then
             if [[ "${seen_packs}" != *" ${skill_source_id} "* ]]; then
