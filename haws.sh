@@ -67,10 +67,24 @@ _health_fingerprint() {
     local repo state
     repo="$(_health_repo)"
     state="$(_health_state)"
-    local git_head hooks_cfg state_stamp env_stamp=""
+    local git_head hooks_cfg state_stamp="" env_stamp="" config_file
     git_head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)"
     hooks_cfg="$(git -C "$repo" config --get core.hooksPath 2>/dev/null || true)"
-    state_stamp="$(ls -ld "$state/settings.tsv" "$state/skills.disabled" "$state/environments.disabled" "$state/ownership.tsv" "$state/install.complete" 2>/dev/null | tr '\n' ';' || true)"
+    for config_file in \
+        "$state/settings.tsv" \
+        "$(_haws_compat_file environments.disabled)" \
+        "$state/skills.disabled" \
+        "$SCRIPT_DIR/skills/skills.disabled" \
+        "$SCRIPT_DIR/skills.disabled" \
+        "$SCRIPT_DIR/config/skills.disabled" \
+        "$state/ownership.tsv" \
+        "$state/install.complete"; do
+        if [ -f "$config_file" ]; then
+            state_stamp+="$config_file:$(_haws_sha256 "$config_file");"
+        else
+            state_stamp+="$config_file:missing;"
+        fi
+    done
     if [ -f "$state/ownership.tsv" ]; then
         local p
         while IFS= read -r p || [ -n "$p" ]; do
@@ -96,6 +110,11 @@ _health_collect() {
     state="$(_health_state)"
     repo_hash="$(printf '%s' "$repo" | cksum 2>/dev/null | awk '{print $1}')"
     cache_file="${TMPDIR:-${TEMP:-${TMP:-/tmp}}}/haws_health_${repo_hash:-0}.tsv"
+
+    local settings_status=0 environments_status=0 skills_status=0
+    if settings_load; then :; else settings_status=$?; fi
+    if disabled_environments_load; then :; else environments_status=$?; fi
+    if load_disabled_skills; then :; else skills_status=$?; fi
 
     if [ "$force_deep" -eq 0 ]; then
         current_fp="$(_health_fingerprint)"
@@ -123,17 +142,17 @@ _health_collect() {
     fi
 
     HAWS_HEALTH_FINDINGS=""
-    if settings_load; then
+    if [ "$settings_status" -eq 0 ]; then
         _health_add Ready Settings "settings.tsv parsed successfully"
     else
         _health_add Blocked Settings "settings.tsv could not be parsed"
     fi
-    if disabled_environments_load; then
+    if [ "$environments_status" -eq 0 ]; then
         _health_add Ready "AI Environments" "environments.disabled parsed successfully"
     else
         _health_add Blocked "AI Environments" "environments.disabled could not be parsed"
     fi
-    if load_disabled_skills; then
+    if [ "$skills_status" -eq 0 ]; then
         _health_add Ready Skills "skills.disabled parsed successfully"
     else
         _health_add Blocked Skills "skills.disabled could not be parsed"
