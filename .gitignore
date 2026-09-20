@@ -18,8 +18,9 @@ ehthumbs.db
 .worktrees/
 worktrees/
 
-# Personal Second Brain & Backups
-/secondbrain/
+# Second Brain's nested private checkout metadata; the neutral starter
+# documents in secondbrain/ are part of the public baseline.
+/secondbrain/.git/
 .haws_backup/
 
 # Scratch & Temporary Testing
@@ -37,4 +38,3 @@ scratch/
 /config/environments.disabled
 /environments.disabled
 /ai-configs/environments.disabled
-

@@ -2607,7 +2607,7 @@ run_sync() {
         pointer_content+="This environment operates under HAWS. Read and adhere to:\n"
         pointer_content+="- Core Standard: ${SOURCE_DIR}/core/HAWS.md\n"
         pointer_content+="- Work Instructions: ${SOURCE_DIR}/core/WORK_INSTRUCTIONS.md\n"
-        pointer_content+="- Optional personal DEV overlay: ${SOURCE_DIR}/secondbrain/USER_PREFERENCES.md, ${SOURCE_DIR}/secondbrain/ANTI_PATTERNS.md, and ${SOURCE_DIR}/secondbrain/WORKFLOW.md when present; otherwise use the generic defaults in ${SOURCE_DIR}/templates/secondbrain/\n"
+        pointer_content+="- Second Brain documents: ${SOURCE_DIR}/secondbrain/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)\n"
         pointer_content+="- Subagent roles: ${SOURCE_DIR}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.\n"
         pointer_content+="${marker_end}\n"
 
@@ -3925,15 +3925,13 @@ run_merge("'"${brain_dir}"'")
 
 _second_brain_bootstrap_missing() {
     local brain_dir="$1"
-    local name template
+    local name
     for name in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
-        [ -f "${brain_dir}/${name}" ] && continue
-        template="${SCRIPT_DIR}/templates/secondbrain/${name}"
-        if [ ! -s "${template}" ]; then
-            echo "  [ERROR] Missing Second Brain starter template: ${template}" >&2
+        if [ ! -s "${brain_dir}/${name}" ]; then
+            echo "  [ERROR] Missing Second Brain document: ${brain_dir}/${name}" >&2
+            echo "          Restore the neutral defaults from the HAWS checkout before continuing." >&2
             return 1
         fi
-        cp "${template}" "${brain_dir}/${name}" || return 1
     done
 }
 

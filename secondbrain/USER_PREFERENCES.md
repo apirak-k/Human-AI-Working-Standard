@@ -1,7 +1,7 @@
 # HAWS Default User Preferences
 
-This is a neutral starter file for a local Second Brain. It contains no personal
-preferences. A user's DEV overlay may replace or extend it when one is present.
+This is a neutral starter document for the local Second Brain. It contains no
+personal preferences; a DEV overlay may replace or extend it.
 
 ## Default Communication
 
