@@ -17,7 +17,7 @@
 ---
 
 ## 2. Core Build & Verification Commands
-*(Universal reference for agents across tools — OpenAI, Cursor, Claude Code, Antigravity)*
+*(Universal reference for agents across tools — OpenAI, Claude Code, Antigravity)*
 ```bash
 # Install dependencies
 npm install  # or: pnpm install / pip install -r requirements.txt

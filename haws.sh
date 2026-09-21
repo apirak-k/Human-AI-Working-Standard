@@ -22,7 +22,10 @@ run_codex_agents() {
         echo "[ERROR] Node.js is required for native Codex agent profiles." >&2
         return 1
     fi
-    node "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$@"
+    # Preserve the source path when HAWS runs from a managed/symlinked checkout.
+    # Node 20+ otherwise realpaths Windows temp/worktree parents before loading
+    # the module, which can fail even though the target checkout is readable.
+    node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$@"
 }
 
 
@@ -50,6 +53,18 @@ _health_env_path() {
         gemini) printf '%s/.gemini\n' "$HOME" ;;
         agents) printf '%s/.agents\n' "$HOME" ;;
         *) printf '%s/.%s\n' "$HOME" "$1" ;;
+    esac
+}
+
+_haws_environment_present() {
+    case "${1:-}" in
+        claude) [ -d "${HOME}/.claude" ] ;;
+        gemini) [ -d "${HOME}/.gemini" ] ;;
+        agents) [ -d "${HOME}/.agents" ] ;;
+        codex) {
+            [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]
+        } ;;
+        *) return 1 ;;
     esac
 }
 
@@ -163,7 +178,7 @@ _health_collect() {
         env_path="$(_health_env_path "$env")"
         if [ -n "${DISABLED_ENVS[$env]-}" ]; then
             _health_add Ready "AI Environments" "$env disabled by local configuration"
-        elif [ -d "$env_path" ]; then
+        elif _haws_environment_present "$env"; then
             _health_add Ready "AI Environments" "$env directory detected at $env_path"
         else
             _health_add Ready "AI Environments" "$env not detected"
@@ -292,8 +307,12 @@ _health_active_ai_names() {
     local result="" env env_path label
     for env in claude gemini agents; do
         env_path="$(_health_env_path "$env")"
-        case "$env" in claude) label=Claude ;; gemini) label=Gemini ;; agents) label=Codex ;; esac
-        if [ -z "${DISABLED_ENVS[$env]-}" ] && [ -d "$env_path" ]; then
+        case "$env" in
+            claude) label=Claude ;;
+            gemini) label=Gemini ;;
+            agents) label=Codex ;;
+        esac
+        if [ -z "${DISABLED_ENVS[$env]-}" ] && _haws_environment_present "$env"; then
             [ -n "$result" ] && result+=", "
             result+="$label"
         fi
@@ -606,7 +625,6 @@ legacy_run_doctor() {
         fi
     done
     check_item "${SCRIPT_DIR}/ai-configs/claude/CLAUDE.md.template" "ai-configs/claude/CLAUDE.md.template"
-    check_item "${SCRIPT_DIR}/ai-configs/cursor/haws.mdc.template" "ai-configs/cursor/haws.mdc.template"
     check_item "${SCRIPT_DIR}/ai-configs/gemini/GEMINI.md.template" "ai-configs/gemini/GEMINI.md.template"
     check_item "${SCRIPT_DIR}/ai-configs/codex/AGENTS.override.md.template" "ai-configs/codex/AGENTS.override.md.template"
     if [ -d "${SCRIPT_DIR}/containers" ]; then
@@ -823,7 +841,6 @@ legacy_run_doctor() {
     local detected_ais=()
     [ -d "${HOME}/.gemini" ] && detected_ais+=("Antigravity")
     [ -d "${HOME}/.claude" ] && detected_ais+=("Claude Code")
-    { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && detected_ais+=("Cursor")
 
     local ai_summary="None detected"
     [ "${#detected_ais[@]}" -gt 0 ] && ai_summary="${detected_ais[*]}"
@@ -1011,6 +1028,54 @@ _haws_state_replace() {
     mv -f -- "${temporary}" "${destination}"
 }
 
+_skills_disabled_state_file() {
+    printf '%s/skills.disabled\n' "$(_haws_state_dir)"
+}
+
+_skills_disabled_file_is_owned() {
+    local file="${1:-}"
+    [ -f "${file}" ] || return 1
+    grep -Eq '^[[:space:]]*#[[:space:]]*HAWS Disabled Skills([[:space:]]+\(source-aware\))?[[:space:]]*$' \
+        "${file}"
+}
+
+migrate_legacy_skill_state() {
+    local state_file legacy_file repo status index_status worktree_status
+    local temporary
+    state_file="$(_skills_disabled_state_file)"
+    [ -f "${state_file}" ] && return 0
+
+    # A clean tracked file is the repository baseline and must remain the
+    # fallback. Only migrate a known HAWS file that an older menu changed.
+    legacy_file="${SCRIPT_DIR}/skills/skills.disabled"
+    [ -f "${legacy_file}" ] || return 0
+    _skills_disabled_file_is_owned "${legacy_file}" || return 0
+    repo="$(_catalog_repo_dir)"
+    git -C "${repo}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    git -C "${repo}" ls-files --error-unmatch -- skills/skills.disabled >/dev/null 2>&1 || return 0
+    status="$(git -C "${repo}" status --porcelain=v1 --untracked-files=all -- skills/skills.disabled 2>/dev/null || true)"
+    [ -n "${status}" ] || return 0
+    [ "${status:0:1}" = " " ] || return 0
+    index_status="${status:0:1}"
+    worktree_status="${status:1:1}"
+    [ -n "${index_status}" ] && [ "${worktree_status}" != " " ] || return 0
+
+    temporary="${state_file}.stage.$$"
+    mkdir -p "$(dirname "${state_file}")" || return 1
+    cp -- "${legacy_file}" "${temporary}" || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    _haws_state_replace "${temporary}" "${state_file}" || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    if ! git -C "${repo}" checkout -- skills/skills.disabled >/dev/null 2>&1; then
+        echo "Blocked: could not restore the legacy tracked Skill state file." >&2
+        return 1
+    fi
+}
+
 _second_brain_dir() {
     printf '%s/secondbrain\n' "${SCRIPT_DIR}"
 }
@@ -1191,6 +1256,10 @@ disabled_environments_load() {
             line="${line#${line%%[![:space:]]*}}"
             line="${line%${line##*[![:space:]]}}"
             [ -n "${line}" ] || continue
+            case "${line}" in
+                claude|gemini|codex) ;;
+                *) continue ;;
+            esac
             DISABLED_ENVIRONMENTS["${line}"]=1
             DISABLED_ENVS["${line}"]=1
         done < "${dfile}"
@@ -1340,6 +1409,7 @@ sync_lock_release() {
 state_init() {
     local state="$(_haws_state_dir)"
     mkdir -p "${state}" || return 1
+    migrate_legacy_skill_state || return $?
     settings_load || return $?
     if [ ! -f "${state}/settings.tsv" ]; then
         settings_save || return $?
@@ -1350,23 +1420,31 @@ state_init() {
 
 load_disabled_skills() {
     DISABLED_SKILLS=()
-    local dfile="${SCRIPT_DIR}/skills.disabled"
-    [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/config/skills.disabled" ] && dfile="${SCRIPT_DIR}/config/skills.disabled"
+    local state_file="$(_skills_disabled_state_file)"
+    local dfile="${state_file}"
+    if [ ! -f "${dfile}" ]; then
+        dfile="${SCRIPT_DIR}/skills/skills.disabled"
+        [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/skills.disabled" ] && dfile="${SCRIPT_DIR}/skills.disabled"
+        [ ! -f "${dfile}" ] && [ -f "${SCRIPT_DIR}/config/skills.disabled" ] && dfile="${SCRIPT_DIR}/config/skills.disabled"
+    fi
+    HAWS_DISABLED_SKILLS_FILE="${dfile}"
+    export HAWS_DISABLED_SKILLS_FILE
     if [ -f "${dfile}" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
             line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')"
             [ -n "$line" ] && DISABLED_SKILLS["$line"]=1
         done < "${dfile}"
     fi
+    return 0
 }
 
 disabled_skills_load() { load_disabled_skills "$@"; }
 
 save_disabled_skills() {
-    local dfile="${SCRIPT_DIR}/skills.disabled"
+    local dfile="$(_skills_disabled_state_file)"
     mkdir -p "$(dirname "${dfile}")"
     {
-        echo "# HAWS Disabled Skills"
+        echo "# HAWS Disabled Skills (source-aware)"
         echo "# Skills listed here will not be linked to Claude Code or Antigravity"
         for sk in "${!DISABLED_SKILLS[@]}"; do
             [ -n "$sk" ] && echo "$sk"
@@ -1462,7 +1540,7 @@ declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
 catalog_source_kind() {
     local source_id="${1:-}"
     local out_var="${2:-}"
-    local path url revision kind
+    local path url revision source_dir raw_skill_count kind
     [ -n "${source_id}" ] || return 1
     [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]] || declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
     if [[ -v HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"] ]]; then
@@ -1475,13 +1553,21 @@ catalog_source_kind() {
         return 0
     fi
     IFS=$'\t' read -r path url revision <<< "$(_catalog_source_fields "${source_id}")" || return 1
-    path="${path%/}"
-    case "${path}" in
-        skills/custom|skills/custom/*) kind="CUSTOM" ;;
-        skills/standalone|skills/standalone/*) kind="SINGLE" ;;
-        skills/packs|skills/packs/*) kind="PACK" ;;
-        *) kind="UNVERIFIED" ;;
-    esac
+    source_dir="$(_catalog_repo_dir)/${path%/}"
+    if [ ! -d "${source_dir}" ]; then
+        kind="UNVERIFIED"
+    else
+        raw_skill_count="$(find "${source_dir}" -type f \
+            \( -name SKILL.md -o -name skill.md \) -print 2>/dev/null |
+            awk 'END { print NR + 0 }')"
+        if [ "${raw_skill_count}" -eq 1 ]; then
+            kind="SINGLE"
+        elif [ "${raw_skill_count}" -gt 1 ]; then
+            kind="PACK"
+        else
+            kind="UNVERIFIED"
+        fi
+    fi
     HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
     if [ -n "${out_var}" ]; then
         printf -v "${out_var}" '%s' "${kind}"
@@ -1494,11 +1580,20 @@ _catalog_is_disabled() {
     local skill_id="$1"
     local display_name="$2"
     local entrypoint="$3"
+    local source_mode="${4:-effective}"
     local file line
-    for file in \
-        "${SCRIPT_DIR}/skills/skills.disabled" \
-        "${SCRIPT_DIR}/skills.disabled" \
-        "${SCRIPT_DIR}/config/skills.disabled"; do
+    local state_file="$(_skills_disabled_state_file)"
+    local files=()
+    if [ "${source_mode}" != baseline ] && [ -f "${state_file}" ]; then
+        files=("${state_file}")
+    else
+        files=(
+            "${SCRIPT_DIR}/skills/skills.disabled"
+            "${SCRIPT_DIR}/skills.disabled"
+            "${SCRIPT_DIR}/config/skills.disabled"
+        )
+    fi
+    for file in "${files[@]}"; do
         [ -f "${file}" ] || continue
         while IFS= read -r line || [ -n "${line}" ]; do
             line="${line%$'\r'}"
@@ -1529,7 +1624,8 @@ _catalog_skill_is_eligible() {
 }
 
 catalog_skills() {
-    if [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+    local disabled_mode="${1:-effective}"
+    if [ "${disabled_mode}" = effective ] && [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
         [ -n "${HAWS_CATALOG_SKILLS_CACHE}" ] && printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}"
         return 0
     fi
@@ -1563,7 +1659,8 @@ catalog_skills() {
             description="${description//$'\t'/ }"
             description="${description//$'\n'/ }"
             active=1
-            _catalog_is_disabled "${logical_id}" "${display_name}" "${entrypoint}" && active=0
+            _catalog_is_disabled "${logical_id}" "${display_name}" "${entrypoint}" \
+                "${disabled_mode}" && active=0
             printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
                 "${source_id}" "${logical_id}" "${display_name}" \
                 "${description}" "${entrypoint}" "${active}"
@@ -1870,6 +1967,29 @@ _sync_present_result() {
     printf '  %-28s %-18s %s\n' "${display_target}" "${marker} ${label}" "${detail:--}"
 }
 
+_sync_local_change_detail() {
+    local repo="${1:-}" label="${2:-source}" status line item detail="" count=0 shown=0
+    status="$(git -C "${repo}" status --short --untracked-files=all 2>/dev/null || true)"
+    while IFS= read -r line || [ -n "${line}" ]; do
+        [ -n "${line}" ] || continue
+        count=$((count + 1))
+        if [ "${shown}" -lt 4 ]; then
+            item="${line:0:2} ${line:3}"
+            [ -n "${detail}" ] && detail+="; "
+            detail+="${item}"
+            shown=$((shown + 1))
+        fi
+    done <<< "${status}"
+    if [ "${count}" -eq 0 ]; then
+        printf '%s local changes could not be summarized' "${label}"
+        return 0
+    fi
+    if [ "${count}" -gt "${shown}" ]; then
+        detail+="; +$((count - shown)) more"
+    fi
+    printf '%s local changes: %s' "${label}" "${detail}"
+}
+
 _sync_legacy_echo() {
     [ "${HAWS_SYNC_PRESENTATION:-0}" = 1 ] || echo "$*"
 }
@@ -2086,7 +2206,9 @@ sync_target() {
 
     case "${preflight_status}" in
         2)
-            sync_result_write "${target}" blocked - "source has staged, unstaged, or untracked changes" || return 1
+            local change_label="source ${source_path:-root}"
+            [ "${target}" = haws ] && change_label="HAWS root"
+            sync_result_write "${target}" blocked - "$(_sync_local_change_detail "${source_dir}" "${change_label}")" || return 1
             _sync_legacy_echo "${target}: blocked (local changes)"
             return 1
             ;;
@@ -2224,7 +2346,7 @@ sync_target() {
 
 sync_second_brain_target() {
     local brain_dir="${SCRIPT_DIR}/secondbrain"
-    local current remote_head final before status timeout_seconds
+    local current remote_head final before timeout_seconds
     if [ "${HAWS_AUTO_UPDATE_BRAIN:-on}" != on ]; then
         sync_result_write secondbrain skipped - "Auto Update is disabled" || return 1
         _sync_legacy_echo "secondbrain: skipped (auto update disabled)"
@@ -2235,21 +2357,16 @@ sync_second_brain_target() {
         _sync_legacy_echo "secondbrain: failed (checkout is unavailable)"
         return 1
     }
-    if ! status="$(git -C "${brain_dir}" status --porcelain --untracked-files=all 2>/dev/null)"; then
-        sync_result_write secondbrain failed - "Second Brain checkout could not be inspected" || return 1
-        _sync_legacy_echo "secondbrain: failed (checkout could not be inspected)"
-        return 1
-    fi
-    [ -z "${status}" ] || {
-        sync_result_write secondbrain blocked - "Second Brain has local changes" || return 1
-        _sync_legacy_echo "secondbrain: blocked (local changes)"
-        return 1
-    }
     git -C "${brain_dir}" remote get-url origin >/dev/null 2>&1 || {
         sync_result_write secondbrain skipped - "Second Brain is local-only" || return 1
         _sync_legacy_echo "secondbrain: skipped (local-only)"
         return 0
     }
+    if ! git -C "${brain_dir}" status --porcelain --untracked-files=all >/dev/null 2>&1; then
+        sync_result_write secondbrain failed - "Second Brain checkout could not be inspected" || return 1
+        _sync_legacy_echo "secondbrain: failed (checkout could not be inspected)"
+        return 1
+    fi
     current="$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
     timeout_seconds="$(_sync_timeout_seconds)"
     if run_with_deadline "${timeout_seconds}" run_user sync; then
@@ -2431,6 +2548,11 @@ run_sync() {
     done
     shift || true
 
+    # Refresh once per sync process and share the source snapshot with Step 1
+    # and Step 4. The latter otherwise re-runs Git config/revision discovery.
+    unset HAWS_CATALOG_SOURCES_CACHE
+    export HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources 2>/dev/null || true)"
+
     local run_sync_had_cache=1
     [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || run_sync_had_cache=0
     if [ "${run_sync_had_cache}" -eq 0 ]; then
@@ -2452,23 +2574,26 @@ run_sync() {
     fi
     echo ""
 
+    # A HAWS update may have changed .gitmodules. Do not let the pre-sync
+    # source snapshot hide newly added or removed skill sources from Step 4.
+    if [ "${SYNC_SUMMARY_UPDATED:-0}" -gt 0 ]; then
+        unset HAWS_CATALOG_SOURCES_CACHE
+    fi
+
     local SOURCE_DIR="${SCRIPT_DIR}"
 
     # 2. Detect AI Environments
     echo "[*] Step 2: Detecting AI environments"
     local DETECTED_CLAUDE=false
     local DETECTED_GEMINI=false
-    local DETECTED_CURSOR=false
     local DETECTED_CODEX=false
 
     [ -d "${HOME}/.claude" ] && [ -z "${DISABLED_ENVIRONMENTS[claude]:-}" ] && DETECTED_CLAUDE=true
     [ -d "${HOME}/.gemini" ] && [ -z "${DISABLED_ENVIRONMENTS[gemini]:-}" ] && DETECTED_GEMINI=true
-    { [ -d "${HOME}/.cursor" ] || [ -d "${HOME}/AppData/Roaming/Cursor" ] || [ -f "${HOME}/.cursorrules" ]; } && [ -z "${DISABLED_ENVIRONMENTS[cursor]:-}" ] && DETECTED_CURSOR=true
     { [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; } && [ -z "${DISABLED_ENVIRONMENTS[codex]:-}" ] && DETECTED_CODEX=true
 
     [ "$DETECTED_CLAUDE" = true ] && echo "  [✓] Claude Code detected (${HOME}/.claude)"
     [ "$DETECTED_GEMINI" = true ] && echo "  [✓] Google Antigravity detected (${HOME}/.gemini)"
-    [ "$DETECTED_CURSOR" = true ] && echo "  [✓] Cursor IDE detected"
     [ "$DETECTED_CODEX" = true ] && echo "  [✓] OpenAI Codex detected (${HOME}/.codex)"
     echo "[PASS] AI environment detection complete"
     echo ""
@@ -2646,14 +2771,6 @@ run_sync() {
     echo "[*] Step 3: Configuring global environment pointers"
     [ "$DETECTED_CLAUDE" = true ] && safe_append_pointer "${HOME}/.claude/CLAUDE.md"
     [ "$DETECTED_GEMINI" = true ] && safe_append_pointer "${HOME}/.gemini/GEMINI.md"
-    if [ "$DETECTED_CURSOR" = true ]; then
-        if [ -d "${HOME}/.cursor" ]; then
-            mkdir -p "${HOME}/.cursor/rules"
-            safe_append_pointer "${HOME}/.cursor/rules/haws.mdc"
-        else
-            safe_append_pointer "${HOME}/.cursorrules"
-        fi
-    fi
     if [ "$DETECTED_CODEX" = true ]; then
         if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
             safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
@@ -2672,7 +2789,13 @@ run_sync() {
     local skill_rows source_id skill_id skill_display skill_description entrypoint active
     local source_path source_dir skill_dir target_name source_label
     local -A source_paths=() display_counts=() processed_skills=()
-    skill_rows="$(catalog_skills)"
+    # Step 1 owns the catalog snapshot for this sync. Reuse it when source
+    # synchronization left it valid; sync_run invalidates it after an update.
+    if [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        skill_rows="${HAWS_CATALOG_SKILLS_CACHE}"
+    else
+        skill_rows="$(catalog_skills)"
+    fi
     while IFS=$'\t' read -r source_id skill_id skill_display skill_description entrypoint active ||
         [ -n "${skill_id}" ]; do
         [ -n "${skill_id}" ] && [ "${active}" = 1 ] || continue
@@ -3939,11 +4062,46 @@ _second_brain_bootstrap_missing() {
     done
 }
 
+_second_brain_ensure_identity() {
+    local brain_dir="$1"
+    local user_name user_email
+    user_name="$(git -C "${brain_dir}" config --get user.name 2>/dev/null || true)"
+    user_email="$(git -C "${brain_dir}" config --get user.email 2>/dev/null || true)"
+    if [ -z "${user_name}" ]; then
+        git -C "${brain_dir}" config --local user.name "HAWS User" || return 1
+    fi
+    if [ -z "${user_email}" ]; then
+        git -C "${brain_dir}" config --local user.email "user@haws.local" || return 1
+    fi
+}
+
 run_user() {
     local action="${1:-status}"
     shift || true
 
     local brain_dir="${SCRIPT_DIR}/secondbrain"
+    local repo_url=""
+
+    # Validate a requested remote before creating or initializing the local
+    # Second Brain repository. Invalid input must be a true no-op.
+    if [ "${action}" = connect ]; then
+        repo_url="${1:-}"
+        repo_url="$(echo "${repo_url}" | tr -d '\r\n' | xargs 2>/dev/null || true)"
+        if [ -z "${repo_url}" ]; then
+            read -r -p "Enter Private GitHub Repository URL (e.g. git@github.com:user/my-haws-brain.git): " repo_url
+            repo_url="$(echo "${repo_url}" | tr -d '\r\n' | xargs 2>/dev/null || true)"
+        fi
+        if [ -z "${repo_url}" ] || [[ "${repo_url}" =~ ^[[:space:]]*$ ]]; then
+            echo "  [ERROR] No valid URL provided. Aborted."
+            return 1
+        fi
+        if [[ ! "${repo_url}" =~ (git@|https?://|ssh://|file://|^/|^[A-Za-z]:|^(\.\.?/)) ]]; then
+            echo "  [ERROR] Invalid Git repository URL format: '${repo_url}'"
+            echo "  [INFO] URL must start with git@, https://, ssh://, or be a valid repository path."
+            return 1
+        fi
+    fi
+
     mkdir -p "${brain_dir}"
 
     if [ ! -d "${brain_dir}/.git" ]; then
@@ -3965,24 +4123,13 @@ run_user() {
         fi
     fi
 
+    if ! _second_brain_ensure_identity "${brain_dir}"; then
+        echo "  [ERROR] Could not configure a local Git identity for Second Brain." >&2
+        return 1
+    fi
+
     case "${action}" in
         connect)
-            local repo_url="${1:-}"
-            repo_url="$(echo "${repo_url}" | tr -d '\r\n' | xargs 2>/dev/null || true)"
-            if [ -z "${repo_url}" ]; then
-                read -r -p "Enter Private GitHub Repository URL (e.g. git@github.com:user/my-haws-brain.git): " repo_url
-                repo_url="$(echo "${repo_url}" | tr -d '\r\n' | xargs 2>/dev/null || true)"
-            fi
-            if [ -z "${repo_url}" ] || [[ "${repo_url}" =~ ^[[:space:]]*$ ]]; then
-                echo "  [ERROR] No valid URL provided. Aborted."
-                return 1
-            fi
-            if [[ ! "${repo_url}" =~ (git@|https?://|ssh://|file://|^/|^[A-Za-z]:|^(\.\.?/)) ]]; then
-                echo "  [ERROR] Invalid Git repository URL format: '${repo_url}'"
-                echo "  [INFO] URL must start with git@, https://, ssh://, or be a valid repository path."
-                return 1
-            fi
-
             echo "============================================================="
             echo "             HAWS Second Brain Connect"
             echo "============================================================="
@@ -4678,14 +4825,13 @@ install_is_complete() {
 }
 
 _haws_all_environments() {
-    printf '%s\n' claude gemini cursor codex
+    printf '%s\n' claude gemini codex
 }
 
 _haws_environment_label() {
     case "${1:-}" in
         claude) echo "Claude Code" ;;
         gemini) echo "Google Antigravity" ;;
-        cursor) echo "Cursor" ;;
         codex) echo "OpenAI Codex" ;;
         *) echo "${1:-Unknown}" ;;
     esac
@@ -4702,16 +4848,7 @@ _haws_toggle_label() {
 _haws_detected_environments() {
     local environment
     while IFS= read -r environment; do
-        case "${environment}" in
-            claude) [ -d "${HOME}/.claude" ] || continue ;;
-            gemini) [ -d "${HOME}/.gemini" ] || continue ;;
-            cursor) {
-                [ -d "${HOME}/.cursor" ] || [ -f "${HOME}/.cursorrules" ]
-            } || continue ;;
-            codex) {
-                [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]
-            } || continue ;;
-        esac
+        _haws_environment_present "${environment}" || continue
         printf '%s\n' "${environment}"
     done < <(_haws_all_environments)
 }
@@ -4846,6 +4983,7 @@ _settings_ensure_skill_draft() {
 }
 
 settings_draft_load() {
+    migrate_legacy_skill_state || return $?
     settings_load || return $?
     disabled_environments_load
     load_disabled_skills
@@ -4928,16 +5066,14 @@ settings_draft_reset() {
     HAWS_DRAFT_AUTO_UPDATE="on"
     HAWS_DRAFT_AUTO_UPDATE_SKILLS="on"
     HAWS_DRAFT_AUTO_UPDATE_BRAIN="on"
-    HAWS_DRAFT_ENVIRONMENTS="${HAWS_PERSIST_ENVIRONMENTS-$(_haws_detected_environments)}"
+    HAWS_DRAFT_ENVIRONMENTS="$(_haws_detected_environments)"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
     HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES:-}"
     HAWS_DRAFT_ADDED_REPOSITORIES=""
     HAWS_DRAFT_ADDED_PATHS=""
-    if [ -z "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
-        HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)"
-        export HAWS_CATALOG_SKILLS_CACHE
-    fi
-    HAWS_DRAFT_SKILLS="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | cut -f2)"
+    # Reset must match a fresh clone: use the tracked baseline, not device-local state.
+    local reset_catalog="$(catalog_skills baseline)"
+    HAWS_DRAFT_SKILLS="$(printf '%s\n' "${reset_catalog}" | awk -F $'\t' '$6 == 1 {print $2}')"
     HAWS_DRAFT_SKILLS_LOADED=1
     export HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
         HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_SOURCES \
@@ -5799,7 +5935,7 @@ settings_apply_repository_action() {
 
 settings_apply_skill_draft() {
     [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] || return 0
-    local destination="${SCRIPT_DIR}/skills/skills.disabled"
+    local destination="$(_skills_disabled_state_file)"
     local temporary="${destination}.stage.$$"
     local source_id skill_id display description entrypoint active
     mkdir -p "$(dirname "${destination}")" || return 1

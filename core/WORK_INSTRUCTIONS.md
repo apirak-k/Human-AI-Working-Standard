@@ -51,7 +51,7 @@ For a new project or major feature:
 
 - do not invent project rules blindly
 - scaffold necessary blueprints from `templates/` based on project requirements
-- connect your active AI assistant by scaffolding the corresponding environment adapter from `ai-configs/`: `gemini/GEMINI.md.template` for Google Antigravity, `claude/CLAUDE.md.template` for Claude Code, `cursor/haws.mdc.template` for Cursor, or `codex/AGENTS.override.md.template` for OpenAI Codex. Codex uses user skills in `~/.agents/skills` and native role profiles in `~/.codex/agents`; install/check those profiles with `bash haws.sh codex-agents install` / `check` in the HAWS checkout.
+- connect your active AI assistant by scaffolding the corresponding environment adapter from `ai-configs/`: `gemini/GEMINI.md.template` for Google Antigravity, `claude/CLAUDE.md.template` for Claude Code, or `codex/AGENTS.override.md.template` for OpenAI Codex. Codex uses user skills in `~/.agents/skills` and native role profiles in `~/.codex/agents`; install/check those profiles with `bash haws.sh codex-agents install` / `check` in the HAWS checkout.
 - during discovery and ideation, define project scope, roadmap, and live system state in `PROJECT.md` (from `templates/PROJECT.md`), system boundaries in `ARCHITECTURE.md` (from `templates/ARCHITECTURE.md`), and visual tokens in `DESIGN.md` (from `templates/DESIGN.md`)
 - before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` (from `templates/CONSTRAINTS.md`) and agent permission boundaries in `AGENTS.md` (from `templates/AGENTS.md`)
 - create or update `HANDOFF.md` when work must pause or transfer across sessions
