@@ -1,6 +1,6 @@
 # Human–AI Working Standard (HAWS) v2.0
 
-A working standard, orchestration rules, and specialized subagents for humans and AI coding assistants. Designed to work across **Google Antigravity**, **Claude Code**, **Cursor**, **ChatGPT**, and other AI tools on Windows, macOS, and Linux.
+A working standard, orchestration rules, and specialized subagents for humans and AI coding assistants. Designed to work across **Google Antigravity**, **Claude Code**, **OpenAI Codex**, **ChatGPT**, and other AI tools on Windows, macOS, and Linux.
 
 ---
 
@@ -61,7 +61,7 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 
 ### Cross-Platform Setup Details
 
-- **Windows 10 / 11**: Double-click `haws.bat`. It delegates to Git Bash and preserves the shared menu behavior. No administrator privileges are required for the launcher; Windows link capabilities depend on the host and are reported as `[Unverified]` when unavailable. Antigravity uses declarative JSON mapping (`skills.json`); Claude Code, Cursor, and Codex use their existing adapters.
+- **Windows 10 / 11**: Double-click `haws.bat`. It delegates to Git Bash and preserves the shared menu behavior. No administrator privileges are required for the launcher; Windows link capabilities depend on the host and are reported as `[Unverified]` when unavailable. Antigravity uses declarative JSON mapping (`skills.json`); Claude Code and Codex use their existing adapters.
 - **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
 
 ---
@@ -71,7 +71,7 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 
 HAWS physically enforces the **3-Tier Data Separation Model**:
 1. **Global Core (`core/`, `skills/`, `ai-configs/`)**: Public upstream framework tracked by Git. Safely updated anytime via `Sync`.
-2. **Device-Local State (`.haws/state/`)**: Machine-specific junction registrations and toggle settings. Kept 100% out of Git.
+2. **Device-Local State (`.haws/state/`)**: Machine-specific junction registrations and toggle settings, including the active Skill selection in `.haws/state/skills.disabled`. Kept 100% out of Git.
 3. **Second Brain Documents (`secondbrain/`)**: Public `main` contains only neutral starter documents (`USER_PREFERENCES.md`, `ANTI_PATTERNS.md`, and `WORKFLOW.md`); the DEV checkout may contain personalized versions and private notes.
 
 - `secondbrain/` can also be managed as an independent private Git repository for seamless cross-machine synchronization.
@@ -135,6 +135,14 @@ For Single Skills and Multi-Skill Packs:
 
 Custom skills can be removed by deleting the folder and running `bash haws.sh sync --clean`.
 
+Skill enable/disable choices are device-local. The tracked `skills/skills.disabled`
+file is only the repository baseline for a fresh checkout; the Settings menu
+writes user changes to `.haws/state/skills.disabled` so changing Skills does not
+dirty the HAWS root or block Sync. Older tracked menu state is migrated on the
+first state initialization when it is safe to do so. `Reset Settings to Defaults`
+restores the Skill draft from that tracked baseline and enables all detected AI
+environments in the draft; `Apply` is still required to persist the reset.
+
 ---
 
 ## Repository Structure
@@ -158,11 +166,10 @@ Custom skills can be removed by deleting the folder and running `bash haws.sh sy
 │   └── WORKFLOW.md
 ├── skills/                              # Curated capability repository (3 clean categories)
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
-│   │   └── keyboard-layout-fixer/       # Bidirectional Thai/EN & CapsLock inversion converter
 │   ├── packs/                           # Repositories that provide multiple related capabilities
 │   ├── standalone/                      # Single-purpose external repositories
-│   └── skills.disabled                  # Disabled skills blacklist (filter gate)
-├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Cursor, Codex)
+│   └── skills.disabled                  # Tracked default Skill blacklist (filter gate)
+├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Codex)
 └── templates/                           # Public project/document blueprints only
     ├── AGENTS.md
     ├── ARCHITECTURE.md
@@ -186,15 +193,6 @@ Custom skills can be removed by deleting the folder and running `bash haws.sh sy
    - `commit-msg`: Enforces Conventional Commits syntax and the English/ASCII invariant.
 
 ---
-
-## Built-in Custom Skill: keyboard-layout-fixer
-
-Located at `skills/custom/keyboard-layout-fixer/`:
-- **Case 1 (Thai on English Layout)**: `fdfd` -> `ดกดก`, `grnhv` -> `เพื้อ`
-- **Case 2 (English on Thai Layout)**: `ดกดก` -> `fdfd`
-- **Case 3 (Inverted CapsLock English)**: `hELLO wORLD` -> `Hello World`
-- **Case 4 (CapsLock Active on EN Layout typing Thai)**: `FDFD` -> `ดกดก`, `GRNHV` -> `เพื้อ` (without shifted vowel/tone mark distortion)
-- **Safety Guard (Acronym Bypass)**: Common English acronyms (`API`, `SQL`, `HTML`, `README`, `JSON`, `URL`, etc.) are detected and preserved without conversion.
 
 ---
 
