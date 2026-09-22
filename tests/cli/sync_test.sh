@@ -335,13 +335,18 @@ test_clean_source_applies_remote_revision() {
 test_indexed_submodule_skill_update_does_not_dirty_root() {
     add_indexed_source indexed
     local target="skills/packs/indexed::skills/packs/indexed"
-    local new_head
+    local new_head root_head
+    root_head="$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" || return 1
     new_head="$(advance_source indexed device-update)" || return 1
     write_settings on
     source_haws || return 1
     sync_run >"${OUTPUT_FILE}" 2>&1 || return 1
     [ "$(device_source_head indexed)" = "${new_head}" ] || return 1
     [ "$(source_head indexed)" != "${new_head}" ] || return 1
+    [ "$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" = "${root_head}" ] || {
+        echo "expected skill refresh not to create a root commit" >&2
+        return 1
+    }
     [ -z "$(git -C "${FIXTURE_REPO}" status --porcelain --untracked-files=all)" ] || {
         echo "expected clean root after device-local skill update" >&2
         git -C "${FIXTURE_REPO}" status --short >&2
