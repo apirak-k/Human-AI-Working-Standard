@@ -71,13 +71,22 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 
 HAWS physically enforces the **3-Tier Data Separation Model**:
 1. **Global Core (`core/`, `skills/`, `ai-configs/`)**: Public upstream framework tracked by Git. Safely updated anytime via `Sync`.
-2. **Device-Local State (`.haws/state/`)**: Machine-specific junction registrations and toggle settings, including the active Skill selection in `.haws/state/skills.disabled`. Kept 100% out of Git.
+2. **Device-Local State (`.haws/state/`, `${HAWS_STATE_DIR}/skill-sources/`, and `${HOME}/.haws/skills-ownership.tsv`)**: Machine-specific junction registrations, toggle settings, external skill runtime checkouts, and HAWS link-ownership records. Kept 100% out of Git.
 3. **Second Brain Documents (`secondbrain/`)**: Public `main` contains only neutral starter documents (`USER_PREFERENCES.md`, `ANTI_PATTERNS.md`, and `WORKFLOW.md`); the DEV checkout may contain personalized versions and private notes.
 
 - `secondbrain/` can also be managed as an independent private Git repository for seamless cross-machine synchronization.
 
 > [!IMPORTANT]
 > **Privacy Invariant**: Your Second Brain repository on GitHub **MUST be created as PRIVATE**. Never connect `secondbrain/` to a public repository to ensure that your personal notes, communication preferences, and recorded anti-patterns remain strictly confidential.
+
+### Branch roles and promotion
+
+- **`dev`** is the shared development and integration branch. Changes are
+  verified there first.
+- **`main`** is the USER/release branch. Promote only a verified `dev` head to
+  `main`.
+- Personal Second Brain content and device-local state are never promoted from
+  a DEV checkout into public `main`.
 
 ### Connecting to Cloud (Two-Way Sync)
 On any computer (work machine or home machine):
@@ -95,6 +104,32 @@ Use `haws.bat`, then choose the matching Home action:
 - `Doctor` reports executed checks without repairing or syncing.
 - `Uninstall` shows a preview and removes only matching HAWS-owned items after confirmation.
 
+### Sync safety and ownership
+
+`Sync` keeps shared repository state, device-local installation state, and
+personal user data separate:
+
+- **Root safety:** Ordinary tracked, staged, or untracked root changes block
+  Sync so HAWS does not overwrite work in progress. Worktree-only changes
+  inside an initialized Git submodule are treated as device-local drift;
+  staged gitlink changes still block Sync.
+- **External skill updates:** Indexed external skill sources are refreshed in
+  the ignored device-local cache under `${HAWS_STATE_DIR}/skill-sources/`.
+  The parent repository's gitlink is not changed by this refresh, and HAWS
+  does not automatically stage, commit, or push the root repository.
+- **Link ownership:** A stale link is re-bound only when HAWS can verify that
+  it owns the link. An unowned link or a link modified by the user is preserved.
+- **Local-ahead safety:** If the local HAWS checkout is already ahead of the
+  fetched remote candidate, Sync reports it as up to date and preserves the
+  local HEAD; it does not reset or move the checkout backwards.
+- **Second Brain boundary:** Second Brain is local-only unless a remote is
+  explicitly connected. When connected, stage, commit, fetch, and push
+  failures are reported as failures rather than a false success.
+
+When a checkout or HAWS version changes, run `bash haws.sh doctor` and then
+`bash haws.sh sync`. Do not delete links manually to repair a stale worktree
+target; HAWS will repair only links covered by its ownership record.
+
 ---
 
 ## HAWS CLI Reference (`haws.sh`)
@@ -102,7 +137,7 @@ Use `haws.bat`, then choose the matching Home action:
 | Command | Purpose |
 | :--- | :--- |
 | `bash haws.sh setup` | First-use Setup flow with draft, Preview, and final Install/Update confirmation |
-| `bash haws.sh sync` | Two-way Second Brain sync, pulls upstream framework, updates submodules, and verifies links |
+| `bash haws.sh sync` | Syncs Second Brain when connected, refreshes external skill sources in device-local state, pulls the upstream framework, and verifies owned links |
 | `bash haws.sh status` | Read-only current health summary and measured last-sync result |
 | `bash haws.sh doctor` | Read-only evidence-based diagnostic report (`--json` supported) |
 | `bash haws.sh uninstall` | Safely detach HAWS pointers, skills, and hooks without deleting user data (`--dry-run` supported) |
