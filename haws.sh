@@ -1538,7 +1538,7 @@ _catalog_runtime_source_dir() {
 
 _haws_prepare_device_source() {
     local source_id="${1:-}" fields source_path source_url
-    local repo="$(_catalog_repo_dir)" source_dir device_dir
+    local repo="$(_catalog_repo_dir)" source_dir device_dir seed_remote
     [ -n "${source_id}" ] || return 1
     fields="$(_catalog_source_fields "${source_id}" 2>/dev/null || true)"
     [ -n "${fields}" ] || return 1
@@ -1548,11 +1548,14 @@ _haws_prepare_device_source() {
     git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 && return 0
     source_dir="${repo}/${source_path}"
     git -C "${source_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+    seed_remote="$(git -C "${source_dir}" remote get-url origin 2>/dev/null || true)"
     mkdir -p "$(dirname "${device_dir}")" || return 1
     git clone -q --no-hardlinks "${source_dir}" "${device_dir}" || return 1
-    if [ -n "${source_url}" ] && [ "${source_url}" != - ] &&
+    if [ -n "${seed_remote}" ] && [ -n "${source_url}" ] && [ "${source_url}" != - ] &&
         [ "${source_url}" != local ]; then
         git -C "${device_dir}" remote set-url origin "${source_url}" || return 1
+    elif [ -z "${seed_remote}" ]; then
+        git -C "${device_dir}" remote remove origin >/dev/null 2>&1 || true
     fi
     return 0
 }

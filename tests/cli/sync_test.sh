@@ -332,6 +332,17 @@ test_clean_source_applies_remote_revision() {
     assert_record "${target}" updated
 }
 
+test_device_source_without_seed_remote_stays_local_only() {
+    add_indexed_source local-only
+    local source_path="${FIXTURE_REPO}/skills/packs/local-only"
+    local source_id="skills/packs/local-only::skills/packs/local-only"
+    git -C "${source_path}" remote remove origin || return 1
+    source_haws || return 1
+    _haws_prepare_device_source "${source_id}" || return 1
+    ! git -C "${FIXTURE_REPO}/.haws/state/skill-sources/skills/packs/local-only" \
+        remote get-url origin >/dev/null 2>&1
+}
+
 test_indexed_submodule_skill_update_does_not_dirty_root() {
     add_indexed_source indexed
     local target="skills/packs/indexed::skills/packs/indexed"
@@ -714,6 +725,7 @@ else
     run_test test_sync_runs_phases_in_order_and_configures_hooks
     run_test test_sync_target_rows_use_batch_result_markers
     run_test test_clean_source_applies_remote_revision
+    run_test test_device_source_without_seed_remote_stays_local_only
     run_test test_indexed_submodule_skill_update_does_not_dirty_root
     run_test test_root_preflight_ignores_only_legacy_submodule_worktree_drift
     run_test test_haws_sync_treats_remote_ancestor_as_up_to_date
