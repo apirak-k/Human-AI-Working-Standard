@@ -83,6 +83,33 @@ add_source() {
         "${name}" "${name}" "${remote}" >> "${FIXTURE_REPO}/.gitmodules"
 }
 
+add_indexed_source() {
+    local name="$1"
+    local seed="${FIXTURE_ROOT}/seed-${name}"
+    local remote="${FIXTURE_ROOT}/${name}.git"
+    local source_path="skills/packs/${name}"
+    mkdir -p "${seed}"
+    git init --bare -q "${remote}"
+    git init -q "${seed}"
+    git -C "${seed}" config user.name HAWS-Test
+    git -C "${seed}" config user.email test@example.invalid
+    git -C "${seed}" checkout -q -b main
+    printf '%s\n' '---' "name: ${name}" 'description: baseline' '---' \
+        > "${seed}/SKILL.md"
+    git -C "${seed}" add SKILL.md
+    git -C "${seed}" commit -q -m baseline
+    git -C "${seed}" remote add origin "${remote}"
+    git -C "${seed}" push -q -u origin main
+    git --git-dir="${remote}" symbolic-ref HEAD refs/heads/main
+    printf '%s\n' '/.haws/' > "${FIXTURE_REPO}/.gitignore"
+    git -C "${FIXTURE_REPO}" add haws.sh .gitignore
+    git -C "${FIXTURE_REPO}" commit -q -m baseline
+    git -C "${FIXTURE_REPO}" -c protocol.file.allow=always \
+        submodule add -q "${remote}" "${source_path}"
+    git -C "${FIXTURE_REPO}" add .gitmodules "${source_path}"
+    git -C "${FIXTURE_REPO}" commit -q -m "register ${name}"
+}
+
 add_second_brain() {
     local seed="${FIXTURE_ROOT}/seed-secondbrain"
     local remote="${FIXTURE_ROOT}/secondbrain.git"
@@ -127,6 +154,10 @@ delete_source_entrypoint() {
 
 source_head() {
     git -C "${FIXTURE_REPO}/skills/packs/$1" rev-parse HEAD
+}
+
+device_source_head() {
+    git -C "${FIXTURE_REPO}/.haws/state/skill-sources/skills/packs/$1" rev-parse HEAD
 }
 
 source_remote_head() {
@@ -298,6 +329,25 @@ test_clean_source_applies_remote_revision() {
     [ "$(source_head clean)" = "${new_head}" ] || return 1
     [ "$(source_head clean)" != "${old_head}" ] || return 1
     grep -F 'description: valid' "${FIXTURE_REPO}/skills/packs/clean/SKILL.md" >/dev/null || return 1
+    assert_record "${target}" updated
+}
+
+test_indexed_submodule_skill_update_does_not_dirty_root() {
+    add_indexed_source indexed
+    local target="skills/packs/indexed::skills/packs/indexed"
+    local new_head
+    new_head="$(advance_source indexed device-update)" || return 1
+    write_settings on
+    source_haws || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ "$(device_source_head indexed)" = "${new_head}" ] || return 1
+    [ "$(source_head indexed)" != "${new_head}" ] || return 1
+    [ -z "$(git -C "${FIXTURE_REPO}" status --porcelain --untracked-files=all)" ] || {
+        echo "expected clean root after device-local skill update" >&2
+        git -C "${FIXTURE_REPO}" status --short >&2
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
     assert_record "${target}" updated
 }
 
@@ -585,6 +635,7 @@ else
     run_test test_sync_runs_phases_in_order_and_configures_hooks
     run_test test_sync_target_rows_use_batch_result_markers
     run_test test_clean_source_applies_remote_revision
+    run_test test_indexed_submodule_skill_update_does_not_dirty_root
     run_test test_up_to_date_requires_measured_head_equality
     run_test test_dirty_source_is_blocked_while_clean_source_continues
     run_test test_second_brain_syncs_local_changes

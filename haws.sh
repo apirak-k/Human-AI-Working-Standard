@@ -210,7 +210,7 @@ _health_collect() {
         health_source_paths["$source_id"]="$source_path"
         [ "$source_url" = local ] && continue
         source_rows=1
-        if [ -d "$repo/$source_path" ]; then
+        if [ -d "$(_catalog_runtime_source_dir "$source_path")" ]; then
             _health_add Ready Sources "$source_id available at $source_path ($source_revision)"
         else
             _health_add Attention Sources "$source_id missing at $source_path"
@@ -232,7 +232,8 @@ _health_collect() {
         HAWS_HEALTH_SKILLS_ACTIVE=$((HAWS_HEALTH_SKILLS_ACTIVE + 1))
         skill_rows=1
         skill_source_path="${health_source_paths["$skill_source"]:-}"
-        if [ -n "$skill_source_path" ] && [ -s "$repo/$skill_source_path/$entrypoint" ]; then
+        if [ -n "$skill_source_path" ] &&
+            [ -s "$(_catalog_runtime_source_dir "$skill_source_path")/$entrypoint" ]; then
             _health_add Ready Skills "$display entrypoint is present"
         else
             _health_add Blocked Skills "$display entrypoint is missing"
@@ -1470,11 +1471,73 @@ _catalog_source_url() {
         --get "submodule.${name}.url" 2>/dev/null || printf '%s\n' -
 }
 
+_haws_device_source_root() {
+    printf '%s/skill-sources\n' "$(_haws_state_dir)"
+}
+
+_haws_source_path_safe() {
+    local source_path="${1:-}"
+    case "${source_path}" in
+        ''|/*|[A-Za-z]:[\\/]*|../*|*/../*|./*|*/./*) return 1 ;;
+    esac
+    return 0
+}
+
+_catalog_source_is_gitlink() {
+    local source_path="${1:-}"
+    _haws_source_path_safe "${source_path}" || return 1
+    git -C "$(_catalog_repo_dir)" ls-files --stage -- "${source_path}" 2>/dev/null |
+        awk '$1 == "160000" { found = 1 } END { exit found ? 0 : 1 }'
+}
+
+_catalog_device_source_dir() {
+    local source_path="${1:-}"
+    _haws_source_path_safe "${source_path}" || return 1
+    printf '%s/%s\n' "$(_haws_device_source_root)" "${source_path}"
+}
+
+_catalog_runtime_source_dir() {
+    local source_path="${1:-}" device_dir
+    local repo="$(_catalog_repo_dir)"
+    if _catalog_source_is_gitlink "${source_path}"; then
+        device_dir="$(_catalog_device_source_dir "${source_path}" 2>/dev/null || true)"
+        if [ -n "${device_dir}" ] &&
+            git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            printf '%s\n' "${device_dir}"
+            return 0
+        fi
+    fi
+    printf '%s/%s\n' "${repo}" "${source_path}"
+}
+
+_haws_prepare_device_source() {
+    local source_id="${1:-}" fields source_path source_url
+    local repo="$(_catalog_repo_dir)" source_dir device_dir
+    [ -n "${source_id}" ] || return 1
+    fields="$(_catalog_source_fields "${source_id}" 2>/dev/null || true)"
+    [ -n "${fields}" ] || return 1
+    IFS=$'\t' read -r source_path source_url _ <<< "${fields}"
+    _catalog_source_is_gitlink "${source_path}" || return 0
+    device_dir="$(_catalog_device_source_dir "${source_path}")" || return 1
+    git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 && return 0
+    source_dir="${repo}/${source_path}"
+    git -C "${source_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+    mkdir -p "$(dirname "${device_dir}")" || return 1
+    git clone -q --no-hardlinks "${source_dir}" "${device_dir}" || return 1
+    if [ -n "${source_url}" ] && [ "${source_url}" != - ] &&
+        [ "${source_url}" != local ]; then
+        git -C "${device_dir}" remote set-url origin "${source_url}" || return 1
+    fi
+    return 0
+}
+
 _catalog_source_revision() {
     local path="$1"
     local repo="$(_catalog_repo_dir)"
-    if [ -e "${repo}/${path}/.git" ]; then
-        git -C "${repo}/${path}" rev-parse --verify HEAD 2>/dev/null && return 0
+    local source_dir
+    source_dir="$(_catalog_runtime_source_dir "${path}")"
+    if [ -e "${source_dir}/.git" ]; then
+        git -C "${source_dir}" rev-parse --verify HEAD 2>/dev/null && return 0
     fi
     if [ -e "${repo}/.git" ]; then
         git -C "${repo}" rev-parse --verify "HEAD:${path}" 2>/dev/null && return 0
@@ -1553,7 +1616,7 @@ catalog_source_kind() {
         return 0
     fi
     IFS=$'\t' read -r path url revision <<< "$(_catalog_source_fields "${source_id}")" || return 1
-    source_dir="$(_catalog_repo_dir)/${path%/}"
+    source_dir="$(_catalog_runtime_source_dir "${path%/}")"
     if [ ! -d "${source_dir}" ]; then
         kind="UNVERIFIED"
     else
@@ -1635,7 +1698,7 @@ catalog_skills() {
     while IFS= read -r row || [ -n "${row}" ]; do
         [ -n "${row}" ] || continue
         IFS=$'\t' read -r source_id path url revision <<< "${row}"
-        source_dir="$(_catalog_repo_dir)/${path}"
+        source_dir="$(_catalog_runtime_source_dir "${path}")"
         [ -d "${source_dir}" ] || continue
         seen_names=()
         while IFS= read -r -d '' skill_file; do
@@ -2052,7 +2115,7 @@ source_preflight() {
     local source_id="${1:-}"
     local source_path source_dir status skill_source skill_active has_active=0
     source_path="$(_sync_source_path "${source_id}")" || return 4
-    source_dir="$(_catalog_repo_dir)/${source_path}"
+    source_dir="$(_catalog_runtime_source_dir "${source_path}")"
     [ -d "${source_dir}" ] || return 4
     git -C "${source_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 4
 
@@ -2082,7 +2145,7 @@ source_candidate_validate() {
     local found=0 candidate_content
     [ -n "${source_id}" ] && [ -n "${revision}" ] || return 2
     source_path="$(_sync_source_path "${source_id}")" || return 1
-    source_dir="$(_catalog_repo_dir)/${source_path}"
+    source_dir="$(_catalog_runtime_source_dir "${source_path}")"
     [ -d "${source_dir}" ] || return 1
     local catalog_data="${HAWS_CATALOG_SKILLS_CACHE:-}"
     if [ -z "${catalog_data}" ]; then
@@ -2128,7 +2191,8 @@ _sync_prefetch_target() {
     else
         source_path="$(_sync_source_path "${target}" 2>/dev/null || true)"
         [ -n "${source_path}" ] || return 0
-        source_dir="$(_catalog_repo_dir)/${source_path}"
+        _haws_prepare_device_source "${target}" || return 1
+        source_dir="$(_catalog_runtime_source_dir "${source_path}")"
         [ -d "${source_dir}" ] || return 0
     fi
     candidate_ref="$(_sync_candidate_ref "${target}")"
@@ -2196,7 +2260,12 @@ sync_target() {
             _sync_legacy_echo "${target}: failed (source is not registered)"
             return 1
         }
-        source_dir="$(_catalog_repo_dir)/${source_path}"
+        if ! _haws_prepare_device_source "${target}"; then
+            sync_result_write "${target}" failed - "device skill source could not be prepared" || true
+            _sync_legacy_echo "${target}: failed (device skill source could not be prepared)"
+            return 1
+        fi
+        source_dir="$(_catalog_runtime_source_dir "${source_path}")"
         if source_preflight "${target}"; then
             preflight_status=0
         else
@@ -2880,7 +2949,7 @@ run_sync() {
         local rec
         for rec in "${active_skill_records[@]}"; do
             IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${rec}"
-            source_dir="${SOURCE_DIR}/${source_path}"
+            source_dir="$(_catalog_runtime_source_dir "${source_path}")"
             case "${entrypoint}" in
                 */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
                 *) skill_dir="${source_dir}" ;;
@@ -2919,7 +2988,7 @@ run_sync() {
             [ -n "${skill_id}" ]; do
             [ -n "${skill_id}" ] && [ "${active}" = 1 ] || continue
             source_path="${source_paths[${source_id}]:-}"
-            source_dir="${SOURCE_DIR}/${source_path}"
+            source_dir="$(_catalog_runtime_source_dir "${source_path}")"
             case "${entrypoint}" in
                 */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
                 *) skill_dir="${source_dir}" ;;
