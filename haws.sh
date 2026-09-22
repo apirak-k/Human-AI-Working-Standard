@@ -1322,14 +1322,22 @@ disabled_environments_save_if_changed() {
 disabled_envs_load() { disabled_environments_load "$@"; }
 disabled_envs_save() { disabled_environments_save_if_changed "$@"; }
 
+_haws_ownership_file_for_group() {
+    local group="${1:-}"
+    if [ "${group}" = skills ]; then
+        printf '%s/.haws/skills-ownership.tsv\n' "${HOME}"
+    else
+        printf '%s/ownership.tsv\n' "$(_haws_state_dir)"
+    fi
+}
+
 ownership_record() {
     local group="${1:-}" kind="${2:-}" path="${3:-}"
     local source="${4:-}" fingerprint="${5:-}"
     [ -n "${group}" ] && [ -n "${kind}" ] && [ -n "${path}" ] || return 2
-    local state="$(_haws_state_dir)"
-    local file="${state}/ownership.tsv"
-    local temporary="${state}/ownership.stage.$$"
-    mkdir -p "${state}" || return 1
+    local file="$(_haws_ownership_file_for_group "${group}")"
+    local temporary="${file}.stage.$$"
+    mkdir -p "$(dirname "${file}")" || return 1
     awk -F $'\t' -v OFS=$'\t' -v group="${group}" -v kind="${kind}" \
         -v path="${path}" -v source="${source}" -v fingerprint="${fingerprint}" '
         $1 == group && $2 == kind && $3 == path {
@@ -1360,7 +1368,25 @@ ownership_record() {
 
 ownership_list() {
     local group="${1:-}"
-    local file="$(_haws_state_dir)/ownership.tsv"
+    local file="$(_haws_ownership_file_for_group "${group}")"
+    if [ "${group}" = skills ]; then
+        local legacy_file="$(_haws_state_dir)/ownership.tsv"
+        local files=()
+        [ -f "${legacy_file}" ] && files+=("${legacy_file}")
+        [ -f "${file}" ] && files+=("${file}")
+        [ "${#files[@]}" -gt 0 ] || return 0
+        awk -F $'\t' '
+            {
+                key = $1 SUBSEP $2 SUBSEP $3
+                if (!(key in order)) order[++count] = key
+                rows[key] = $0
+            }
+            END {
+                for (i = 1; i <= count; i++) print rows[order[i]]
+            }
+        ' "${files[@]}"
+        return 0
+    fi
     [ -f "${file}" ] || return 0
     if [ -n "${group}" ]; then
         awk -F $'\t' -v group="${group}" '$1 == group' "${file}"
@@ -1797,6 +1823,42 @@ _haws_ownership_skills_invalidate() {
     HAWS_OWNERSHIP_SKILLS_LOADED=0
 }
 
+_haws_skill_link_legacy_owned_record() {
+    local wanted="${1:-}" resolved parent candidate
+    local group kind path source fingerprint extra
+    local wanted_native record_native wanted_canonical record_canonical
+    [ -n "${wanted}" ] || return 1
+    resolved="$(canonical_path "${wanted}" 2>/dev/null || true)"
+    [ -n "${resolved}" ] || return 1
+    wanted_native="$(_uninstall_native_path "${wanted}")"
+    wanted_canonical="$(canonical_path "${wanted}" 2>/dev/null || true)"
+    parent="${resolved}"
+    while [ -n "${parent}" ] && [ "${parent}" != / ]; do
+        for candidate in \
+            "${parent}/.haws/state/ownership.tsv" \
+            "${parent}/.haws/skills-ownership.tsv"; do
+            [ -f "${candidate}" ] || continue
+            while IFS=$'\t' read -r group kind path source fingerprint extra ||
+                [ -n "${group}" ]; do
+                [ "${group}" = skills ] || continue
+                record_native="$(_uninstall_native_path "${path}")"
+                record_canonical="$(canonical_path "${path}" 2>/dev/null || true)"
+                if [ "${path}" = "${wanted}" ] ||
+                    [ "${record_native}" = "${wanted_native}" ] ||
+                    { [ -n "${record_canonical}" ] &&
+                        [ "${record_canonical}" = "${wanted_canonical}" ]; }; then
+                    printf '%s\t%s\t%s\t%s\n' \
+                        "${kind}" "${path}" "${source}" "${fingerprint}"
+                    return 0
+                fi
+            done < "${candidate}"
+        done
+        [ "${parent}" = "${parent%/*}" ] && break
+        parent="${parent%/*}"
+    done
+    return 1
+}
+
 _haws_skill_link_owned_record() {
     local wanted="${1:-}"
     [ -n "${wanted}" ] || return 1
@@ -1811,11 +1873,22 @@ _haws_skill_link_owned_record() {
         printf '%s\n' "${HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]}"
         return 0
     fi
-    return 1
+    _haws_skill_link_legacy_owned_record "${wanted}"
 }
 
 _haws_skill_link_is_owned() {
     _haws_skill_link_owned_record "${1:-}" >/dev/null
+}
+
+_haws_skill_link_matches_source() {
+    local source="${1:-}" dest="${2:-}"
+    [ -d "${source}" ] && [ -d "${dest}" ] || return 1
+    [ "${source}" -ef "${dest}" ] && return 0
+    local source_canonical dest_canonical
+    source_canonical="$(canonical_path "${source}" 2>/dev/null || true)"
+    dest_canonical="$(canonical_path "${dest}" 2>/dev/null || true)"
+    [ -n "${source_canonical}" ] &&
+        [ "${source_canonical}" = "${dest_canonical}" ]
 }
 
 _haws_skill_link_remove_if_owned() {
@@ -1828,9 +1901,13 @@ _haws_skill_link_remove_if_owned() {
         wanted_native="$(_uninstall_native_path "${wanted}")"
         record="${HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]:-}"
     fi
+    if [ -z "${record}" ]; then
+        record="$(_haws_skill_link_owned_record "${wanted}" 2>/dev/null || true)"
+    fi
     [ -n "${record}" ] || return 1
     local kind path source fingerprint
     IFS=$'\t' read -r kind path source fingerprint <<< "${record}"
+    ownership_verify "${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}" || return 1
     _uninstall_remove_path "${kind}" "${path}"
     unset 'HAWS_OWNERSHIP_SKILLS_CACHE["${wanted}"]' 2>/dev/null || true
     [ -n "${wanted_native}" ] && unset 'HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]' 2>/dev/null || true
@@ -2941,9 +3018,14 @@ run_sync() {
             local link_record existing_skill_dir plugin_dir
             for link_record in "${active_skill_records[@]}"; do
                 IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${link_record}"
+                source_dir="$(_catalog_runtime_source_dir "${source_path}")"
+                case "${entrypoint}" in
+                    */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
+                    *) skill_dir="${source_dir}" ;;
+                esac
                 if [ "$DETECTED_CLAUDE" = true ]; then
                     existing_skill_dir="${HOME}/.claude/skills/${target_name}"
-                    if [ ! -d "${existing_skill_dir}" ]; then
+                    if ! _haws_skill_link_matches_source "${skill_dir}" "${existing_skill_dir}"; then
                         can_fast_skip_skills=0
                         break
                     fi
@@ -2955,7 +3037,7 @@ run_sync() {
                     fi
                     if [ -z "${plugin_dir}" ]; then
                         existing_skill_dir="${HOME}/.agents/skills/${target_name}"
-                        if [ ! -d "${existing_skill_dir}" ]; then
+                        if ! _haws_skill_link_matches_source "${skill_dir}" "${existing_skill_dir}"; then
                             can_fast_skip_skills=0
                             break
                         fi
@@ -4716,18 +4798,25 @@ _ownership_remove_record() {
     local record="$1"
     local group kind path source fingerprint extra
     IFS=$'\t' read -r group kind path source fingerprint extra <<< "$record"
-    local state="$(_health_state)"
-    local file="$state/ownership.tsv"
-    local temporary="$state/ownership.stage.$$"
-    [ -f "$file" ] || return 0
-    awk -F $'\t' -v group="$group" -v kind="$kind" -v path="$path" '
-        $1 == group && $2 == kind && $3 == path { next }
-        { print }
-    ' "$file" > "$temporary" || return 1
-    _haws_state_replace "$temporary" "$file"
-    local result="$?"
-    rm -f -- "$temporary"
-    return "$result"
+    local files=("$(_haws_ownership_file_for_group "${group}")")
+    if [ "${group}" = skills ]; then
+        local legacy_file="$(_haws_state_dir)/ownership.tsv"
+        [ "${legacy_file}" = "${files[0]}" ] || files+=("${legacy_file}")
+    fi
+    local file temporary result
+    for file in "${files[@]}"; do
+        [ -f "${file}" ] || continue
+        temporary="${file}.stage.$$"
+        awk -F $'\t' -v group="$group" -v kind="$kind" -v path="$path" '
+            $1 == group && $2 == kind && $3 == path { next }
+            { print }
+        ' "$file" > "$temporary" || return 1
+        _haws_state_replace "$temporary" "$file"
+        result="$?"
+        rm -f -- "$temporary"
+        [ "${result}" -eq 0 ] || return "${result}"
+    done
+    return 0
 }
 
 _uninstall_remove_path() {

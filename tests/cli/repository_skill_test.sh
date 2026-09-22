@@ -46,6 +46,23 @@ write_sync_settings() {
         > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
 }
 
+prepare_worktree_skill_checkout() {
+    local project="$1"
+    local marker="$2"
+    mkdir -p "${project}/skills/custom/worktree-skill"
+    cp "${PROJECT_ROOT}/haws.sh" "${project}/haws.sh"
+    printf '%s\n' '---' 'name: worktree-skill' "description: ${marker}" '---' \
+        > "${project}/skills/custom/worktree-skill/SKILL.md"
+    git_fixture -C "${project}" init -q || return 1
+    git_fixture -C "${project}" config user.email test@example.invalid
+    git_fixture -C "${project}" config user.name "HAWS Test"
+    git_fixture -C "${project}" add haws.sh skills/custom/worktree-skill/SKILL.md || return 1
+    git_fixture -C "${project}" commit -qm "${marker}" || return 1
+    mkdir -p "${project}/.haws/state"
+    printf 'schema_version\t1\nauto_update\toff\n' \
+        > "${project}/.haws/state/settings.tsv"
+}
+
 assert_output_not_contains() {
     local needle="$1"
     ! grep -F -- "${needle}" "${OUTPUT_FILE}" >/dev/null 2>&1
@@ -377,6 +394,86 @@ test_run_sync_preserves_unowned_codex_skill_link() {
     assert_file_contains "${FIXTURE_HOME}/.agents/skills/foreign-skill/SKILL.md" foreign
 }
 
+run_worktree_switch_rebind_case() {
+    local legacy_mode="${1:-0}"
+    local old_project="${FIXTURE_ROOT}/old-project"
+    local new_project="${FIXTURE_ROOT}/new-project"
+    prepare_worktree_skill_checkout "${old_project}" old || return 1
+    prepare_worktree_skill_checkout "${new_project}" new || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude"
+
+    FIXTURE_PROJECT="${old_project}"
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    local link="${FIXTURE_HOME}/.claude/skills/worktree-skill"
+    local old_target new_target
+    old_target="$(canonical_path "${link}")"
+    [ "${old_target}" = "$(canonical_path "${old_project}/skills/custom/worktree-skill")" ] || return 1
+    [ -f "${FIXTURE_HOME}/.haws/skills-ownership.tsv" ] || return 1
+    if [ "${legacy_mode}" = 1 ]; then
+        cp "${FIXTURE_HOME}/.haws/skills-ownership.tsv" \
+            "${old_project}/.haws/state/ownership.tsv" || return 1
+        rm -f -- "${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+    else
+        [ ! -f "${old_project}/.haws/state/ownership.tsv" ] || return 1
+    fi
+
+    FIXTURE_PROJECT="${new_project}"
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    source_haws || return 1
+    _haws_ownership_skills_invalidate
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    new_target="$(canonical_path "${link}")"
+    [ "${new_target}" = "$(canonical_path "${new_project}/skills/custom/worktree-skill")" ] || {
+        cat "${OUTPUT_FILE}" >&2
+        printf 'old target: %s\nnew target: %s\n' "${old_target}" "${new_target}" >&2
+        return 1
+    }
+    [ "${old_target}" != "${new_target}" ]
+}
+
+test_run_sync_rebinds_owned_skill_link_after_worktree_switch() {
+    run_worktree_switch_rebind_case 0
+}
+
+test_run_sync_rebinds_legacy_owned_skill_link_after_worktree_switch() {
+    run_worktree_switch_rebind_case 1
+}
+
+test_run_sync_preserves_modified_owned_skill_link_after_worktree_switch() {
+    local old_project="${FIXTURE_ROOT}/old-project"
+    local new_project="${FIXTURE_ROOT}/new-project"
+    local foreign="${FIXTURE_ROOT}/foreign-skill"
+    prepare_worktree_skill_checkout "${old_project}" old || return 1
+    prepare_worktree_skill_checkout "${new_project}" new || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude" "${foreign}"
+    printf '%s\n' foreign > "${foreign}/SKILL.md"
+
+    FIXTURE_PROJECT="${old_project}"
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    local link="${FIXTURE_HOME}/.claude/skills/worktree-skill"
+    rm -f -- "${link}" 2>/dev/null || true
+    if [ -e "${link}" ] || [ -L "${link}" ]; then
+        _uninstall_remove_path junction "${link}" || return 1
+    fi
+    if ! ln -s "${foreign}" "${link}" 2>/dev/null; then
+        mkdir -p "${link}" || return 1
+        cp -f "${foreign}/SKILL.md" "${link}/SKILL.md" || return 1
+    fi
+
+    FIXTURE_PROJECT="${new_project}"
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    source_haws || return 1
+    _haws_ownership_skills_invalidate
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    assert_file_contains "${link}/SKILL.md" foreign
+}
+
 test_skill_draft_persists_source_identity_only_on_final_apply() {
     init_superproject || return 1
     make_remote persist-skill single || return 1
@@ -586,6 +683,9 @@ run_test test_direct_skills_route_uses_the_settings_catalog
 run_test test_run_sync_keeps_each_source_qualified_skill_in_state
 run_test test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail
 run_test test_run_sync_preserves_unowned_codex_skill_link
+run_test test_run_sync_rebinds_owned_skill_link_after_worktree_switch
+run_test test_run_sync_rebinds_legacy_owned_skill_link_after_worktree_switch
+run_test test_run_sync_preserves_modified_owned_skill_link_after_worktree_switch
 run_test test_skill_draft_persists_source_identity_only_on_final_apply
 run_test test_legacy_tracked_skill_state_migrates_to_device_state
 run_test test_repository_back_and_discard_do_not_mutate_git_files
