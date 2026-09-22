@@ -4377,15 +4377,30 @@ run_user() {
             if [ -n "${current_remote}" ]; then
                 echo "  [*] Syncing Second Brain, please wait..."
                 echo "      Remote: ${current_remote}"
-                git -C "${brain_dir}" add . 2>/dev/null || true
-                git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet 2>/dev/null || true
+                if ! git -C "${brain_dir}" add . 2>/dev/null; then
+                    echo "  [ERROR] Failed to stage Second Brain changes."
+                    return 1
+                fi
+                if ! git -C "${brain_dir}" diff --cached --quiet --exit-code 2>/dev/null; then
+                    if ! git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet 2>/dev/null; then
+                        echo "  [ERROR] Failed to commit Second Brain changes."
+                        return 1
+                    fi
+                fi
                 if ! git -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
                     echo "  [*] Symmetrical reconciliation required..."
                     git -C "${brain_dir}" rebase --abort 2>/dev/null || true
-                    git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null || true
+                    if ! git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
+                        echo "  [ERROR] Failed to fetch Second Brain remote history."
+                        return 1
+                    fi
                     symmetrical_merge_secondbrain "${brain_dir}"
                 fi
-                git -C "${brain_dir}" push origin main --quiet 2>/dev/null || true
+                if ! git -C "${brain_dir}" push origin main --quiet 2>/dev/null; then
+                    echo "  [ERROR] Failed to push Second Brain to ${current_remote}."
+                    echo "          Check remote access and repository permissions."
+                    return 1
+                fi
                 echo "  [✓] Second Brain in sync."
             else
                 echo "  [i] Second Brain is Local-Only. (Connect cloud anytime via './haws.sh user connect <url>')"

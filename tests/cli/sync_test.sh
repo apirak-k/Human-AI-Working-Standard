@@ -433,6 +433,26 @@ test_second_brain_syncs_local_changes_with_auto_update_on() {
         | grep -F 'local preference' >/dev/null || return 1
 }
 
+test_second_brain_push_failure_is_reported() {
+    add_second_brain
+    printf '%s\n' 'local preference' >> "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md"
+
+    local remote="${FIXTURE_ROOT}/secondbrain.git"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "${remote}/hooks/pre-receive"
+    chmod +x "${remote}/hooks/pre-receive"
+
+    source_haws || return 1
+    local status=0
+    if run_user sync >"${OUTPUT_FILE}" 2>&1; then
+        status=0
+    else
+        status=$?
+    fi
+    [ "${status}" -ne 0 ] || return 1
+    grep -F '[ERROR] Failed to push Second Brain' "${OUTPUT_FILE}" >/dev/null || return 1
+    ! grep -F '[✓] Second Brain in sync.' "${OUTPUT_FILE}" >/dev/null 2>&1
+}
+
 test_missing_candidate_entrypoint_does_not_fall_back_to_old_content() {
     add_source missing
     local old_head candidate_head
@@ -663,6 +683,7 @@ else
     run_test test_dirty_source_is_blocked_while_clean_source_continues
     run_test test_second_brain_syncs_local_changes
     run_test test_second_brain_syncs_local_changes_with_auto_update_on
+    run_test test_second_brain_push_failure_is_reported
     run_test test_missing_candidate_entrypoint_does_not_fall_back_to_old_content
     run_test test_deadline_returns_distinct_timeout_status
     run_test test_timeout_uses_local_fallback_without_failure
