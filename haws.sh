@@ -2460,6 +2460,15 @@ sync_target() {
         _sync_legacy_echo "${target}: failed (current revision could not be read)"
         return 1
     fi
+    if [ "${current}" != "${candidate_revision}" ] &&
+        git -C "${source_dir}" merge-base --is-ancestor \
+            "${candidate_revision}" "${current}" >/dev/null 2>&1; then
+        _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+        sync_result_write "${target}" up-to-date "${current}" \
+            "local HEAD is ahead of remote candidate" || return 1
+        _sync_legacy_echo "${target}: up-to-date (local HEAD is ahead of remote candidate)"
+        return 0
+    fi
     if [ "${current}" != "${candidate_revision}" ]; then
         if [ "${target}" = haws ]; then
             git -C "${source_dir}" merge --ff-only "${candidate_revision}" >/dev/null 2>&1 || activation_status=$?

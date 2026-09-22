@@ -378,6 +378,38 @@ test_root_preflight_ignores_only_legacy_submodule_worktree_drift() {
     [ "$?" -eq 2 ]
 }
 
+test_haws_sync_treats_remote_ancestor_as_up_to_date() {
+    local remote="${FIXTURE_ROOT}/haws.git"
+    git init --bare -q "${remote}" || return 1
+    printf '%s\n' '/.haws/' > "${FIXTURE_REPO}/.gitignore"
+    git -C "${FIXTURE_REPO}" add haws.sh .gitmodules || return 1
+    git -C "${FIXTURE_REPO}" add .gitignore || return 1
+    git -C "${FIXTURE_REPO}" commit -q -m baseline || return 1
+    git -C "${FIXTURE_REPO}" branch -M main || return 1
+    git -C "${FIXTURE_REPO}" remote add origin "${remote}" || return 1
+    git -C "${FIXTURE_REPO}" push -q -u origin main || return 1
+    git --git-dir="${remote}" symbolic-ref HEAD refs/heads/main || return 1
+
+    printf '%s\n' 'local-only commit' > "${FIXTURE_REPO}/local-only.txt"
+    git -C "${FIXTURE_REPO}" add local-only.txt || return 1
+    git -C "${FIXTURE_REPO}" commit -q -m 'local ahead' || return 1
+    local local_head
+    local_head="$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" || return 1
+
+    write_settings on
+    source_haws || return 1
+    local status=0
+    if sync_target haws >"${OUTPUT_FILE}" 2>&1; then
+        status=0
+    else
+        status=$?
+    fi
+    [ "${status}" -eq 0 ] || return 1
+    [ "$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" = "${local_head}" ] || return 1
+    assert_record haws up-to-date || return 1
+    grep -F 'local HEAD is ahead of remote candidate' "${OUTPUT_FILE}" >/dev/null || return 1
+}
+
 test_up_to_date_requires_measured_head_equality() {
     add_source current
     write_settings on
@@ -684,6 +716,7 @@ else
     run_test test_clean_source_applies_remote_revision
     run_test test_indexed_submodule_skill_update_does_not_dirty_root
     run_test test_root_preflight_ignores_only_legacy_submodule_worktree_drift
+    run_test test_haws_sync_treats_remote_ancestor_as_up_to_date
     run_test test_up_to_date_requires_measured_head_equality
     run_test test_dirty_source_is_blocked_while_clean_source_continues
     run_test test_second_brain_syncs_local_changes
