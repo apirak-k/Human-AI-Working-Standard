@@ -2030,9 +2030,35 @@ _sync_present_result() {
     printf '  %-28s %-18s %s\n' "${display_target}" "${marker} ${label}" "${detail:--}"
 }
 
+_sync_root_status() {
+    local repo="${1:-$(_catalog_repo_dir)}" status line path
+    if ! status="$(git -C "${repo}" status --porcelain=v1 --untracked-files=all \
+        --ignore-submodules=none 2>/dev/null)"; then
+        return 1
+    fi
+    while IFS= read -r line || [ -n "${line}" ]; do
+        [ -n "${line}" ] || continue
+        path="${line:3}"
+        case "${path}" in
+            \"*\") path="${path:1:${#path}-2}" ;;
+        esac
+        if [ "${line:0:1}" = " " ] &&
+            _catalog_source_is_gitlink "${path}" &&
+            git -C "${repo}/${path}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            continue
+        fi
+        printf '%s\n' "${line}"
+    done <<< "${status}"
+}
+
 _sync_local_change_detail() {
-    local repo="${1:-}" label="${2:-source}" status line item detail="" count=0 shown=0
-    status="$(git -C "${repo}" status --short --untracked-files=all 2>/dev/null || true)"
+    local repo="${1:-}" label="${2:-source}" mode="${3:-source}"
+    local status line item detail="" count=0 shown=0
+    if [ "${mode}" = root ]; then
+        status="$(_sync_root_status "${repo}" 2>/dev/null || true)"
+    else
+        status="$(git -C "${repo}" status --short --untracked-files=all 2>/dev/null || true)"
+    fi
     while IFS= read -r line || [ -n "${line}" ]; do
         [ -n "${line}" ] || continue
         count=$((count + 1))
@@ -2165,7 +2191,7 @@ source_candidate_validate() {
 _sync_root_preflight() {
     local repo="$(_catalog_repo_dir)" status
     git -C "${repo}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 4
-    if ! status="$(git -C "${repo}" status --porcelain --untracked-files=all 2>/dev/null)"; then
+    if ! status="$(_sync_root_status "${repo}")"; then
         return 4
     fi
     [ -z "${status}" ] || return 2
@@ -2275,9 +2301,13 @@ sync_target() {
 
     case "${preflight_status}" in
         2)
-            local change_label="source ${source_path:-root}"
-            [ "${target}" = haws ] && change_label="HAWS root"
-            sync_result_write "${target}" blocked - "$(_sync_local_change_detail "${source_dir}" "${change_label}")" || return 1
+            local change_label="source ${source_path:-root}" detail_mode=source
+            if [ "${target}" = haws ]; then
+                change_label="HAWS root"
+                detail_mode=root
+            fi
+            sync_result_write "${target}" blocked - \
+                "$(_sync_local_change_detail "${source_dir}" "${change_label}" "${detail_mode}")" || return 1
             _sync_legacy_echo "${target}: blocked (local changes)"
             return 1
             ;;

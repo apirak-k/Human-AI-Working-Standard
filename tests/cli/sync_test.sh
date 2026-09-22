@@ -351,6 +351,28 @@ test_indexed_submodule_skill_update_does_not_dirty_root() {
     assert_record "${target}" updated
 }
 
+test_root_preflight_ignores_only_legacy_submodule_worktree_drift() {
+    add_indexed_source legacy
+    local new_head
+    new_head="$(advance_source legacy legacy-drift)" || return 1
+    git -C "${FIXTURE_REPO}/skills/packs/legacy" fetch -q origin main || return 1
+    git -C "${FIXTURE_REPO}/skills/packs/legacy" checkout -q "${new_head}" || return 1
+    source_haws || return 1
+
+    git -C "${FIXTURE_REPO}" status --porcelain --ignore-submodules=none |
+        grep -F 'skills/packs/legacy' >/dev/null || return 1
+    _sync_root_preflight || return 1
+
+    printf '%s\n' 'ordinary root change' > "${FIXTURE_REPO}/root-change.txt"
+    _sync_root_preflight
+    [ "$?" -eq 2 ] || return 1
+    rm -f -- "${FIXTURE_REPO}/root-change.txt"
+
+    git -C "${FIXTURE_REPO}" add skills/packs/legacy || return 1
+    _sync_root_preflight
+    [ "$?" -eq 2 ]
+}
+
 test_up_to_date_requires_measured_head_equality() {
     add_source current
     write_settings on
@@ -636,6 +658,7 @@ else
     run_test test_sync_target_rows_use_batch_result_markers
     run_test test_clean_source_applies_remote_revision
     run_test test_indexed_submodule_skill_update_does_not_dirty_root
+    run_test test_root_preflight_ignores_only_legacy_submodule_worktree_drift
     run_test test_up_to_date_requires_measured_head_equality
     run_test test_dirty_source_is_blocked_while_clean_source_continues
     run_test test_second_brain_syncs_local_changes
