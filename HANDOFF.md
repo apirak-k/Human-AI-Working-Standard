@@ -11,8 +11,8 @@ user links.
 - Branch: `dev`
 - Base commit before this checkpoint: `97fec8b` (`fix(hooks): make commit message checks advisory`)
 - Worktree-link reconciliation and Step 4 runtime-source caching are implemented.
-- Final manifest-pruning regression fix is verified locally; final commit and
-  push are pending.
+- Final manifest-pruning regression fix is committed as `83929be` and pushed
+  to `origin/dev`.
 - `main` remains clean; this checkpoint belongs to `dev`.
 
 ## Root cause currently established
@@ -59,13 +59,12 @@ contains the same environment target.
 
 ## Exact resume point
 
-1. Commit the reviewed, verified change on `dev`.
-2. Confirm the current `origin/dev` tip and push without force.
-3. Verify the resulting local/remote commit and clean worktree; report that
-   live sync in the user's environment was intentionally not run.
+1. The verified implementation is complete and available on `origin/dev`.
+2. Live Codex skill discovery remains unverified because this task used only
+   disposable fixtures; verify it on the target device if needed.
 
 ## Remote handoff
 
-Push the completed branch to `origin/dev` so another device can fetch the
-verified fix. Test success is not the same as human acceptance or proof of
+The completed branch is available on `origin/dev` so another device can fetch
+the verified fix. Test success is not the same as human acceptance or proof of
 live Codex skill discovery.
