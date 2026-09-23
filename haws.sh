@@ -1894,6 +1894,44 @@ _haws_skill_link_matches_source() {
         [ "${source_canonical}" = "${dest_canonical}" ]
 }
 
+_haws_repair_dangling_skill_link() {
+    local dest="${1:-}" source="${2:-}" current_target current_path
+    [ -n "${dest}" ] && [ -n "${source}" ] || return 1
+    [ -d "${source}" ] || return 1
+    current_target="$(readlink "${dest}" 2>/dev/null || true)"
+    [ -n "${current_target}" ] || return 1
+    case "${current_target}" in
+        /*|[A-Za-z]:[\\/]*) current_path="${current_target}" ;;
+        *) current_path="$(dirname "${dest}")/${current_target}" ;;
+    esac
+    current_path="$(_uninstall_native_path "${current_path}")"
+    if [ -e "${current_path}" ] || [ -d "${current_path}" ]; then
+        return 1
+    fi
+    _uninstall_remove_path junction "${dest}" || return 1
+    printf '  [REPAIRED] Removed stale skill link: %s\n' "${dest}"
+    return 0
+}
+
+_haws_skill_link_target_in_workspace() {
+    local dest="${1:-}" current_target current_path family_root
+    family_root="${HAWS_LINK_FAMILY_ROOT:-}"
+    [ -n "${dest}" ] && [ -n "${family_root}" ] || return 1
+    [ -L "${dest}" ] || return 1
+    current_target="$(readlink "${dest}" 2>/dev/null || true)"
+    [ -n "${current_target}" ] || return 1
+    case "${current_target}" in
+        /*|[A-Za-z]:[\\/]*) current_path="${current_target}" ;;
+        *) current_path="$(dirname "${dest}")/${current_target}" ;;
+    esac
+    current_path="$(_uninstall_native_path "${current_path}")"
+    family_root="$(_uninstall_native_path "${family_root}")"
+    case "${current_path}" in
+        "${family_root}"/*) return 0 ;;
+    esac
+    return 1
+}
+
 _haws_skill_link_remove_if_owned() {
     local wanted="${1:-}"
     [ -n "${wanted}" ] || return 1
@@ -1957,10 +1995,21 @@ _haws_record_skill_link() {
     [ -n "${dest}" ] && [ -n "${source}" ] || return 2
     [ -L "${dest}" ] || return 0
     fingerprint="${source}"
+    local wanted_native existing existing_kind existing_path existing_source existing_fingerprint
+    _haws_ownership_skills_load
+    existing="${HAWS_OWNERSHIP_SKILLS_CACHE["${dest}"]:-}"
+    wanted_native="$(_uninstall_native_path "${dest}")"
+    [ -n "${existing}" ] || existing="${HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]:-}"
+    if [ -n "${existing}" ]; then
+        IFS=$'\t' read -r existing_kind existing_path existing_source existing_fingerprint <<< "${existing}"
+        if [ "${existing_kind}" = "${kind}" ] &&
+            [ "${existing_source}" = "${source}" ] &&
+            [ "${existing_fingerprint}" = "${fingerprint}" ]; then
+            return 0
+        fi
+    fi
     ownership_record skills "${kind}" "${dest}" "${source}" "${fingerprint}"
     HAWS_OWNERSHIP_SKILLS_CACHE["${dest}"]="${kind}"$'\t'"${dest}"$'\t'"${source}"$'\t'"${fingerprint}"
-    local wanted_native
-    wanted_native="$(_uninstall_native_path "${dest}")"
     [ "${wanted_native}" != "${dest}" ] && HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]="${kind}"$'\t'"${dest}"$'\t'"${source}"$'\t'"${fingerprint}"
     return 0
 }
@@ -2792,10 +2841,28 @@ run_sync() {
     local RULES_LINKED=0
     local SKIPPED_COUNT=0
     local active_count=0
+    local claude_linked_count=0
+    local codex_linked_count=0
+    local codex_plugin_count=0
     local IS_WINDOWS=false
     if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
         IS_WINDOWS=true
     fi
+    local HAWS_LINK_FAMILY_ROOT=""
+    local git_common_dir
+    git_common_dir="$(git -C "${SCRIPT_DIR}" rev-parse --git-common-dir 2>/dev/null || true)"
+    if [ -n "${git_common_dir}" ]; then
+        case "${git_common_dir}" in
+            /*|[A-Za-z]:[\\/]*) ;;
+            *) git_common_dir="${SCRIPT_DIR}/${git_common_dir}" ;;
+        esac
+        git_common_dir="$(_uninstall_native_path "${git_common_dir}")"
+        case "${git_common_dir}" in
+            */.git) HAWS_LINK_FAMILY_ROOT="${git_common_dir%/.git}" ;;
+        esac
+    fi
+    [ -n "${HAWS_LINK_FAMILY_ROOT}" ] || \
+        HAWS_LINK_FAMILY_ROOT="$(_uninstall_native_path "${SCRIPT_DIR}")"
 
     safe_link_file() {
         local src="$1"
@@ -2885,7 +2952,12 @@ run_sync() {
         fi
 
         if [ -e "${dest}" ] || [ -L "${dest}" ]; then
-            if ! _haws_skill_link_remove_if_owned "${dest}"; then
+            if _haws_skill_link_target_in_workspace "${dest}"; then
+                if ! _uninstall_remove_path junction "${dest}"; then
+                    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                    return 0
+                fi
+            elif ! _haws_skill_link_remove_if_owned "${dest}"; then
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -2976,7 +3048,19 @@ run_sync() {
     echo "  [*] Discovering and linking active skills to AI environments, please wait..."
     local skill_rows source_id skill_id skill_display skill_description entrypoint active
     local source_path source_dir skill_dir target_name source_label
-    local -A source_paths=() display_counts=() processed_skills=()
+    local -A source_paths=() display_counts=() processed_skills=() runtime_source_dirs=()
+    local HAWS_SYNC_RUNTIME_SOURCE_DIR=""
+    _haws_sync_runtime_source_dir() {
+        local requested="${1:-}" resolved
+        [ -n "${requested}" ] || return 1
+        if [ "${runtime_source_dirs[${requested}]+set}" = set ]; then
+            HAWS_SYNC_RUNTIME_SOURCE_DIR="${runtime_source_dirs[${requested}]}"
+            return 0
+        fi
+        resolved="$(_catalog_runtime_source_dir "${requested}")" || return 1
+        runtime_source_dirs["${requested}"]="${resolved}"
+        HAWS_SYNC_RUNTIME_SOURCE_DIR="${resolved}"
+    }
     # Step 1 owns the catalog snapshot for this sync. Reuse it when source
     # synchronization left it valid; sync_run invalidates it after an update.
     if [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
@@ -3021,6 +3105,34 @@ run_sync() {
         active_skill_records+=("${source_path}"$'\t'"${entrypoint}"$'\t'"${target_name}"$'\t'"${skill_display}")
     done <<< "${skill_rows}"
 
+    local stale_skill_links_repaired=0
+    local stale_link_record stale_source_dir stale_skill_dir stale_dest
+    for stale_link_record in "${active_skill_records[@]}"; do
+        IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${stale_link_record}"
+        _haws_sync_runtime_source_dir "${source_path}" || continue
+        stale_source_dir="${HAWS_SYNC_RUNTIME_SOURCE_DIR}"
+        case "${entrypoint}" in
+            */*) stale_skill_dir="${stale_source_dir}/${entrypoint%/*}" ;;
+            *) stale_skill_dir="${stale_source_dir}" ;;
+        esac
+
+        if [ "$DETECTED_CLAUDE" = true ] || [ -n "${DISABLED_ENVIRONMENTS[claude]:-}" ]; then
+            stale_dest="${HOME}/.claude/skills/${target_name}"
+            if _haws_repair_dangling_skill_link "${stale_dest}" "${stale_skill_dir}"; then
+                stale_skill_links_repaired=$((stale_skill_links_repaired + 1))
+            fi
+        fi
+        if [ "$DETECTED_CODEX" = true ] || [ -n "${DISABLED_ENVIRONMENTS[codex]:-}" ]; then
+            stale_dest="${HOME}/.agents/skills/${target_name}"
+            if _haws_repair_dangling_skill_link "${stale_dest}" "${stale_skill_dir}"; then
+                stale_skill_links_repaired=$((stale_skill_links_repaired + 1))
+            fi
+        fi
+    done
+    if [ "${stale_skill_links_repaired}" -gt 0 ]; then
+        echo "  [✓] Repaired ${stale_skill_links_repaired} dangling HAWS skill link(s)."
+    fi
+
     _prune_disabled_environment_skill_links
 
     local can_fast_skip_skills=0
@@ -3028,9 +3140,14 @@ run_sync() {
         if cmp -s <(grep '^skill:' "${MANIFEST_FILE}" 2>/dev/null || true) "${TMP_MANIFEST}"; then
             can_fast_skip_skills=1
             local link_record existing_skill_dir plugin_dir
+            local verified_claude_count=0 verified_codex_count=0 verified_codex_plugin_count=0
             for link_record in "${active_skill_records[@]}"; do
                 IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${link_record}"
-                source_dir="$(_catalog_runtime_source_dir "${source_path}")"
+                if ! _haws_sync_runtime_source_dir "${source_path}"; then
+                    can_fast_skip_skills=0
+                    break
+                fi
+                source_dir="${HAWS_SYNC_RUNTIME_SOURCE_DIR}"
                 case "${entrypoint}" in
                     */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
                     *) skill_dir="${source_dir}" ;;
@@ -3041,6 +3158,7 @@ run_sync() {
                         can_fast_skip_skills=0
                         break
                     fi
+                    verified_claude_count=$((verified_claude_count + 1))
                 fi
                 if [ "$DETECTED_CODEX" = true ]; then
                     plugin_dir=""
@@ -3053,6 +3171,9 @@ run_sync() {
                             can_fast_skip_skills=0
                             break
                         fi
+                        verified_codex_count=$((verified_codex_count + 1))
+                    else
+                        verified_codex_plugin_count=$((verified_codex_plugin_count + 1))
                     fi
                 fi
             done
@@ -3061,19 +3182,22 @@ run_sync() {
 
     if [ "${can_fast_skip_skills}" -eq 1 ]; then
         if [ "$DETECTED_CLAUDE" = true ]; then
-            SKILLS_LINKED=$((SKILLS_LINKED + active_count))
+            claude_linked_count=${verified_claude_count}
+            SKILLS_LINKED=$((SKILLS_LINKED + verified_claude_count))
             SKIPPED_COUNT=$((SKIPPED_COUNT + active_count))
         fi
         if [ "$DETECTED_CODEX" = true ]; then
-            SKILLS_LINKED=$((SKILLS_LINKED + active_count))
+            codex_linked_count=${verified_codex_count}
+            codex_plugin_count=${verified_codex_plugin_count}
+            SKILLS_LINKED=$((SKILLS_LINKED + verified_codex_count))
             SKIPPED_COUNT=$((SKIPPED_COUNT + active_count))
         fi
-        echo "  [✓] All ${active_count} active skill links verified and preserved (manifest unchanged)."
     else
         local rec
         for rec in "${active_skill_records[@]}"; do
             IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${rec}"
-            source_dir="$(_catalog_runtime_source_dir "${source_path}")"
+            _haws_sync_runtime_source_dir "${source_path}" || continue
+            source_dir="${HAWS_SYNC_RUNTIME_SOURCE_DIR}"
             case "${entrypoint}" in
                 */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
                 *) skill_dir="${source_dir}" ;;
@@ -3083,6 +3207,9 @@ run_sync() {
                 safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${target_name}" \
                     "Claude Skill [${target_name}]"
                 SKILLS_LINKED=$((SKILLS_LINKED + 1))
+                if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.claude/skills/${target_name}"; then
+                    claude_linked_count=$((claude_linked_count + 1))
+                fi
             fi
             if [ "$DETECTED_CODEX" = true ]; then
                 local plugin_dir=""
@@ -3091,10 +3218,14 @@ run_sync() {
                 fi
                 if [ -n "${plugin_dir}" ]; then
                     echo "  [SKIPPED] Codex Skill [${target_name}] (plugin-owned: ${plugin_dir})"
+                    codex_plugin_count=$((codex_plugin_count + 1))
                 else
                     safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${target_name}" \
                         "Codex Skill [${target_name}]"
                     SKILLS_LINKED=$((SKILLS_LINKED + 1))
+                    if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.agents/skills/${target_name}"; then
+                        codex_linked_count=$((codex_linked_count + 1))
+                    fi
                 fi
             fi
         done
@@ -3112,7 +3243,8 @@ run_sync() {
             [ -n "${skill_id}" ]; do
             [ -n "${skill_id}" ] && [ "${active}" = 1 ] || continue
             source_path="${source_paths[${source_id}]:-}"
-            source_dir="$(_catalog_runtime_source_dir "${source_path}")"
+            _haws_sync_runtime_source_dir "${source_path}" || continue
+            source_dir="${HAWS_SYNC_RUNTIME_SOURCE_DIR}"
             case "${entrypoint}" in
                 */*) skill_dir="${source_dir}/${entrypoint%/*}" ;;
                 *) skill_dir="${source_dir}" ;;
@@ -3159,7 +3291,7 @@ run_sync() {
         echo "  [CONFIG] Antigravity Native Config (Dynamic): ${target_json}"
         SKILLS_LINKED=$((SKILLS_LINKED + active_count))
     fi
-    echo "  [✓] Skills linking complete (${active_count} active skills linked)."
+    echo "  [✓] Skills linking complete (${active_count} active catalog skills; Claude links: ${claude_linked_count}; Codex links: ${codex_linked_count}; plugin-owned: ${codex_plugin_count})."
     echo ""
 
     # Link Subagents

@@ -324,7 +324,7 @@ test_run_sync_honors_source_aware_disabled_skill_without_legacy_scanner() {
     local run_sync_block
     run_sync_block="$(sed -n '/^run_sync() {/,/^run_user() {/p' \
         "${FIXTURE_PROJECT}/haws.sh")"
-    printf '%s\n' "${run_sync_block}" | grep -Fq 'catalog_skills' || return 1
+    printf '%s\n' "${run_sync_block}" | grep -F 'catalog_skills' >/dev/null || return 1
     ! printf '%s\n' "${run_sync_block}" | grep -Fq '_legacy_skill_is_disabled'
 }
 
@@ -358,6 +358,8 @@ test_run_sync_keeps_each_source_qualified_skill_in_state() {
 
 test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail() {
     init_superproject || return 1
+    rm -rf -- "${FIXTURE_PROJECT}/skills/custom/demo-one" \
+        "${FIXTURE_PROJECT}/skills/packs/demo-pack"
     mkdir -p "${FIXTURE_PROJECT}/skills/custom/ponytail" \
         "${FIXTURE_HOME}/.agents/skills" \
         "${FIXTURE_HOME}/.codex/plugins/cache/provider/1.0/skills/ponytail"
@@ -372,6 +374,8 @@ test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail() {
     run_codex_agents() { return 0; }
     run_sync >"${OUTPUT_FILE}" 2>&1 || true
     assert_output_contains 'plugin-owned' || return 1
+    assert_output_contains 'active catalog skills' || return 1
+    assert_output_contains 'Codex links: 0' || return 1
     assert_file_not_exists "${FIXTURE_HOME}/.agents/skills/ponytail" || return 1
     assert_file_contains \
         "${FIXTURE_HOME}/.codex/plugins/cache/provider/1.0/skills/ponytail/SKILL.md" \
@@ -392,6 +396,72 @@ test_run_sync_preserves_unowned_codex_skill_link() {
     run_codex_agents() { return 0; }
     run_sync >"${OUTPUT_FILE}" 2>&1 || true
     assert_file_contains "${FIXTURE_HOME}/.agents/skills/foreign-skill/SKILL.md" foreign
+}
+
+test_run_sync_repairs_dangling_manifest_skill_link() {
+    init_superproject || return 1
+    mkdir -p "${FIXTURE_PROJECT}/skills/custom/repair-me" \
+        "${FIXTURE_HOME}/.claude/skills"
+    write_catalog_skill 'skills/custom/repair-me/SKILL.md' 'repair-me' \
+        'Repair stale HAWS links.'
+    write_sync_settings
+
+    mkdir -p "${FIXTURE_ROOT}/missing-source" || return 1
+    if command -v cmd.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        local win_target win_link
+        win_target="$(cygpath -w "${FIXTURE_ROOT}/missing-source")"
+        win_link="$(cygpath -w "${FIXTURE_HOME}/.claude/skills/repair-me")"
+        MSYS_NO_PATHCONV=1 cmd.exe /c mklink /J "${win_link}" "${win_target}" \
+            >/dev/null 2>&1 || return 1
+    else
+        ln -s "${FIXTURE_ROOT}/missing-source" \
+            "${FIXTURE_HOME}/.claude/skills/repair-me" || return 1
+    fi
+    rm -rf -- "${FIXTURE_ROOT}/missing-source"
+
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    [ "$(canonical_path "${FIXTURE_HOME}/.claude/skills/repair-me")" = \
+        "$(canonical_path "${FIXTURE_PROJECT}/skills/custom/repair-me")" ] || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    assert_output_contains '[REPAIRED] Removed stale skill link' || return 1
+}
+
+test_run_sync_rebinds_unowned_haws_workspace_skill_link() {
+    init_superproject || return 1
+    mkdir -p "${FIXTURE_PROJECT}/skills/custom/workspace-skill" \
+        "${FIXTURE_PROJECT}/.worktrees/old/skills/custom/workspace-skill" \
+        "${FIXTURE_HOME}/.claude/skills"
+    write_catalog_skill 'skills/custom/workspace-skill/SKILL.md' \
+        'workspace-skill' 'Current HAWS workspace source.'
+    printf '%s\n' '---' 'name: workspace-skill' \
+        'description: Old HAWS workspace source.' '---' \
+        > "${FIXTURE_PROJECT}/.worktrees/old/skills/custom/workspace-skill/SKILL.md"
+    write_sync_settings
+
+    if command -v cmd.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        local win_target win_link
+        win_target="$(cygpath -w "${FIXTURE_PROJECT}/.worktrees/old/skills/custom/workspace-skill")"
+        win_link="$(cygpath -w "${FIXTURE_HOME}/.claude/skills/workspace-skill")"
+        MSYS_NO_PATHCONV=1 cmd.exe /c mklink /J "${win_link}" "${win_target}" \
+            >/dev/null 2>&1 || return 1
+    else
+        ln -s "${FIXTURE_PROJECT}/.worktrees/old/skills/custom/workspace-skill" \
+            "${FIXTURE_HOME}/.claude/skills/workspace-skill" || return 1
+    fi
+
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ "$(canonical_path "${FIXTURE_HOME}/.claude/skills/workspace-skill")" = \
+        "$(canonical_path "${FIXTURE_PROJECT}/skills/custom/workspace-skill")" ] || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
 }
 
 run_worktree_switch_rebind_case() {
@@ -683,6 +753,8 @@ run_test test_direct_skills_route_uses_the_settings_catalog
 run_test test_run_sync_keeps_each_source_qualified_skill_in_state
 run_test test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail
 run_test test_run_sync_preserves_unowned_codex_skill_link
+run_test test_run_sync_repairs_dangling_manifest_skill_link
+run_test test_run_sync_rebinds_unowned_haws_workspace_skill_link
 run_test test_run_sync_rebinds_owned_skill_link_after_worktree_switch
 run_test test_run_sync_rebinds_legacy_owned_skill_link_after_worktree_switch
 run_test test_run_sync_preserves_modified_owned_skill_link_after_worktree_switch

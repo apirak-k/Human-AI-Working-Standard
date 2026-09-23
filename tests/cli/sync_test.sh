@@ -262,6 +262,44 @@ test_run_sync_reuses_catalog_cache_for_step4() {
         grep -F 'unexpected Step 4 catalog rescan' >/dev/null 2>&1
 }
 
+test_run_sync_reuses_runtime_source_cache_for_step4() {
+    mkdir -p "${FIXTURE_REPO}/skills/custom/demo-one" \
+        "${FIXTURE_REPO}/skills/custom/demo-two" "${FIXTURE_HOME}/.claude"
+    printf '%s\n' '---' 'name: demo-one' 'description: First cached skill.' '---' \
+        > "${FIXTURE_REPO}/skills/custom/demo-one/SKILL.md"
+    printf '%s\n' '---' 'name: demo-two' 'description: Second cached skill.' '---' \
+        > "${FIXTURE_REPO}/skills/custom/demo-two/SKILL.md"
+    source_haws || return 1
+    HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)" || return 1
+    export HAWS_CATALOG_SKILLS_CACHE
+
+    local calls_file="${FIXTURE_ROOT}/runtime-source-calls"
+    printf '0\n' > "${calls_file}"
+    _catalog_runtime_source_dir() {
+        local requested="${1:-}" calls
+        calls="$(<"${calls_file}")"
+        printf '%s\n' "$((calls + 1))" > "${calls_file}"
+        printf '%s/%s\n' "$(_catalog_repo_dir)" "${requested}"
+    }
+
+    local status=0
+    if run_sync >"${OUTPUT_FILE}" 2>&1; then
+        status=0
+    else
+        status=$?
+    fi
+    local runtime_calls
+    runtime_calls="$(<"${calls_file}")"
+    unset -f _catalog_runtime_source_dir
+    [ "${status}" -eq 0 ] || return 1
+    # One lookup is expected during Step 4; the two fixture skills are then
+    # inspected again by the health summary after linking.
+    [ "${runtime_calls}" -eq 3 ] || {
+        echo "expected one Step 4 lookup plus two health lookups, got ${runtime_calls}" >&2
+        return 1
+    }
+}
+
 test_sync_runs_phases_in_order_and_configures_hooks() {
     mkdir -p "${FIXTURE_REPO}/.githooks"
     printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "${FIXTURE_REPO}/.githooks/commit-msg"
@@ -722,6 +760,7 @@ else
     run_test test_sync_result_wait_does_not_replace_sync_exit_status
     run_test test_direct_sync_prints_result_without_entering_home
     run_test test_run_sync_reuses_catalog_cache_for_step4
+    run_test test_run_sync_reuses_runtime_source_cache_for_step4
     run_test test_sync_runs_phases_in_order_and_configures_hooks
     run_test test_sync_target_rows_use_batch_result_markers
     run_test test_clean_source_applies_remote_revision
