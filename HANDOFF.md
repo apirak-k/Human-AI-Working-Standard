@@ -17,34 +17,37 @@ different Git worktree than the checkout currently running `haws.sh`.
 Global Codex skill junctions and `${HOME}/.haws/skills-ownership.tsv` are
 device-local and can point at the main checkout while HAWS is run from
 `.worktrees/dev`. Step 4 then sees existing links that do not match the
-current source, preserves some of them through the ownership guard, and can
-leave skills mismatched while the serial linking pass appears stuck.
+current source. Before this revision, the repair path did not distinguish a
+matching source in another Git worktree from an arbitrary path inside the
+repository, and its dangling-link repair did not verify ownership.
 
 ## Changes in this WIP
 
-- `haws.sh`: repair dangling links, recognize HAWS workspace-family links,
-  cache runtime source resolution during Step 4, and report actual Claude /
-  Codex / plugin-owned counts.
-- `tests/cli/repository_skill_test.sh`: add dangling-link and unowned-worktree
-  link cases.
+- `haws.sh`: rebind only when the link resolves to the same relative skill
+  path in another registered worktree and the previous manifest lists the
+  skill; retain verified ownership as the first route, normalize Windows paths
+  and select the most specific nested worktree root, cache Step 4 runtime-source
+  lookups, and report actual Claude / Codex / plugin-owned counts.
+- `tests/cli/repository_skill_test.sh`: cover dangling and unowned links from
+  registered worktrees, plus preserving a link to an unregistered path inside
+  the repository.
 - `tests/cli/sync_test.sh`: add runtime-source-cache coverage.
+- `README.md`: document the narrower ownership and rebind rules.
 
 ## Verification status
 
-- `git diff --check`: passed before checkpoint (exit 0; no output).
-- Full CLI regression suite: intentionally not run for this checkpoint; run
-  once after the user reviews the WIP.
-- A previously interrupted partial run showed failures in the new and existing
-  worktree-link cases. Do not claim the fix is complete until those cases pass.
+- `git diff --check`: passed for this revision (exit 0; no output).
+- Tests: intentionally not run; the user asked to review the patch before one
+  final test run.
+- A partial run before this revision showed failures in worktree-link cases.
+  Those results do not verify this revision.
 
 ## Exact resume point
 
-1. Review the WIP diff, especially Windows junction detection/removal and path
-   normalization for main-vs-dev worktrees.
-2. Run the focused repository/sync regression tests once the implementation is
-   adjusted.
-3. Run the full CLI suite, inspect the final diff, then decide whether to keep
-   this checkpoint commit or amend it.
+1. Review the WIP diff, especially Windows junction handling and path
+   normalization across main and dev worktrees.
+2. After the user reviews the patch, run the agreed final test suite once.
+3. Inspect the resulting output and diff before calling the fix complete.
 
 ## Remote handoff
 

@@ -1894,41 +1894,78 @@ _haws_skill_link_matches_source() {
         [ "${source_canonical}" = "${dest_canonical}" ]
 }
 
-_haws_repair_dangling_skill_link() {
-    local dest="${1:-}" source="${2:-}" current_target current_path
-    [ -n "${dest}" ] && [ -n "${source}" ] || return 1
-    [ -d "${source}" ] || return 1
-    current_target="$(readlink "${dest}" 2>/dev/null || true)"
-    [ -n "${current_target}" ] || return 1
-    case "${current_target}" in
-        /*|[A-Za-z]:[\\/]*) current_path="${current_target}" ;;
-        *) current_path="$(dirname "${dest}")/${current_target}" ;;
+_haws_link_path_key() {
+    local path="${1:-}"
+    [ -n "${path}" ] || return 1
+    case "${path}" in
+        /*|[A-Za-z]:*) ;;
+        *) path="${PWD}/${path}" ;;
     esac
-    current_path="$(_uninstall_native_path "${current_path}")"
-    if [ -e "${current_path}" ] || [ -d "${current_path}" ]; then
-        return 1
+    path="$(_uninstall_native_path "${path}")"
+    path="$(canonical_path "${path}" 2>/dev/null || true)"
+    [ -n "${path}" ] || return 1
+    path="${path%/}"
+    [ -n "${path}" ] || path="/"
+    if command -v cygpath >/dev/null 2>&1; then
+        path="${path,,}"
     fi
-    _uninstall_remove_path junction "${dest}" || return 1
-    printf '  [REPAIRED] Removed stale skill link: %s\n' "${dest}"
-    return 0
+    printf '%s\n' "${path}"
 }
 
-_haws_skill_link_target_in_workspace() {
-    local dest="${1:-}" current_target current_path family_root
-    family_root="${HAWS_LINK_FAMILY_ROOT:-}"
-    [ -n "${dest}" ] && [ -n "${family_root}" ] || return 1
+_haws_link_relative_to_root() {
+    local path="${1:-}" root="${2:-}" prefix
+    [ -n "${path}" ] && [ -n "${root}" ] || return 1
+    [ "${path}" != "${root}" ] || return 1
+    if [ "${root}" = / ]; then
+        prefix="/"
+    else
+        prefix="${root%/}/"
+    fi
+    case "${path}" in
+        "${prefix}"*) printf '%s\n' "${path#"${prefix}"}" ;;
+        *) return 1 ;;
+    esac
+}
+
+_haws_skill_link_target_in_registered_worktree() {
+    local dest="${1:-}" source="${2:-}" current_target current_path
+    local expected_source expected_relative source_root root relative root_length best_root_length
+    [ -n "${dest}" ] && [ -n "${source}" ] || return 1
     [ -L "${dest}" ] || return 1
     current_target="$(readlink "${dest}" 2>/dev/null || true)"
     [ -n "${current_target}" ] || return 1
     case "${current_target}" in
-        /*|[A-Za-z]:[\\/]*) current_path="${current_target}" ;;
+        /*|[A-Za-z]:*) current_path="${current_target}" ;;
         *) current_path="$(dirname "${dest}")/${current_target}" ;;
     esac
-    current_path="$(_uninstall_native_path "${current_path}")"
-    family_root="$(_uninstall_native_path "${family_root}")"
-    case "${current_path}" in
-        "${family_root}"/*) return 0 ;;
-    esac
+    current_path="$(_haws_link_path_key "${current_path}")" || return 1
+    expected_source="$(_haws_link_path_key "${source}")" || return 1
+    [ "${current_path}" != "${expected_source}" ] || return 1
+
+    expected_relative=""
+    best_root_length=-1
+    for root in "${HAWS_LINK_WORKTREE_ROOTS[@]:-}"; do
+        root="$(_haws_link_path_key "${root}")" || continue
+        relative="$(_haws_link_relative_to_root "${expected_source}" "${root}" 2>/dev/null || true)"
+        if [ -n "${relative}" ]; then
+            root_length="${#root}"
+            if [ "${root_length}" -gt "${best_root_length}" ]; then
+                expected_relative="${relative}"
+                source_root="${root}"
+                best_root_length="${root_length}"
+            fi
+        fi
+    done
+    [ -n "${expected_relative}" ] || return 1
+
+    for root in "${HAWS_LINK_WORKTREE_ROOTS[@]:-}"; do
+        root="$(_haws_link_path_key "${root}")" || continue
+        [ "${root}" != "${source_root}" ] || continue
+        relative="$(_haws_link_relative_to_root "${current_path}" "${root}" 2>/dev/null || true)"
+        if [ -n "${relative}" ] && [ "${relative}" = "${expected_relative}" ]; then
+            return 0
+        fi
+    done
     return 1
 }
 
@@ -2848,21 +2885,21 @@ run_sync() {
     if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
         IS_WINDOWS=true
     fi
-    local HAWS_LINK_FAMILY_ROOT=""
-    local git_common_dir
-    git_common_dir="$(git -C "${SCRIPT_DIR}" rev-parse --git-common-dir 2>/dev/null || true)"
-    if [ -n "${git_common_dir}" ]; then
-        case "${git_common_dir}" in
-            /*|[A-Za-z]:[\\/]*) ;;
-            *) git_common_dir="${SCRIPT_DIR}/${git_common_dir}" ;;
+    local -a HAWS_LINK_WORKTREE_ROOTS=()
+    local worktree_record worktree_root
+    while IFS= read -r worktree_record; do
+        case "${worktree_record}" in
+            "worktree "*)
+                worktree_root="${worktree_record#worktree }"
+                [ -n "${worktree_root}" ] && HAWS_LINK_WORKTREE_ROOTS+=("${worktree_root}")
+                ;;
         esac
-        git_common_dir="$(_uninstall_native_path "${git_common_dir}")"
-        case "${git_common_dir}" in
-            */.git) HAWS_LINK_FAMILY_ROOT="${git_common_dir%/.git}" ;;
-        esac
+    done < <(git -C "${SCRIPT_DIR}" worktree list --porcelain 2>/dev/null || true)
+    if [ "${#HAWS_LINK_WORKTREE_ROOTS[@]}" -eq 0 ]; then
+        worktree_root="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+        [ -n "${worktree_root}" ] || worktree_root="${SCRIPT_DIR}"
+        HAWS_LINK_WORKTREE_ROOTS+=("${worktree_root}")
     fi
-    [ -n "${HAWS_LINK_FAMILY_ROOT}" ] || \
-        HAWS_LINK_FAMILY_ROOT="$(_uninstall_native_path "${SCRIPT_DIR}")"
 
     safe_link_file() {
         local src="$1"
@@ -2915,7 +2952,7 @@ run_sync() {
         local src="$1"
         local dest="$2"
         local label="$3"
-        local dest_dir
+        local dest_dir was_dangling=false
         dest_dir="$(dirname "${dest}")"
         mkdir -p "${dest_dir}"
 
@@ -2952,14 +2989,26 @@ run_sync() {
         fi
 
         if [ -e "${dest}" ] || [ -L "${dest}" ]; then
-            if _haws_skill_link_target_in_workspace "${dest}"; then
+            if [ -L "${dest}" ] && [ ! -e "${dest}" ]; then
+                was_dangling=true
+            fi
+            if _haws_skill_link_owned_record "${dest}" >/dev/null 2>&1; then
+                if ! _haws_skill_link_remove_if_owned "${dest}"; then
+                    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                    return 0
+                fi
+            elif _manifest_has_skill_target "${HOME}/.haws_manifest" "$(basename "${dest}")" &&
+                _haws_skill_link_target_in_registered_worktree "${dest}" "${src}"; then
                 if ! _uninstall_remove_path junction "${dest}"; then
                     SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                     return 0
                 fi
-            elif ! _haws_skill_link_remove_if_owned "${dest}"; then
+            else
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
+            fi
+            if [ "${was_dangling}" = true ]; then
+                echo "  [REPAIRED] Removed stale skill link: ${dest}"
             fi
         fi
 
@@ -3105,34 +3154,6 @@ run_sync() {
         active_skill_records+=("${source_path}"$'\t'"${entrypoint}"$'\t'"${target_name}"$'\t'"${skill_display}")
     done <<< "${skill_rows}"
 
-    local stale_skill_links_repaired=0
-    local stale_link_record stale_source_dir stale_skill_dir stale_dest
-    for stale_link_record in "${active_skill_records[@]}"; do
-        IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${stale_link_record}"
-        _haws_sync_runtime_source_dir "${source_path}" || continue
-        stale_source_dir="${HAWS_SYNC_RUNTIME_SOURCE_DIR}"
-        case "${entrypoint}" in
-            */*) stale_skill_dir="${stale_source_dir}/${entrypoint%/*}" ;;
-            *) stale_skill_dir="${stale_source_dir}" ;;
-        esac
-
-        if [ "$DETECTED_CLAUDE" = true ] || [ -n "${DISABLED_ENVIRONMENTS[claude]:-}" ]; then
-            stale_dest="${HOME}/.claude/skills/${target_name}"
-            if _haws_repair_dangling_skill_link "${stale_dest}" "${stale_skill_dir}"; then
-                stale_skill_links_repaired=$((stale_skill_links_repaired + 1))
-            fi
-        fi
-        if [ "$DETECTED_CODEX" = true ] || [ -n "${DISABLED_ENVIRONMENTS[codex]:-}" ]; then
-            stale_dest="${HOME}/.agents/skills/${target_name}"
-            if _haws_repair_dangling_skill_link "${stale_dest}" "${stale_skill_dir}"; then
-                stale_skill_links_repaired=$((stale_skill_links_repaired + 1))
-            fi
-        fi
-    done
-    if [ "${stale_skill_links_repaired}" -gt 0 ]; then
-        echo "  [✓] Repaired ${stale_skill_links_repaired} dangling HAWS skill link(s)."
-    fi
-
     _prune_disabled_environment_skill_links
 
     local can_fast_skip_skills=0
@@ -3206,9 +3227,9 @@ run_sync() {
             if [ "$DETECTED_CLAUDE" = true ]; then
                 safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${target_name}" \
                     "Claude Skill [${target_name}]"
-                SKILLS_LINKED=$((SKILLS_LINKED + 1))
                 if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.claude/skills/${target_name}"; then
                     claude_linked_count=$((claude_linked_count + 1))
+                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
                 fi
             fi
             if [ "$DETECTED_CODEX" = true ]; then
@@ -3222,9 +3243,9 @@ run_sync() {
                 else
                     safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${target_name}" \
                         "Codex Skill [${target_name}]"
-                    SKILLS_LINKED=$((SKILLS_LINKED + 1))
                     if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.agents/skills/${target_name}"; then
                         codex_linked_count=$((codex_linked_count + 1))
+                        SKILLS_LINKED=$((SKILLS_LINKED + 1))
                     fi
                 fi
             fi
@@ -4989,7 +5010,7 @@ _uninstall_remove_path() {
                 command -v cygpath >/dev/null 2>&1; then
                 local windows_path
                 windows_path="$(cygpath -w "$path")"
-                MSYS_NO_PATHCONV=1 cmd.exe /c rmdir /s /q "$windows_path" >/dev/null 2>&1 || return 1
+                MSYS_NO_PATHCONV=1 cmd.exe /c rmdir "$windows_path" >/dev/null 2>&1 || return 1
             else
                 rm -f -- "$path" || return 1
             fi

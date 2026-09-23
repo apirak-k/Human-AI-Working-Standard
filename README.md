@@ -117,8 +117,12 @@ personal user data separate:
   the ignored device-local cache under `${HAWS_STATE_DIR}/skill-sources/`.
   The parent repository's gitlink is not changed by this refresh, and HAWS
   does not automatically stage, commit, or push the root repository.
-- **Link ownership:** A stale link is re-bound only when HAWS can verify that
-  it owns the link. An unowned link or a link modified by the user is preserved.
+- **Link ownership:** A stale link is re-bound when HAWS verifies its
+  ownership record. If no ownership record exists, HAWS re-binds it only when
+  the previous HAWS manifest lists that skill and the link points to the same
+  relative skill path in another registered worktree of this repository.
+  Other unowned links and ownership records that fail verification are
+  preserved.
 - **Local-ahead safety:** If the local HAWS checkout is already ahead of the
   fetched remote candidate, Sync reports it as up to date and preserves the
   local HEAD; it does not reset or move the checkout backwards.
@@ -128,7 +132,9 @@ personal user data separate:
 
 When a checkout or HAWS version changes, run `bash haws.sh doctor` and then
 `bash haws.sh sync`. Do not delete links manually to repair a stale worktree
-target; HAWS will repair only links covered by its ownership record.
+target; HAWS can re-bind a verified owned link or a manifest-listed skill link
+from another registered worktree, and preserves links that do not meet either
+rule.
 
 ---
 
