@@ -280,7 +280,7 @@ test_sync_runs_phases_in_order_and_configures_hooks() {
     [ "${step1}" -lt "${step2}" ] || return 1
     [ "${step2}" -lt "${step3}" ] && [ "${step3}" -lt "${step4}" ] || return 1
     [ "${step4}" -lt "${step5}" ] || return 1
-    grep -F '[PASS] Git safety hooks configured' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F '[PASS] Git advisory hooks configured' "${OUTPUT_FILE}" >/dev/null || return 1
     [ "$(git -C "${FIXTURE_REPO}" config --get core.hooksPath)" = .githooks ]
 }
 

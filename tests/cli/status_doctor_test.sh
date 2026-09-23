@@ -102,6 +102,18 @@ test_only_commit_msg_hook_is_present() {
     [ ! -e "${HAWS_ROOT}/.githooks/pre-push" ] || return 1
 }
 
+test_commit_msg_hook_is_advisory() {
+    local message_file="${FIXTURE_ROOT}/commit-msg"
+    printf '%s\n' '111' > "${message_file}"
+    bash "${HAWS_ROOT}/.githooks/commit-msg" "${message_file}" >"${OUTPUT_FILE}" 2>&1 || return 1
+    assert_output_contains '[HAWS COMMIT-MSG WARNING]' || return 1
+    assert_output_contains 'Non-standard commit message format' || return 1
+
+    printf '%s\n' 'test(cli): verify hook guidance' > "${message_file}"
+    bash "${HAWS_ROOT}/.githooks/commit-msg" "${message_file}" >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ ! -s "${OUTPUT_FILE}" ]
+}
+
 test_status_and_doctor_preserve_all_fixture_files_and_git_state() {
     seed_health_fixture || return 1
     local before after git_before git_after
@@ -201,6 +213,7 @@ else
     run_test test_doctor_is_the_only_detailed_diagnostics_page
     run_test test_slow_routes_have_explicit_progress_messages
     run_test test_only_commit_msg_hook_is_present
+    run_test test_commit_msg_hook_is_advisory
     run_test test_status_and_doctor_preserve_all_fixture_files_and_git_state
     run_test test_status_never_invokes_network_commands
     run_test test_status_reports_current_attention_separately_from_last_sync

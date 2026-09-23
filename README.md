@@ -149,7 +149,7 @@ target; HAWS will repair only links covered by its ownership record.
 | `bash haws.sh brain status` | Check Second Brain cloud connection and commit count (alias: `user status`) |
 | `bash haws.sh brain connect <url>` | Connect Second Brain to private GitHub repository (alias: `user connect`) |
 | `bash haws.sh brain disconnect` | Switch Second Brain to local-only mode (alias: `user disconnect`) |
-| `bash haws.sh hook install` | Install the HAWS Git `commit-msg` hook |
+| `bash haws.sh hook install` | Install the HAWS advisory Git `commit-msg` hook |
 | `bash haws.sh hook status` | Inspect git hook activation status |
 
 ### Managing Skills (Add & Remove)
@@ -224,8 +224,8 @@ environments in the draft; `Apply` is still required to persist the reset.
 3. **Bounded Self-Correction Loop**: Capped at a maximum of **3 autonomous repair iterations**; if still failing, halt immediately, report diagnostic logs, and request human guidance. Never silence linters (`@ts-ignore`) or skip tests to fake green builds.
 4. **Package & Dependency Invariant**: Lockfiles (`package-lock.json`, `poetry.lock`, `Cargo.lock`) must always be committed. Dependency vulnerability audits (`npm audit`, `pip-audit`) must pass with zero High/Critical vulnerabilities.
 5. **Git Remote Push Protection**: AI agents must **NEVER** run `git push` to GitHub or any remote repository autonomously without explicit user confirmation in chat.
-6. **Hardware Git Hooks (`.githooks/`)**:
-   - `commit-msg`: Enforces Conventional Commits syntax and the English/ASCII invariant.
+6. **Advisory Git Hooks (`.githooks/`)**:
+   - `commit-msg`: Suggests Conventional Commits syntax and the English/ASCII invariant without blocking commits.
 
 ---
 

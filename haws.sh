@@ -362,7 +362,7 @@ _health_print_findings() {
                 "AI Environment ownership") short_detail="${total} managed item(s) verified" ;;
                 Sources) short_detail="${total} source(s) available" ;;
                 Skills) short_detail="${HAWS_HEALTH_SKILLS_ACTIVE} active skill check(s) passed" ;;
-                Hooks) short_detail="commit-msg active" ;;
+                Hooks) short_detail="commit-msg advisory" ;;
             esac
             printf '  [PASS] %-20s - %s\n' "$section" "$short_detail"
         else
@@ -808,8 +808,8 @@ legacy_run_doctor() {
         details+=("{\"item\":\"LF Normalization\",\"status\":\"WARN\"}")
     fi
 
-    # 10. Check Git Hooks (Quality & Safety Gates)
-    [ "$json_mode" = false ] && echo "" && echo "10. Checking Git Hooks (Quality & Safety Gates)..."
+    # 10. Check Git Hooks (Advisory Guidance)
+    [ "$json_mode" = false ] && echo "" && echo "10. Checking Git Hooks (Advisory Guidance)..."
     local hooks_path
     hooks_path="$(git -C "${SCRIPT_DIR}" config core.hooksPath 2>/dev/null || echo "")"
     if [ -f "${SCRIPT_DIR}/.githooks/commit-msg" ]; then
@@ -817,12 +817,12 @@ legacy_run_doctor() {
             git -C "${SCRIPT_DIR}" config core.hooksPath .githooks 2>/dev/null || true
         fi
         passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] Git hooks active (.githooks: commit-msg)"
-        details+=("{\"item\":\"Git Hooks Guardrails\",\"status\":\"PASS\"}")
+        [ "$json_mode" = false ] && echo "   [PASS] Git advisory hook configured (.githooks: commit-msg)"
+        details+=("{\"item\":\"Git Hooks Advisory\",\"status\":\"PASS\"}")
     else
         failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] Git hooks missing in .githooks"
-        details+=("{\"item\":\"Git Hooks Guardrails\",\"status\":\"FAIL\"}")
+        [ "$json_mode" = false ] && echo "   [WARN] Git advisory hook missing in .githooks"
+        details+=("{\"item\":\"Git Hooks Advisory\",\"status\":\"WARN\"}")
     fi
 
     # 11. Check Cross-OS & Multi-AI Environment Detection
@@ -3295,17 +3295,17 @@ EOF
     echo "[PASS] Skills, profiles, commands, and cleanup are ready"
     echo ""
 
-    # 5. Configure hooks & secondbrain git protection
+    # 5. Configure advisory hooks & secondbrain git protection
     echo "[*] Step 5: Configuring hooks & second brain protection"
     if [ -d "${SCRIPT_DIR}/.githooks" ]; then
         if run_hooks install >/dev/null; then
-            echo "[PASS] Git safety hooks configured"
+            echo "[PASS] Git advisory hooks configured"
         else
-            echo "[FAIL] Git safety hooks could not be configured"
+            echo "[FAIL] Git advisory hooks could not be configured"
             sync_status=1
         fi
     else
-        echo "[WARN] Git safety hooks directory is not present"
+        echo "[WARN] Git advisory hooks directory is not present"
     fi
 
     # Protect secondbrain user files from upstream framework pull clobbering
@@ -4504,7 +4504,7 @@ run_hooks() {
                 fi
                 chmod +x "${SCRIPT_DIR}/.githooks/commit-msg" 2>/dev/null || true
                 echo "  [✓] Git core.hooksPath set to .githooks"
-                echo "  [✓] commit-msg hook active (Conventional Commits & English invariant)"
+                echo "  [✓] commit-msg hook active (advisory; does not block commits)"
             else
                 echo "  [ERROR] .githooks directory not found in ${SCRIPT_DIR}"
                 return 1
@@ -4516,7 +4516,7 @@ run_hooks() {
             echo "=== HAWS Git Hooks Status ==="
             echo "Current core.hooksPath: ${current_hooks}"
             if [ "${current_hooks}" = ".githooks" ]; then
-                echo "Status: [ACTIVE & GUARDED]"
+                echo "Status: [ACTIVE & ADVISORY]"
             else
                 echo "Status: [INACTIVE - Run './haws.sh hook install' to activate]"
             fi
@@ -6513,7 +6513,7 @@ case "${COMMAND}" in
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
         echo "  kit [add|prune|update] Manage KIT submodules and external tools with merge protection"
         echo "  user [connect]  Manage personal Second Brain (symmetrical 1-click cloud sync)"
-        echo "  hook [install]  Install or inspect the HAWS Git commit-msg hook"
+        echo "  hook [install]  Install or inspect the HAWS advisory Git commit-msg hook"
         echo "  status          Instant sub-second skill count and token budget check"
         echo "  doctor [--json] Run comprehensive 10-axis system diagnostics"
         echo "  uninstall       Safely detach HAWS pointers, skills, and hooks without deleting user data"
