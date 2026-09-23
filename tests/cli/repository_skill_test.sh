@@ -112,6 +112,21 @@ write_catalog_skill() {
         > "${FIXTURE_PROJECT}/${relative_path}"
 }
 
+create_test_directory_link() {
+    local target="$1"
+    local link="$2"
+
+    if command -v cmd.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        local win_target win_link
+        win_target="$(cygpath -w "${target}")" || return 1
+        win_link="$(cygpath -w "${link}")" || return 1
+        MSYS_NO_PATHCONV=1 cmd.exe /c mklink /J "${win_link}" "${win_target}" \
+            >/dev/null 2>&1
+    else
+        ln -s "${target}" "${link}"
+    fi
+}
+
 prepare_logical_skill_catalog() {
     init_superproject || return 1
     rm -rf -- "${FIXTURE_PROJECT}/skills/custom/demo-one"
@@ -412,24 +427,17 @@ test_run_sync_repairs_dangling_manifest_skill_link() {
     write_sync_settings
     printf 'skill:repair-me\n' > "${FIXTURE_HOME}/.haws_manifest"
 
-    if command -v cmd.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
-        local win_target win_link
-        win_target="$(cygpath -w "${stale_project}/skills/custom/repair-me")"
-        win_link="$(cygpath -w "${FIXTURE_HOME}/.claude/skills/repair-me")"
-        MSYS_NO_PATHCONV=1 cmd.exe /c mklink /J "${win_link}" "${win_target}" \
-            >/dev/null 2>&1 || return 1
-    else
-        ln -s "${stale_project}/skills/custom/repair-me" \
-            "${FIXTURE_HOME}/.claude/skills/repair-me" || return 1
-    fi
+    create_test_directory_link \
+        "${stale_project}/skills/custom/repair-me" \
+        "${FIXTURE_HOME}/.claude/skills/repair-me" || return 1
     rm -rf -- "${stale_project}/skills/custom/repair-me"
 
     source_haws || return 1
     run_codex_agents() { return 0; }
     run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
 
-    [ "$(canonical_path "${FIXTURE_HOME}/.claude/skills/repair-me")" = \
-        "$(canonical_path "${FIXTURE_PROJECT}/skills/custom/repair-me")" ] || {
+    [ "${FIXTURE_HOME}/.claude/skills/repair-me" -ef \
+        "${FIXTURE_PROJECT}/skills/custom/repair-me" ] || {
         cat "${OUTPUT_FILE}" >&2
         return 1
     }
@@ -452,22 +460,15 @@ test_run_sync_rebinds_unowned_haws_workspace_skill_link() {
     write_sync_settings
     printf 'skill:workspace-skill\n' > "${FIXTURE_HOME}/.haws_manifest"
 
-    if command -v cmd.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
-        local win_target win_link
-        win_target="$(cygpath -w "${old_project}/skills/custom/workspace-skill")"
-        win_link="$(cygpath -w "${FIXTURE_HOME}/.claude/skills/workspace-skill")"
-        MSYS_NO_PATHCONV=1 cmd.exe /c mklink /J "${win_link}" "${win_target}" \
-            >/dev/null 2>&1 || return 1
-    else
-        ln -s "${old_project}/skills/custom/workspace-skill" \
-            "${FIXTURE_HOME}/.claude/skills/workspace-skill" || return 1
-    fi
+    create_test_directory_link \
+        "${old_project}/skills/custom/workspace-skill" \
+        "${FIXTURE_HOME}/.claude/skills/workspace-skill" || return 1
 
     source_haws || return 1
     run_codex_agents() { return 0; }
     run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
-    [ "$(canonical_path "${FIXTURE_HOME}/.claude/skills/workspace-skill")" = \
-        "$(canonical_path "${FIXTURE_PROJECT}/skills/custom/workspace-skill")" ] || {
+    [ "${FIXTURE_HOME}/.claude/skills/workspace-skill" -ef \
+        "${FIXTURE_PROJECT}/skills/custom/workspace-skill" ] || {
         cat "${OUTPUT_FILE}" >&2
         return 1
     }
@@ -486,14 +487,15 @@ test_run_sync_preserves_unowned_link_to_unregistered_repo_path() {
         skills/custom/workspace-skill/SKILL.md scratch/foreign-skill/SKILL.md || return 1
     git_fixture -C "${FIXTURE_PROJECT}" commit -qm 'add foreign skill fixture' || return 1
     write_sync_settings
-    ln -s "${FIXTURE_PROJECT}/scratch/foreign-skill" \
+    create_test_directory_link \
+        "${FIXTURE_PROJECT}/scratch/foreign-skill" \
         "${FIXTURE_HOME}/.claude/skills/workspace-skill" || return 1
 
     source_haws || return 1
     run_codex_agents() { return 0; }
     run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
-    [ "$(canonical_path "${FIXTURE_HOME}/.claude/skills/workspace-skill")" = \
-        "$(canonical_path "${FIXTURE_PROJECT}/scratch/foreign-skill")" ] || return 1
+    [ "${FIXTURE_HOME}/.claude/skills/workspace-skill" -ef \
+        "${FIXTURE_PROJECT}/scratch/foreign-skill" ] || return 1
     assert_file_contains "${FIXTURE_HOME}/.claude/skills/workspace-skill/SKILL.md" \
         'foreign user skill'
 }

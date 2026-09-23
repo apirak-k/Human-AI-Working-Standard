@@ -3398,6 +3398,9 @@ EOF
                     local target_name
                     target_name="$(_manifest_skill_target_name "${entry}" 2>/dev/null || true)"
                     [ -n "${target_name}" ] || continue
+                    # Skill IDs can change when legacy entries gain a source scope.
+                    # Keep the link if the current manifest still owns this target.
+                    _manifest_has_skill_target "${MANIFEST_FILE}" "${target_name}" && continue
                     if _haws_skill_link_remove_if_owned "${HOME}/.claude/skills/${target_name}"; then
                         PRUNED=$((PRUNED + 1))
                     fi
