@@ -143,7 +143,7 @@ rule.
 | Command | Purpose |
 | :--- | :--- |
 | `bash haws.sh setup` | First-use Setup flow with draft, Preview, and final Install/Update confirmation |
-| `bash haws.sh sync` | Syncs Second Brain when connected, refreshes external skill sources in device-local state, pulls the upstream framework, and verifies owned links |
+| `bash haws.sh sync` or `bash haws.sh update` | Both run the same all-in-one flow: refresh remote sources and connected Second Brain when their respective Auto Update settings are enabled, then detect environments and verify/reconcile skill links. Step 4 still runs when Auto Update is off. |
 | `bash haws.sh status` | Read-only current health summary and measured last-sync result |
 | `bash haws.sh doctor` | Read-only evidence-based diagnostic report (`--json` supported) |
 | `bash haws.sh uninstall` | Safely detach HAWS pointers, skills, and hooks without deleting user data (`--dry-run` supported) |
