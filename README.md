@@ -22,8 +22,8 @@ The actual goal and required outcome always take priority over following rigid p
 #### Interactive Menu System (TUI)
 - **First Launch**: Opens **HAWS Setup** to configure AI environments, skills, and settings.
 - **Subsequent Launches**: Opens **HAWS Home** with direct actions:
-  - **`Sync`**: Synchronizes skills, updates AI profiles, and pulls remote updates.
-  - **`Health`**: Runs instant diagnostic checks across AI environments and links.
+  - **`Sync`**: Verifies and reconciles skill links; refreshes skill sources and a connected Second Brain when their Auto Update settings are enabled.
+  - **`Doctor`**: Runs read-only diagnostics and reports the checks and findings.
   - **`Settings`**: Configures Repositories, Skills (Enable/Disable), AI Environments, Second Brain, and Auto Update in a non-destructive draft mode (press `Apply` to save).
   - **`Uninstall`**: Safely detaches HAWS links and profiles with preview and confirmation.
 
@@ -48,7 +48,7 @@ cd Human-AI-Working-Standard
 bash haws.sh setup
 ```
 
-Setup edits a draft, shows a Preview, and writes state only after `Install` or `Update` confirmation. Later launches open Home, where `Sync`, `Health`, `Settings`, and `Uninstall` are explicit actions.
+Setup edits a draft, shows a Preview, and writes state only after `Install` or `Update` confirmation. Later launches open Home, where `Sync`, `Doctor`, `Settings`, and `Uninstall` are explicit actions.
 
 ### Prerequisites
 
@@ -72,21 +72,10 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 HAWS physically enforces the **3-Tier Data Separation Model**:
 1. **Global Core (`core/`, `skills/`, `ai-configs/`)**: Public upstream framework tracked by Git. Safely updated anytime via `Sync`.
 2. **Device-Local State (`.haws/state/`, `${HAWS_STATE_DIR}/skill-sources/`, and `${HOME}/.haws/skills-ownership.tsv`)**: Machine-specific junction registrations, toggle settings, external skill runtime checkouts, and HAWS link-ownership records. Kept 100% out of Git.
-3. **Second Brain Documents (`secondbrain/`)**: Public `main` contains only neutral starter documents (`USER_PREFERENCES.md`, `ANTI_PATTERNS.md`, and `WORKFLOW.md`); the DEV checkout may contain personalized versions and private notes.
-
-- `secondbrain/` can also be managed as an independent private Git repository for seamless cross-machine synchronization.
+3. **Second Brain Documents (`secondbrain/`)**: Neutral starter documents for preferences, safeguards, and workflow. Keep personal preferences and notes in your own private Second Brain repository or local copy.
 
 > [!IMPORTANT]
 > **Privacy Invariant**: Your Second Brain repository on GitHub **MUST be created as PRIVATE**. Never connect `secondbrain/` to a public repository to ensure that your personal notes, communication preferences, and recorded anti-patterns remain strictly confidential.
-
-### Branch roles and promotion
-
-- **`dev`** is the shared development and integration branch. Changes are
-  verified there first.
-- **`main`** is the USER/release branch. Promote only a verified `dev` head to
-  `main`.
-- Personal Second Brain content and device-local state are never promoted from
-  a DEV checkout into public `main`.
 
 ### Connecting to Cloud (Two-Way Sync)
 On any computer (work machine or home machine):
@@ -230,8 +219,6 @@ environments in the draft; `Apply` is still required to persist the reset.
 3. **Bounded Self-Correction Loop**: Capped at a maximum of **3 autonomous repair iterations**; if still failing, halt immediately, report diagnostic logs, and request human guidance. Never silence linters (`@ts-ignore`) or skip tests to fake green builds.
 4. **Package & Dependency Invariant**: Lockfiles (`package-lock.json`, `poetry.lock`, `Cargo.lock`) must always be committed. Dependency vulnerability audits (`npm audit`, `pip-audit`) must pass with zero High/Critical vulnerabilities.
 5. **Git Remote Push Protection**: AI agents must **NEVER** run `git push` to GitHub or any remote repository autonomously without explicit user confirmation in chat.
-6. **Advisory Git Hooks (`.githooks/`)**:
-   - `commit-msg`: Suggests Conventional Commits syntax and the English/ASCII invariant without blocking commits.
 
 ---
 

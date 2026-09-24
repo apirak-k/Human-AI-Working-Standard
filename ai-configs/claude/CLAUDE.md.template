@@ -6,13 +6,13 @@ This workspace operates under the Human-AI Working Standard (HAWS).
 ## Operating Standards
 - **Core Standard**: `core/HAWS.md`
 - **Work Instructions**: `core/WORK_INSTRUCTIONS.md`
-- **Second Brain documents**: Use the neutral documents in `secondbrain/`; the DEV checkout may contain personalized versions.
+- **Second Brain documents**: Use the neutral starter documents in `secondbrain/`; keep personal content in a private repository or local copy.
 
 ## Repository Contracts
 - **Quality Gates**: `CONSTRAINTS.md`
 - **Agent Roles**: `AGENTS.md`
 - **Architecture**: `ARCHITECTURE.md`
-- **Handoff**: `HANDOFF.md`
+- **Handoff**: If this project has a `HANDOFF.md`, read it when continuing existing work.
 
 ## Engineering Invariants
 - Ground all completion claims in empirical command execution.

@@ -10,7 +10,7 @@ This project operates under the Human-AI Working Standard (HAWS). All AI assista
 Before planning or modifying code, consult and follow these repository standards:
 - **Core Standard**: [core/HAWS.md](../core/HAWS.md) (Operational principles, priority order, empirical grounding, anti-hallucination rules)
 - **Work Instructions**: [core/WORK_INSTRUCTIONS.md](../core/WORK_INSTRUCTIONS.md) (Context loading, lean context discipline, dynamic skill execution)
-- **Developer Preferences & Anti-Patterns**: Read the current documents in `secondbrain/`; a DEV checkout may contain personalized versions.
+- **Preferences & Anti-Patterns**: Read the neutral starter documents in `secondbrain/`; keep personal content in a private repository or local copy.
 - **Skills & Subagents**: Use installed skills from the Codex catalog, opening the applicable `SKILL.md` before execution. Delegate bounded tasks to the HAWS organizer, researcher, frontend-engineer, backend-engineer, or tester. Read the corresponding `agents/<role>.md` in the HAWS checkout. Native profiles can be installed with `bash haws.sh codex-agents install` there. Subagents report evidence and skills used to the main agent through `<task_report>`.
 
 ---
@@ -21,7 +21,7 @@ Always read and respect established project contracts before writing implementat
 - **Quality Gates & Invariants**: [CONSTRAINTS.md](../CONSTRAINTS.md) (Non-negotiable coverage floors, linting rules, forbidden patterns)
 - **Agent Permission Matrix**: [AGENTS.md](../AGENTS.md) (Authorized roles, tool scopes, execution boundaries)
 - **System Architecture**: [ARCHITECTURE.md](../ARCHITECTURE.md) (System topology and component boundaries)
-- **Active Handoff State**: [HANDOFF.md](../HANDOFF.md) (Current task checklist, decisions made, and resume points)
+- **Handoff State**: If this project has a `HANDOFF.md`, read it when continuing existing work.
 
 ---
 

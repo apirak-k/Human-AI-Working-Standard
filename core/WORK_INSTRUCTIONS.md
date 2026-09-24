@@ -338,7 +338,7 @@ To ensure the AI remembers user preferences, habits, and past mistakes across se
 - **`secondbrain/USER_PREFERENCES.md`**: Default document slot for stable preferences, communication style, and project conventions.
 - **`secondbrain/ANTI_PATTERNS.md`**: Default document slot for safeguards, forbidden patterns, and learned lessons.
 - **`secondbrain/WORKFLOW.md`**: Default document slot for the working lifecycle and cadence.
-- **Loading Rule**: Use the neutral documents in a public checkout; the DEV checkout may contain personalized versions. Never copy personal data into public `main`.
+- **Loading Rule**: Use the neutral starter documents in this checkout. Keep personal data in a private repository or local copy; do not add it to a public repository.
 
 
 ---

@@ -265,8 +265,8 @@ Use these functional purposes:
 - **Agent Governance (`templates/AGENTS.md`)** — matrix of agent roles, authorized scopes, forbidden actions, and project anti-patterns
 - **Architecture Blueprint (`templates/ARCHITECTURE.md`)** — system boundaries, component diagrams, and technical specifications
 - **Design Spec (`templates/DESIGN.md`)** — technical design tokens, UI theme, typography, spacing, and WCAG AA component guidelines
-- **Second Brain Documents (`secondbrain/`)** — the default document set for preferences, safeguards, and workflow; the DEV checkout may contain the user's private versions
-- **Personal Knowledge & Notes** — private notes kept in the DEV checkout when needed, never required by the public core
+- **Second Brain Documents (`secondbrain/`)** — neutral starter documents for preferences, safeguards, and workflow; users may keep personal copies in their own private repository or local workspace
+- **Personal Knowledge & Notes** — user-owned notes kept in a private Second Brain repository or local copy, never required by the public core
 - **History** — superseded information retained through Git history and version control
 
 
