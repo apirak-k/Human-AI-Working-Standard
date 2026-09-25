@@ -2212,6 +2212,11 @@ _sync_root_status() {
         case "${path}" in
             \"*\") path="${path:1:${#path}-2}" ;;
         esac
+        # User-created custom skills are device-local state. Keep them available
+        # for local linking without treating their untracked files as HAWS edits.
+        if [ "${line:0:2}" = "??" ] && [[ "${path}" == skills/custom/* ]]; then
+            continue
+        fi
         if [ "${line:0:1}" = " " ] &&
             _catalog_source_is_gitlink "${path}" &&
             git -C "${repo}/${path}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
