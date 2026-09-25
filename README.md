@@ -40,8 +40,8 @@ Run the shared command engine from Git Bash, macOS, or Linux:
 
 
 ```bash
-# 1. Clone HAWS
-git clone https://github.com/apirak-k/Human-AI-Working-Standard.git
+# 1. Clone HAWS with all skill packs
+git clone --recursive https://github.com/apirak-k/Human-AI-Working-Standard.git
 cd Human-AI-Working-Standard
 
 # 2. Open the first-use Setup flow
