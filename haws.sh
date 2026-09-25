@@ -1648,8 +1648,12 @@ catalog_source_kind() {
     source_dir="$(_catalog_runtime_source_dir "${path%/}")"
     if [ ! -d "${source_dir}" ]; then
         kind="UNVERIFIED"
+    elif [[ "${path}" == skills/standalone/* ]]; then
+        kind="SINGLE"
+    elif [[ "${path}" == skills/packs/* ]]; then
+        kind="PACK"
     else
-        raw_skill_count="$(find "${source_dir}" -type f \
+        raw_skill_count="$(find "${source_dir}" -type d -name ".*" -prune -o -type f \
             \( -name SKILL.md -o -name skill.md \) -print 2>/dev/null |
             awk 'END { print NR + 0 }')"
         if [ "${raw_skill_count}" -eq 1 ]; then
