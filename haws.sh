@@ -472,428 +472,6 @@ run_doctor() {
     doctor_run "$@"
 }
 
-legacy_run_status() {
-    local gemini_dir="${HOME}/.gemini/config/skills"
-    local claude_dir="${HOME}/.claude/skills"
-    local codex_dir="${HOME}/.agents/skills"
-    local manifest="${HOME}/.haws_manifest"
-
-    local gemini_json="${HOME}/.gemini/config/skills.json"
-    local gemini_count=0
-    local claude_count=0
-    local codex_count=0
-    local manifest_count=0
-
-    [ -d "${claude_dir}" ] && claude_count=$(find "${claude_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
-    [ -d "${codex_dir}" ] && codex_count=$(find "${codex_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
-    [ -f "${manifest}" ] && manifest_count=$(grep -c '^skill:' "${manifest}" || true)
-
-    local est_tokens=0
-    local py_cmd=""
-    for candidate in python3 python3.11 python3.12 python3.14 py python; do
-        if command -v "${candidate}" &>/dev/null && "${candidate}" -c "import sys" &>/dev/null; then
-            py_cmd="${candidate}"
-            break
-        fi
-    done
-
-    if [ -n "${py_cmd}" ]; then
-        local stat_res
-        stat_res=$($py_cmd -c "
-import glob, os, re, json
-gemini_json = os.path.expanduser('~/.gemini/config/skills.json')
-gemini_dir = os.path.expanduser('~/.gemini/config/skills')
-unique_skills = set()
-
-def check_skill(dp, default_name):
-    for mname in ('SKILL.md', 'skill.md'):
-        mf = os.path.join(dp, mname)
-        if os.path.isfile(mf):
-            sname = default_name
-            try:
-                with open(mf, 'r', encoding='utf-8') as sf:
-                    for line in sf:
-                        m = re.match(r'^[ \t]*name:[ \t]*[\'\"]?([^\'\"#\r\n]+)', line)
-                        if m:
-                            sname = m.group(1).strip()
-                            break
-            except: pass
-            unique_skills.add(sname)
-            return True
-    return False
-
-if os.path.isfile(gemini_json):
-    try:
-        with open(gemini_json, 'r', encoding='utf-8') as f:
-            cfg = json.load(f)
-        for entry in cfg.get('entries', []):
-            p = entry.get('path', '')
-            if os.path.isdir(p):
-                check_skill(p, os.path.basename(p))
-                for s in os.listdir(p):
-                    sp = os.path.join(p, s)
-                    if os.path.isdir(sp):
-                        check_skill(sp, s)
-    except: pass
-if not unique_skills and os.path.isdir(gemini_dir):
-    for s in os.listdir(gemini_dir):
-        unique_skills.add(s)
-
-print(len(unique_skills))
-" 2>/dev/null || echo "0")
-        gemini_count="${stat_res}"
-    fi
-
-    if [ -z "${gemini_count}" ] || [ "${gemini_count}" -eq 0 ]; then
-        [ -d "${gemini_dir}" ] && gemini_count=$(find "${gemini_dir}" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | wc -l)
-    fi
-
-    local unmanaged_gemini=0
-    local unmanaged_claude=0
-    [ "${manifest_count}" -gt 0 ] && [ "${gemini_count}" -gt "${manifest_count}" ] && unmanaged_gemini=$((gemini_count - manifest_count))
-    [ "${manifest_count}" -gt 0 ] && [ "${claude_count}" -gt "${manifest_count}" ] && unmanaged_claude=$((claude_count - manifest_count))
-    local total_unmanaged=$((unmanaged_gemini + unmanaged_claude))
-
-    echo "=== HAWS Fast Skill Status ==="
-    echo "Antigravity Active Skills : ${gemini_count}"
-    echo "Claude Code Active Skills : ${claude_count}"
-    if [ -d "${HOME}/.codex" ] || [ -d "${HOME}/.agents" ]; then
-        echo "OpenAI Codex Active Skills: ${codex_count}"
-    fi
-    echo "Manifest Registered Skills: ${manifest_count}"
-    [ "${total_unmanaged}" -gt 0 ] && echo "Unmanaged Foreign Skills  : [ALERT: ${total_unmanaged} foreign skill(s) detected - Run './haws.sh sync --clean']"
-
-    local brain_mode="LOCAL-ONLY"
-    local brain_remote
-    brain_remote="$(git -C "${SCRIPT_DIR}/secondbrain" remote get-url origin 2>/dev/null || true)"
-    if [ -n "${brain_remote}" ]; then
-        brain_mode="ONLINE (${brain_remote})"
-    fi
-    echo "Second Brain Mode         : [${brain_mode}]"
-
-    if [ "${claude_count}" -eq "${manifest_count}" ] && [ "${gemini_count}" -eq "${manifest_count}" ]; then
-        echo "Sync Health Status        : [100% HEALTHY & IN SYNC]"
-    elif [ "${total_unmanaged}" -gt 0 ]; then
-        echo "Sync Health Status        : [UNMANAGED SKILLS DETECTED - Run './haws.sh sync --clean']"
-    else
-        echo "Sync Health Status        : [MISMATCH DETECTED - Run './haws.sh sync']"
-    fi
-}
-
-legacy_run_doctor() {
-    local json_mode=false
-    if [ "${1:-}" = "--json" ]; then
-        json_mode=true
-    fi
-
-    local passed=0
-    local failed=0
-    local details=()
-    local manifest="${HOME}/.haws_manifest"
-
-    check_item() {
-        local path="$1"
-        local label="$2"
-        local status="PASS"
-        if [ -s "${path}" ]; then
-            passed=$((passed + 1))
-            [ "$json_mode" = false ] && echo "   [PASS] ${label}"
-        else
-            status="FAIL"
-            failed=$((failed + 1))
-            [ "$json_mode" = false ] && echo "   [FAIL] ${label} missing or empty"
-        fi
-        details+=("{\"item\":\"${label}\",\"status\":\"${status}\"}")
-    }
-
-    [ "$json_mode" = false ] && echo "=== HAWS System Doctor & Environment Diagnostics ===" && echo ""
-
-    # 1. Check Core Standard Files (2 Canonical Files)
-    [ "$json_mode" = false ] && echo "1. Checking Core Standards (2 Canonical Files)..."
-    local core_files=("HAWS.md" "WORK_INSTRUCTIONS.md")
-    for f in "${core_files[@]}"; do
-        check_item "${SCRIPT_DIR}/core/${f}" "core/${f}"
-    done
-
-    # 2. Check Project Templates & Blueprints (11 Blueprints)
-    [ "$json_mode" = false ] && echo "" && echo "2. Checking Project Templates & Blueprints (11 Blueprints)..."
-    local doc_tpls=("PROJECT.md" "ARCHITECTURE.md" "CONSTRAINTS.md" "HANDOFF.md" "AGENTS.md" "DESIGN.md")
-    for f in "${doc_tpls[@]}"; do
-        if [ -f "${SCRIPT_DIR}/templates/${f}" ]; then
-            check_item "${SCRIPT_DIR}/templates/${f}" "templates/${f}"
-        else
-            check_item "${SCRIPT_DIR}/templates/docs/${f}" "templates/docs/${f}"
-        fi
-    done
-    check_item "${SCRIPT_DIR}/ai-configs/claude/CLAUDE.md.template" "ai-configs/claude/CLAUDE.md.template"
-    check_item "${SCRIPT_DIR}/ai-configs/gemini/GEMINI.md.template" "ai-configs/gemini/GEMINI.md.template"
-    check_item "${SCRIPT_DIR}/ai-configs/codex/AGENTS.override.md.template" "ai-configs/codex/AGENTS.override.md.template"
-    if [ -d "${SCRIPT_DIR}/containers" ]; then
-        local container_tpls=("devcontainer.json" "Dockerfile.template" ".dockerignore.template" "docker-compose.yml.template")
-        for f in "${container_tpls[@]}"; do
-            check_item "${SCRIPT_DIR}/containers/${f}" "containers/${f}"
-        done
-    fi
-
-    # 3. Check Subagents (5 Canonical Specialists)
-    [ "$json_mode" = false ] && echo "" && echo "3. Checking Subagents (5 Canonical Specialists)..."
-    local agent_files=("backend-engineer.md" "frontend-engineer.md" "organizer.md" "researcher.md" "tester.md")
-    for f in "${agent_files[@]}"; do
-        check_item "${SCRIPT_DIR}/agents/${f}" "agents/${f}"
-    done
-
-    # 4. Check Skills Structure (3 Clean Categories)
-    [ "$json_mode" = false ] && echo "" && echo "4. Checking Skills Structure (3 Clean Categories)..."
-    local skill_dirs=("custom" "packs" "standalone")
-    for d in "${skill_dirs[@]}"; do
-        if [ -d "${SCRIPT_DIR}/skills/${d}" ]; then
-            passed=$((passed + 1))
-            [ "$json_mode" = false ] && echo "   [PASS] skills/${d}/"
-            details+=("{\"item\":\"skills/${d}/\",\"status\":\"PASS\"}")
-        else
-            failed=$((failed + 1))
-            [ "$json_mode" = false ] && echo "   [FAIL] skills/${d}/ missing"
-            details+=("{\"item\":\"skills/${d}/\",\"status\":\"FAIL\"}")
-        fi
-    done
-
-    # Verify that all installed skills have valid SKILL.md
-    local valid_skills=0
-    local invalid_skills=0
-    while IFS= read -r -d '' sf; do
-        if [ -s "${sf}" ]; then
-            valid_skills=$((valid_skills + 1))
-        else
-            invalid_skills=$((invalid_skills + 1))
-        fi
-    done < <(find "${SCRIPT_DIR}/skills" -type f \( -name "SKILL.md" -o -name "skill.md" \) -print0 2>/dev/null || true)
-
-    if [ "${invalid_skills}" -eq 0 ] && [ "${valid_skills}" -gt 0 ]; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] 100% Skills validated (${valid_skills} active skills)"
-        details+=("{\"item\":\"Skills inventory validity\",\"status\":\"PASS\"}")
-    else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] Invalid or empty SKILL.md detected (${invalid_skills} invalid)"
-        details+=("{\"item\":\"Skills inventory validity\",\"status\":\"FAIL\"}")
-    fi
-
-    # 5. Check Personal Second Brain & Plugins
-    [ "$json_mode" = false ] && echo "" && echo "5. Checking Personal Second Brain & Plugins..."
-    if [ -d "${SCRIPT_DIR}/secondbrain/.git" ] && [ -s "${SCRIPT_DIR}/secondbrain/USER_PREFERENCES.md" ] && [ -s "${SCRIPT_DIR}/secondbrain/ANTI_PATTERNS.md" ] && [ -s "${SCRIPT_DIR}/secondbrain/WORKFLOW.md" ]; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ (decoupled local git repository)"
-        details+=("{\"item\":\"secondbrain/ decoupling\",\"status\":\"PASS\"}")
-        local dirty_notes
-        dirty_notes=$(git -C "${SCRIPT_DIR}/secondbrain" status --porcelain 2>/dev/null | wc -l || echo 0)
-        if [ "${dirty_notes}" -gt 0 ]; then
-            [ "$json_mode" = false ] && echo "   [NOTE] secondbrain has ${dirty_notes} uncommitted note(s). Run './haws.sh sync' or './haws.sh user sync'."
-        fi
-    else
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] secondbrain/ optional; default documents are available"
-        details+=("{\"item\":\"secondbrain/ optional overlay\",\"status\":\"PASS\"}")
-    fi
-
-    if [ ! -d "${SCRIPT_DIR}/plugins" ]; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] plugins/ consolidated into skills/packs/ (zero bloat)"
-        details+=("{\"item\":\"plugins/ directory\",\"status\":\"PASS\"}")
-    else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] Redundant plugins/ directory still present"
-        details+=("{\"item\":\"plugins/ directory\",\"status\":\"FAIL\"}")
-    fi
-
-    # 6. Check Submodule Merge Independence (.gitmodules merge=ours)
-    [ "$json_mode" = false ] && echo "" && echo "6. Checking Submodule Merge Independence..."
-    if [ -f "${SCRIPT_DIR}/.gitattributes" ] && grep -q "\.gitmodules merge=ours" "${SCRIPT_DIR}/.gitattributes" 2>/dev/null; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] Submodule merge independence configured (.gitmodules merge=ours)"
-        details+=("{\"item\":\"Submodule merge=ours\",\"status\":\"PASS\"}")
-    else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] .gitattributes missing .gitmodules merge=ours"
-        details+=("{\"item\":\"Submodule merge=ours\",\"status\":\"FAIL\"}")
-    fi
-
-    # 7. Check Root Hygiene
-    [ "$json_mode" = false ] && echo "" && echo "7. Checking Root Hygiene..."
-    if [ ! -d "${SCRIPT_DIR}/.agents" ]; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] Zero redundant .agents/ directory"
-        details+=("{\"item\":\"Zero redundant .agents/ directory\",\"status\":\"PASS\"}")
-    else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] Redundant .agents/ directory exists"
-        details+=("{\"item\":\"Zero redundant .agents/ directory\",\"status\":\"FAIL\"}")
-    fi
-
-    if [ ! -d "${SCRIPT_DIR}/scripts" ]; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] Zero redundant scripts/ directory"
-        details+=("{\"item\":\"Zero redundant scripts/ directory\",\"status\":\"PASS\"}")
-    else
-        [ "$json_mode" = false ] && echo "   [WARN] Legacy scripts/ directory present"
-        details+=("{\"item\":\"Zero redundant scripts/ directory\",\"status\":\"WARN\"}")
-    fi
-
-    if [ ! -d "${SCRIPT_DIR}/tools" ]; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] Zero redundant tools/ directory"
-        details+=("{\"item\":\"Zero redundant tools/ directory\",\"status\":\"PASS\"}")
-    else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] Redundant tools/ directory exists"
-        details+=("{\"item\":\"Zero redundant tools/ directory\",\"status\":\"FAIL\"}")
-    fi
-
-    # 8. Check for Unmanaged Foreign Skills
-    [ "$json_mode" = false ] && echo "" && echo "8. Checking for Unmanaged Foreign Skills..."
-    local foreign_count=0
-    local manifest="${HOME}/.haws_manifest"
-    local gemini_skills="${HOME}/.gemini/config/skills"
-    local claude_skills="${HOME}/.claude/skills"
-    if [ -f "${manifest}" ]; then
-        declare -A known_skills
-        while IFS= read -r line || [ -n "$line" ]; do
-            if [[ "$line" =~ ^skill:(.+) ]]; then
-                local manifest_skill_target
-                manifest_skill_target="$(_manifest_skill_target_name "$line" 2>/dev/null || true)"
-                [ -n "${manifest_skill_target}" ] &&
-                    known_skills["${manifest_skill_target}"]=1
-            fi
-        done < "${manifest}"
-
-        for dir in "${gemini_skills}" "${claude_skills}"; do
-            if [ -d "${dir}" ]; then
-                for s in "${dir}"/*; do
-                    [ ! -d "${s}" ] && [ ! -L "${s}" ] && continue
-                    local sname
-                    sname="$(basename "${s}")"
-                    if [ -z "${known_skills[${sname}]:-}" ]; then
-                        foreign_count=$((foreign_count + 1))
-                    fi
-                done
-            fi
-        done
-    fi
-    if [ "${foreign_count}" -eq 0 ]; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] Zero unmanaged foreign skills"
-        details+=("{\"item\":\"Zero unmanaged foreign skills\",\"status\":\"PASS\"}")
-    else
-        [ "$json_mode" = false ] && echo "   [WARN] ${foreign_count} unmanaged skill(s) detected (run './haws.sh sync --clean' to purge)"
-        details+=("{\"item\":\"Zero unmanaged foreign skills\",\"status\":\"WARN\"}")
-    fi
-
-    # 9. Check Line Endings (LF Normalization)
-    [ "$json_mode" = false ] && echo "" && echo "9. Checking Line Endings (LF Normalization)..."
-    local crlf_count=0
-    for dir in "${SCRIPT_DIR}/core" "${SCRIPT_DIR}/templates" "${SCRIPT_DIR}/agents"; do
-        if [ -d "${dir}" ]; then
-            while IFS= read -r -d '' f; do
-                if grep -q $'\r' "${f}" 2>/dev/null; then
-                    crlf_count=$((crlf_count + 1))
-                fi
-            done < <(find "${dir}" -type f \( -name "*.md" -o -name "*.template" -o -name "*.json" \) -print0 2>/dev/null || true)
-        fi
-    done
-    if [ "${crlf_count}" -eq 0 ]; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] All core/templates/agents files normalized to LF"
-        details+=("{\"item\":\"LF Normalization\",\"status\":\"PASS\"}")
-    else
-        [ "$json_mode" = false ] && echo "   [WARN] ${crlf_count} file(s) contain CRLF line endings (run 'git add --renormalize .' to fix)"
-        details+=("{\"item\":\"LF Normalization\",\"status\":\"WARN\"}")
-    fi
-
-    # 10. Check Git Hooks (Advisory Guidance)
-    [ "$json_mode" = false ] && echo "" && echo "10. Checking Git Hooks (Advisory Guidance)..."
-    local hooks_path
-    hooks_path="$(git -C "${SCRIPT_DIR}" config core.hooksPath 2>/dev/null || echo "")"
-    if [ -f "${SCRIPT_DIR}/.githooks/commit-msg" ]; then
-        if [ "${hooks_path}" != ".githooks" ]; then
-            git -C "${SCRIPT_DIR}" config core.hooksPath .githooks 2>/dev/null || true
-        fi
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] Git advisory hook configured (.githooks: commit-msg)"
-        details+=("{\"item\":\"Git Hooks Advisory\",\"status\":\"PASS\"}")
-    else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [WARN] Git advisory hook missing in .githooks"
-        details+=("{\"item\":\"Git Hooks Advisory\",\"status\":\"WARN\"}")
-    fi
-
-    # 11. Check Cross-OS & Multi-AI Environment Detection
-    [ "$json_mode" = false ] && echo "" && echo "11. Checking Cross-OS & Multi-AI Support..."
-    local os_type="POSIX"
-    if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
-        os_type="Windows (NTFS / MSYS2)"
-    elif [[ "$(uname -s)" = "Darwin" ]]; then
-        os_type="macOS (Darwin)"
-    else
-        os_type="Linux ($(uname -s))"
-    fi
-    passed=$((passed + 1))
-    [ "$json_mode" = false ] && echo "   [PASS] OS Platform: ${os_type}"
-    details+=("{\"item\":\"OS Platform: ${os_type}\",\"status\":\"PASS\"}")
-
-    local detected_ais=()
-    [ -d "${HOME}/.gemini" ] && detected_ais+=("Antigravity")
-    [ -d "${HOME}/.claude" ] && detected_ais+=("Claude Code")
-
-    local ai_summary="None detected"
-    [ "${#detected_ais[@]}" -gt 0 ] && ai_summary="${detected_ais[*]}"
-    passed=$((passed + 1))
-    [ "$json_mode" = false ] && echo "   [PASS] Active AI Environments: ${ai_summary}"
-    details+=("{\"item\":\"Active AIs: ${ai_summary}\",\"status\":\"PASS\"}")
-
-    # 12. Check Launchers & Automation Tools
-    [ "$json_mode" = false ] && echo "" && echo "12. Checking Launchers & Automation Tools..."
-    check_item "${SCRIPT_DIR}/haws.sh" "haws.sh"
-    check_item "${SCRIPT_DIR}/haws.bat" "haws.bat"
-
-    if "${SCRIPT_DIR}/haws.sh" uninstall --dry-run >/dev/null 2>&1; then
-        passed=$((passed + 1))
-        [ "$json_mode" = false ] && echo "   [PASS] haws.sh uninstall --dry-run (operational)"
-        details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"PASS\"}")
-    else
-        failed=$((failed + 1))
-        [ "$json_mode" = false ] && echo "   [FAIL] haws.sh uninstall --dry-run failed"
-        details+=("{\"item\":\"Uninstaller Dry-Run Test\",\"status\":\"FAIL\"}")
-    fi
-
-
-    local overall_status="HEALTHY & READY"
-    [ "${failed}" -gt 0 ] && overall_status="ATTENTION REQUIRED"
-
-
-    if [ "$json_mode" = true ]; then
-        local IFS=","
-        cat <<EOF
-{
-  "status": "${overall_status}",
-  "total_passed": ${passed},
-  "total_failed": ${failed},
-  "checks": [${details[*]}]
-}
-EOF
-    else
-        echo ""
-        echo "--- Diagnostics Summary ---"
-        echo "Total Checks Passed: ${passed}"
-        echo "Total Checks Failed: ${failed}"
-        echo "System Status: [${overall_status}]"
-    fi
-
-    if [ "${failed}" -ne 0 ]; then
-        return 1
-    fi
-}
-
-declare -gA DISABLED_SKILLS
-
 extract_skill_name() {
     local sfile="$1"
     local sname=""
@@ -3192,7 +2770,7 @@ run_sync() {
                 fi
                 if [ "$DETECTED_CODEX" = true ]; then
                     plugin_dir=""
-                    if [ "${skill_display}" = ponytail ]; then
+                    if [[ "${skill_display}" == ponytail* ]]; then
                         plugin_dir="$(_codex_plugin_skill_dir "${skill_display}" 2>/dev/null || true)"
                     fi
                     if [ -z "${plugin_dir}" ]; then
@@ -3243,10 +2821,11 @@ run_sync() {
             fi
             if [ "$DETECTED_CODEX" = true ]; then
                 local plugin_dir=""
-                if [ "${skill_display}" = ponytail ]; then
+                if [[ "${skill_display}" == ponytail* ]]; then
                     plugin_dir="$(_codex_plugin_skill_dir "${skill_display}" 2>/dev/null || true)"
                 fi
                 if [ -n "${plugin_dir}" ]; then
+                    _haws_skill_link_remove_if_owned "${HOME}/.agents/skills/${target_name}" >/dev/null 2>&1 || true
                     echo "  [SKIPPED] Codex Skill [${target_name}] (plugin-owned: ${plugin_dir})"
                     codex_plugin_count=$((codex_plugin_count + 1))
                 else
@@ -3847,201 +3426,6 @@ interactive_checklist() {
     interactive_menu checklist "$@"
 }
 
-run_add_git_repo() {
-    echo ""
-    echo "============================================================="
-    echo "                 Add Git Repository"
-    echo "============================================================="
-    echo "Enter external Git repository URLs to clone as submodules."
-    echo "Type 'done' when finished, or 'c' / 'cancel' to return."
-    echo ""
-
-    local added_count=0
-    local newly_added_dirs=()
-
-    while true; do
-        local repo_url=""
-        read -r -p "Enter Git Repository URL (or 'done' to finish, 'c' to cancel): " repo_url || repo_url=""
-        repo_url="$(echo "${repo_url}" | tr -d ' \r\n')"
-
-        if [ -z "${repo_url}" ] || [[ "${repo_url}" =~ ^(c|cancel)$ ]]; then
-            if [ "${added_count}" -eq 0 ]; then
-                echo "  [INFO] No repositories added. Returning to Home."
-                return 1
-            fi
-            break
-        fi
-
-        if [[ "${repo_url}" =~ ^(done|exit|quit|q)$ ]]; then
-            break
-        fi
-
-        local repo_name
-        repo_name="$(basename "${repo_url}" .git)"
-
-        echo "  [*] Inspecting repository structure for ${repo_name}..."
-        local tmp_inspect
-        tmp_inspect="$(mktemp -d 2>/dev/null || mktemp -d -t 'haws_inspect_XXXXXX')"
-        if ! git clone --depth 1 -q "${repo_url}" "${tmp_inspect}" 2>/dev/null; then
-            echo "  [ERROR] Failed to clone ${repo_url}. Please verify URL and credentials."
-            rm -rf "${tmp_inspect}" 2>/dev/null || true
-            continue
-        fi
-
-        local total_skills=0
-        total_skills=$(find "${tmp_inspect}" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null | wc -l || echo "0")
-
-        local target_dir="skills/packs/${repo_name}"
-        local target_type="PACK"
-        if [ -f "${tmp_inspect}/SKILL.md" ] || [ -f "${tmp_inspect}/skill.md" ] || [ "${total_skills}" -eq 1 ]; then
-            target_dir="skills/standalone/${repo_name}"
-            target_type="SINGLE"
-            echo "  [✓] Auto-detected: Single Skill repository (1 skill found)"
-        elif [ "${total_skills}" -gt 1 ]; then
-            target_dir="skills/packs/${repo_name}"
-            target_type="PACK"
-            echo "  [✓] Auto-detected: Multi-Skill Pack repository (${total_skills} skills found)"
-        else
-            echo "  [WARNING] No SKILL.md found in repository. Registering as pack."
-        fi
-        rm -rf "${tmp_inspect}" 2>/dev/null || true
-
-        echo "  [*] Adding submodule: ${repo_name} -> ${target_dir}..."
-        if git -C "${SCRIPT_DIR}" submodule add "${repo_url}" "${target_dir}" 2>/dev/null || \
-           git -C "${SCRIPT_DIR}" clone "${repo_url}" "${target_dir}" 2>/dev/null; then
-            git -C "${SCRIPT_DIR}" submodule update --init --recursive "${target_dir}" 2>/dev/null || true
-            echo "  [✓] Successfully added and downloaded ${repo_name} (${target_type})."
-            added_count=$((added_count + 1))
-            newly_added_dirs+=("${target_dir}")
-        else
-            echo "  [ERROR] Failed to add submodule ${repo_url}."
-        fi
-        echo ""
-    done
-
-    if [ "${added_count}" -eq 0 ]; then
-        return 1
-    fi
-
-    echo ""
-    echo "============================================================="
-    echo "Successfully downloaded ${added_count} new repository/repositories!"
-    echo "============================================================="
-    local configure_now="n"
-    read -r -p "Configure active skills now? [y/N] (Default: N - enable all skills): " configure_now || configure_now="n"
-    configure_now="$(echo "${configure_now}" | tr -d ' \r\n')"
-
-    if [[ "${configure_now}" =~ ^[Yy] ]]; then
-        run_skills_route || true
-    else
-        echo "  [✓] Kept all skills enabled by default."
-    fi
-
-    echo ""
-    echo "  [✓] Add Git Repository complete. Returning to Home."
-    return 0
-}
-
-run_remove_git_repo() {
-    echo ""
-    echo "============================================================="
-    echo "                Remove Git Repository"
-    echo "============================================================="
-    echo "Select repository/repositories to remove from Git and disk."
-    echo ""
-
-    local repos=()
-    local repo_paths=()
-    local repo_types=()
-    local checklist_items=()
-
-    if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
-        while IFS=' ' read -r key url; do
-            [ -z "${key}" ] || [ -z "${url}" ] && continue
-            local path="${key#submodule.}"
-            path="${path%.url}"
-            local name="$(basename "${path}")"
-            local stype="PACK"
-            [[ "${path}" =~ standalone ]] && stype="SINGLE"
-            repos+=("${name}")
-            repo_paths+=("${path}")
-            repo_types+=("${stype}")
-            checklist_items+=("${name}|[${stype}] ${path}|0")
-        done < <(git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp url 2>/dev/null || true)
-    fi
-
-    if [ "${#checklist_items[@]}" -eq 0 ]; then
-        echo "  No external git repositories currently installed."
-        read -r -p "Press [Enter] to return to Home: " _dummy || true
-        return 1
-    fi
-
-    declare -A CHECKLIST_RESULTS
-    if ! interactive_checklist "Select Repositories to REMOVE" "${checklist_items[@]}"; then
-        echo "  [INFO] Removal cancelled. Kept all repositories."
-        return 1
-    fi
-
-    local selected_repos=()
-    local selected_paths=()
-    local selected_types=()
-
-    for ((i=0; i<${#repos[@]}; i++)); do
-        local rname="${repos[$i]}"
-        if [ "${CHECKLIST_RESULTS[${i}]:-0}" -eq 1 ]; then
-            selected_repos+=("${rname}")
-            selected_paths+=("${repo_paths[$i]}")
-            selected_types+=("${repo_types[$i]}")
-        fi
-    done
-
-    if [ "${#selected_repos[@]}" -eq 0 ]; then
-        echo "  [✓] No repositories selected for removal. Kept all."
-        return 1
-    fi
-
-    echo ""
-    echo "Selected for REMOVAL:"
-    for ((i=0; i<${#selected_repos[@]}; i++)); do
-        echo "  [-] ${selected_repos[$i]} [${selected_types[$i]}] (${selected_paths[$i]})"
-    done
-    echo ""
-    local confirm_del="n"
-    read -r -p "Remove the ${#selected_repos[@]} selected repository/repositories from Git and disk? [y/N]: " confirm_del || confirm_del="n"
-    confirm_del="$(echo "${confirm_del}" | tr -d ' \r\n')"
-
-    if [[ ! "${confirm_del}" =~ ^[Yy] ]]; then
-        echo "  [INFO] Removal cancelled. Kept all repositories."
-        return 1
-    fi
-
-    load_disabled_skills
-    for ((i=0; i<${#selected_repos[@]}; i++)); do
-        local r_name="${selected_repos[$i]}"
-        local r_path="${selected_paths[$i]}"
-        local r_type="${selected_types[$i]}"
-        echo "  [*] Removing ${r_type}: ${r_name} (${r_path})..."
-
-        # Clean any skills in this repo from DISABLED_SKILLS
-        if [ -d "${SCRIPT_DIR}/${r_path}" ]; then
-            while IFS= read -r sf; do
-                local sn
-                sn="$(basename "$(dirname "$sf")")"
-                unset "DISABLED_SKILLS[$sn]"
-            done < <(find "${SCRIPT_DIR}/${r_path}" -type f \( -name "SKILL.md" -o -name "skill.md" \) 2>/dev/null || true)
-        fi
-
-        git -C "${SCRIPT_DIR}" submodule deinit -f -- "${r_path}" 2>/dev/null || true
-        git -C "${SCRIPT_DIR}" rm -f "${r_path}" 2>/dev/null || true
-        rm -rf "${SCRIPT_DIR}/.git/modules/${r_path}" 2>/dev/null || true
-        rm -rf "${SCRIPT_DIR}/${r_path}" 2>/dev/null || true
-        echo "  [✓] Removed ${r_name} from disk and Git."
-    done
-    save_disabled_skills
-    return 0
-}
-
-
 run_interactive_kit_setup() {
     run_setup "$@"
 }
@@ -4082,10 +3466,15 @@ run_kit() {
             local dest_path="skills/packs/${name}"
 
             echo "=== Adding ${target_type} to KIT: ${name} ==="
-            git -C "${SCRIPT_DIR}" submodule add "${url}" "${dest_path}"
-            git -C "${SCRIPT_DIR}" submodule update --init --recursive "${dest_path}"
+            if ! settings_apply_repository_action "add-source" "${url}" "${dest_path}" kit; then
+                return 1
+            fi
+            if ! git -C "${SCRIPT_DIR}" submodule update --init --recursive "${dest_path}"; then
+                echo "  [ERROR] Repository was added but could not be initialized: ${dest_path}" >&2
+                return 1
+            fi
             echo "  [✓] Submodule added at ${dest_path}"
-            run_sync
+            run_sync || return 1
             ;;
         prune|remove|rm)
             local name="${1:-}"
@@ -4096,11 +3485,17 @@ run_kit() {
 
             echo "=== Pruning from KIT: ${name} ==="
             local found_path=""
-            for candidate in "skills/packs/${name}" "skills/standalone/${name}" "skills/custom/${name}"; do
-                if [ -d "${SCRIPT_DIR}/${candidate}" ] || grep -q "${candidate}" "${SCRIPT_DIR}/.gitmodules" 2>/dev/null; then
-                    found_path="${candidate}"
-                    break
-                fi
+            local found_source_id=""
+            local candidate candidate_id candidate_path candidate_url candidate_revision
+            for candidate in "skills/packs/${name}" "skills/standalone/${name}"; do
+                while IFS=$'\t' read -r candidate_id candidate_path candidate_url candidate_revision || [ -n "${candidate_id}" ]; do
+                    if [ "${candidate_path}" = "${candidate}" ]; then
+                        found_path="${candidate}"
+                        found_source_id="${candidate_id}"
+                        break
+                    fi
+                done < <(catalog_sources)
+                [ -n "${found_path}" ] && break
             done
 
             if [ -z "${found_path}" ]; then
@@ -4108,15 +3503,13 @@ run_kit() {
                 return 1
             fi
 
-            echo "  [*] Deinitializing submodule ${found_path}..."
-            git -C "${SCRIPT_DIR}" submodule deinit -f -- "${found_path}" 2>/dev/null || true
-            echo "  [*] Removing from git index and working tree..."
-            git -C "${SCRIPT_DIR}" rm -f "${found_path}" 2>/dev/null || true
+            settings_apply_repository_action "remove-source" "${found_source_id}" "${found_path}" || return $?
             echo "  [*] Purging internal submodule git cache..."
-            rm -rf "${SCRIPT_DIR}/.git/modules/${found_path}" 2>/dev/null || true
-            rm -rf "${SCRIPT_DIR}/${found_path}" 2>/dev/null || true
+            if [ -d "${SCRIPT_DIR}/.git/modules/${found_path}" ]; then
+                rm -rf -- "${SCRIPT_DIR}/.git/modules/${found_path}" || return 1
+            fi
             echo "  [✓] ${name} pruned completely (Zero ghost files)."
-            run_sync --clean
+            run_sync --clean || return 1
             ;;
         update)
             local target="${1:-}"
@@ -4210,37 +3603,58 @@ run_kit() {
 
 symmetrical_merge_secondbrain() {
     local brain_dir="$1"
+    local py_brain_dir="$1"
     local py_bin=""
+    local staged_status
     for candidate in python3 python3.11 python3.12 py python; do
         if command -v "${candidate}" &>/dev/null && "${candidate}" -c "import sys" &>/dev/null; then
             py_bin="${candidate}"
             break
         fi
     done
+    if [ -z "${py_bin}" ]; then
+        echo "  [ERROR] Python is required to merge Second Brain content." >&2
+        return 1
+    fi
+    if command -v cygpath &>/dev/null; then
+        py_brain_dir="$(cygpath -w "${brain_dir}")"
+    fi
 
     # 1. Commit any local working changes first
-    git -C "${brain_dir}" add . 2>/dev/null || true
-    git -C "${brain_dir}" commit -m "chore(brain): pre-merge local snapshot" --quiet 2>/dev/null || true
+    if ! git -C "${brain_dir}" add .; then
+        echo "  [ERROR] Failed to stage local Second Brain changes." >&2
+        return 1
+    fi
+    if git -C "${brain_dir}" diff --cached --quiet; then
+        :
+    else
+        staged_status=$?
+        if [ "${staged_status}" -ne 1 ] ||
+            ! git -C "${brain_dir}" commit -m "chore(brain): pre-merge local snapshot" --quiet; then
+            echo "  [ERROR] Failed to commit the local Second Brain snapshot." >&2
+            return 1
+        fi
+    fi
 
     # 2. Reconcile Git commit graphs with -s ours to establish common ancestor
-    git -C "${brain_dir}" merge origin/main --allow-unrelated-histories -s ours --no-edit -m "chore(brain): symmetrical merge and deduplication" 2>/dev/null || true
+    if ! git -C "${brain_dir}" merge origin/main --allow-unrelated-histories -s ours --no-edit -m "chore(brain): symmetrical merge and deduplication"; then
+        echo "  [ERROR] Failed to reconcile Second Brain histories." >&2
+        return 1
+    fi
 
-    # 3. If python is available, run content deduplication & transaction sorting
-    if [ -n "${py_bin}" ]; then
-        ${py_bin} -c '
+    # 3. Run content deduplication and transaction sorting
+    if ! "${py_bin}" -c '
 import os, sys, re, subprocess
 
 def run_merge(brain_dir):
     def get_git_file(ref, filepath):
-        try:
-            cmd = ["git", "-C", brain_dir, "show", ref + ":" + filepath]
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            out, _ = p.communicate()
-            if p.returncode == 0:
-                try: return out.decode("utf-8")
-                except: return out
-            return ""
-        except: return ""
+        cmd = ["git", "-C", brain_dir, "show", ref + ":" + filepath]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        if p.returncode != 0:
+            detail = err.decode("utf-8", errors="replace").strip()
+            raise RuntimeError("Could not read " + ref + ":" + filepath + ": " + detail)
+        return out.decode("utf-8")
 
     def read_local(filepath):
         p = os.path.join(brain_dir, filepath)
@@ -4347,7 +3761,7 @@ def run_merge(brain_dir):
             l_h, l_b = get_bullets(l_lines)
             r_h, r_b = get_bullets(r_lines)
             seen_h = set()
-            for line in h:
+            for line in l_h + r_h:
                 sline = line.strip()
                 if sline:
                     if "This document records the user" in sline:
@@ -4399,13 +3813,22 @@ def run_merge(brain_dir):
         with open(os.path.join(brain_dir, "WORKFLOW.md"), "wb") as f:
             f.write(m_work.encode("utf-8"))
 
-run_merge("'"${brain_dir}"'")
-' 2>/dev/null || true
+run_merge(sys.argv[1])
+' "${py_brain_dir}"; then
+        echo "  [ERROR] Failed to merge Second Brain documents; do not push the incomplete result." >&2
+        return 1
     fi
 
     # 4. Stage and commit the clean merged files
-    git -C "${brain_dir}" add . 2>/dev/null || true
-    git -C "${brain_dir}" commit --amend --no-edit 2>/dev/null || git -C "${brain_dir}" commit -m "chore(brain): symmetrical merge and deduplication" --quiet 2>/dev/null || true
+    if ! git -C "${brain_dir}" add .; then
+        echo "  [ERROR] Failed to stage merged Second Brain documents." >&2
+        return 1
+    fi
+    if ! git -C "${brain_dir}" commit --amend --no-edit &&
+        ! git -C "${brain_dir}" commit -m "chore(brain): symmetrical merge and deduplication" --quiet; then
+        echo "  [ERROR] Failed to commit merged Second Brain documents." >&2
+        return 1
+    fi
 }
 
 _second_brain_bootstrap_missing() {
@@ -4504,7 +3927,7 @@ run_user() {
             echo "  [*] Testing remote connection..."
             if git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
                 echo "  [*] Remote repo has existing history. Performing Symmetrical Merge..."
-                symmetrical_merge_secondbrain "${brain_dir}"
+                symmetrical_merge_secondbrain "${brain_dir}" || return 1
                 if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
                     echo "  [✓] Second brain synced and connected to ${repo_url}"
                 else
@@ -4571,7 +3994,7 @@ run_user() {
                         echo "  [ERROR] Failed to fetch Second Brain remote history."
                         return 1
                     fi
-                    symmetrical_merge_secondbrain "${brain_dir}"
+                    symmetrical_merge_secondbrain "${brain_dir}" || return 1
                 fi
                 if ! git -C "${brain_dir}" push origin main --quiet 2>/dev/null; then
                     echo "  [ERROR] Failed to push Second Brain to ${current_remote}."
@@ -6232,15 +5655,22 @@ settings_apply_repository_action() {
     local action="${1:-}"
     local source_url="${2:-}"
     local destination="${3:-}"
+    local validation_mode="${4:-settings}"
+    local preflight_only="${5:-0}"
     local repo="$(_catalog_repo_dir)"
     local source_id path url revision status
 
     case "${action}" in
         add-source)
-            catalog_validate_url "${source_url}" || {
+            if [ "${validation_mode}" = kit ]; then
+                [ -n "${source_url}" ] && [[ "${source_url}" != *[[:cntrl:]]* ]] || {
+                    echo "Blocked: invalid repository URL: ${source_url}"
+                    return 1
+                }
+            elif ! catalog_validate_url "${source_url}"; then
                 echo "Blocked: invalid repository URL: ${source_url}"
                 return 1
-            }
+            fi
             catalog_validate_destination "${destination}" || {
                 echo "Blocked: repository destination is unsafe or occupied: ${destination}"
                 return 1
@@ -6251,7 +5681,8 @@ settings_apply_repository_action() {
                 echo "Blocked: repository destination is already registered: ${destination}"
                 return 1
             done < <(catalog_sources)
-            git -C "${repo}" submodule add "${source_url}" "${destination}" || {
+            [ "${preflight_only}" = 1 ] && return 0
+            git -C "${repo}" submodule add -- "${source_url}" "${destination}" || {
                 echo "Blocked: could not add repository: ${source_url}"
                 return 1
             }
@@ -6296,6 +5727,7 @@ settings_apply_repository_action() {
                     return 2
                 fi
             fi
+            [ "${preflight_only}" = 1 ] && return 0
             git -C "${repo}" submodule deinit -f -- "${path}" || {
                 echo "Blocked: could not deinitialize repository: ${path}"
                 return 1
@@ -6338,14 +5770,183 @@ settings_apply_skill_draft() {
     return "${result}"
 }
 
+settings_preflight_plan() {
+    local plan="$1"
+    local action key value rest
+    local added_paths="" added_sources=""
+    local expected_skills="${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}"
+    local expected_brain="${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"
+
+    [ -f "${plan}" ] || return 1
+    _haws_setting_is_toggle "${expected_skills}" &&
+        _haws_setting_is_toggle "${expected_brain}" || {
+        echo "Blocked: invalid Auto Update settings in draft."
+        return 1
+    }
+
+    while IFS=$'\t' read -r action key value rest || [ -n "${action:-}" ]; do
+        [ -n "${action:-}" ] || continue
+        case "${action}" in
+            setting)
+                [ "${key}" = auto_update ] && [ "${value}" = "${expected_skills}" ] || {
+                    echo "Blocked: invalid settings plan entry: ${action} ${key}"
+                    return 1
+                }
+                ;;
+            environment)
+                case "${key}" in claude|gemini|codex) ;; *)
+                    echo "Blocked: unknown environment in settings plan: ${key}"
+                    return 1
+                    ;;
+                esac
+                case "${value}" in enabled|disabled) ;; *)
+                    echo "Blocked: invalid environment state in settings plan: ${value}"
+                    return 1
+                    ;;
+                esac
+                if { [ "${value}" = enabled ] && ! _settings_list_contains "${HAWS_DRAFT_ENVIRONMENTS:-}" "${key}"; } ||
+                    { [ "${value}" = disabled ] && _settings_list_contains "${HAWS_DRAFT_ENVIRONMENTS:-}" "${key}"; }; then
+                    echo "Blocked: environment plan does not match the current draft: ${key}"
+                    return 1
+                fi
+                ;;
+            add-source)
+                _settings_list_contains "${added_paths}" "${rest}" && {
+                    echo "Blocked: duplicate repository destination in settings plan: ${rest}"
+                    return 1
+                }
+                _settings_list_contains "${added_sources}" "$(_settings_url_identity "${value}")" && {
+                    echo "Blocked: duplicate repository URL in settings plan: ${value}"
+                    return 1
+                }
+                settings_apply_repository_action "add-source" "${value}" "${rest}" settings 1 || return $?
+                added_paths+="${rest}"$'\n'
+                added_sources+="$(_settings_url_identity "${value}")"$'\n'
+                ;;
+            remove-source)
+                settings_apply_repository_action "remove-source" "${value}" "${rest}" "" 1 || return $?
+                ;;
+            integration|initialize|pointer|skill-link)
+                if [ "${HAWS_TEST_NO_INTEGRATION:-0}" != 1 ] && ! command -v git >/dev/null 2>&1; then
+                    echo "Blocked: Git is required before applying integrations."
+                    return 1
+                fi
+                ;;
+            *)
+                echo "Blocked: unknown settings plan action: ${action}"
+                return 1
+                ;;
+        esac
+    done < "${plan}"
+    echo "  [PASS] Settings preflight complete."
+}
+
+settings_verify_plan() {
+    local plan="$1"
+    local environment_mode="${2:-0}"
+    local action key value rest environment expected_disabled
+    local source_id source_path source_url revision found
+    local skill_id display description entrypoint active expected_active
+    local skill_rows
+
+    settings_load || {
+        echo "Verification failed: saved settings could not be loaded."
+        return 1
+    }
+    if [ "${HAWS_AUTO_UPDATE_SKILLS}" != "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}" ] ||
+        [ "${HAWS_AUTO_UPDATE_BRAIN}" != "${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}" ]; then
+        echo "Verification failed: saved Auto Update settings do not match the draft."
+        return 1
+    fi
+
+    if [ "${environment_mode}" -ne 0 ]; then
+        disabled_environments_load || return 1
+        while IFS= read -r environment; do
+            [ -n "${environment}" ] || continue
+            expected_disabled=1
+            if [ "${environment_mode}" -eq 2 ] ||
+                _settings_list_contains "${HAWS_DRAFT_ENVIRONMENTS:-}" "${environment}"; then
+                expected_disabled=0
+            fi
+            if [ "${expected_disabled}" -eq 1 ] && [ -z "${DISABLED_ENVIRONMENTS[${environment}]:-}" ]; then
+                echo "Verification failed: ${environment} should be disabled."
+                return 1
+            elif [ "${expected_disabled}" -eq 0 ] && [ -n "${DISABLED_ENVIRONMENTS[${environment}]:-}" ]; then
+                echo "Verification failed: ${environment} should be enabled."
+                return 1
+            fi
+        done < <(_haws_all_environments)
+    fi
+
+    if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
+        load_disabled_skills || return 1
+        unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+        skill_rows="$(catalog_skills)" || return 1
+        while IFS=$'\t' read -r source_id skill_id display description entrypoint active || [ -n "${skill_id:-}" ]; do
+            [ -n "${skill_id:-}" ] || continue
+            source_path="${source_id#*::}"
+            expected_active=0
+            if _settings_list_contains "${HAWS_DRAFT_ADDED_PATHS:-}" "${source_path}" ||
+                _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}"; then
+                expected_active=1
+            fi
+            if [ "${active}" != "${expected_active}" ]; then
+                echo "Verification failed: skill state differs from the draft: ${skill_id}"
+                return 1
+            fi
+        done <<< "${skill_rows}"
+    fi
+
+    unset HAWS_CATALOG_SOURCES_CACHE
+    while IFS=$'\t' read -r action key value rest || [ -n "${action:-}" ]; do
+        [ -n "${action:-}" ] || continue
+        case "${action}" in
+            add-source)
+                found=0
+                while IFS=$'\t' read -r source_id source_path source_url revision || [ -n "${source_id:-}" ]; do
+                    if [ "${source_path}" = "${rest}" ] && [ "${source_url}" = "${value}" ]; then
+                        found=1
+                        break
+                    fi
+                done < <(catalog_sources)
+                if [ "${found}" -ne 1 ] || ! _catalog_source_is_gitlink "${rest}"; then
+                    echo "Verification failed: repository was not registered: ${rest}"
+                    return 1
+                fi
+                ;;
+            remove-source)
+                found=0
+                while IFS=$'\t' read -r source_id source_path source_url revision || [ -n "${source_id:-}" ]; do
+                    [ "${source_path}" = "${rest}" ] && found=1
+                done < <(catalog_sources)
+                if [ "${found}" -ne 0 ] || _catalog_source_is_gitlink "${rest}" ||
+                    [ -e "${SCRIPT_DIR}/${rest}" ] || [ -L "${SCRIPT_DIR}/${rest}" ]; then
+                    echo "Verification failed: repository remains after removal: ${rest}"
+                    return 1
+                fi
+                ;;
+        esac
+    done < "${plan}"
+}
+
 settings_apply_final() {
     local plan="${HAWS_PLAN_FILE:-$(_haws_state_dir)/settings.plan}"
     local state="$(_haws_state_dir)"
     local environment_file="${HAWS_DISABLED_ENVIRONMENTS_FILE:-$(_haws_compat_file environments.disabled)}"
+    local verify_environment_mode=0
     [ -f "${plan}" ] || return 1
-    echo "  [*] Applying settings draft..."
     local draft_skills="${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}"
     local draft_brain="${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"
+    if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
+        verify_environment_mode=1
+    elif [ "${HAWS_PLAN_KIND:-Install}" = Install ] && [ ! -e "${environment_file}" ]; then
+        verify_environment_mode=2
+    fi
+    if ! settings_preflight_plan "${plan}"; then
+        echo "Blocked: settings preflight failed; no settings changes were applied."
+        return 1
+    fi
+    echo "  [*] Applying settings draft..."
     settings_save auto_update_all "${draft_skills}" "${draft_brain}" || return 1
     if [ "${HAWS_DRAFT_ENVIRONMENTS_TOUCHED:-0}" = 1 ]; then
         local disabled=()
@@ -6420,6 +6021,12 @@ settings_apply_final() {
                 ;;
         esac
     done 3< "${plan}"
+    if ! settings_verify_plan "${plan}" "${verify_environment_mode}"; then
+        echo "Partial failure"
+        echo "Remaining: verification"
+        return 3
+    fi
+    echo "  [PASS] Settings apply verified."
     local marker_temporary="${state}/install.complete.stage.$$"
     printf 'schema=1\tcompleted_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker_temporary}" || return 1
     _haws_state_replace "${marker_temporary}" "${state}/install.complete"
