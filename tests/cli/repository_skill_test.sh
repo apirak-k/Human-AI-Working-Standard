@@ -224,12 +224,12 @@ test_catalog_resolves_source_scoped_logical_skills() {
         END { exit !(found == 1) }' || return 1
 }
 
-test_catalog_classifies_inspected_sources_from_raw_skill_files() {
+test_catalog_respects_repository_folder_taxonomy() {
     prepare_logical_skill_catalog || return 1
     source_haws || return 1
 
     [ "$(catalog_source_kind 'source-one::skills/packs/source-one')" = PACK ] || return 1
-    [ "$(catalog_source_kind 'source-two::skills/packs/source-two')" = SINGLE ] || return 1
+    [ "$(catalog_source_kind 'source-two::skills/packs/source-two')" = PACK ] || return 1
     [ "$(catalog_source_kind 'custom::skills/custom')" = SINGLE ] || return 1
     [ "$(catalog_source_kind 'source-uninitialized::skills/standalone/source-uninitialized')" = UNVERIFIED ] || return 1
 }
@@ -779,7 +779,7 @@ if [ -n "${HAWS_REPOSITORY_TEST_ONLY:-}" ]; then
 fi
 
 run_test test_catalog_resolves_source_scoped_logical_skills
-run_test test_catalog_classifies_inspected_sources_from_raw_skill_files
+run_test test_catalog_respects_repository_folder_taxonomy
 run_test test_catalog_keeps_only_historical_canonical_skill_copies
 run_test test_add_only_apply_creates_local_submodule_entry
 run_test test_remove_only_apply_removes_registered_source_and_keeps_unrelated_file
