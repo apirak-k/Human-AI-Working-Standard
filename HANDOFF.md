@@ -1,6 +1,6 @@
 # Checkpoint — Second Brain merge and Settings Apply
 
-Updated: 2026-09-28
+Updated: 2026-09-29
 
 ## Goal
 
@@ -10,7 +10,7 @@ Preserve local and remote Second Brain content during sync, and make Settings Ap
 
 - Branch: `codex/fix-secondbrain-merge`
 - Base commit: `8faeea6` (`fix(sync): match all ponytail sub-skills to avoid duplicate global links`)
-- The branch is to be published to `origin` for continuation on another device.
+- The branch has been verified locally; remote branches have not been changed.
 - `tests/test-secondbrain-merge.sh` covers preservation of local and remote preference bullets.
 
 ## Completed
@@ -18,18 +18,19 @@ Preserve local and remote Second Brain content during sync, and make Settings Ap
 - Second Brain merge now combines both local and remote content.
 - Repository add/remove actions share validation; kit prune is limited to registered skill submodules.
 - Settings Apply preflights the plan, then verifies persisted settings, environments, skills, and repository changes before writing `install.complete`.
+- Declared `DISABLED_SKILLS` as an associative array so Apply verification can reload source-qualified disabled skill IDs under `set -u`.
 - Removed unreferenced legacy command implementations.
 
 ## Verification
 
 | Check | Result |
 | --- | --- |
-| `bash -n haws.sh` | Pass |
-| `bash -n tests/test-secondbrain-merge.sh` | Pass |
+| `bash -n haws.sh tests/test-settings-apply.sh tests/test-secondbrain-merge.sh` | Pass |
 | `git diff --check` | Pass |
-| `bash tests/test-secondbrain-merge.sh` | Not run; behavior remains unverified |
-| Settings Apply runtime path | Not run; behavior remains unverified |
+| `bash tests/test-secondbrain-merge.sh` | Pass |
+| `bash tests/test-settings-apply.sh` | Pass; reproduced the failure before the fix |
+| Four focused repository/skill Apply regression cases | Pass |
 
 ## Next Action
 
-Run `bash tests/test-secondbrain-merge.sh`, then verify Settings Apply with a safe local fixture. Fix any failures before merging this feature branch into `main`.
+Promote the verified fix to `main`, then align `dev` to that baseline while retaining documentation-only differences. Update remote refs only after their current state is confirmed.

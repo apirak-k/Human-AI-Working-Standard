@@ -1023,6 +1023,8 @@ state_init() {
     load_disabled_skills
 }
 
+declare -gA DISABLED_SKILLS=()
+
 load_disabled_skills() {
     DISABLED_SKILLS=()
     local state_file="$(_skills_disabled_state_file)"
