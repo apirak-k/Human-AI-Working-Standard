@@ -21,6 +21,8 @@ worktrees/
 # Second Brain's nested private checkout metadata; the neutral starter
 # documents in secondbrain/ are part of the public baseline.
 /secondbrain/.git/
+/secondbrain/notes/*
+!/secondbrain/notes/.gitkeep
 .haws_backup/
 
 # Scratch & Temporary Testing
