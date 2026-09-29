@@ -1026,7 +1026,7 @@ state_init() {
 declare -gA DISABLED_SKILLS=()
 
 load_disabled_skills() {
-    DISABLED_SKILLS=()
+    declare -gA DISABLED_SKILLS=()
     local state_file="$(_skills_disabled_state_file)"
     local dfile="${state_file}"
     if [ ! -f "${dfile}" ]; then
