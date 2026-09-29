@@ -1026,7 +1026,7 @@ state_init() {
 declare -gA DISABLED_SKILLS=()
 
 load_disabled_skills() {
-    DISABLED_SKILLS=()
+    declare -gA DISABLED_SKILLS=()
     local state_file="$(_skills_disabled_state_file)"
     local dfile="${state_file}"
     if [ ! -f "${dfile}" ]; then
@@ -2861,14 +2861,6 @@ run_sync() {
                 *) skill_dir="${source_dir}" ;;
             esac
             local target_dir="${skill_dir}"
-            if [[ "${source_path}" == skills/packs/* ]]; then
-                local parent_dir="${skill_dir%/*}"
-                target_dir="${parent_dir}"
-                if [ -d "${parent_dir}/skills" ] && [ "${parent_dir##*/}" != skills ]; then
-                    target_dir="${skill_dir}"
-                fi
-            fi
-            [[ "${source_path}" == skills/standalone/* ]] && target_dir="${skill_dir}"
             local win_target="${target_dir}"
             if [[ "${target_dir}" =~ ^/([a-zA-Z])/(.*) ]]; then
                 local drive="${BASH_REMATCH[1]}"
