@@ -4,7 +4,7 @@ Updated: 2026-09-29
 
 ## Branch Contract
 
-- `main` is the ready-to-use baseline at `86c7459`.
+- `main` is the ready-to-use baseline at `9e752e3`.
 - `dev` starts from the same code, tests, HAWS standards, Agent roles, and templates as `main`.
 - This handoff is the only development-status document kept on `dev`; shared Agent and HAWS documents remain available on both branches.
 - The public `origin` branch set is `main` and `dev`.
@@ -14,7 +14,10 @@ Updated: 2026-09-29
 - Integrated the useful changes from the three public branches into `main`.
 - Preserved the Second Brain merge and Settings Apply fixes with focused regression tests.
 - Restored the advisory `commit-msg` hook required by the current setup flow.
-- Updated the repository taxonomy regression to match the current folder-based catalog behavior.
+- Updated repository taxonomy detection in `catalog_source_kind` to respect `skills/standalone/*` folder taxonomy and ignore hidden directories (`.*`).
+- Fixed `load_disabled_skills` in `haws.sh` to declare `DISABLED_SKILLS` as a global associative array (`declare -gA`), eliminating `unbound variable` crashes during sync.
+- Refined Antigravity (`skills.json`) generation to register exact active skill directories instead of broad parent directories, cleanly excluding disabled skills from Antigravity IDE.
+- Added comprehensive `ponytail*` prefix matching in sync to prevent duplicate global symlinks when plugin cache exists.
 - Kept this active checkpoint on `dev` only.
 
 ## Verification
