@@ -32,11 +32,16 @@ fail() {
 
 
 run_haws() {
+    local status=0
     env HOME="${FIXTURE_HOME}" CODEX_HOME="${FIXTURE_HOME}/.codex" \
         HAWS_REPO_DIR="${FIXTURE_PROJECT}" HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" \
         HAWS_TEST_KEYS="${HAWS_TEST_KEYS:-}" \
         HAWS_CALL_LOG="${CALL_LOG:-}" PATH="${PATH}" \
-        bash "${FIXTURE_PROJECT}/haws.sh" "$@" >"${OUTPUT_FILE}" 2>&1
+        bash "${FIXTURE_PROJECT}/haws.sh" "$@" >"${OUTPUT_FILE}" 2>&1 || status=$?
+    if [ "${status}" -ne 0 ]; then
+        cat "${OUTPUT_FILE}" >&2
+        return "${status}"
+    fi
 }
 
 run_haws_input() {

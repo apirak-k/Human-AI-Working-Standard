@@ -17,7 +17,7 @@ The actual goal and required outcome always take priority over following rigid p
 ### Launching HAWS
 
 - **Windows**: Double-click **`haws.bat`** in the repository root (or run `.\haws.bat` from terminal). It automatically locates Git Bash and opens the interactive HAWS interface.
-- **macOS & Linux**: Run `./haws.sh` in your terminal.
+- **macOS & Linux**: Run `./haws.sh` in your terminal with Bash 4.2 or newer. macOS includes Bash 3.2; install a newer Bash with `brew install bash`, then run `"$(brew --prefix)/bin/bash" ./haws.sh`.
 
 #### Interactive Menu System (TUI)
 - **First Launch**: Opens **HAWS Setup** to configure AI environments, skills, and settings.
@@ -50,6 +50,8 @@ bash haws.sh setup
 
 Setup edits a draft, shows a Preview, and writes state only after `Install` or `Update` confirmation. Later launches open Home, where `Sync`, `Doctor`, `Settings`, and `Uninstall` are explicit actions.
 
+On macOS, use Bash 4.2 or newer for this command. The system Bash is 3.2; after installing Homebrew Bash, run `"$(brew --prefix)/bin/bash" haws.sh setup`.
+
 ### Prerequisites
 
 | Tool | Minimum Version | Purpose |
@@ -57,12 +59,12 @@ Setup edits a draft, shows a Preview, and writes state only after `Install` or `
 | **Git** | 2.30+ | Repository versioning, submodules, worktrees |
 | **Node.js** | 20+ | Runtime for custom skills and CLI tools |
 | **Python** | 3.10+ | Fast regex calculations and AST analysis |
-| **Bash** | Standard / Git Bash | Unified command engine (`haws.sh`) |
+| **Bash** | 4.2+ / Git Bash | Unified command engine (`haws.sh`) |
 
 ### Cross-Platform Setup Details
 
 - **Windows 10 / 11**: Double-click `haws.bat`. It delegates to Git Bash and preserves the shared menu behavior. No administrator privileges are required for the launcher; Windows link capabilities depend on the host and are reported as `[Unverified]` when unavailable. Antigravity uses declarative JSON mapping (`skills.json`); Claude Code and Codex use their existing adapters.
-- **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
+- **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`) using Bash 4.2 or newer. The bundled macOS Bash 3.2 is rejected with an install command. Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
 
 ---
 

@@ -4,10 +4,36 @@ Updated: 2026-09-30
 
 ## Branch Contract
 
-- `main` is the ready-to-use baseline at `9e752e3`.
-- `dev` starts from the same code, tests, HAWS standards, Agent roles, and templates as `main`.
+- `main` is the ready-to-use baseline at `dc9d393`.
+- At the start of this task, `dev` was at `87a9c3a` and contained seven commits not yet on `main`; `origin/dev` matched. Keep this work on `dev`.
 - This handoff is the only development-status document kept on `dev`; shared Agent and HAWS documents remain available on both branches.
 - The public `origin` branch set is `main` and `dev`.
+
+## Current Audit Follow-up — Behavioral Tests Passed
+
+- Source: today's ChatGPT conversation “แก้HAWS,” which prioritized a real install-to-uninstall lifecycle, Second Brain settings as a draft until final confirmation, preserving unowned files during Sync, and a clear Bash minimum for macOS.
+- Updated `haws.sh` and the Gemini JSON adapter to merge HAWS skill entries with existing Antigravity settings, record only HAWS-owned entries, and remove only those entries during uninstall. Existing or edited unowned files are preserved.
+- Changed Second Brain connect/disconnect in Settings to remain draft actions until Install/Update applies the reviewed plan. Direct `haws.sh user connect` remains immediate.
+- Added uninstall state tracking so a completed full uninstall does not reopen as installed solely because an old manifest remains. Native Codex cleanup now runs through its ownership manifest, and unchanged unowned profiles are no longer claimed by the shell ownership ledger.
+- Added a Bash 4.2 startup guard and documented the Homebrew Bash launch command for macOS.
+- Updated the stale Second Brain Settings expectations to verify draft-only connection changes and no mutation before final confirmation. Scoped the worktree ownership assertion to skill records, retained the Antigravity config status line, and fixed the Windows Codex manifest path by constructing it with Node's path API. The E2E helper now prints captured command output on failure.
+- `tests/cli/run.sh` passed on Windows Git Bash 5.3.15 with 167 passed and 0 failed:
+
+| Suite | Result |
+| --- | ---: |
+| Launcher/menu | 17 passed |
+| Local state | 16 passed |
+| Settings flow | 38 passed |
+| Catalog | 6 passed |
+| Repository/skill | 23 passed |
+| Sync | 31 passed |
+| Status/doctor | 13 passed |
+| Uninstall | 13 passed |
+| Home entrypoint | 4 passed |
+| Lifecycle/plugins E2E | 6 passed |
+
+- Codex native profile tests passed 14/14. Disposable Gemini adapter checks passed for preserving user entries, removing only HAWS-owned entries, retaining edited entries, cleaning HAWS-created JSON, and leaving empty candidates untouched.
+- `bash -n haws.sh`, `node --check ai-configs/codex/agents.mjs`, `node --check ai-configs/gemini/skills-json.mjs`, and `git diff --check` passed. [Unverified] The startup guard has not been exercised on macOS's system Bash 3.2; this machine has Git Bash 5.3.15. Changes remain uncommitted and have not been pushed.
 
 ## Completed
 
@@ -20,7 +46,9 @@ Updated: 2026-09-30
 - Added comprehensive `ponytail*` prefix matching in sync to prevent duplicate global symlinks when plugin cache exists.
 - Kept this active checkpoint on `dev` only.
 
-## Verification
+## Prior Verification — Before the Current Audit Follow-up
+
+The results below describe the earlier tree only and do not verify the current uncommitted changes:
 
 The scripts included by `tests/cli/run.sh` were run individually on the final tree:
 

@@ -149,13 +149,15 @@ test_second_brain_local_only_cancel_preserves_local_only_mode() {
     local input="${down}${down}${down}\nn\nq"
     run_haws_input "${input}" settings || true
     assert_output_contains 'LOCAL-ONLY' || return 1
-    assert_output_contains 'Do you want to connect? (y/N):' || return 1
-    assert_output_contains 'Connection cancelled.' || return 1
+    assert_output_contains 'Schedule connection after Apply and final confirmation? (y/N):' || return 1
+    assert_output_contains 'Connection draft cancelled.' || return 1
     [ ! -d "${FIXTURE_PROJECT}/secondbrain/.git" ]
 }
 
-test_second_brain_connected_detail_disconnects_after_yes() {
+test_second_brain_connected_detail_schedules_disconnect_without_mutation() {
     seed_second_brain_with_remote || return 1
+    local remote_before
+    remote_before="$(git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin)" || return 1
     local down=$'\033[B'
     local input="${down}${down}${down}\ny\nq"
     run_haws_input "${input}" settings || true
@@ -163,21 +165,23 @@ test_second_brain_connected_detail_disconnects_after_yes() {
     assert_output_contains 'ONLINE / CONNECTED' || return 1
     assert_output_contains 'Remote URL' || return 1
     assert_output_contains 'Total Commits' || return 1
-    assert_output_contains 'Do you want to disconnect? (y/N):' || return 1
-    assert_output_contains 'Successfully disconnected' || return 1
-    ! git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin >/dev/null 2>&1
+    assert_output_contains 'Schedule disconnect after Apply and final confirmation? (y/N):' || return 1
+    assert_output_contains 'Disconnect is only scheduled in this draft.' || return 1
+    assert_output_not_contains 'Successfully disconnected' || return 1
+    [ "$(git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin)" = "${remote_before}" ]
 }
 
-test_second_brain_connect_is_immediate_after_yes() {
+test_second_brain_connect_is_only_scheduled_in_settings_draft() {
     local remote="file://${FIXTURE_ROOT}/secondbrain-connect.git"
     git init --bare -q "${FIXTURE_ROOT}/secondbrain-connect.git" || return 1
     seed_local_second_brain_defaults || return 1
     local down=$'\033[B'
     local input="${down}${down}${down}\ny\n${remote}\nq"
     run_haws_input "${input}" settings || true
-    assert_output_contains 'Connecting Second Brain' || return 1
-    assert_output_contains 'please wait' || return 1
-    [ "$(git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin)" = "${remote}" ]
+    assert_output_contains 'Connection is only scheduled in this draft.' || return 1
+    assert_output_contains 'Connect pending after final confirmation' || return 1
+    assert_output_not_contains 'Connecting Second Brain' || return 1
+    [ ! -d "${FIXTURE_PROJECT}/secondbrain/.git" ]
 }
 
 test_settings_repositories_route_keeps_old_actions() {
@@ -424,7 +428,7 @@ test_second_brain_detail_rejects_blank_url_without_creating_remote() {
     local down=$'\033[B'
     local input="${down}${down}${down}\ny\n\nq"
     run_haws_input "${input}" settings || true
-    assert_output_contains 'Connection cancelled.' || return 1
+    assert_output_contains 'Connection draft cancelled.' || return 1
     [ ! -d "${FIXTURE_PROJECT}/secondbrain/.git" ]
 }
 
@@ -549,8 +553,8 @@ run_test test_preview_screen_renders_compact_packs_and_singles_without_paths
 run_test test_customize_setup_reaches_lifecycle_neutral_settings
 run_test test_settings_exposes_second_brain_detail_without_toggle
 run_test test_second_brain_local_only_cancel_preserves_local_only_mode
-run_test test_second_brain_connected_detail_disconnects_after_yes
-run_test test_second_brain_connect_is_immediate_after_yes
+run_test test_second_brain_connected_detail_schedules_disconnect_without_mutation
+run_test test_second_brain_connect_is_only_scheduled_in_settings_draft
 run_test test_settings_repositories_route_keeps_old_actions
 run_test test_settings_skills_route_keeps_old_single_pack_labels
 run_test test_settings_skills_without_edits_has_no_false_discard_prompt

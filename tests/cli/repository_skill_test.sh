@@ -517,12 +517,19 @@ run_worktree_switch_rebind_case() {
     old_target="$(canonical_path "${link}")"
     [ "${old_target}" = "$(canonical_path "${old_project}/skills/custom/worktree-skill")" ] || return 1
     [ -f "${FIXTURE_HOME}/.haws/skills-ownership.tsv" ] || return 1
+    awk -F '\t' -v wanted="${link}" \
+        '$1 == "skills" && $3 == wanted { found = 1 } END { exit found ? 0 : 1 }' \
+        "${FIXTURE_HOME}/.haws/skills-ownership.tsv" || return 1
     if [ "${legacy_mode}" = 1 ]; then
         cp "${FIXTURE_HOME}/.haws/skills-ownership.tsv" \
             "${old_project}/.haws/state/ownership.tsv" || return 1
         rm -f -- "${FIXTURE_HOME}/.haws/skills-ownership.tsv"
     else
-        [ ! -f "${old_project}/.haws/state/ownership.tsv" ] || return 1
+        if [ -f "${old_project}/.haws/state/ownership.tsv" ] &&
+            awk -F '\t' '$1 == "skills" { found = 1 } END { exit found ? 0 : 1 }' \
+                "${old_project}/.haws/state/ownership.tsv"; then
+            return 1
+        fi
     fi
 
     FIXTURE_PROJECT="${new_project}"
