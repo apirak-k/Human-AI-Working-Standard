@@ -11,6 +11,7 @@ failed=0
 
 source_haws() {
     export HOME="${FIXTURE_HOME}"
+    export CODEX_HOME="${FIXTURE_HOME}/.codex"
     export HAWS_REPO_DIR="${FIXTURE_PROJECT}"
     export HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state"
     export HAWS_SOURCE_ONLY=1
@@ -19,14 +20,16 @@ source_haws() {
 }
 
 run_haws() {
-    env HOME="${FIXTURE_HOME}" HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
+    env HOME="${FIXTURE_HOME}" CODEX_HOME="${FIXTURE_HOME}/.codex" \
+        HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
         HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" \
         HAWS_TEST_KEYS="${HAWS_TEST_KEYS:-}" PATH="${PATH}" \
         bash "${FIXTURE_PROJECT}/haws.sh" "$@" >"${OUTPUT_FILE}" 2>&1
 }
 
 run_haws_with_input() {
-    printf '%s' "$1" | env HOME="${FIXTURE_HOME}" HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
+    printf '%s' "$1" | env HOME="${FIXTURE_HOME}" CODEX_HOME="${FIXTURE_HOME}/.codex" \
+        HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
         HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" HAWS_TEST_KEYS= PATH="${PATH}" \
         bash "${FIXTURE_PROJECT}/haws.sh" "${@:2}" >"${OUTPUT_FILE}" 2>&1
 }
@@ -107,7 +110,8 @@ test_matching_owned_link_or_generated_file_is_removed() {
     local plan
     plan="$(uninstall_plan skills)" || return 1
     uninstall_apply "${plan}" >"${OUTPUT_FILE}" 2>&1 || return 1
-    assert_file_not_exists "${FIXTURE_HOME}/.claude/skills/managed"
+    assert_file_not_exists "${FIXTURE_HOME}/.claude/skills/managed" || return 1
+    ! ownership_list skills | grep -F "${FIXTURE_HOME}/.claude/skills/managed" >/dev/null
 }
 
 test_modified_owned_file_is_preserved() {
@@ -155,6 +159,31 @@ test_dirty_owned_repository_is_blocked() {
     [ -d "${owned_repo}/.git" ]
 }
 
+test_missing_node_does_not_abort_unrelated_uninstall_actions() {
+    seed_uninstall_state || return 1
+    mkdir -p "${FIXTURE_HOME}/.codex/agents" "${FIXTURE_PROJECT}/agents" || return 1
+    printf '%s\n' '---' 'name: tester' '---' > "${FIXTURE_PROJECT}/agents/tester.md"
+    printf '%s\n' 'managed profile' > "${FIXTURE_HOME}/.codex/agents/tester.toml"
+    source_haws || return 1
+    ownership_record agents generated-file \
+        "${FIXTURE_HOME}/.codex/agents/tester.toml" \
+        "${FIXTURE_PROJECT}/agents/tester.md" \
+        "$(_haws_sha256 "${FIXTURE_HOME}/.codex/agents/tester.toml")" || return 1
+
+    local original_path="${PATH}" uninstall_status=0
+    PATH=/usr/bin:/bin
+    export PATH
+    uninstall_run --yes >"${OUTPUT_FILE}" 2>&1 || uninstall_status=$?
+    PATH="${original_path}"
+    export PATH
+
+    [ "${uninstall_status}" -ne 0 ] || return 1
+    assert_output_contains 'Node.js is required' || return 1
+    assert_file_not_exists "${FIXTURE_HOME}/.claude/skills/managed" || return 1
+    [ -f "${FIXTURE_HOME}/.codex/agents/tester.toml" ] || return 1
+    ownership_list agents | grep -F "${FIXTURE_HOME}/.codex/agents/tester.toml" >/dev/null
+}
+
 test_interrupted_apply_keeps_remaining_records_recoverable() {
     seed_uninstall_state || return 1
     printf '%s\n' second > "${FIXTURE_HOME}/.claude/second-owned"
@@ -168,7 +197,13 @@ test_interrupted_apply_keeps_remaining_records_recoverable() {
         uninstall_apply "${plan}" >"${OUTPUT_FILE}" 2>&1 || true
     assert_output_contains 'Interrupted' || return 1
     [ -f "${FIXTURE_HOME}/.claude/second-owned" ] || return 1
-    ownership_list skills | grep -F 'second-owned' >/dev/null
+    ownership_list skills | grep -F 'second-owned' >/dev/null || return 1
+    if [ -e "${FIXTURE_HOME}/.claude/skills/managed" ] ||
+        [ -L "${FIXTURE_HOME}/.claude/skills/managed" ]; then
+        ownership_list skills | grep -F "${FIXTURE_HOME}/.claude/skills/managed" >/dev/null
+    else
+        ! ownership_list skills | grep -F "${FIXTURE_HOME}/.claude/skills/managed" >/dev/null
+    fi
 }
 
 test_direct_uninstall_requires_preview_confirmation_and_applies() {
@@ -222,19 +257,24 @@ test_direct_dry_run_never_removes_owned_item() {
     [ -e "${FIXTURE_HOME}/.claude/skills/managed" ] || [ -L "${FIXTURE_HOME}/.claude/skills/managed" ]
 }
 
-run_test test_uninstall_apis_are_present
-run_test test_uninstall_preview_is_nonmutating
-run_test test_default_groups_are_ownership_only
-run_test test_matching_owned_link_or_generated_file_is_removed
-run_test test_modified_owned_file_is_preserved
-run_test test_unrelated_files_and_second_brain_are_preserved
-run_test test_dirty_owned_repository_is_blocked
-run_test test_interrupted_apply_keeps_remaining_records_recoverable
-run_test test_direct_uninstall_requires_preview_confirmation_and_applies
-run_test test_default_confirmation_cancels_safely
-run_test test_confirmation_accepts_only_y_or_y_uppercase
-run_test test_legacy_uninstall_route_is_removed
-run_test test_direct_dry_run_never_removes_owned_item
+if [ -n "${HAWS_UNINSTALL_TEST_ONLY:-}" ]; then
+    run_test "${HAWS_UNINSTALL_TEST_ONLY}"
+else
+    run_test test_uninstall_apis_are_present
+    run_test test_uninstall_preview_is_nonmutating
+    run_test test_default_groups_are_ownership_only
+    run_test test_matching_owned_link_or_generated_file_is_removed
+    run_test test_modified_owned_file_is_preserved
+    run_test test_unrelated_files_and_second_brain_are_preserved
+    run_test test_dirty_owned_repository_is_blocked
+    run_test test_missing_node_does_not_abort_unrelated_uninstall_actions
+    run_test test_interrupted_apply_keeps_remaining_records_recoverable
+    run_test test_direct_uninstall_requires_preview_confirmation_and_applies
+    run_test test_default_confirmation_cancels_safely
+    run_test test_confirmation_accepts_only_y_or_y_uppercase
+    run_test test_legacy_uninstall_route_is_removed
+    run_test test_direct_dry_run_never_removes_owned_item
+fi
 
 echo "CLI Batch 6 uninstall tests: ${passed} passed, ${failed} failed"
 [ "${failed}" -eq 0 ]

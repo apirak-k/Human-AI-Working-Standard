@@ -24,7 +24,7 @@ The actual goal and required outcome always take priority over following rigid p
 - **Subsequent Launches**: Opens **HAWS Home** with direct actions:
   - **`Sync`**: Verifies and reconciles skill links; refreshes skill sources and a connected Second Brain when their Auto Update settings are enabled.
   - **`Doctor`**: Runs read-only diagnostics and reports the checks and findings.
-  - **`Settings`**: Configures Repositories, Skills (Enable/Disable), AI Environments, Second Brain, and Auto Update in a non-destructive draft mode (press `Apply` to save).
+  - **`Settings`**: Configures Repositories, Skills (Enable/Disable), AI Environments, Second Brain, and Auto Update in a non-destructive draft mode. `Apply` accepts the draft for Preview; `Install` or `Update` confirmation saves it.
   - **`Uninstall`**: Safely detaches HAWS links and profiles with preview and confirmation.
 
 #### Controls
@@ -77,7 +77,7 @@ HAWS physically enforces the **3-Tier Data Separation Model**:
 3. **Second Brain Documents (`secondbrain/`)**: Neutral starter documents for preferences, safeguards, and workflow. Keep personal preferences and notes in your own private Second Brain repository or local copy.
 
 > [!IMPORTANT]
-> **Privacy Invariant**: Your Second Brain repository on GitHub **MUST be created as PRIVATE**. Never connect `secondbrain/` to a public repository to ensure that your personal notes, communication preferences, and recorded anti-patterns remain strictly confidential.
+> **Privacy responsibility (not verified by HAWS):** Create your Second Brain GitHub repository as **Private** and confirm its visibility before connecting it. HAWS does not check repository visibility, so privacy cannot be verified by the tool.
 
 ### Connecting to Cloud (Two-Way Sync)
 On any computer (work machine or home machine):

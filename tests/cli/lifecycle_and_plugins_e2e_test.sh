@@ -426,20 +426,16 @@ test_clean_full_uninstall() {
     # Perform initial sync
     run_haws sync || return 1
 
-    # Seed ownership records for global pointers to ensure full lifecycle coverage
     source_haws || return 1
     local claude_pointer="${FIXTURE_HOME}/.claude/CLAUDE.md"
     local gemini_pointer="${FIXTURE_HOME}/.gemini/GEMINI.md"
     [ -f "${claude_pointer}" ] || fail "Missing claude pointer before uninstall"
     [ -f "${gemini_pointer}" ] || fail "Missing gemini pointer before uninstall"
 
-    local claude_hash gemini_hash
-    claude_hash="$(_haws_sha256 "${claude_pointer}")"
-    gemini_hash="$(_haws_sha256 "${gemini_pointer}")"
-    ownership_record environments generated-file "${claude_pointer}" \
-        "${FIXTURE_PROJECT}/core/HAWS.md" "${claude_hash}" || return 1
-    ownership_record environments generated-file "${gemini_pointer}" \
-        "${FIXTURE_PROJECT}/core/HAWS.md" "${gemini_hash}" || return 1
+    ownership_list pointers | grep -F $'pointers\tpointer-block\t' >/dev/null || \
+        fail "Sync did not record pointer-block ownership"
+    assert_file_contains "${claude_pointer}" '<!-- HAWS_GLOBAL_POINTER_START -->' || return 1
+    assert_file_contains "${gemini_pointer}" '<!-- HAWS_GLOBAL_POINTER_END -->' || return 1
 
     # Seed unrelated file in skills and custom notes in secondbrain
     printf '%s\n' 'user-unrelated-content' > "${FIXTURE_HOME}/.claude/skills/unrelated.txt"
@@ -457,6 +453,8 @@ test_clean_full_uninstall() {
     # 1. Assert pointers removed
     assert_file_not_exists "${claude_pointer}" || return 1
     assert_file_not_exists "${gemini_pointer}" || return 1
+    ! ownership_list pointers | grep -F $'pointers\tpointer-block\t' >/dev/null || \
+        fail "Uninstall retained pointer-block ownership records"
 
     # 2. Assert managed skill links removed
     assert_file_not_exists "${FIXTURE_HOME}/.claude/skills/caveman" || return 1
@@ -469,6 +467,95 @@ test_clean_full_uninstall() {
     run_haws doctor || return 1
     assert_output_contains 'HAWS Doctor' || return 1
     assert_output_contains 'Overall:' || return 1
+
+    # A fresh launch after full removal must return to Setup, not Home.
+    run_haws_input 'q' || return 1
+    assert_output_contains 'HAWS Setup' || return 1
+    if grep -F 'HAWS Home' "${OUTPUT_FILE}" >/dev/null; then
+        fail "A bare launch after full uninstall entered Home"
+    fi
+}
+
+test_sync_adopts_only_exact_legacy_pointer_artifacts() {
+    populate_full_fixture || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude/skills" "${FIXTURE_HOME}/.gemini" || return 1
+    run_haws sync || return 1
+
+    source_haws || return 1
+    local claude_pointer="${FIXTURE_HOME}/.claude/CLAUDE.md"
+    local gemini_pointer="${FIXTURE_HOME}/.gemini/GEMINI.md"
+    local exact_agent="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local edited_agent="${FIXTURE_HOME}/.claude/agents/tester.md"
+    local command_file="${FIXTURE_HOME}/.claude/commands/demo-one.md"
+    local gemini_skills="${FIXTURE_HOME}/.gemini/config/skills.json"
+    local gemini_manifest="${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json"
+    local user_gemini_path="/user-owned/gemini-entry"
+    [ -f "${claude_pointer}" ] || fail "Missing generated Claude pointer"
+    [ -f "${gemini_pointer}" ] || fail "Missing generated Gemini pointer"
+    [ -f "${exact_agent}" ] || [ -L "${exact_agent}" ] || fail "Missing generated Claude agent"
+    [ -f "${edited_agent}" ] || [ -L "${edited_agent}" ] || fail "Missing generated tester agent"
+    [ -f "${command_file}" ] || fail "Missing generated Claude command"
+    [ -f "${gemini_skills}" ] || fail "Missing generated Gemini skills config"
+    [ -f "${gemini_manifest}" ] || fail "Missing generated Gemini ownership manifest"
+    [ "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath)" = .githooks ] || \
+        fail "Sync did not configure the advisory hooks"
+
+    # Simulate an older install whose integration artifacts exist but whose
+    # current ownership rows and Gemini manifest were not written.
+    local ownership_file="${FIXTURE_PROJECT}/.haws/state/ownership.tsv"
+    awk -F '\t' '
+        $1 == "pointers" || $1 == "agents" || $1 == "hooks" || $1 == "metadata" { next }
+        $1 == "environments" && $3 ~ /[.]gemini\/config\/skills[.]json$/ { next }
+        { print }
+    ' "${ownership_file}" > "${ownership_file}.tmp" || return 1
+    mv "${ownership_file}.tmp" "${ownership_file}" || return 1
+    rm -f -- "${gemini_manifest}"
+    sed -i 's/This environment operates under HAWS\./User-edited HAWS pointer./' \
+        "${gemini_pointer}" || return 1
+    rm -f -- "${edited_agent}" || return 1
+    cp "${FIXTURE_PROJECT}/agents/tester.md" "${edited_agent}" || return 1
+    printf '%s\n' 'User-edited agent content.' >> "${edited_agent}"
+    node -e 'const fs=require("node:fs");const f=process.argv[1];const data=JSON.parse(fs.readFileSync(f,"utf8"));data.entries.push({path:process.argv[2],owner:"user"});fs.writeFileSync(f,JSON.stringify(data,null,2)+"\n");' \
+        "${gemini_skills}" "${user_gemini_path}" || return 1
+    local gemini_before
+    gemini_before="$(cat "${gemini_pointer}")"
+
+    run_haws sync || return 1
+    source_haws || return 1
+    ownership_list pointers | grep -F $'pointers\tpointer-block\t' | \
+        grep -F "${claude_pointer}" >/dev/null || \
+        { fail "Exact legacy Claude pointer was not adopted"; return 1; }
+    ! ownership_list pointers | grep -F "${gemini_pointer}" >/dev/null || \
+        { fail "Edited Gemini pointer was incorrectly adopted"; return 1; }
+    [ "$(cat "${gemini_pointer}")" = "${gemini_before}" ] || \
+        { fail "Edited Gemini pointer changed during sync"; return 1; }
+    ownership_list agents | grep -F $'agents\t' | grep -F "${exact_agent}" >/dev/null || \
+        { fail "Exact legacy Claude agent was not adopted"; return 1; }
+    ! ownership_list agents | grep -F "${edited_agent}" >/dev/null || \
+        { fail "Edited Claude agent was incorrectly adopted"; return 1; }
+    [ "$(cat "${edited_agent}" | tail -n 1)" = 'User-edited agent content.' ] || \
+        { fail "Edited Claude agent changed during sync"; return 1; }
+    ownership_list agents | grep -F "${command_file}" >/dev/null || \
+        { fail "Exact legacy Claude command was not adopted"; return 1; }
+    ownership_list environments | grep -F 'gemini-skills-json' | \
+        grep -F "${gemini_skills}" >/dev/null || \
+        { fail "Exact legacy Gemini skills entries were not adopted"; return 1; }
+    ownership_list metadata | grep -F "${FIXTURE_HOME}/.haws_manifest" >/dev/null || \
+        { fail "Exact legacy HAWS manifest was not adopted"; return 1; }
+    ownership_list hooks | grep -F 'git-config' | grep -F "${FIXTURE_PROJECT}/.githooks" \
+        >/dev/null || { fail "Existing HAWS hook configuration was not adopted"; return 1; }
+
+    HAWS_TEST_KEYS=y run_haws uninstall || return 1
+    assert_file_not_exists "${claude_pointer}" || return 1
+    assert_file_contains "${gemini_pointer}" 'User-edited HAWS pointer.' || return 1
+    assert_file_not_exists "${exact_agent}" || return 1
+    assert_file_contains "${edited_agent}" 'User-edited agent content.' || return 1
+    assert_file_not_exists "${command_file}" || return 1
+    node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!data.entries.some(entry=>entry.path===process.argv[2]))process.exit(1);if(data.entries.some(entry=>entry.path.includes("/skills/custom/demo-one")))process.exit(2);' \
+        "${gemini_skills}" "${user_gemini_path}" || { fail "Uninstall did not preserve only the user Gemini entry"; return 1; }
+    assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest" || return 1
+    [ -z "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath 2>/dev/null || true)" ] || \
+        { fail "Uninstall retained adopted HAWS core.hooksPath"; return 1; }
 }
 
 # ==============================================================================
@@ -484,6 +571,7 @@ else
     run_test test_google_antigravity_gemini_sync_and_native_config
     run_test test_plugin_containing_skills_and_extensions
     run_test test_command_surface_status_doctor_hook
+    run_test test_sync_adopts_only_exact_legacy_pointer_artifacts
     run_test test_clean_full_uninstall
 fi
 

@@ -1,15 +1,15 @@
 # Development Handoff
 
-Updated: 2026-09-30
+Updated: 2026-10-01
 
 ## Branch Contract
 
 - `main` is the ready-to-use baseline at `dc9d393`.
-- At the start of this task, `dev` was at `87a9c3a` and contained seven commits not yet on `main`; `origin/dev` matched. Keep this work on `dev`.
+- At the start of this review follow-up, `dev` and `origin/dev` both pointed to `7846259` (parent `87a9c3a`); `main` and `origin/main` both pointed to `dc9d393`. Keep this work on `dev`.
 - This handoff is the only development-status document kept on `dev`; shared Agent and HAWS documents remain available on both branches.
 - The public `origin` branch set is `main` and `dev`.
 
-## Current Audit Follow-up — Behavioral Tests Passed
+## Baseline Audit Follow-up — Commit 7846259
 
 - Source: today's ChatGPT conversation “แก้HAWS,” which prioritized a real install-to-uninstall lifecycle, Second Brain settings as a draft until final confirmation, preserving unowned files during Sync, and a clear Bash minimum for macOS.
 - Updated `haws.sh` and the Gemini JSON adapter to merge HAWS skill entries with existing Antigravity settings, record only HAWS-owned entries, and remove only those entries during uninstall. Existing or edited unowned files are preserved.
@@ -33,7 +33,30 @@ Updated: 2026-09-30
 | Lifecycle/plugins E2E | 6 passed |
 
 - Codex native profile tests passed 14/14. Disposable Gemini adapter checks passed for preserving user entries, removing only HAWS-owned entries, retaining edited entries, cleaning HAWS-created JSON, and leaving empty candidates untouched.
-- `bash -n haws.sh`, `node --check ai-configs/codex/agents.mjs`, `node --check ai-configs/gemini/skills-json.mjs`, and `git diff --check` passed. [Unverified] The startup guard has not been exercised on macOS's system Bash 3.2; this machine has Git Bash 5.3.15. Changes remain uncommitted and have not been pushed.
+- `bash -n haws.sh`, `node --check ai-configs/codex/agents.mjs`, `node --check ai-configs/gemini/skills-json.mjs`, and `git diff --check` passed for commit `7846259`. [Unverified] The startup guard has not been exercised on macOS's system Bash 3.2; this machine has Git Bash 5.3.15. That commit is the pushed `origin/dev` baseline; the separate review fixes below are local until reported complete.
+
+## ChatGPT Review Feedback Follow-up — Local Changes
+
+- Evaluated the review findings for commit `7846259` against the current CLI, adapters, and tests. Implemented exact-only ownership recovery for legacy pointers, agent files, Claude commands, Gemini skill entries, and the tracked Git hook; modified and unrelated user content remains unowned and is preserved.
+- Fixed Install/Update to return severe Sync failures, stale-manifest launch detection, fresh setup defaults after uninstall, uninstall ownership-ledger cleanup, draft repository filtering, Codex environment naming, and partial cleanup when the native Codex adapter cannot run.
+- Second Brain reconnect now restores the previous `origin` URL when the remote operation fails. README privacy text now states that HAWS does not check GitHub repository visibility. Settings Apply documentation and the production Sync→Uninstall E2E were corrected.
+- `tests/cli/run.sh` passed on Windows Git Bash 5.3.15 with **179 passed, 0 failed**:
+
+| Suite | Result |
+| --- | ---: |
+| Launcher/menu | 17 passed |
+| Local state | 16 passed |
+| Settings flow | 46 passed |
+| Catalog | 6 passed |
+| Repository/skill | 24 passed |
+| Sync | 31 passed |
+| Status/doctor | 14 passed |
+| Uninstall | 14 passed |
+| Home entrypoint | 4 passed |
+| Lifecycle/plugins E2E | 7 passed |
+
+- The lifecycle E2E includes a production Sync→Uninstall run without seeded ownership rows and an upgrade fixture that adopts exact legacy HAWS artifacts while preserving edited files and user entries. Focused tests also cover final Install/Update failure propagation, post-uninstall defaults, stale manifest handling, Codex disabled health, Second Brain rollback, interrupted uninstall recovery, and ownership-ledger cleanup.
+- `bash -n haws.sh`, `node --check ai-configs/gemini/skills-json.mjs`, `node --check ai-configs/codex/agents.mjs`, and `git diff --check` passed on the final local tree. [Unverified] macOS and Linux were not run; Second Brain rollback with no pre-existing `origin` was not separately verified. These review fixes remain uncommitted and unpushed on `dev`.
 
 ## Completed
 

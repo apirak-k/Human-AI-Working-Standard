@@ -12,6 +12,7 @@ failed=0
 
 source_haws() {
     export HOME="${FIXTURE_HOME}"
+    export CODEX_HOME="${FIXTURE_HOME}/.codex"
     export HAWS_REPO_DIR="${FIXTURE_PROJECT}"
     export HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state"
     export HAWS_SOURCE_ONLY=1
@@ -20,7 +21,8 @@ source_haws() {
 }
 
 run_haws() {
-    env HOME="${FIXTURE_HOME}" HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
+    env HOME="${FIXTURE_HOME}" CODEX_HOME="${FIXTURE_HOME}/.codex" \
+        HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
         HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" \
         HAWS_CALL_LOG="${CALL_LOG:-}" PATH="${PATH}" \
         bash "${FIXTURE_PROJECT}/haws.sh" "$@" >"${OUTPUT_FILE}" 2>&1
@@ -164,6 +166,25 @@ test_status_summary_reports_health_facts_without_sync_state() {
     assert_output_contains 'Last sync: Never'
 }
 
+test_codex_disabled_identifier_suppresses_agents_health_detection() {
+    mkdir -p "${FIXTURE_HOME}/.agents" "${FIXTURE_PROJECT}/ai-configs" || return 1
+    printf '%s\n' codex > "${FIXTURE_PROJECT}/ai-configs/environments.disabled"
+    run_haws status --details || return 1
+    assert_output_contains 'codex disabled by local configuration' || {
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    ! grep -F 'codex directory detected' "${OUTPUT_FILE}" >/dev/null || return 1
+    ! grep -F 'agents directory detected' "${OUTPUT_FILE}" >/dev/null || return 1
+    run_haws doctor || true
+    assert_output_contains '[PASS] AI Environments      - None' || {
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    ! grep -F 'codex directory detected' "${OUTPUT_FILE}" >/dev/null || return 1
+    ! grep -F 'agents directory detected' "${OUTPUT_FILE}" >/dev/null
+}
+
 test_status_derives_second_brain_from_git_remote() {
     mkdir -p "${FIXTURE_PROJECT}/.haws/state" "${FIXTURE_PROJECT}/secondbrain"
     printf 'schema_version\t1\nsecond_brain\toff\nauto_update\ton\n' \
@@ -218,6 +239,7 @@ else
     run_test test_status_never_invokes_network_commands
     run_test test_status_reports_current_attention_separately_from_last_sync
     run_test test_status_summary_reports_health_facts_without_sync_state
+    run_test test_codex_disabled_identifier_suppresses_agents_health_detection
     run_test test_status_derives_second_brain_from_git_remote
     run_test test_status_details_labels_executed_sections
     run_test test_doctor_reports_failed_check_instead_of_fixed_ready

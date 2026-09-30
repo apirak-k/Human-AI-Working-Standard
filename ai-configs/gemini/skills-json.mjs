@@ -128,13 +128,53 @@ function splitManagedEntries(entries, ownedPaths) {
 }
 
 try {
-  if (!['apply', 'uninstall', 'verify'].includes(command) || !file || !manifestFile ||
-      (command === 'apply' && !candidateFile)) {
-    throw new Error('Usage: skills-json.mjs apply <file> <manifest> <candidate> | uninstall <file> <manifest>');
+  if (!['adopt', 'apply', 'uninstall', 'verify'].includes(command) || !file || !manifestFile ||
+      (['adopt', 'apply'].includes(command) && !candidateFile)) {
+    throw new Error('Usage: skills-json.mjs adopt <file> <manifest> <candidate> <legacy-manifest> | apply <file> <manifest> <candidate> | uninstall <file> <manifest>');
   }
 
   const rootState = readRoot(file);
   const manifestState = readManifest(manifestFile);
+
+  if (command === 'adopt') {
+    const legacyManifestFile = option;
+    if (!legacyManifestFile || manifestState.info) {
+      throw new Error('Legacy adoption requires a legacy manifest and no current ownership record.');
+    }
+    const legacyManifest = readFileSync(legacyManifestFile, 'utf8');
+    if (!legacyManifest.split(/\r?\n/).some(line => line.startsWith('skill:'))) {
+      console.log('OK: no legacy skill records to adopt.');
+    } else {
+      const candidateState = readRoot(candidateFile);
+      const desiredPaths = new Set(candidateState.value.entries.map(entry => {
+        if (!entry || typeof entry.path !== 'string' || !entry.path) {
+          throw new Error(`Invalid generated skill entry in ${candidateFile}`);
+        }
+        return entry.path;
+      }));
+      const counts = new Map();
+      for (const entry of rootState.value.entries) {
+        if (entry && !Array.isArray(entry) && typeof entry === 'object' &&
+            typeof entry.path === 'string' && desiredPaths.has(entry.path) &&
+            Object.keys(entry).length === 1) {
+          counts.set(entry.path, (counts.get(entry.path) || 0) + 1);
+        }
+      }
+      const adopted = [...counts]
+        .filter(([, count]) => count === 1)
+        .map(([path]) => path);
+      if (adopted.length) {
+        writeAtomic(manifestFile,
+          `${JSON.stringify({ version: 1, paths: adopted, createdTarget: false }, null, 2)}\n`,
+          0o600);
+        console.log(`OK: adopted ${adopted.length} exact legacy HAWS skill entries; left skills config unchanged.`);
+      } else {
+        console.log('OK: no exact legacy HAWS skill entries to adopt.');
+      }
+    }
+  }
+
+  if (command !== 'adopt') {
   const replaceOwned = command === 'apply' && option === '--replace-owned';
   const preserved = replaceOwned
     ? []
@@ -175,6 +215,7 @@ try {
     commit(file, rootState, manifestFile, manifestState,
       { ...rootState.value, entries: preserved }, [], false, removeCreatedRoot);
     console.log(`OK: removed ${removed} HAWS Antigravity skill entries; preserved ${preserved.length} other entries.`);
+  }
   }
 } catch (error) {
   console.error(`HAWS Antigravity skills: ${error.message}`);

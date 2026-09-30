@@ -69,7 +69,13 @@ _health_env_path() {
     case "$1" in
         claude) printf '%s/.claude\n' "$HOME" ;;
         gemini) printf '%s/.gemini\n' "$HOME" ;;
-        agents) printf '%s/.agents\n' "$HOME" ;;
+        codex)
+            if [ -d "$HOME/.codex" ]; then
+                printf '%s/.codex\n' "$HOME"
+            else
+                printf '%s/.agents\n' "$HOME"
+            fi
+            ;;
         *) printf '%s/.%s\n' "$HOME" "$1" ;;
     esac
 }
@@ -192,7 +198,7 @@ _health_collect() {
     fi
 
     local env env_path
-    for env in claude gemini agents; do
+    for env in claude gemini codex; do
         env_path="$(_health_env_path "$env")"
         if [ -n "${DISABLED_ENVS[$env]-}" ]; then
             _health_add Ready "AI Environments" "$env disabled by local configuration"
@@ -324,12 +330,12 @@ _health_collect_hooks() {
 _health_active_ai_names() {
     [[ "$(declare -p DISABLED_ENVS 2>/dev/null)" =~ "declare -A" ]] || declare -A DISABLED_ENVS=()
     local result="" env env_path label
-    for env in claude gemini agents; do
+    for env in claude gemini codex; do
         env_path="$(_health_env_path "$env")"
         case "$env" in
             claude) label=Claude ;;
             gemini) label=Gemini ;;
-            agents) label=Codex ;;
+            codex) label=Codex ;;
         esac
         if [ -z "${DISABLED_ENVS[$env]-}" ] && _haws_environment_present "$env"; then
             [ -n "$result" ] && result+=", "
@@ -2552,13 +2558,38 @@ run_sync() {
         local dest="$2"
         local label="$3"
         local record record_kind record_path record_source record_fingerprint current_target
+        local legacy_kind legacy_fingerprint
         mkdir -p "$(dirname "${dest}")"
 
         if [ -e "${dest}" ] || [ -L "${dest}" ]; then
             record="$(ownership_record_for_path agents "${dest}" 2>/dev/null || true)"
             if [ -z "${record}" ]; then
-                echo "  [PRESERVED] ${label}: existing item is not recorded as HAWS-owned: ${dest}"
-                return 0
+                legacy_kind=""
+                legacy_fingerprint=""
+                if [ -L "${dest}" ]; then
+                    current_target="$(readlink "${dest}" 2>/dev/null || true)"
+                    if [ "${current_target}" = "${src}" ]; then
+                        legacy_kind=symlink
+                        legacy_fingerprint="${current_target}"
+                    fi
+                elif [ -f "${dest}" ]; then
+                    if [ -f "${src}" ] && [ "${src}" -ef "${dest}" ]; then
+                        legacy_kind=hardlink
+                        legacy_fingerprint="$(_haws_sha256 "${dest}")"
+                    elif [ -f "${src}" ] && cmp -s -- "${src}" "${dest}"; then
+                        legacy_kind=generated-file
+                        legacy_fingerprint="$(_haws_sha256 "${dest}")"
+                    fi
+                fi
+                if [ -n "${legacy_kind}" ]; then
+                    ownership_record agents "${legacy_kind}" "${dest}" \
+                        "${src}" "${legacy_fingerprint}" || return 1
+                    record="${legacy_kind}"$'\t'"${dest}"$'\t'"${src}"$'\t'"${legacy_fingerprint}"
+                    echo "  [ADOPTED] Exact legacy ${label}: ${dest}"
+                else
+                    echo "  [PRESERVED] ${label}: existing item is not recorded as HAWS-owned: ${dest}"
+                    return 0
+                fi
             fi
             IFS=$'\t' read -r record_kind record_path record_source record_fingerprint <<< "${record}"
             if ! ownership_verify "${record_kind}"$'\t'"${record_path}"$'\t'"${record_source}"$'\t'"${record_fingerprint}"; then
@@ -2624,8 +2655,16 @@ run_sync() {
         if [ -e "${dest}" ] || [ -L "${dest}" ]; then
             record="$(ownership_record_for_path "${group}" "${dest}" 2>/dev/null || true)"
             if [ -z "${record}" ]; then
-                echo "  [PRESERVED] ${label}: existing file is not recorded as HAWS-owned: ${dest}"
-                return 0
+                if [ -f "${src}" ] && [ -f "${dest}" ] && [ ! -L "${dest}" ] && \
+                    cmp -s -- "${src}" "${dest}"; then
+                    ownership_record "${group}" generated-file "${dest}" \
+                        "${record_source}" "$(_haws_sha256 "${dest}")" || return 1
+                    record="generated-file"$'\t'"${dest}"$'\t'"${record_source}"$'\t'"$(_haws_sha256 "${dest}")"
+                    echo "  [ADOPTED] Exact legacy ${label}: ${dest}"
+                else
+                    echo "  [PRESERVED] ${label}: existing file is not recorded as HAWS-owned: ${dest}"
+                    return 0
+                fi
             fi
             IFS=$'\t' read -r record_kind record_path record_source record_fingerprint <<< "${record}"
             if ! ownership_verify "${record_kind}"$'\t'"${record_path}"$'\t'"${record_source}"$'\t'"${record_fingerprint}"; then
@@ -2751,6 +2790,7 @@ run_sync() {
         pointer_content+="- Second Brain documents: ${SOURCE_DIR}/secondbrain/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)\n"
         pointer_content+="- Subagent roles: ${SOURCE_DIR}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.\n"
         pointer_content+="${marker_end}\n"
+        pointer_hash="$(printf '%b' "${pointer_content}" | _haws_sha256_stream)" || return 1
 
         if [ -L "${target_file}" ]; then
             echo "  [PRESERVED] Global pointer target is a user-managed link: ${target_file}"
@@ -2768,7 +2808,25 @@ run_sync() {
                 }
             prior_record="$(ownership_record_for_path pointers "${target_file}" 2>/dev/null || true)"
             if [ -z "${prior_record}" ]; then
-                echo "  [PRESERVED] Existing global pointer block is not recorded as HAWS-owned: ${target_file}"
+                local existing_pointer_hash
+                existing_pointer_hash="$(_haws_pointer_block_fingerprint "${target_file}" 2>/dev/null || true)"
+                if [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ]; then
+                    if awk -v start="${marker_start}" -v end="${marker_end}" '
+                        $0 == start { inside=1; next }
+                        $0 == end { inside=0; next }
+                        !inside { print }
+                    ' "${target_file}" | grep -q '[^[:space:]]'; then
+                        pointer_source=appended
+                    else
+                        pointer_source=created
+                    fi
+                    ownership_record pointers pointer-block "${target_file}" \
+                        "${pointer_source}" "${existing_pointer_hash}" || return 1
+                    echo "  [ADOPTED] Exact legacy HAWS pointer ownership: ${target_file}"
+                    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                    return 0
+                fi
+                echo "  [PRESERVED] Existing global pointer block is not an exact HAWS block: ${target_file}"
                 return 0
             fi
             IFS=$'\t' read -r prior_kind prior_path prior_source prior_fingerprint <<< "${prior_record}"
@@ -2785,7 +2843,6 @@ run_sync() {
             [ -f "${target_file}" ] || pointer_source=created
         fi
 
-        pointer_hash="$(printf '%b' "${pointer_content}" | _haws_sha256_stream)" || return 1
         temporary="${target_file}.tmp.$$"
         if [ -f "${target_file}" ] && grep -q "${marker_start}" "${target_file}" 2>/dev/null; then
             local transformed="${temporary}.content"
@@ -3084,6 +3141,15 @@ run_sync() {
             echo "  [PRESERVED] Antigravity skills.json ownership changed; leaving it untouched: ${target_json}"
         else
             mkdir -p "$(_haws_state_dir)" || return 1
+            if [ -z "${previous_gemini_record}" ] && [ ! -f "${gemini_manifest}" ] &&
+                [ -f "${PREV_MANIFEST}" ] && [ -f "${target_json}" ]; then
+                node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
+                    adopt "${target_json}" "${gemini_manifest}" "${candidate_json}" \
+                    "${PREV_MANIFEST}" || {
+                    rm -f -- "${candidate_json}"
+                    return 1
+                }
+            fi
             local -a gemini_apply_args=(apply "${target_json}" "${gemini_manifest}" "${candidate_json}")
             [ "${replace_owned_gemini}" -eq 0 ] || gemini_apply_args+=(--replace-owned)
             node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
@@ -4119,6 +4185,21 @@ _second_brain_ensure_identity() {
     fi
 }
 
+_second_brain_restore_origin() {
+    local brain_dir="$1"
+    local had_origin="$2"
+    local previous_origin="$3"
+    if [ "$had_origin" -eq 1 ]; then
+        if git -C "$brain_dir" remote get-url origin >/dev/null 2>&1; then
+            git -C "$brain_dir" remote set-url origin "$previous_origin"
+        else
+            git -C "$brain_dir" remote add origin "$previous_origin"
+        fi
+    else
+        git -C "$brain_dir" remote remove origin >/dev/null 2>&1 || true
+    fi
+}
+
 run_user() {
     local action="${1:-status}"
     shift || true
@@ -4177,24 +4258,42 @@ run_user() {
             echo "============================================================="
             echo "             HAWS Second Brain Connect"
             echo "============================================================="
-            echo " [PRIVACY NOTICE] Ensure your repository is set to PRIVATE on GitHub!"
-            echo " Second Brain stores personal notes & anti-patterns and must NEVER be Public."
+            echo " [PRIVACY NOTICE] HAWS does not check GitHub repository visibility."
+            echo " Confirm this repository is Private before connecting personal Second Brain data."
             echo "============================================================="
             echo "  [*] Connecting Second Brain, please wait..."
-            if git -C "${brain_dir}" remote get-url origin &>/dev/null; then
-                git -C "${brain_dir}" remote set-url origin "${repo_url}"
+            local previous_origin="" had_origin=0 previous_head
+            previous_origin="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || true)"
+            [ -n "${previous_origin}" ] && had_origin=1
+            previous_head="$(git -C "${brain_dir}" rev-parse HEAD 2>/dev/null || true)"
+            if [ "${had_origin}" -eq 1 ]; then
+                git -C "${brain_dir}" remote set-url origin "${repo_url}" || {
+                    _second_brain_restore_origin "${brain_dir}" "${had_origin}" "${previous_origin}" || \
+                        echo "  [WARN] Could not restore the previous Second Brain origin."
+                    return 1
+                }
             else
-                git -C "${brain_dir}" remote add origin "${repo_url}"
+                git -C "${brain_dir}" remote add origin "${repo_url}" || return 1
             fi
 
             echo "  [*] Testing remote connection..."
             if git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
                 echo "  [*] Remote repo has existing history. Performing Symmetrical Merge..."
-                symmetrical_merge_secondbrain "${brain_dir}" || return 1
+                if ! symmetrical_merge_secondbrain "${brain_dir}"; then
+                    _second_brain_restore_origin "${brain_dir}" "${had_origin}" "${previous_origin}" || \
+                        echo "  [WARN] Could not restore the previous Second Brain origin."
+                    [ "$(git -C "${brain_dir}" rev-parse HEAD 2>/dev/null || true)" = "${previous_head}" ] || \
+                        echo "  [WARN] Local Second Brain history changed during merge and was retained."
+                    return 1
+                fi
                 if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
                     echo "  [✓] Second brain synced and connected to ${repo_url}"
                 else
                     echo "  [ERROR] Failed to push merged updates to ${repo_url}."
+                    _second_brain_restore_origin "${brain_dir}" "${had_origin}" "${previous_origin}" || \
+                        echo "  [WARN] Could not restore the previous Second Brain origin."
+                    [ "$(git -C "${brain_dir}" rev-parse HEAD 2>/dev/null || true)" = "${previous_head}" ] || \
+                        echo "  [WARN] Local Second Brain history changed during merge and was retained."
                     return 1
                 fi
             else
@@ -4204,7 +4303,8 @@ run_user() {
                 else
                     echo "  [ERROR] Failed to connect or push to ${repo_url}."
                     echo "  [INFO] Please check URL, network, or GitHub SSH/Token authentication."
-                    git -C "${brain_dir}" remote remove origin 2>/dev/null || true
+                    _second_brain_restore_origin "${brain_dir}" "${had_origin}" "${previous_origin}" || \
+                        echo "  [WARN] Could not restore the previous Second Brain origin."
                     return 1
                 fi
             fi
@@ -4404,7 +4504,14 @@ run_hooks() {
                 current_hooks="$(git -C "${SCRIPT_DIR}" config --local --get-all core.hooksPath 2>/dev/null || true)"
                 hook_record="$(ownership_record_for_path hooks "${SCRIPT_DIR}/.githooks" 2>/dev/null || true)"
                 if [ "${current_hooks}" = .githooks ]; then
-                    :
+                    if [ -z "${hook_record}" ] &&
+                        git -C "${SCRIPT_DIR}" ls-files --error-unmatch -- .githooks/commit-msg >/dev/null 2>&1 &&
+                        git -C "${SCRIPT_DIR}" cat-file blob HEAD:.githooks/commit-msg 2>/dev/null | \
+                            cmp -s - "${SCRIPT_DIR}/.githooks/commit-msg"; then
+                        ownership_record hooks git-config "${SCRIPT_DIR}/.githooks" \
+                            __HAWS_UNSET__ .githooks || return 1
+                        echo "  [ADOPTED] Tracked HAWS Git hooks configuration"
+                    fi
                 elif [ -n "${current_hooks}" ] || [ -n "${hook_record}" ]; then
                     echo "  [PRESERVED] Existing core.hooksPath is not HAWS-owned: ${current_hooks:-unset}"
                     return 0
@@ -4869,30 +4976,9 @@ uninstall_apply() {
     local threshold
     threshold="$(printenv HAWS_TEST_UNINSTALL_INTERRUPT_AFTER 2>/dev/null || true)"
     local interrupted=0
-    local -A removed_keys=()
     local removed_count=0
-    _uninstall_flush_ownership() {
-        [ "${removed_count}" -gt 0 ] || return 0
-        local state="$(_health_state)"
-        local file="$state/ownership.tsv"
-        local temporary="$state/ownership.stage.$$"
-        [ -f "$file" ] || return 0
-        local keys_file="$state/ownership.removed.$$"
-        printf '%s\n' "${!removed_keys[@]}" > "$keys_file"
-        if awk -F $'\t' '
-            NR == FNR { removed[$0] = 1; next }
-            { key = $1 "\t" $2 "\t" $3 }
-            !(key in removed) { print }
-        ' "$keys_file" "$file" > "$temporary" 2>/dev/null; then
-            _haws_state_replace "$temporary" "$file"
-        fi
-        rm -f -- "$keys_file" "$temporary"
-        removed_keys=()
-        removed_count=0
-    }
     _uninstall_interrupt() {
         interrupted=1
-        _uninstall_flush_ownership
     }
     trap _uninstall_interrupt INT TERM
     local action group kind path source fingerprint extra record verify_record verify_status
@@ -4914,8 +5000,13 @@ uninstall_apply() {
         verify_record="$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
         if ownership_verify "$verify_record"; then
             if _uninstall_remove_path "$kind" "$path" "$source"; then
-                removed_keys["$group"$'\t'"$kind"$'\t'"$path"]=1
-                removed_count=$((removed_count + 1))
+                if _ownership_remove_record "$record"; then
+                    removed_count=$((removed_count + 1))
+                else
+                    printf 'Removed: %s %s %s; ownership record could not be updated\n' \
+                        "$group" "$kind" "$path"
+                    status=1
+                fi
             else
                 printf 'Preserved: %s %s %s (removal failed)\n' "$group" "$kind" "$path"
                 status=1
@@ -4932,7 +5023,6 @@ uninstall_apply() {
         fi
         processed=$((processed + 1))
     done < "$plan"
-    _uninstall_flush_ownership || status=1
     trap - INT TERM
     if [ "$status" -eq 0 ]; then
         printf '[PASS] Successfully detached and removed %d managed items.\n' "${removed_count}"
@@ -4940,6 +5030,35 @@ uninstall_apply() {
         printf '[WARN] Uninstall finished with exceptions (%d removed).\n' "${removed_count}"
     fi
     return "$status"
+}
+
+_uninstall_filter_codex_native_records() {
+    local plan="$1"
+    local codex_home codex_agents_dir codex_manifest filtered_plan
+    local action group kind path source fingerprint extra native_path
+    codex_home="$(_uninstall_native_path "${CODEX_HOME:-${HOME}/.codex}")"
+    codex_agents_dir="${codex_home%/}/agents"
+    codex_manifest="${codex_home%/}/haws-agents.json"
+    filtered_plan="${plan}.filtered.$$"
+    while IFS=$'\t' read -r action group kind path source fingerprint extra ||
+        [ -n "${action:-}" ]; do
+        native_path="$(_uninstall_native_path "${path:-}")"
+        if [ "${action:-}" = remove ] && [ "${group:-}" = agents ]; then
+            case "${native_path}" in
+                "${codex_manifest}"|"${codex_agents_dir}/"*.toml) continue ;;
+            esac
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "${action:-}" "${group:-}" "${kind:-}" "${path:-}" \
+            "${source:-}" "${fingerprint:-}" >> "${filtered_plan}" || {
+                rm -f -- "${filtered_plan}"
+                return 1
+            }
+    done < "$plan"
+    mv -f -- "${filtered_plan}" "$plan" || {
+        rm -f -- "${filtered_plan}"
+        return 1
+    }
 }
 
 uninstall_run() {
@@ -5017,13 +5136,17 @@ uninstall_run() {
         [[ ",${requested}," == *",subagents,"* ]]; then
         remove_agents=1
     fi
+    local codex_cleanup_failed=0
     if [ "$remove_agents" -eq 1 ] &&
         { [ -d "${CODEX_HOME:-${HOME}/.codex}" ] || [ -d "${HOME}/.agents" ]; }; then
         if ! run_codex_agents uninstall; then
-            rm -f -- "$plan"
-            echo "[WARN] Native Codex profiles could not be fully detached; remaining uninstall actions were not applied."
-            return 1
-        fi
+            codex_cleanup_failed=1
+            _uninstall_filter_codex_native_records "$plan" || {
+                rm -f -- "$plan"
+                return 1
+            }
+            echo "[WARN] Native Codex profiles could not be removed; preserving them and continuing other cleanup."
+        else
         local codex_agents_dir codex_profile codex_manifest record
         codex_agents_dir="$(_haws_codex_agents_dir)" || {
             rm -f -- "$plan"
@@ -5054,6 +5177,7 @@ uninstall_run() {
         fi
         rm -f -- "$plan"
         plan="$(uninstall_plan "${requested}")" || return $?
+        fi
     fi
     local result
     if uninstall_apply "$plan"; then
@@ -5062,6 +5186,10 @@ uninstall_run() {
         result="$?"
     fi
     rm -f -- "$plan"
+    if [ "${codex_cleanup_failed}" -eq 1 ]; then
+        [ "$result" -ne 0 ] || result=1
+        echo "[WARN] Unrelated HAWS-owned items were processed; retry Codex cleanup after resolving the adapter failure."
+    fi
     if [ "$result" -eq 0 ] && [ "$full_uninstall" -eq 1 ]; then
         local state="$(_haws_state_dir)"
         local marker="${state}/uninstalled"
@@ -5082,7 +5210,7 @@ run_uninstall() {
 
 install_is_complete() {
     [ ! -s "$(_haws_state_dir)/uninstalled" ] || return 1
-    [ -s "$(_haws_state_dir)/install.complete" ] || [ -s "${HOME}/.haws_manifest" ]
+    [ -s "$(_haws_state_dir)/install.complete" ]
 }
 
 _haws_all_environments() {
@@ -5327,23 +5455,17 @@ _settings_draft_is_dirty() {
         "$( _settings_list_signature "${HAWS_PERSIST_ENVIRONMENTS:-}" )" ]
 }
 
-settings_draft_reset() {
-    echo "Reset Settings to Defaults?"
-    echo "This will replace the current draft. Nothing will change on this computer yet."
-    if ! interactive_menu menu "Reset Settings to Defaults?" "Reset" "Cancel"; then
-        echo "Reset cancelled."
-        return 1
-    fi
-    [ "${INTERACTIVE_MENU_SELECTION}" -eq 0 ] || {
-        echo "Reset cancelled."
-        return 1
-    }
+_settings_draft_set_defaults() {
     HAWS_DRAFT_AUTO_UPDATE="on"
     HAWS_DRAFT_AUTO_UPDATE_SKILLS="on"
     HAWS_DRAFT_AUTO_UPDATE_BRAIN="on"
     HAWS_DRAFT_BRAIN_ACTION=""
     HAWS_DRAFT_BRAIN_URL=""
-    HAWS_DRAFT_ENVIRONMENTS="$(_haws_detected_environments)"
+    if [ -n "${HAWS_PERSIST_BRAIN_REMOTE_URL:-}" ]; then
+        HAWS_DRAFT_BRAIN_ACTION=disconnect
+        HAWS_DRAFT_BRAIN_URL="${HAWS_PERSIST_BRAIN_REMOTE_URL}"
+    fi
+    HAWS_DRAFT_ENVIRONMENTS="$(_haws_all_environments)"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
     HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES:-}"
     HAWS_DRAFT_ADDED_REPOSITORIES=""
@@ -5357,6 +5479,20 @@ settings_draft_reset() {
         HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_SOURCES \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
+}
+
+settings_draft_reset() {
+    echo "Reset Settings to Defaults?"
+    echo "This will replace the current draft. Nothing will change on this computer yet."
+    if ! interactive_menu menu "Reset Settings to Defaults?" "Reset" "Cancel"; then
+        echo "Reset cancelled."
+        return 1
+    fi
+    [ "${INTERACTIVE_MENU_SELECTION}" -eq 0 ] || {
+        echo "Reset cancelled."
+        return 1
+    }
+    _settings_draft_set_defaults || return $?
     echo "The draft now contains default values. Nothing has changed on this computer yet."
     return 0
 }
@@ -5663,12 +5799,14 @@ _settings_repository_remove_page() {
 
     while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
+        _settings_list_contains "${HAWS_DRAFT_SOURCES:-}" "${id}" || continue
         name="${path##*/}"
         name_counts["${name}"]=$(( ${name_counts[${name}]:-0} + 1 ))
     done <<< "${rows}"
     local single_records=() pack_records=() other_records=()
     while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
+        _settings_list_contains "${HAWS_DRAFT_SOURCES:-}" "${id}" || continue
         name="${path##*/}"
         catalog_source_kind "${id}" type
         label="${name}"
@@ -6541,13 +6679,9 @@ settings_apply_final() {
                         run_sync || sync_exit=$?
                     fi
                     if [ "${sync_exit}" -gt 1 ]; then
-                        if [ "${HAWS_RESULT_NAVIGATION:-home}" = home ]; then
-                            settings_load >/dev/null 2>&1 || true
-                            return 0
-                        fi
                         echo "Partial failure"
                         echo "Remaining: ${action}"
-                        return 3
+                        return "${sync_exit}"
                     fi
                 fi
                 printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
@@ -6652,25 +6786,28 @@ setup_run() {
         echo "Auto Update         On"
         if interactive_menu menu "HAWS Setup|Choose a setup option or leave without changes." \
             "Use Default Setup|Preview the standard HAWS setup" \
-            "Customize Settings|Edit settings before preview"; then
+            "Use Previous Settings|Load saved values and edit before Preview"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0)
                     settings_draft_load || return 1
+                    _settings_draft_set_defaults || return $?
                     if settings_flow_run preview; then
                         home_run
                         return $?
+                    else
+                        result=$?
+                        [ "${result}" -gt 1 ] && return "${result}"
                     fi
-                    result=$?
-                    [ "${result}" -eq 3 ] && return 3
                     ;;
                 1)
                     settings_draft_load || return 1
                     if settings_flow_run settings; then
                         home_run
                         return $?
+                    else
+                        result=$?
+                        [ "${result}" -gt 1 ] && return "${result}"
                     fi
-                    result=$?
-                    [ "${result}" -eq 3 ] && return 3
                     ;;
                 *)
                     return 0

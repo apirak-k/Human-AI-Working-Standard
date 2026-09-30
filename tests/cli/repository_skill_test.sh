@@ -25,6 +25,7 @@ git_fixture() {
 source_haws() {
     grep -q '^settings_plan_build()' "${FIXTURE_PROJECT}/haws.sh" || return 1
     export HOME="${FIXTURE_HOME}"
+    export CODEX_HOME="${FIXTURE_HOME}/.codex"
     export HAWS_REPO_DIR="${FIXTURE_PROJECT}"
     export HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state"
     export GIT_CONFIG_COUNT=3
@@ -300,6 +301,21 @@ test_remove_only_apply_removes_registered_source_and_keeps_unrelated_file() {
     assert_file_contains "${FIXTURE_PROJECT}/skills/custom/user-owned.txt" 'keep me'
 }
 
+test_reopened_removal_selector_excludes_sources_already_removed_in_draft() {
+    prepare_registered_source || return 1
+    source_haws || return 1
+    settings_draft_load || return 1
+    local source_id
+    source_id="$(catalog_sources | cut -f1)"
+    [ -n "${source_id}" ] || return 1
+    settings_draft_remove_source "${source_id}" || return 1
+
+    _settings_repository_remove_page < <(printf 'q') >"${OUTPUT_FILE}" 2>&1 || return 1
+    _settings_repository_remove_page < <(printf 'q') >>"${OUTPUT_FILE}" 2>&1 || return 1
+    ! grep -F 'skills/packs/registered' "${OUTPUT_FILE}" >/dev/null || return 1
+    [ "$(grep -Fc 'No external git repositories currently installed.' "${OUTPUT_FILE}")" -eq 2 ]
+}
+
 test_dirty_source_removal_is_blocked_before_disk_removal() {
     prepare_registered_source || return 1
     printf 'local edit\n' >> "${FIXTURE_PROJECT}/skills/packs/registered/SKILL.md"
@@ -348,7 +364,8 @@ test_direct_skills_route_uses_the_settings_catalog() {
     enable_local_sources
     local down=$'\033[B'
     printf '%b' "${down}${down}\n\nq" |
-        HOME="${FIXTURE_HOME}" HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
+        HOME="${FIXTURE_HOME}" CODEX_HOME="${FIXTURE_HOME}/.codex" \
+        HAWS_REPO_DIR="${FIXTURE_PROJECT}" \
         HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" \
         bash "${FIXTURE_PROJECT}/haws.sh" skills >"${OUTPUT_FILE}" 2>&1 || return 1
     assert_output_contains 'Canonical source-one description.' || return 1
@@ -790,6 +807,7 @@ run_test test_catalog_respects_repository_folder_taxonomy
 run_test test_catalog_keeps_only_historical_canonical_skill_copies
 run_test test_add_only_apply_creates_local_submodule_entry
 run_test test_remove_only_apply_removes_registered_source_and_keeps_unrelated_file
+run_test test_reopened_removal_selector_excludes_sources_already_removed_in_draft
 run_test test_dirty_source_removal_is_blocked_before_disk_removal
 run_test test_run_sync_honors_source_aware_disabled_skill_without_legacy_scanner
 run_test test_direct_skills_route_uses_the_settings_catalog
