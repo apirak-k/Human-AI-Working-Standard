@@ -726,6 +726,104 @@ test_sync_migrates_agent_only_legacy_manifest() {
     [ -f "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" ]
 }
 
+test_existing_legacy_ledger_prevents_unsafe_re_adoption() {
+    populate_full_fixture || return 1
+    local target="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local source="${FIXTURE_PROJECT}/agents/organizer.md"
+    local gemini_config="${FIXTURE_HOME}/.gemini/config/skills.json"
+    local gemini_path='/user-owned/orphan-skill'
+    local gemini_manifest="${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json"
+    mkdir -p "$(dirname "${target}")" "$(dirname "${gemini_config}")" \
+        "${FIXTURE_PROJECT}/.haws/state" || return 1
+    cp "${source}" "${target}" || return 1
+    printf '{\n  "entries": [{ "path": "%s" }]\n}\n' "${gemini_path}" \
+        > "${gemini_config}" || return 1
+    printf 'schema=1\tcompleted_at=legacy-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    printf 'agent:organizer\n' > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    printf '{"version":1,"paths":["%s"],"createdTarget":false}\n' "${gemini_path}" \
+        > "${gemini_manifest}" || return 1
+    printf 'metadata\tgenerated-file\t%s\t%s\tlegacy-fingerprint\n' \
+        "${FIXTURE_PROJECT}/.haws/legacy-manifest" "${FIXTURE_PROJECT}/haws.sh" \
+        > "${FIXTURE_PROJECT}/.haws/state/ownership.tsv" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+
+    run_haws sync || return 1
+    source_haws || return 1
+    [ -f "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" ] || {
+        echo 'Legacy ownership state did not establish the current migration boundary.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    if ownership_list agents | grep -F "${target}" >/dev/null; then
+        echo "Unversioned legacy ownership caused a user-owned file to be adopted: ${target}"
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    grep -F "${gemini_path}" "${gemini_config}" >/dev/null || {
+        echo "Sync removed a user-owned Gemini entry from an untrusted legacy manifest: ${gemini_path}"
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -f "${gemini_manifest}.untrusted-v1" ] || return 1
+    cmp -s -- "${source}" "${target}"
+}
+
+test_unversioned_ownership_record_is_preserved_on_uninstall() {
+    populate_full_fixture || return 1
+    local target="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local source="${FIXTURE_PROJECT}/agents/organizer.md"
+    local state="${FIXTURE_PROJECT}/.haws/state"
+    local plan uninstall_status=0
+    mkdir -p "$(dirname "${target}")" "${state}" || return 1
+    cp "${source}" "${target}" || return 1
+    source_haws || return 1
+    printf 'schema=1\tmigrated_at=2026-10-02T00:00:00Z\n' \
+        > "${state}/integration-ownership-migration-v1" || return 1
+    printf 'agents\tgenerated-file\t%s\t%s\t%s\n' \
+        "${target}" "${source}" "$(_haws_sha256 "${target}")" > "${state}/ownership.tsv" || return 1
+
+    plan="$(uninstall_plan agents)" || return 1
+    if grep -F "${target}" "${plan}" >/dev/null; then
+        echo "Uninstall planned removal of an unversioned legacy ownership row: ${target}"
+        rm -f -- "${plan}"
+        return 1
+    fi
+    uninstall_apply "${plan}" >"${OUTPUT_FILE}" 2>&1 || uninstall_status=$?
+    rm -f -- "${plan}"
+    [ "${uninstall_status}" -eq 0 ] || {
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -f "${target}" ]
+}
+
+test_invalid_integration_migration_marker_fails_closed() {
+    populate_full_fixture || return 1
+    local marker="${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1"
+    local target="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local source="${FIXTURE_PROJECT}/agents/organizer.md"
+    local sync_status=0
+    mkdir -p "$(dirname "${target}")" "${marker}" || return 1
+    cp "${source}" "${target}" || return 1
+    printf 'schema=1\tcompleted_at=legacy-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    printf 'agent:organizer\n' > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+
+    run_haws sync || sync_status=$?
+    [ "${sync_status}" -ne 0 ] || {
+        echo 'Sync accepted a directory as a completed ownership migration marker.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -d "${marker}" ] && [ -f "${target}" ] || return 1
+    source_haws || return 1
+    ! ownership_list agents | grep -F "${target}" >/dev/null
+}
+
 test_skill_link_ownership_write_failure_is_propagated() {
     populate_full_fixture || return 1
     local skill_source="${FIXTURE_PROJECT}/skills/custom/demo-one"
@@ -845,6 +943,9 @@ else
     run_test test_command_surface_status_doctor_hook
     run_test test_fresh_exact_user_integrations_remain_unowned
     run_test test_sync_migrates_agent_only_legacy_manifest
+    run_test test_existing_legacy_ledger_prevents_unsafe_re_adoption
+    run_test test_unversioned_ownership_record_is_preserved_on_uninstall
+    run_test test_invalid_integration_migration_marker_fails_closed
     run_test test_skill_link_ownership_write_failure_is_propagated
     run_test test_sync_adopts_frozen_legacy_artifacts_and_uninstall_removes_them
     run_test test_clean_full_uninstall

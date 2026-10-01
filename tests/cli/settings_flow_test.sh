@@ -769,6 +769,26 @@ test_home_exit_preserves_sync_status_130() {
     assert_home_exit_preserves_sync_status 130
 }
 
+test_home_sync_status_1_returns_to_home_when_selected() {
+    source_haws || return 1
+    local menu_calls=0 home_status=0
+    interactive_menu() {
+        menu_calls=$((menu_calls + 1))
+        if [ "${menu_calls}" -eq 1 ]; then
+            INTERACTIVE_MENU_SELECTION=0
+            return 0
+        fi
+        return 1
+    }
+    run_sync() {
+        HAWS_RESULT_NAVIGATION=home
+        return 1
+    }
+
+    home_run >"${OUTPUT_FILE}" 2>&1 || home_status=$?
+    [ "${home_status}" -eq 0 ] && [ "${menu_calls}" -eq 2 ]
+}
+
 test_update_sync_status_2_is_failure_without_rewriting_completion() {
     assert_update_sync_failure_is_not_success 2
 }
@@ -973,6 +993,7 @@ run_test test_settings_flow_preserves_sync_status_2
 run_test test_settings_flow_preserves_sync_status_130
 run_test test_home_exit_preserves_sync_status_2
 run_test test_home_exit_preserves_sync_status_130
+run_test test_home_sync_status_1_returns_to_home_when_selected
 run_test test_manifest_without_install_complete_opens_setup
 run_test test_default_setup_after_uninstall_applies_labeled_defaults
 run_test test_update_sync_status_2_is_failure_without_rewriting_completion

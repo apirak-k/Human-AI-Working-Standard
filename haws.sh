@@ -118,7 +118,8 @@ _health_fingerprint() {
         "$SCRIPT_DIR/config/skills.disabled" \
         "$state/ownership.tsv" \
         "$state/install.complete" \
-        "$state/integration-ownership-migration-v1"; do
+        "$state/integration-ownership-migration-v1" \
+        "$state/ownership-ledger-v2"; do
         if [ -f "$config_file" ]; then
             state_stamp+="$config_file:$(_haws_sha256 "$config_file");"
         else
@@ -134,7 +135,7 @@ _health_fingerprint() {
             else
                 env_stamp+="missing:$p;"
             fi
-        done < <(awk -F $'\t' '$1 == "environments" {print $2}' "$state/ownership.tsv" 2>/dev/null)
+        done < <(awk -F $'\t' '$1 == "environments" && NF == 6 && $6 == "schema=2" {print $2}' "$state/ownership.tsv" 2>/dev/null)
     fi
     printf '%s|%s|%s|%s\n' "$git_head" "$hooks_cfg" "$state_stamp" "$env_stamp"
 }
@@ -657,11 +658,28 @@ _haws_state_replace() {
     mv -f -- "${temporary}" "${destination}"
 }
 
+_haws_schema_marker_valid() {
+    local marker="${1:-}" schema="${2:-}" timestamp_key="${3:-}"
+    [ -n "${marker}" ] && [ -n "${schema}" ] && [ -n "${timestamp_key}" ] || return 1
+    [ -f "${marker}" ] && [ ! -L "${marker}" ] || return 1
+    awk -F $'\t' -v schema="schema=${schema}" -v timestamp_key="${timestamp_key}" '
+        NR == 1 && NF == 2 && $1 == schema &&
+            substr($2, 1, length(timestamp_key) + 1) == timestamp_key "=" &&
+            substr($2, length(timestamp_key) + 2) ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$/ {
+            valid = 1
+            next
+        }
+        { valid = 0; exit 1 }
+        END { if (valid && NR == 1) exit 0; exit 1 }
+    ' "${marker}"
+}
+
 _haws_mark_integration_ownership_migration_complete() {
     local marker="$(_haws_state_dir)/integration-ownership-migration-v1"
     local temporary="${marker}.stage.$$"
     if [ -e "${marker}" ] || [ -L "${marker}" ]; then
-        return 0
+        _haws_schema_marker_valid "${marker}" 1 migrated_at
+        return $?
     fi
     if ! mkdir -p "$(dirname "${marker}")" ||
         ! printf 'schema=1\tmigrated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${temporary}" ||
@@ -669,7 +687,77 @@ _haws_mark_integration_ownership_migration_complete() {
         rm -f -- "${temporary}"
         return 1
     fi
-    return 0
+    _haws_schema_marker_valid "${marker}" 1 migrated_at
+}
+
+_haws_ownership_ledger_has_unversioned_rows() {
+    local file result
+    for file in "$(_haws_state_dir)/ownership.tsv" "${HOME}/.haws/skills-ownership.tsv"; do
+        if [ -e "${file}" ] || [ -L "${file}" ]; then
+            [ -f "${file}" ] && [ ! -L "${file}" ] || return 2
+            if awk -F $'\t' '$1 != "" && !(NF == 6 && $6 == "schema=2") { found=1 } END { exit found ? 0 : 1 }' \
+                "${file}"; then
+                return 0
+            else
+                result=$?
+                [ "${result}" -eq 1 ] || return 2
+            fi
+        fi
+    done
+    return 1
+}
+
+_haws_prepare_ownership_ledger_v2() {
+    local state="$(_haws_state_dir)"
+    local integration_marker="${state}/integration-ownership-migration-v1"
+    local ledger_marker="${state}/ownership-ledger-v2"
+    local gemini_manifest="${state}/gemini-skills-ownership.json"
+    local gemini_quarantine="${gemini_manifest}.untrusted-v1"
+    local temporary="${ledger_marker}.stage.$$"
+    local has_unversioned=0 marker_status manifest_present=0 quarantine_present=0
+
+    if [ -e "${integration_marker}" ] || [ -L "${integration_marker}" ]; then
+        _haws_schema_marker_valid "${integration_marker}" 1 migrated_at || return 1
+    fi
+    if [ -e "${ledger_marker}" ] || [ -L "${ledger_marker}" ]; then
+        _haws_schema_marker_valid "${ledger_marker}" 2 upgraded_at || return 1
+        return 0
+    fi
+
+    if [ -e "${gemini_manifest}" ] || [ -L "${gemini_manifest}" ]; then
+        [ -f "${gemini_manifest}" ] && [ ! -L "${gemini_manifest}" ] || return 1
+        manifest_present=1
+    fi
+    if [ -e "${gemini_quarantine}" ] || [ -L "${gemini_quarantine}" ]; then
+        [ -f "${gemini_quarantine}" ] && [ ! -L "${gemini_quarantine}" ] || return 1
+        quarantine_present=1
+    fi
+    [ "${manifest_present}" -eq 0 ] || [ "${quarantine_present}" -eq 0 ] || return 1
+
+    if _haws_ownership_ledger_has_unversioned_rows; then
+        has_unversioned=1
+    else
+        marker_status=$?
+        [ "${marker_status}" -eq 1 ] || return 1
+    fi
+    if [ "${manifest_present}" -eq 1 ] || [ "${quarantine_present}" -eq 1 ]; then
+        has_unversioned=1
+    fi
+    if [ "${has_unversioned}" -eq 1 ]; then
+        _haws_mark_integration_ownership_migration_complete || return 1
+    fi
+
+    if [ "${manifest_present}" -eq 1 ]; then
+        mv -- "${gemini_manifest}" "${gemini_quarantine}" || return 1
+    fi
+
+    if ! mkdir -p "${state}" ||
+        ! printf 'schema=2\tupgraded_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${temporary}" ||
+        ! _haws_state_replace "${temporary}" "${ledger_marker}"; then
+        rm -f -- "${temporary}"
+        return 1
+    fi
+    _haws_schema_marker_valid "${ledger_marker}" 2 upgraded_at
 }
 
 _skills_disabled_state_file() {
@@ -984,21 +1072,21 @@ ownership_record() {
     awk -F $'\t' -v OFS=$'\t' -v group="${group}" -v kind="${kind}" \
         -v path="${path}" -v source="${source}" -v fingerprint="${fingerprint}" '
         $1 == group && $2 == kind && $3 == path {
-            if (!found) print group, kind, path, source, fingerprint
+            if (!found) print group, kind, path, source, fingerprint, "schema=2"
             found = 1
             next
         }
         { print }
         END {
-            if (!found) print group, kind, path, source, fingerprint
+            if (!found) print group, kind, path, source, fingerprint, "schema=2"
         }
     ' "${file}" 2>/dev/null > "${temporary}" || {
         if [ -f "${file}" ]; then
             rm -f -- "${temporary}"
             return 1
         fi
-        printf '%s\t%s\t%s\t%s\t%s\n' \
-            "${group}" "${kind}" "${path}" "${source}" "${fingerprint}" > "${temporary}" || {
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "${group}" "${kind}" "${path}" "${source}" "${fingerprint}" "schema=2" > "${temporary}" || {
             rm -f -- "${temporary}"
             return 1
         }
@@ -1018,8 +1106,7 @@ ownership_list() {
         [ -f "${legacy_file}" ] && files+=("${legacy_file}")
         [ -f "${file}" ] && files+=("${file}")
         [ "${#files[@]}" -gt 0 ] || return 0
-        awk -F $'\t' '
-            {
+        awk -F $'\t' '$1 == "skills" && NF == 6 && $6 == "schema=2" {
                 key = $1 SUBSEP $2 SUBSEP $3
                 if (!(key in order)) order[++count] = key
                 rows[key] = $0
@@ -1031,11 +1118,8 @@ ownership_list() {
         return 0
     fi
     [ -f "${file}" ] || return 0
-    if [ -n "${group}" ]; then
-        awk -F $'\t' -v group="${group}" '$1 == group' "${file}"
-    else
-        cat -- "${file}"
-    fi
+    awk -F $'\t' -v group="${group}" \
+        'NF == 6 && $6 == "schema=2" && (group == "" || $1 == group)' "${file}"
 }
 
 ownership_record_for_path() {
@@ -1517,7 +1601,7 @@ _haws_skill_link_legacy_owned_record() {
             [ -f "${candidate}" ] || continue
             while IFS=$'\t' read -r group kind path source fingerprint extra ||
                 [ -n "${group}" ]; do
-                [ "${group}" = skills ] || continue
+                [ "${group}" = skills ] && [ "${extra}" = schema=2 ] || continue
                 record_native="$(_uninstall_native_path "${path}")"
                 record_canonical="$(canonical_path "${path}" 2>/dev/null || true)"
                 if [ "${path}" = "${wanted}" ] ||
@@ -2504,6 +2588,11 @@ _run_sync_impl() {
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
     done
     shift || true
+
+    _haws_prepare_ownership_ledger_v2 || {
+        echo "[ERROR] Ownership migration state is invalid; sync stopped safely." >&2
+        return 1
+    }
 
     # Refresh once per sync process and share the source snapshot with Step 1
     # and Step 4. The latter otherwise re-runs Git config/revision discovery.
@@ -7109,7 +7198,7 @@ home_run() {
                     run_sync || sync_status=$?
                     unset HAWS_INTERACTIVE_RESULT
                     [ "${HAWS_RESULT_NAVIGATION:-home}" = exit ] && return "${sync_status}"
-                    [ "${sync_status}" -ne 0 ] && return "${sync_status}"
+                    [ "${sync_status}" -gt 1 ] && return "${sync_status}"
                     ;;
                 1)
                     settings_draft_load || return 1
