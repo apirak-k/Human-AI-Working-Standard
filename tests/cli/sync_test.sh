@@ -194,7 +194,7 @@ test_sync_output_has_sections_and_summary() {
 test_sync_uses_short_bootstrap_style_phases() {
     local source="${PROJECT_ROOT}/haws.sh"
     local sync_block
-    sync_block="$(sed -n '/^run_sync() {/,/^run_edit_gitmodules() {/p' "${source}")"
+    sync_block="$(sed -n '/^_run_sync_impl() {/,/^run_sync() {/p' "${source}")"
     printf '%s\n' "${sync_block}" | grep -Fq 'Step 1:' || return 1
     printf '%s\n' "${sync_block}" | grep -Fq 'Step 2:' || return 1
     printf '%s\n' "${sync_block}" | grep -Fq 'Step 5:' || return 1
@@ -203,7 +203,7 @@ test_sync_uses_short_bootstrap_style_phases() {
 test_sync_result_defines_full_header_and_navigation_contract() {
     local source="${PROJECT_ROOT}/haws.sh"
     local sync_block wait_block
-    sync_block="$(sed -n '/^run_sync() {/,/^run_edit_gitmodules() {/p' "${source}")"
+    sync_block="$(sed -n '/^_run_sync_impl() {/,/^run_sync() {/p' "${source}")"
     wait_block="$(sed -n '/^_haws_wait_for_result() {/,/^status_run() {/p' "${source}")"
     printf '%s\n' "${sync_block}" | grep -Fq 'HAWS Sync Result' || return 1
     printf '%s\n' "${sync_block}" | grep -Fq '=============================================================' || return 1
@@ -215,7 +215,7 @@ test_sync_result_defines_full_header_and_navigation_contract() {
 test_sync_result_wait_does_not_replace_sync_exit_status() {
     local source="${PROJECT_ROOT}/haws.sh"
     local sync_block
-    sync_block="$(sed -n '/^run_sync() {/,/^run_edit_gitmodules() {/p' "${source}")"
+    sync_block="$(sed -n '/^_run_sync_impl() {/,/^run_sync() {/p' "${source}")"
     printf '%s\n' "${sync_block}" | grep -Fq 'wait_status' || return 1
     printf '%s\n' "${sync_block}" | grep -Fq 'return "${sync_status}"' || return 1
 }
