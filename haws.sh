@@ -2101,11 +2101,25 @@ source_preflight() {
 source_candidate_validate() {
     local source_id="${1:-}" revision="${2:-}"
     local source_path source_dir skill_id display skill_source entrypoint active
-    local found=0 candidate_content
+    local tree_entry tree_path tree_mode tree_type candidate_path candidate_content
+    local found_active=0 found_candidate=0
+    local -A candidate_entrypoints=()
     [ -n "${source_id}" ] && [ -n "${revision}" ] || return 2
     source_path="$(_sync_source_path "${source_id}")" || return 1
     source_dir="$(_catalog_runtime_source_dir "${source_path}")"
     [ -d "${source_dir}" ] || return 1
+    while IFS=$'\t' read -r tree_entry tree_path || [ -n "${tree_path:-}" ]; do
+        [ -n "${tree_path:-}" ] || continue
+        IFS=' ' read -r tree_mode tree_type _ <<< "${tree_entry}"
+        [ "${tree_type:-}" = blob ] || continue
+        case "${tree_mode:-}" in 100644|100755) ;; *) continue ;; esac
+        case "${tree_path}" in
+            SKILL.md|*/SKILL.md|skill.md|*/skill.md)
+                _catalog_skill_is_eligible "${tree_path}" || continue
+                candidate_entrypoints["${tree_path}"]="${tree_mode}"
+                ;;
+        esac
+    done < <(git -C "${source_dir}" ls-tree -r --full-tree "${revision}" 2>/dev/null)
     local catalog_data="${HAWS_CATALOG_SKILLS_CACHE:-}"
     if [ -z "${catalog_data}" ]; then
         catalog_data="$(catalog_skills 2>/dev/null || true)"
@@ -2113,12 +2127,23 @@ source_candidate_validate() {
     while IFS=$'\t' read -r skill_source skill_id display _ entrypoint active ||
         [ -n "${skill_id:-}" ]; do
         [ "${skill_source:-}" = "${source_id}" ] && [ "${active:-0}" = 1 ] || continue
-        found=1
-        git -C "${source_dir}" cat-file -e "${revision}:${entrypoint}" >/dev/null 2>&1 || return 1
+        found_active=1
+        [ -n "${candidate_entrypoints["${entrypoint}"]:-}" ] || continue
         candidate_content="$(git -C "${source_dir}" show "${revision}:${entrypoint}" 2>/dev/null || true)"
         [ -n "${candidate_content//[[:space:]]/}" ] || return 1
+        found_candidate=1
     done <<< "${catalog_data}"
-    [ "${found}" -eq 1 ]
+    [ "${found_active}" -eq 1 ] || return 1
+    if [ "${found_candidate}" -eq 0 ]; then
+        for candidate_path in "${!candidate_entrypoints[@]}"; do
+            candidate_content="$(git -C "${source_dir}" show "${revision}:${candidate_path}" 2>/dev/null || true)"
+            if [ -n "${candidate_content//[[:space:]]/}" ]; then
+                found_candidate=1
+                break
+            fi
+        done
+    fi
+    [ "${found_candidate}" -eq 1 ]
 }
 
 _sync_root_preflight() {

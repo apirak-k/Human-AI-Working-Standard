@@ -539,6 +539,41 @@ test_second_brain_push_failure_is_reported() {
     ! grep -F '[✓] Second Brain in sync.' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
+test_candidate_accepts_moved_and_removed_skill_entrypoints() {
+    add_source transitions
+    local seed="${FIXTURE_ROOT}/seed-transitions"
+    local source="${FIXTURE_REPO}/skills/packs/transitions"
+    mkdir -p "${seed}/skills/in-progress/movable" "${seed}/skills/in-progress/removed"
+    printf '%s\n' '---' 'name: movable' 'description: old location' '---' > "${seed}/skills/in-progress/movable/SKILL.md"
+    printf '%s\n' '---' 'name: removed' 'description: retired skill' '---' > "${seed}/skills/in-progress/removed/SKILL.md"
+    git -C "${seed}" add SKILL.md skills/in-progress || return 1
+    git -C "${seed}" commit -q -m 'add source transition fixture' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    git -C "${source}" pull -q --ff-only origin main || return 1
+
+    mkdir -p "${seed}/skills/engineering/movable"
+    git -C "${seed}" mv skills/in-progress/movable/SKILL.md skills/engineering/movable/SKILL.md || return 1
+    git -C "${seed}" rm -q skills/in-progress/removed/SKILL.md SKILL.md || return 1
+    git -C "${seed}" commit -q -m 'move and remove skills' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    local candidate_head old_head
+    candidate_head="$(git -C "${seed}" rev-parse HEAD)" || return 1
+    old_head="$(source_head transitions)" || return 1
+
+    write_settings on
+    source_haws || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+
+    [ "${old_head}" != "${candidate_head}" ] || return 1
+    [ "$(source_head transitions)" = "${candidate_head}" ] || return 1
+    [ -s "${source}/skills/engineering/movable/SKILL.md" ] || return 1
+    [ ! -e "${source}/SKILL.md" ] || return 1
+    assert_record "transitions::skills/packs/transitions" updated
+}
+
 test_missing_candidate_entrypoint_does_not_fall_back_to_old_content() {
     add_source missing
     local old_head candidate_head
@@ -773,6 +808,7 @@ else
     run_test test_second_brain_syncs_local_changes
     run_test test_second_brain_syncs_local_changes_with_auto_update_on
     run_test test_second_brain_push_failure_is_reported
+    run_test test_candidate_accepts_moved_and_removed_skill_entrypoints
     run_test test_missing_candidate_entrypoint_does_not_fall_back_to_old_content
     run_test test_deadline_returns_distinct_timeout_status
     run_test test_timeout_uses_local_fallback_without_failure
