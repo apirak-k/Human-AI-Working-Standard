@@ -76,10 +76,10 @@ HAWS core requires Git and Bash. Node.js and Python are needed only for the inte
 HAWS physically enforces the **3-Tier Data Separation Model**:
 1. **Global Core (`core/`, `skills/`, `ai-configs/`)**: Public upstream framework tracked by Git. Safely updated anytime via `Sync`.
 2. **Device-Local State (`.haws/state/`, `${HAWS_STATE_DIR}/skill-sources/`, and `${HOME}/.haws/skills-ownership.tsv`)**: Machine-specific junction registrations, toggle settings, external skill runtime checkouts, and HAWS link-ownership records. Kept 100% out of Git.
-3. **Second Brain Documents (`secondbrain/`)**: Neutral starter documents for preferences, safeguards, and workflow. Keep personal preferences and notes in your own private Second Brain repository or local copy.
+3. **Second Brain Documents (`secondbrain/`)**: Neutral starter documents for preferences, safeguards, and workflow. Keep these tracked public defaults neutral; put personal material in `secondbrain/notes/` or outside the public HAWS checkout.
 
 > [!IMPORTANT]
-> **Privacy responsibility (not verified by HAWS):** Create your Second Brain GitHub repository as **Private** and confirm its visibility before connecting it. HAWS does not check repository visibility, so privacy cannot be verified by the tool.
+> **Second Brain privacy:** The HAWS root repository ignores `secondbrain/notes/`, so those files are not included in HAWS commits. Connecting or syncing Second Brain can still commit and push files from that folder to its configured remote. Before connecting, verify that the remote is the intended repository and is **Private**. HAWS cannot verify repository visibility. Keep passwords, tokens, and credentials out of Second Brain files, including private ones.
 
 ### Connecting to Cloud (Two-Way Sync)
 On any computer (work machine or home machine):
