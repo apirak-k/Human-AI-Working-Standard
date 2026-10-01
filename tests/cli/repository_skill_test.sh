@@ -353,7 +353,7 @@ test_run_sync_honors_source_aware_disabled_skill_without_legacy_scanner() {
     ! grep -F "skill:${display_name}" "${FIXTURE_HOME}/.haws_manifest" \
         >/dev/null 2>&1 || return 1
     local run_sync_block
-    run_sync_block="$(sed -n '/^run_sync() {/,/^run_user() {/p' \
+    run_sync_block="$(sed -n '/^_run_sync_impl() {/,/^run_sync() {/p' \
         "${FIXTURE_PROJECT}/haws.sh")"
     printf '%s\n' "${run_sync_block}" | grep -F 'catalog_skills' >/dev/null || return 1
     ! printf '%s\n' "${run_sync_block}" | grep -Fq '_legacy_skill_is_disabled'
