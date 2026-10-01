@@ -303,6 +303,35 @@ test_second_brain_push_failure_restores_local_state_after_successful_merge() {
     [ "$(git --git-dir="${target_remote}" rev-parse refs/heads/main)" = "${target_head_before}" ]
 }
 
+test_second_brain_activation_failure_reports_pushed_commit() {
+    seed_local_second_brain_defaults || return 1
+    local brain="${FIXTURE_PROJECT}/secondbrain"
+    local target_remote connect_status=0 reported_revision remote_revision
+    target_remote="${FIXTURE_ROOT}/activation-target.git"
+    git init --bare -q "${target_remote}" || return 1
+    source_haws || return 1
+
+    mv() {
+        if [ "$#" -eq 3 ] && [ "$1" = -- ] &&
+            [[ "$2" == */candidate ]] && [ "$3" = "${brain}" ]; then
+            echo 'simulated activation failure' >&2
+            return 1
+        fi
+        command mv "$@"
+    }
+    run_user connect "file://${target_remote}" >"${OUTPUT_FILE}" 2>&1 || connect_status=$?
+    unset -f mv
+
+    [ "${connect_status}" -ne 0 ] || return 1
+    assert_output_contains '[PARTIAL] Remote push succeeded at commit' || return 1
+    assert_output_contains 'target remote used for this Connect' || return 1
+    reported_revision="$(sed -n 's/.*Remote push succeeded at commit \([0-9a-f][0-9a-f]*\),.*/\1/p' "${OUTPUT_FILE}")"
+    [ -n "${reported_revision}" ] || return 1
+    remote_revision="$(git --git-dir="${target_remote}" rev-parse refs/heads/main)" || return 1
+    [ "${remote_revision}" = "${reported_revision}" ] || return 1
+    [ ! -d "${brain}/.git" ] && [ -f "${brain}/WORKFLOW.md" ]
+}
+
 test_second_brain_connect_final_apply_is_hermetic_and_persists_remote() {
     local remote="file://${FIXTURE_ROOT}/secondbrain-final-apply.git"
     git init --bare -q "${FIXTURE_ROOT}/secondbrain-final-apply.git" || return 1
@@ -589,6 +618,7 @@ test_second_brain_settings_have_no_deferred_remote_validation() {
 test_successful_install_records_completion_and_next_launch_home() {
     run_haws_input_with_env $'\n\033[A\n' 'HAWS_TEST_NO_INTEGRATION=1' || return 1
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/install.complete" 'schema=1' || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" 'schema=1' || return 1
     run_haws_input 'q' || return 1
     assert_output_contains 'HAWS Home'
 }
@@ -747,6 +777,65 @@ test_update_sync_status_130_is_failure_without_rewriting_completion() {
     assert_update_sync_failure_is_not_success 130
 }
 
+test_update_sync_status_1_is_failure_without_rewriting_completion() {
+    assert_update_sync_failure_is_not_success 1
+}
+
+test_internal_codex_install_failure_does_not_complete_settings_apply() {
+    mkdir -p "${FIXTURE_HOME}/.codex" "${FIXTURE_PROJECT}/.haws/state" || return 1
+    local marker="${FIXTURE_PROJECT}/.haws/state/install.complete"
+    printf 'schema=1\tcompleted_at=before-update\n' > "${marker}" || return 1
+    printf 'agent:organizer\n' > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude/agents" || return 1
+    mkdir -p "${FIXTURE_PROJECT}/agents" || return 1
+    cp "${PROJECT_ROOT}/agents/organizer.md" \
+        "${FIXTURE_PROJECT}/agents/organizer.md" || return 1
+    cp "${FIXTURE_PROJECT}/agents/organizer.md" \
+        "${FIXTURE_HOME}/.claude/agents/organizer.md" || return 1
+    source_haws || return 1
+    settings_draft_load || return 1
+    HAWS_PLAN_FILE="${FIXTURE_PROJECT}/.haws/state/settings.plan"
+    HAWS_PLAN_KIND=Update
+    HAWS_DRAFT_AUTO_UPDATE=on
+    HAWS_DRAFT_AUTO_UPDATE_SKILLS=on
+    HAWS_DRAFT_AUTO_UPDATE_BRAIN=on
+    printf 'setting\tauto_update\ton\nintegration\tupdate\told HAWS integration\n' \
+        > "${HAWS_PLAN_FILE}" || return 1
+    run_codex_agents() {
+        echo 'simulated missing Node.js for Codex integration' >&2
+        return 1
+    }
+
+    local apply_status=0
+    settings_apply_final >"${OUTPUT_FILE}" 2>&1 || apply_status=$?
+    unset -f run_codex_agents
+    if [ "${apply_status}" -eq 0 ]; then
+        echo 'Settings Apply reported success after Codex integration failed.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    [ "$(cat "${marker}")" = $'schema=1\tcompleted_at=before-update' ] || return 1
+    [ ! -e "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" ] || return 1
+    [ ! -e "${FIXTURE_HOME}/.haws_manifest.tmp" ] || return 1
+    assert_output_contains 'simulated missing Node.js' || return 1
+    assert_output_contains 'Partial failure' || return 1
+}
+
+test_sync_manifest_stage_failure_is_not_reported_as_success() {
+    mkdir -p "${FIXTURE_HOME}/.haws_manifest.tmp" || return 1
+    source_haws || return 1
+    sync_run() { return 0; }
+    local sync_status=0
+    run_sync >"${OUTPUT_FILE}" 2>&1 || sync_status=$?
+    unset -f sync_run
+    [ "${sync_status}" -ne 0 ] || {
+        echo 'Sync continued after manifest staging failed.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -d "${FIXTURE_HOME}/.haws_manifest.tmp" ]
+}
+
 test_settings_repository_remove_shows_loading_status() {
     local down=$'\033[B'
     local input="${down}\n"
@@ -852,6 +941,7 @@ run_test test_second_brain_connected_detail_schedules_disconnect_without_mutatio
 run_test test_second_brain_connect_is_only_scheduled_in_settings_draft
 run_test test_failed_second_brain_reconnect_restores_previous_origin
 run_test test_second_brain_push_failure_restores_local_state_after_successful_merge
+run_test test_second_brain_activation_failure_reports_pushed_commit
 run_test test_second_brain_connect_final_apply_is_hermetic_and_persists_remote
 run_test test_settings_repositories_route_keeps_old_actions
 run_test test_settings_skills_route_keeps_old_single_pack_labels
@@ -887,6 +977,9 @@ run_test test_manifest_without_install_complete_opens_setup
 run_test test_default_setup_after_uninstall_applies_labeled_defaults
 run_test test_update_sync_status_2_is_failure_without_rewriting_completion
 run_test test_update_sync_status_130_is_failure_without_rewriting_completion
+run_test test_update_sync_status_1_is_failure_without_rewriting_completion
+run_test test_internal_codex_install_failure_does_not_complete_settings_apply
+run_test test_sync_manifest_stage_failure_is_not_reported_as_success
 run_test test_settings_repository_remove_shows_loading_status
 run_test test_settings_repository_remove_displays_pack_and_single_without_unbound_variable
 run_test test_settings_auto_update_toggle_alignment_equal_columns

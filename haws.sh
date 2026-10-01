@@ -657,6 +657,21 @@ _haws_state_replace() {
     mv -f -- "${temporary}" "${destination}"
 }
 
+_haws_mark_integration_ownership_migration_complete() {
+    local marker="$(_haws_state_dir)/integration-ownership-migration-v1"
+    local temporary="${marker}.stage.$$"
+    if [ -e "${marker}" ] || [ -L "${marker}" ]; then
+        return 0
+    fi
+    if ! mkdir -p "$(dirname "${marker}")" ||
+        ! printf 'schema=1\tmigrated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${temporary}" ||
+        ! _haws_state_replace "${temporary}" "${marker}"; then
+        rm -f -- "${temporary}"
+        return 1
+    fi
+    return 0
+}
+
 _skills_disabled_state_file() {
     printf '%s/skills.disabled\n' "$(_haws_state_dir)"
 }
@@ -1708,7 +1723,7 @@ _haws_record_skill_link() {
         ! _haws_legacy_manifest_has_entry skill "$(basename "${dest}")"; then
         return 0
     fi
-    ownership_record skills "${kind}" "${dest}" "${source}" "${fingerprint}"
+    ownership_record skills "${kind}" "${dest}" "${source}" "${fingerprint}" || return 1
     HAWS_OWNERSHIP_SKILLS_CACHE["${dest}"]="${kind}"$'\t'"${dest}"$'\t'"${source}"$'\t'"${fingerprint}"
     [ "${wanted_native}" != "${dest}" ] && HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]="${kind}"$'\t'"${dest}"$'\t'"${source}"$'\t'"${fingerprint}"
     return 0
@@ -2483,7 +2498,7 @@ sync_run() {
     return "${status}"
 }
 
-run_sync() {
+_run_sync_impl() {
     local CLEAN_UNMANAGED=false
     for opt in "$@"; do
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
@@ -2512,22 +2527,11 @@ run_sync() {
     if [ -s "$(_haws_state_dir)/install.complete" ] &&
         [ -s "${HOME}/.haws_manifest" ] &&
         [ ! -e "${legacy_migration_marker}" ] && [ ! -L "${legacy_migration_marker}" ] &&
-        grep -q '^skill:' "${HOME}/.haws_manifest"; then
+        grep -Eq '^(skill|agent):' "${HOME}/.haws_manifest"; then
         HAWS_LEGACY_INTEGRATION_MIGRATION=1
     fi
     echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
-    if [ "${sync_status}" -eq 0 ] &&
-        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION}" -eq 1 ]; then
-        local migration_stage="${legacy_migration_marker}.stage.$$"
-        if ! mkdir -p "$(dirname "${legacy_migration_marker}")" ||
-            ! printf 'schema=1\tmigrated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${migration_stage}" ||
-            ! _haws_state_replace "${migration_stage}" "${legacy_migration_marker}"; then
-            rm -f -- "${migration_stage}"
-            echo "[WARN] Legacy ownership migration marker could not be saved; it may be retried on the next sync."
-            sync_status=1
-        fi
-    fi
     if [ "${sync_status}" -eq 0 ]; then
         echo "[PASS] Sources are synchronized or safely unchanged"
     else
@@ -2595,7 +2599,7 @@ run_sync() {
         local record record_kind record_path record_source record_fingerprint current_target
         local legacy_kind legacy_fingerprint
         local legacy_agent_name legacy_agent_file
-        mkdir -p "$(dirname "${dest}")"
+        mkdir -p "$(dirname "${dest}")" || return 1
 
         if [ -e "${dest}" ] || [ -L "${dest}" ]; then
             record="$(ownership_record_for_path agents "${dest}" 2>/dev/null || true)"
@@ -2746,11 +2750,11 @@ run_sync() {
         local label="$3"
         local dest_dir was_dangling=false
         dest_dir="$(dirname "${dest}")"
-        mkdir -p "${dest_dir}"
+        mkdir -p "${dest_dir}" || return 1
 
         # Fast path 1: destination is already linked to src (junction / symlink / same dir)
         if [ -d "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
-            _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || true
+            _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || return 1
             SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
             return 0
         fi
@@ -2760,7 +2764,7 @@ run_sync() {
             local current_target
             current_target="$(readlink "${dest}" 2>/dev/null || true)"
             if [ -n "${current_target}" ] && [ "${current_target}" = "${src}" ]; then
-                _haws_record_skill_link symlink "${dest}" "${src}" 2>/dev/null || true
+                _haws_record_skill_link symlink "${dest}" "${src}" 2>/dev/null || return 1
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -2774,7 +2778,7 @@ run_sync() {
 
         if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ]; then
             if [ "${src_marker}" -ef "${dest_marker}" ]; then
-                _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || true
+                _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || return 1
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -2819,8 +2823,8 @@ run_sync() {
             _haws_record_skill_link symlink "${dest}" "${src}" 1 || return 1
             echo "  [LINKED] ${label}: ${dest} -> ${src}"
         else
-            cp -rf "${src}" "${dest}"
-            echo "  [COPIED] ${label}: ${dest} -> ${src}"
+            echo "  [FAIL] Could not create an owned link for ${label}: ${dest}" >&2
+            return 1
         fi
     }
 
@@ -2945,15 +2949,19 @@ run_sync() {
 
     # 3. Setup Global Pointers
     echo "[*] Step 3: Configuring global environment pointers"
-    [ "$DETECTED_CLAUDE" = true ] && safe_append_pointer "${HOME}/.claude/CLAUDE.md"
-    [ "$DETECTED_GEMINI" = true ] && safe_append_pointer "${HOME}/.gemini/GEMINI.md"
+    if [ "$DETECTED_CLAUDE" = true ]; then
+        safe_append_pointer "${HOME}/.claude/CLAUDE.md" || return 1
+    fi
+    if [ "$DETECTED_GEMINI" = true ]; then
+        safe_append_pointer "${HOME}/.gemini/GEMINI.md" || return 1
+    fi
     if [ "$DETECTED_CODEX" = true ]; then
         if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+            safe_append_pointer "${HOME}/.codex/AGENTS.override.md" || return 1
         elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.md"
+            safe_append_pointer "${HOME}/.codex/AGENTS.md" || return 1
         elif [ -d "${HOME}/.codex" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+            safe_append_pointer "${HOME}/.codex/AGENTS.override.md" || return 1
         fi
     fi
     echo "[PASS] Global environment pointers configured"
@@ -2998,10 +3006,12 @@ run_sync() {
     local PREV_MANIFEST="${HOME}/.haws_manifest.prev"
     local TMP_MANIFEST="${HOME}/.haws_manifest.tmp"
 
-    rm -f "${PREV_MANIFEST}"
-    [ -f "${MANIFEST_FILE}" ] && cp -f "${MANIFEST_FILE}" "${PREV_MANIFEST}"
-    rm -f "${TMP_MANIFEST}"
-    touch "${TMP_MANIFEST}"
+    rm -f -- "${PREV_MANIFEST}" || return 1
+    if [ -f "${MANIFEST_FILE}" ]; then
+        cp -f -- "${MANIFEST_FILE}" "${PREV_MANIFEST}" || return 1
+    fi
+    rm -f -- "${TMP_MANIFEST}" || return 1
+    touch "${TMP_MANIFEST}" || return 1
 
     local -a active_skill_records=()
     while IFS=$'\t' read -r source_id skill_id skill_display skill_description entrypoint active ||
@@ -3017,7 +3027,7 @@ run_sync() {
             target_name="${skill_display} [${source_label}]"
         fi
         active_count=$((active_count + 1))
-        printf 'skill:%s\t%s\n' "${skill_id}" "${target_name}" >> "${TMP_MANIFEST}"
+        printf 'skill:%s\t%s\n' "${skill_id}" "${target_name}" >> "${TMP_MANIFEST}" || return 1
         active_skill_records+=("${source_path}"$'\t'"${entrypoint}"$'\t'"${target_name}"$'\t'"${skill_display}")
     done <<< "${skill_rows}"
 
@@ -3093,7 +3103,7 @@ run_sync() {
 
             if [ "$DETECTED_CLAUDE" = true ]; then
                 safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${target_name}" \
-                    "Claude Skill [${target_name}]"
+                    "Claude Skill [${target_name}]" || return 1
                 if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.claude/skills/${target_name}"; then
                     claude_linked_count=$((claude_linked_count + 1))
                     SKILLS_LINKED=$((SKILLS_LINKED + 1))
@@ -3110,7 +3120,7 @@ run_sync() {
                     codex_plugin_count=$((codex_plugin_count + 1))
                 else
                     safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${target_name}" \
-                        "Codex Skill [${target_name}]"
+                        "Codex Skill [${target_name}]" || return 1
                     if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.agents/skills/${target_name}"; then
                         codex_linked_count=$((codex_linked_count + 1))
                         SKILLS_LINKED=$((SKILLS_LINKED + 1))
@@ -3259,7 +3269,7 @@ run_sync() {
     # Link Subagents
     echo "  [*] Linking native subagent profiles"
     if [ "$DETECTED_CODEX" = true ]; then
-        run_codex_agents install --source "${SOURCE_DIR}"
+        run_codex_agents install --source "${SOURCE_DIR}" || return 1
         local codex_agents_dir codex_manifest codex_owned_hash
         codex_agents_dir="$(_haws_codex_agents_dir)" || return 1
         codex_manifest="$(_haws_codex_agents_manifest)" || return 1
@@ -3291,16 +3301,16 @@ run_sync() {
             if [ -f "${agent_file}" ]; then
                 local agent_name
                 agent_name="$(basename "${agent_file}" .md)"
-                echo "agent:${agent_name}" >> "${TMP_MANIFEST}"
+                printf 'agent:%s\n' "${agent_name}" >> "${TMP_MANIFEST}" || return 1
 
                 if [ "$DETECTED_CLAUDE" = true ]; then
-                    safe_link_file "${agent_file}" "${HOME}/.claude/agents/${agent_name}.md" "Claude Agent [${agent_name}]"
+                    safe_link_file "${agent_file}" "${HOME}/.claude/agents/${agent_name}.md" "Claude Agent [${agent_name}]" || return 1
                     AGENTS_LINKED=$((AGENTS_LINKED + 1))
                 fi
                 if [ "$DETECTED_GEMINI" = true ]; then
                     local gemini_agent_dir="${HOME}/.gemini/config/agents/${agent_name}"
-                    mkdir -p "${gemini_agent_dir}"
-                    safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]"
+                    mkdir -p "${gemini_agent_dir}" || return 1
+                    safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]" || return 1
                     AGENTS_LINKED=$((AGENTS_LINKED + 1))
                 fi
             fi
@@ -3456,6 +3466,16 @@ EOF
         echo "[WARN] Git advisory hooks directory is not present"
     fi
 
+    # Mark migration complete only after every integration has succeeded. A
+    # failed Sync remains eligible for a safe retry on the next run.
+    if [ "${sync_status}" -eq 0 ] &&
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION}" -eq 1 ]; then
+        if ! _haws_mark_integration_ownership_migration_complete; then
+            echo "[FAIL] Ownership migration marker could not be saved; Sync must be retried."
+            sync_status=1
+        fi
+    fi
+
     # Protect secondbrain user files from upstream framework pull clobbering
     if [ -d "${SCRIPT_DIR}/.git" ] || [ -f "${SCRIPT_DIR}/.git" ]; then
         for b_file in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
@@ -3495,6 +3515,14 @@ EOF
     unset HAWS_CATALOG_SKILLS_CACHE 2>/dev/null || true
     unset HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
     [ "${wait_status}" -eq 0 ] || return "${wait_status}"
+    return "${sync_status}"
+}
+
+run_sync() {
+    local sync_status=0
+    _run_sync_impl "$@" || sync_status=$?
+    rm -f -- "${HOME}/.haws_manifest.tmp" 2>/dev/null || true
+    unset HAWS_CATALOG_SKILLS_CACHE HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
     return "${sync_status}"
 }
 
@@ -4272,11 +4300,17 @@ _second_brain_connect_cleanup_stage() {
     esac
 }
 
+_second_brain_connect_report_partial_push() {
+    local revision="$1"
+    echo "  [PARTIAL] Remote push succeeded at commit ${revision}, but the local Second Brain checkout was not activated." >&2
+    echo "  [ACTION] Retry Connect to activate the pushed checkout; if it still fails, fetch ${revision} from the target remote used for this Connect." >&2
+}
+
 _second_brain_connect_transaction() {
     local brain_dir="$1"
     local repo_url="$2"
     local parent base stage_prefix stage candidate baseline backup
-    local original_exists=0
+    local original_exists=0 pushed_revision
 
     if [ -L "${brain_dir}" ]; then
         echo "  [ERROR] Second Brain checkout is a linked directory; refusing transactional connect." >&2
@@ -4375,27 +4409,31 @@ _second_brain_connect_transaction() {
         _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
         return 1
     fi
+    pushed_revision="$(git -C "${candidate}" rev-parse HEAD 2>/dev/null || printf unknown)"
 
     if [ "${original_exists}" -eq 1 ]; then
         if [ ! -d "${brain_dir}" ] || ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1; then
             echo "  [ERROR] Local Second Brain changed during connect; keeping the current checkout untouched." >&2
-            echo "  [WARN] The remote push succeeded, but the connected checkout was not activated." >&2
+            _second_brain_connect_report_partial_push "${pushed_revision}"
             _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
             return 1
         fi
         if ! mv -- "${brain_dir}" "${backup}"; then
             echo "  [ERROR] Could not preserve the original Second Brain checkout for activation." >&2
+            _second_brain_connect_report_partial_push "${pushed_revision}"
             _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
             return 1
         fi
     elif [ -e "${brain_dir}" ] || [ -L "${brain_dir}" ]; then
         echo "  [ERROR] A Second Brain checkout appeared during connect; leaving it untouched." >&2
+        _second_brain_connect_report_partial_push "${pushed_revision}"
         _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
         return 1
     fi
 
     if ! mv -- "${candidate}" "${brain_dir}"; then
         echo "  [ERROR] Could not activate the connected Second Brain checkout." >&2
+        _second_brain_connect_report_partial_push "${pushed_revision}"
         if [ "${original_exists}" -eq 1 ] && ! mv -- "${backup}" "${brain_dir}"; then
             echo "  [CRITICAL] Could not restore the original Second Brain checkout from ${backup}." >&2
             echo "  [CRITICAL] Preserved the recoverable original at ${backup}; manual recovery is required." >&2
@@ -6877,10 +6915,11 @@ settings_apply_final() {
                     else
                         run_sync || sync_exit=$?
                     fi
-                    if [ "${sync_exit}" -gt 1 ]; then
+                    if [ "${sync_exit}" -ne 0 ]; then
                         echo "Partial failure"
                         echo "Remaining: ${action}"
-                        return "${sync_exit}"
+                        [ "${sync_exit}" -gt 1 ] && return "${sync_exit}"
+                        return 3
                     fi
                 fi
                 printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
@@ -6901,6 +6940,12 @@ settings_apply_final() {
     fi
     echo "  [PASS] Settings apply verified."
     rm -f -- "${state}/uninstalled" || return 1
+    if [ "${HAWS_PLAN_KIND:-Install}" = Install ] &&
+        ! _haws_mark_integration_ownership_migration_complete; then
+        echo "Partial failure"
+        echo "Remaining: install state"
+        return 3
+    fi
     local marker_temporary="${state}/install.complete.stage.$$"
     printf 'schema=1\tcompleted_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker_temporary}" || return 1
     _haws_state_replace "${marker_temporary}" "${state}/install.complete"
@@ -7064,7 +7109,7 @@ home_run() {
                     run_sync || sync_status=$?
                     unset HAWS_INTERACTIVE_RESULT
                     [ "${HAWS_RESULT_NAVIGATION:-home}" = exit ] && return "${sync_status}"
-                    [ "${sync_status}" -gt 1 ] && return "${sync_status}"
+                    [ "${sync_status}" -ne 0 ] && return "${sync_status}"
                     ;;
                 1)
                     settings_draft_load || return 1

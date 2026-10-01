@@ -605,6 +605,11 @@ EOF
 
     run_haws sync || return 1
     source_haws || return 1
+    if [ -e "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" ]; then
+        echo 'Standalone fresh Sync prematurely marked legacy ownership migration complete.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
     for path in "${exact_agent}" "${command_file}"; do
         if ownership_list agents | grep -F "${path}" >/dev/null; then
             echo "Fresh exact user-owned integration was adopted: ${path}"
@@ -641,6 +646,32 @@ EOF
         HAWS_GEMINI_SKILLS_SUFFIX='skills/custom/demo-one' \
         node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.env.HAWS_GEMINI_SKILLS_FILE,"utf8"));if(!data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_SKILLS_SUFFIX)))process.exit(1);' || return 1
 
+    # Final Install marks the current ownership schema. Following Syncs must not
+    # reinterpret these user-owned exact matches as legacy HAWS files.
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state" || return 1
+    source_haws || return 1
+    _haws_mark_integration_ownership_migration_complete || return 1
+    printf 'schema=1\tcompleted_at=fresh-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    run_haws sync || return 1
+    source_haws || return 1
+    for path in "${exact_agent}" "${command_file}"; do
+        if ownership_list agents | grep -F "${path}" >/dev/null; then
+            echo "Second Sync adopted a fresh user-owned integration: ${path}"
+            ownership_list agents | grep -F "${path}"
+            cat "${OUTPUT_FILE}"
+            return 1
+        fi
+    done
+    if ownership_list skills | grep -F "${skill_link}" >/dev/null ||
+        grep -F "${gemini_path}" "${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json" \
+            >/dev/null 2>&1 ||
+        ownership_list hooks | grep -F "${FIXTURE_PROJECT}/.githooks" >/dev/null; then
+        echo 'Second Sync adopted a fresh user-owned skill, Gemini entry, or hook.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+
     if ! { [ -L "${skill_link}" ] && [ "$(readlink "${skill_link}" 2>/dev/null || true)" = "${skill_source}" ]; } &&
         ! { [ -d "${skill_link}" ] && [ "${skill_link}" -ef "${skill_source}" ]; }; then
         echo 'Sync did not preserve the fresh user-owned skill symlink.'
@@ -671,6 +702,47 @@ EOF
     HAWS_GEMINI_SKILLS_FILE="${gemini_skills}" \
         HAWS_GEMINI_SKILLS_SUFFIX='skills/custom/demo-one' \
         node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.env.HAWS_GEMINI_SKILLS_FILE,"utf8"));if(!data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_SKILLS_SUFFIX)))process.exit(1);' || return 1
+}
+
+test_sync_migrates_agent_only_legacy_manifest() {
+    populate_full_fixture || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude/agents" "${FIXTURE_PROJECT}/.haws/state" || return 1
+    cp "${FIXTURE_PROJECT}/agents/organizer.md" \
+        "${FIXTURE_HOME}/.claude/agents/organizer.md" || return 1
+    printf 'schema=1\tcompleted_at=legacy-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    printf 'agent:organizer\n' > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+
+    run_haws sync || return 1
+    source_haws || return 1
+    ownership_list agents | grep -F "${FIXTURE_HOME}/.claude/agents/organizer.md" \
+        >/dev/null || {
+        echo 'Agent-only legacy install was not migrated.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -f "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" ]
+}
+
+test_skill_link_ownership_write_failure_is_propagated() {
+    populate_full_fixture || return 1
+    local skill_source="${FIXTURE_PROJECT}/skills/custom/demo-one"
+    local skill_link="${FIXTURE_HOME}/.claude/skills/demo-one"
+    local PREV_MANIFEST="${FIXTURE_HOME}/.haws_manifest.prev"
+    mkdir -p "$(dirname "${skill_link}")" || return 1
+    create_test_directory_link "${skill_source}" "${skill_link}" || return 1
+    printf 'skill:demo-one\tdemo-one\n' > "${PREV_MANIFEST}" || return 1
+    source_haws || return 1
+    HAWS_LEGACY_INTEGRATION_MIGRATION=1
+    HAWS_OWNERSHIP_SKILLS_LOADED=0
+    ownership_record() { return 1; }
+
+    local record_status=0
+    _haws_record_skill_link symlink "${skill_link}" "${skill_source}" || record_status=$?
+    unset -f ownership_record
+    [ "${record_status}" -ne 0 ]
 }
 
 test_sync_adopts_frozen_legacy_artifacts_and_uninstall_removes_them() {
@@ -772,6 +844,8 @@ else
     run_test test_plugin_containing_skills_and_extensions
     run_test test_command_surface_status_doctor_hook
     run_test test_fresh_exact_user_integrations_remain_unowned
+    run_test test_sync_migrates_agent_only_legacy_manifest
+    run_test test_skill_link_ownership_write_failure_is_propagated
     run_test test_sync_adopts_frozen_legacy_artifacts_and_uninstall_removes_them
     run_test test_clean_full_uninstall
     run_test test_stateful_fresh_setup_update_uninstall_and_bare_launch
