@@ -16,7 +16,7 @@ The actual goal and required outcome always take priority over following rigid p
 
 ### Launching HAWS
 
-- **Windows**: Double-click **`haws.bat`** in the repository root (or run `.\haws.bat` from terminal). It automatically locates Git Bash and opens the interactive HAWS interface.
+- **Windows**: If you have not cloned HAWS yet, run `git clone --recursive https://github.com/apirak-k/Human-AI-Working-Standard.git` in PowerShell, then `cd Human-AI-Working-Standard`. Double-click **`haws.bat`** (or run `.\haws.bat` from terminal). It automatically locates Git Bash and opens the interactive HAWS interface.
 - **macOS & Linux**: Run `./haws.sh` in your terminal with Bash 4.2 or newer. macOS includes Bash 3.2; install a newer Bash with `brew install bash`, then run `"$(brew --prefix)/bin/bash" ./haws.sh`.
 
 #### Interactive Menu System (TUI)
@@ -54,12 +54,14 @@ On macOS, use Bash 4.2 or newer for this command. The system Bash is 3.2; after 
 
 ### Prerequisites
 
-| Tool | Minimum Version | Purpose |
+HAWS core requires Git and Bash. Node.js and Python are needed only for the integrations that use them; individual skills may have their own requirements.
+
+| Tool | Minimum Version | When it is needed |
 | :--- | :---: | :--- |
-| **Git** | 2.30+ | Repository versioning, submodules, worktrees |
-| **Node.js** | 20+ | Runtime for custom skills and CLI tools |
-| **Python** | 3.10+ | Fast regex calculations and AST analysis |
-| **Bash** | 4.2+ / Git Bash | Unified command engine (`haws.sh`) |
+| **Git** | 2.30+ | Required to clone and update HAWS and its skill repositories |
+| **Bash** | 4.2+ / Git Bash | Required to run the command engine (`haws.sh`); Git for Windows provides Git Bash |
+| **Node.js** | 20+ | For native Codex agent profiles and Antigravity `skills.json` integration |
+| **Python** | 3.10+ | For merging Second Brain documents during cloud sync |
 
 ### Cross-Platform Setup Details
 
