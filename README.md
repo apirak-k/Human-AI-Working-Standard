@@ -16,15 +16,15 @@ The actual goal and required outcome always take priority over following rigid p
 
 ### Launching HAWS
 
-- **Windows**: Double-click **`haws.bat`** in the repository root (or run `.\haws.bat` from terminal). It automatically locates Git Bash and opens the interactive HAWS interface.
-- **macOS & Linux**: Run `./haws.sh` in your terminal.
+- **Windows**: If you have not cloned HAWS yet, run `git clone --recursive https://github.com/apirak-k/Human-AI-Working-Standard.git` in PowerShell, then `cd Human-AI-Working-Standard`. Double-click **`haws.bat`** (or run `.\haws.bat` from terminal). It automatically locates Git Bash and opens the interactive HAWS interface.
+- **macOS & Linux**: Run `./haws.sh` in your terminal with Bash 4.2 or newer. macOS includes Bash 3.2; install a newer Bash with `brew install bash`, then run `"$(brew --prefix)/bin/bash" ./haws.sh`.
 
 #### Interactive Menu System (TUI)
 - **First Launch**: Opens **HAWS Setup** to configure AI environments, skills, and settings.
 - **Subsequent Launches**: Opens **HAWS Home** with direct actions:
   - **`Sync`**: Verifies and reconciles skill links; refreshes skill sources and a connected Second Brain when their Auto Update settings are enabled.
   - **`Doctor`**: Runs read-only diagnostics and reports the checks and findings.
-  - **`Settings`**: Configures Repositories, Skills (Enable/Disable), AI Environments, Second Brain, and Auto Update in a non-destructive draft mode (press `Apply` to save).
+  - **`Settings`**: Configures Repositories, Skills (Enable/Disable), AI Environments, Second Brain, and Auto Update in a non-destructive draft mode. `Apply` accepts the draft for Preview; `Install` or `Update` confirmation saves it.
   - **`Uninstall`**: Safely detaches HAWS links and profiles with preview and confirmation.
 
 #### Controls
@@ -50,19 +50,23 @@ bash haws.sh setup
 
 Setup edits a draft, shows a Preview, and writes state only after `Install` or `Update` confirmation. Later launches open Home, where `Sync`, `Doctor`, `Settings`, and `Uninstall` are explicit actions.
 
+On macOS, use Bash 4.2 or newer for this command. The system Bash is 3.2; after installing Homebrew Bash, run `"$(brew --prefix)/bin/bash" haws.sh setup`.
+
 ### Prerequisites
 
-| Tool | Minimum Version | Purpose |
+HAWS core requires Git and Bash. Node.js and Python are needed only for the integrations that use them; individual skills may have their own requirements.
+
+| Tool | Minimum Version | When it is needed |
 | :--- | :---: | :--- |
-| **Git** | 2.30+ | Repository versioning, submodules, worktrees |
-| **Node.js** | 20+ | Runtime for custom skills and CLI tools |
-| **Python** | 3.10+ | Fast regex calculations and AST analysis |
-| **Bash** | Standard / Git Bash | Unified command engine (`haws.sh`) |
+| **Git** | 2.30+ | Required to clone and update HAWS and its skill repositories |
+| **Bash** | 4.2+ / Git Bash | Required to run the command engine (`haws.sh`); Git for Windows provides Git Bash |
+| **Node.js** | 20+ | For native Codex agent profiles and Antigravity `skills.json` integration |
+| **Python** | 3.10+ | For merging Second Brain documents during cloud sync |
 
 ### Cross-Platform Setup Details
 
 - **Windows 10 / 11**: Double-click `haws.bat`. It delegates to Git Bash and preserves the shared menu behavior. No administrator privileges are required for the launcher; Windows link capabilities depend on the host and are reported as `[Unverified]` when unavailable. Antigravity uses declarative JSON mapping (`skills.json`); Claude Code and Codex use their existing adapters.
-- **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`). Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
+- **macOS & Linux**: Run directly in your standard terminal (`zsh` or `bash`) using Bash 4.2 or newer. The bundled macOS Bash 3.2 is rejected with an install command. Uses native Unix symlinks (`ln -sfn`) to link skills and configuration pointers with zero manual overhead.
 
 ---
 
@@ -75,7 +79,7 @@ HAWS physically enforces the **3-Tier Data Separation Model**:
 3. **Second Brain Documents (`secondbrain/`)**: Neutral starter documents for preferences, safeguards, and workflow. Keep personal preferences and notes in your own private Second Brain repository or local copy.
 
 > [!IMPORTANT]
-> **Privacy Invariant**: Your Second Brain repository on GitHub **MUST be created as PRIVATE**. Never connect `secondbrain/` to a public repository to ensure that your personal notes, communication preferences, and recorded anti-patterns remain strictly confidential.
+> **Privacy responsibility (not verified by HAWS):** Create your Second Brain GitHub repository as **Private** and confirm its visibility before connecting it. HAWS does not check repository visibility, so privacy cannot be verified by the tool.
 
 ### Connecting to Cloud (Two-Way Sync)
 On any computer (work machine or home machine):

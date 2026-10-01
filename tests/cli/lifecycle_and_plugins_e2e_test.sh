@@ -32,11 +32,16 @@ fail() {
 
 
 run_haws() {
+    local status=0
     env HOME="${FIXTURE_HOME}" CODEX_HOME="${FIXTURE_HOME}/.codex" \
         HAWS_REPO_DIR="${FIXTURE_PROJECT}" HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state" \
         HAWS_TEST_KEYS="${HAWS_TEST_KEYS:-}" \
         HAWS_CALL_LOG="${CALL_LOG:-}" PATH="${PATH}" \
-        bash "${FIXTURE_PROJECT}/haws.sh" "$@" >"${OUTPUT_FILE}" 2>&1
+        bash "${FIXTURE_PROJECT}/haws.sh" "$@" >"${OUTPUT_FILE}" 2>&1 || status=$?
+    if [ "${status}" -ne 0 ]; then
+        cat "${OUTPUT_FILE}" >&2
+        return "${status}"
+    fi
 }
 
 run_haws_input() {
@@ -58,6 +63,19 @@ source_haws() {
     # shellcheck disable=SC1091
     . "${FIXTURE_PROJECT}/haws.sh"
     unset HAWS_SOURCE_ONLY
+}
+
+create_test_directory_link() {
+    local source="$1" destination="$2"
+    if command -v cmd.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        local windows_source windows_destination
+        windows_source="$(cygpath -w "${source}")" || return 1
+        windows_destination="$(cygpath -w "${destination}")" || return 1
+        MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /J \
+            "${windows_destination}" "${windows_source}" >/dev/null 2>&1
+    else
+        ln -s "${source}" "${destination}"
+    fi
 }
 
 init_project_repo() {
@@ -421,20 +439,16 @@ test_clean_full_uninstall() {
     # Perform initial sync
     run_haws sync || return 1
 
-    # Seed ownership records for global pointers to ensure full lifecycle coverage
     source_haws || return 1
     local claude_pointer="${FIXTURE_HOME}/.claude/CLAUDE.md"
     local gemini_pointer="${FIXTURE_HOME}/.gemini/GEMINI.md"
     [ -f "${claude_pointer}" ] || fail "Missing claude pointer before uninstall"
     [ -f "${gemini_pointer}" ] || fail "Missing gemini pointer before uninstall"
 
-    local claude_hash gemini_hash
-    claude_hash="$(_haws_sha256 "${claude_pointer}")"
-    gemini_hash="$(_haws_sha256 "${gemini_pointer}")"
-    ownership_record environments generated-file "${claude_pointer}" \
-        "${FIXTURE_PROJECT}/core/HAWS.md" "${claude_hash}" || return 1
-    ownership_record environments generated-file "${gemini_pointer}" \
-        "${FIXTURE_PROJECT}/core/HAWS.md" "${gemini_hash}" || return 1
+    ownership_list pointers | grep -F $'pointers\tpointer-block\t' >/dev/null || \
+        fail "Sync did not record pointer-block ownership"
+    assert_file_contains "${claude_pointer}" '<!-- HAWS_GLOBAL_POINTER_START -->' || return 1
+    assert_file_contains "${gemini_pointer}" '<!-- HAWS_GLOBAL_POINTER_END -->' || return 1
 
     # Seed unrelated file in skills and custom notes in secondbrain
     printf '%s\n' 'user-unrelated-content' > "${FIXTURE_HOME}/.claude/skills/unrelated.txt"
@@ -445,13 +459,19 @@ test_clean_full_uninstall() {
         fail "Expected managed caveman link in .claude/skills"
 
     # Run 'haws.sh uninstall' with confirmation 'y'
-    HAWS_TEST_KEYS=y run_haws uninstall || return 1
+    if ! HAWS_TEST_KEYS=y run_haws uninstall; then
+        echo 'Uninstall of the fresh user-owned integration fixture failed.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
     assert_output_contains 'HAWS Uninstall Preview' || return 1
     assert_output_contains 'Applying uninstall changes' || return 1
 
     # 1. Assert pointers removed
     assert_file_not_exists "${claude_pointer}" || return 1
     assert_file_not_exists "${gemini_pointer}" || return 1
+    ! ownership_list pointers | grep -F $'pointers\tpointer-block\t' >/dev/null || \
+        fail "Uninstall retained pointer-block ownership records"
 
     # 2. Assert managed skill links removed
     assert_file_not_exists "${FIXTURE_HOME}/.claude/skills/caveman" || return 1
@@ -464,6 +484,448 @@ test_clean_full_uninstall() {
     run_haws doctor || return 1
     assert_output_contains 'HAWS Doctor' || return 1
     assert_output_contains 'Overall:' || return 1
+
+    # A fresh launch after full removal must return to Setup, not Home.
+    run_haws_input 'q' || return 1
+    assert_output_contains 'HAWS Setup' || return 1
+    if grep -F 'HAWS Home' "${OUTPUT_FILE}" >/dev/null; then
+        fail "A bare launch after full uninstall entered Home"
+    fi
+}
+
+test_stateful_fresh_setup_update_uninstall_and_bare_launch() {
+    populate_full_fixture || return 1
+    local brain="${FIXTURE_PROJECT}/secondbrain"
+    local brain_remote="${FIXTURE_ROOT}/stateful-brain.git"
+    printf '%s\n' '# Fixture Workflow' > "${brain}/WORKFLOW.md" || return 1
+    git init --bare -q "${brain_remote}" || return 1
+    git -C "${brain}" init -q -b main 2>/dev/null || git -C "${brain}" init -q || return 1
+    git -C "${brain}" checkout -q -B main || return 1
+    git -C "${brain}" config user.name HAWS-Test
+    git -C "${brain}" config user.email test@example.invalid
+    git -C "${brain}" add . || return 1
+    git -C "${brain}" commit -qm 'fixture Second Brain baseline' || return 1
+    git -C "${brain}" remote add origin "file://${brain_remote}" || return 1
+    git -C "${brain}" push -q -u origin main || return 1
+    git --git-dir="${brain_remote}" symbolic-ref HEAD refs/heads/main || return 1
+
+    export HAWS_TEST_NO_INTEGRATION=1
+    if ! run_haws_input $'\n\033[A\nq'; then
+        echo 'Fresh launch setup/install flow exited unsuccessfully.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_output_contains 'HAWS Setup' || return 1
+    assert_output_contains 'HAWS — Preview Install' || return 1
+    assert_output_contains 'HAWS Home' || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/install.complete" 'schema=1' || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
+        $'auto_update_brain\ton' || return 1
+
+    # Change Skills Auto Update, accept the Update preview, and run the update.
+    local down=$'\033[B' up=$'\033[A'
+    local update_input="${down}${down}${down}${down}\n"
+    update_input+="\nq"
+    update_input+="${down}${down}${down}${down}${down}\n${up}\nq"
+    if ! run_haws_input "${update_input}" settings; then
+        echo 'Settings Update/Update flow exited unsuccessfully.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_output_contains 'HAWS — Preview Update' || {
+        echo 'Settings navigation did not reach Update preview.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    assert_output_contains 'Update completed.' || {
+        echo 'Update confirmation is missing from the completed lifecycle.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
+        $'auto_update_skills\toff' || return 1
+
+    if ! HAWS_TEST_KEYS=y run_haws uninstall; then
+        echo 'Uninstall in the stateful lifecycle fixture failed.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_output_contains 'Applying uninstall changes' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
+        $'auto_update_skills\toff' || {
+        echo 'Uninstall did not preserve the saved Skills Auto Update setting.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+
+    run_haws_input 'q' || return 1
+    assert_output_contains 'HAWS Setup' || return 1
+    assert_output_contains 'Use Previous Settings' || return 1
+    local expected_post_uninstall_skills=$'auto_update_skills\toff'
+    if ! grep -F "${expected_post_uninstall_skills}" \
+        "${FIXTURE_PROJECT}/.haws/state/settings.tsv" >/dev/null; then
+        echo 'Post-uninstall bare launch did not retain the saved Skills Auto Update value.'
+        cat "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+        return 1
+    fi
+}
+
+test_fresh_exact_user_integrations_remain_unowned() {
+    populate_full_fixture || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude/agents" \
+        "${FIXTURE_HOME}/.claude/commands" "${FIXTURE_HOME}/.claude/skills" \
+        "${FIXTURE_HOME}/.gemini/config" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+    local exact_agent="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local command_file="${FIXTURE_HOME}/.claude/commands/demo-one.md"
+    local skill_link="${FIXTURE_HOME}/.claude/skills/demo-one"
+    local skill_source="${FIXTURE_PROJECT}/skills/custom/demo-one"
+    local gemini_skills="${FIXTURE_HOME}/.gemini/config/skills.json"
+    local gemini_path="${FIXTURE_PROJECT}/skills/custom/demo-one"
+    cp "${FIXTURE_PROJECT}/agents/organizer.md" "${exact_agent}" || return 1
+    create_test_directory_link "${skill_source}" "${skill_link}" || {
+        echo 'Could not create the fresh user-owned skill symlink fixture.'
+        return 1
+    }
+    cat > "${command_file}" <<'EOF'
+---
+description: Fixture single skill.
+---
+Execute the demo-one skill workflow defined in ~/.claude/skills/demo-one/SKILL.md.
+EOF
+    printf '{\n  "entries": [\n    { "path": "%s" }\n  ]\n}\n' \
+        "${gemini_path}" > "${gemini_skills}" || return 1
+    git -C "${FIXTURE_PROJECT}" config --local core.hooksPath .githooks || return 1
+    local agent_before command_before gemini_before
+    agent_before="$(cat "${exact_agent}")"
+    command_before="$(cat "${command_file}")"
+    gemini_before="$(cat "${gemini_skills}")"
+
+    run_haws sync || return 1
+    source_haws || return 1
+    if [ -e "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" ]; then
+        echo 'Standalone fresh Sync prematurely marked legacy ownership migration complete.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    for path in "${exact_agent}" "${command_file}"; do
+        if ownership_list agents | grep -F "${path}" >/dev/null; then
+            echo "Fresh exact user-owned integration was adopted: ${path}"
+            ownership_list agents | grep -F "${path}"
+            cat "${OUTPUT_FILE}"
+            return 1
+        fi
+    done
+    if ownership_list skills | grep -F "${skill_link}" >/dev/null; then
+        echo "Fresh user-created exact skill link was adopted: ${skill_link}"
+        ownership_list skills | grep -F "${skill_link}"
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    [ "$(cat "${exact_agent}")" = "${agent_before}" ] || return 1
+    [ "$(cat "${command_file}")" = "${command_before}" ] || return 1
+    if grep -F "${gemini_path}" "${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json" \
+        >/dev/null 2>&1; then
+        echo 'Fresh exact user-owned Gemini entry was adopted.'
+        cat "${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json"
+        return 1
+    fi
+    [ "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath)" = .githooks ] || return 1
+    if ownership_list hooks | grep -F "${FIXTURE_PROJECT}/.githooks" >/dev/null; then
+        echo 'Fresh user core.hooksPath was incorrectly recorded as HAWS-owned.'
+        ownership_list hooks | grep -F "${FIXTURE_PROJECT}/.githooks"
+        return 1
+    fi
+    [ "$(cat "${gemini_skills}")" != "${gemini_before}" ] || {
+        echo 'Sync should merge generated Gemini entries while retaining the user entry.'
+        return 1
+    }
+    HAWS_GEMINI_SKILLS_FILE="${gemini_skills}" \
+        HAWS_GEMINI_SKILLS_SUFFIX='skills/custom/demo-one' \
+        node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.env.HAWS_GEMINI_SKILLS_FILE,"utf8"));if(!data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_SKILLS_SUFFIX)))process.exit(1);' || return 1
+
+    # Final Install marks the current ownership schema. Following Syncs must not
+    # reinterpret these user-owned exact matches as legacy HAWS files.
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state" || return 1
+    source_haws || return 1
+    _haws_mark_integration_ownership_migration_complete || return 1
+    printf 'schema=1\tcompleted_at=fresh-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    run_haws sync || return 1
+    source_haws || return 1
+    for path in "${exact_agent}" "${command_file}"; do
+        if ownership_list agents | grep -F "${path}" >/dev/null; then
+            echo "Second Sync adopted a fresh user-owned integration: ${path}"
+            ownership_list agents | grep -F "${path}"
+            cat "${OUTPUT_FILE}"
+            return 1
+        fi
+    done
+    if ownership_list skills | grep -F "${skill_link}" >/dev/null ||
+        grep -F "${gemini_path}" "${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json" \
+            >/dev/null 2>&1 ||
+        ownership_list hooks | grep -F "${FIXTURE_PROJECT}/.githooks" >/dev/null; then
+        echo 'Second Sync adopted a fresh user-owned skill, Gemini entry, or hook.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+
+    if ! { [ -L "${skill_link}" ] && [ "$(readlink "${skill_link}" 2>/dev/null || true)" = "${skill_source}" ]; } &&
+        ! { [ -d "${skill_link}" ] && [ "${skill_link}" -ef "${skill_source}" ]; }; then
+        echo 'Sync did not preserve the fresh user-owned skill symlink.'
+        printf 'link=%s source=%s exists=%s symlink=%s directory=%s target=%s\n' \
+            "${skill_link}" "${skill_source}" \
+            "$([ -e "${skill_link}" ] && echo yes || echo no)" \
+            "$([ -L "${skill_link}" ] && echo yes || echo no)" \
+            "$([ -d "${skill_link}" ] && echo yes || echo no)" \
+            "$(readlink "${skill_link}" 2>/dev/null || true)"
+        ls -ld "${skill_link}" "${skill_source}" 2>&1 || true
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    if ! HAWS_TEST_KEYS=y run_haws uninstall; then
+        echo 'Uninstall of the fresh user-owned integration fixture failed.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_file_contains "${exact_agent}" 'name: organizer' || return 1
+    assert_file_contains "${command_file}" 'Execute the demo-one skill workflow' || return 1
+    { [ -L "${skill_link}" ] && [ "$(readlink "${skill_link}" 2>/dev/null || true)" = "${skill_source}" ]; } ||
+        { [ -d "${skill_link}" ] && [ "${skill_link}" -ef "${skill_source}" ]; } || {
+        echo 'Uninstall removed the fresh user-owned skill symlink.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath)" = .githooks ] || return 1
+    HAWS_GEMINI_SKILLS_FILE="${gemini_skills}" \
+        HAWS_GEMINI_SKILLS_SUFFIX='skills/custom/demo-one' \
+        node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.env.HAWS_GEMINI_SKILLS_FILE,"utf8"));if(!data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_SKILLS_SUFFIX)))process.exit(1);' || return 1
+}
+
+test_sync_migrates_agent_only_legacy_manifest() {
+    populate_full_fixture || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude/agents" "${FIXTURE_PROJECT}/.haws/state" || return 1
+    cp "${FIXTURE_PROJECT}/agents/organizer.md" \
+        "${FIXTURE_HOME}/.claude/agents/organizer.md" || return 1
+    printf 'schema=1\tcompleted_at=legacy-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    printf 'agent:organizer\n' > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+
+    run_haws sync || return 1
+    source_haws || return 1
+    ownership_list agents | grep -F "${FIXTURE_HOME}/.claude/agents/organizer.md" \
+        >/dev/null || {
+        echo 'Agent-only legacy install was not migrated.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -f "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" ]
+}
+
+test_existing_legacy_ledger_prevents_unsafe_re_adoption() {
+    populate_full_fixture || return 1
+    local target="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local source="${FIXTURE_PROJECT}/agents/organizer.md"
+    local gemini_config="${FIXTURE_HOME}/.gemini/config/skills.json"
+    local gemini_path='/user-owned/orphan-skill'
+    local gemini_manifest="${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json"
+    mkdir -p "$(dirname "${target}")" "$(dirname "${gemini_config}")" \
+        "${FIXTURE_PROJECT}/.haws/state" || return 1
+    cp "${source}" "${target}" || return 1
+    printf '{\n  "entries": [{ "path": "%s" }]\n}\n' "${gemini_path}" \
+        > "${gemini_config}" || return 1
+    printf 'schema=1\tcompleted_at=legacy-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    printf 'agent:organizer\n' > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    printf '{"version":1,"paths":["%s"],"createdTarget":false}\n' "${gemini_path}" \
+        > "${gemini_manifest}" || return 1
+    printf 'metadata\tgenerated-file\t%s\t%s\tlegacy-fingerprint\n' \
+        "${FIXTURE_PROJECT}/.haws/legacy-manifest" "${FIXTURE_PROJECT}/haws.sh" \
+        > "${FIXTURE_PROJECT}/.haws/state/ownership.tsv" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+
+    run_haws sync || return 1
+    source_haws || return 1
+    [ -f "${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1" ] || {
+        echo 'Legacy ownership state did not establish the current migration boundary.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    if ownership_list agents | grep -F "${target}" >/dev/null; then
+        echo "Unversioned legacy ownership caused a user-owned file to be adopted: ${target}"
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    grep -F "${gemini_path}" "${gemini_config}" >/dev/null || {
+        echo "Sync removed a user-owned Gemini entry from an untrusted legacy manifest: ${gemini_path}"
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -f "${gemini_manifest}.untrusted-v1" ] || return 1
+    cmp -s -- "${source}" "${target}"
+}
+
+test_unversioned_ownership_record_is_preserved_on_uninstall() {
+    populate_full_fixture || return 1
+    local target="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local source="${FIXTURE_PROJECT}/agents/organizer.md"
+    local state="${FIXTURE_PROJECT}/.haws/state"
+    local plan uninstall_status=0
+    mkdir -p "$(dirname "${target}")" "${state}" || return 1
+    cp "${source}" "${target}" || return 1
+    source_haws || return 1
+    printf 'schema=1\tmigrated_at=2026-10-02T00:00:00Z\n' \
+        > "${state}/integration-ownership-migration-v1" || return 1
+    printf 'agents\tgenerated-file\t%s\t%s\t%s\n' \
+        "${target}" "${source}" "$(_haws_sha256 "${target}")" > "${state}/ownership.tsv" || return 1
+
+    plan="$(uninstall_plan agents)" || return 1
+    if grep -F "${target}" "${plan}" >/dev/null; then
+        echo "Uninstall planned removal of an unversioned legacy ownership row: ${target}"
+        rm -f -- "${plan}"
+        return 1
+    fi
+    uninstall_apply "${plan}" >"${OUTPUT_FILE}" 2>&1 || uninstall_status=$?
+    rm -f -- "${plan}"
+    [ "${uninstall_status}" -eq 0 ] || {
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -f "${target}" ]
+}
+
+test_invalid_integration_migration_marker_fails_closed() {
+    populate_full_fixture || return 1
+    local marker="${FIXTURE_PROJECT}/.haws/state/integration-ownership-migration-v1"
+    local target="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local source="${FIXTURE_PROJECT}/agents/organizer.md"
+    local sync_status=0
+    mkdir -p "$(dirname "${target}")" "${marker}" || return 1
+    cp "${source}" "${target}" || return 1
+    printf 'schema=1\tcompleted_at=legacy-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    printf 'agent:organizer\n' > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+
+    run_haws sync || sync_status=$?
+    [ "${sync_status}" -ne 0 ] || {
+        echo 'Sync accepted a directory as a completed ownership migration marker.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ -d "${marker}" ] && [ -f "${target}" ] || return 1
+    source_haws || return 1
+    ! ownership_list agents | grep -F "${target}" >/dev/null
+}
+
+test_skill_link_ownership_write_failure_is_propagated() {
+    populate_full_fixture || return 1
+    local skill_source="${FIXTURE_PROJECT}/skills/custom/demo-one"
+    local skill_link="${FIXTURE_HOME}/.claude/skills/demo-one"
+    local PREV_MANIFEST="${FIXTURE_HOME}/.haws_manifest.prev"
+    mkdir -p "$(dirname "${skill_link}")" || return 1
+    create_test_directory_link "${skill_source}" "${skill_link}" || return 1
+    printf 'skill:demo-one\tdemo-one\n' > "${PREV_MANIFEST}" || return 1
+    source_haws || return 1
+    HAWS_LEGACY_INTEGRATION_MIGRATION=1
+    HAWS_OWNERSHIP_SKILLS_LOADED=0
+    ownership_record() { return 1; }
+
+    local record_status=0
+    _haws_record_skill_link symlink "${skill_link}" "${skill_source}" || record_status=$?
+    unset -f ownership_record
+    [ "${record_status}" -ne 0 ]
+}
+
+test_sync_adopts_frozen_legacy_artifacts_and_uninstall_removes_them() {
+    populate_full_fixture || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude/agents" "${FIXTURE_HOME}/.claude/skills" \
+        "${FIXTURE_HOME}/.gemini/config" "${FIXTURE_PROJECT}/.haws/state" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+
+    # Frozen fixture uses the v1 manifest format and committed artifacts from
+    # 7846259; it does not create a current Sync result and strip its ledger.
+    git -C "${PROJECT_ROOT}" show 7846259:agents/organizer.md \
+        > "${FIXTURE_PROJECT}/agents/organizer.md" || return 1
+    git -C "${PROJECT_ROOT}" show 7846259:skills/custom/keyboard-layout-fixer/SKILL.md \
+        > "${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer.SOURCE" || return 1
+    git -C "${PROJECT_ROOT}" show 7846259:.githooks/commit-msg \
+        > "${FIXTURE_PROJECT}/.githooks/commit-msg" || return 1
+    mkdir -p "${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer" || return 1
+    mv "${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer.SOURCE" \
+        "${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer/SKILL.md" || return 1
+    git -C "${FIXTURE_PROJECT}" add agents/organizer.md \
+        skills/custom/keyboard-layout-fixer/SKILL.md .githooks/commit-msg || return 1
+    git -C "${FIXTURE_PROJECT}" commit -qm 'freeze legacy artifacts from 7846259' || return 1
+
+    local legacy_agent="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local legacy_skill="${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer"
+    local legacy_skill_link="${FIXTURE_HOME}/.claude/skills/keyboard-layout-fixer"
+    local gemini_skills="${FIXTURE_HOME}/.gemini/config/skills.json"
+    local gemini_manifest="${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json"
+    local user_gemini_path="/user-owned/legacy-fixture-entry"
+    [ ! -e "${gemini_manifest}" ] || return 1
+    if ! ln -s "${FIXTURE_PROJECT}/agents/organizer.md" "${legacy_agent}" 2>/dev/null; then
+        cp "${FIXTURE_PROJECT}/agents/organizer.md" "${legacy_agent}" || return 1
+    fi
+    create_test_directory_link "${legacy_skill}" "${legacy_skill_link}" || {
+        echo 'Could not create the legacy skill symlink fixture.'
+        return 1
+    }
+    printf 'schema=1\tcompleted_at=legacy-7846259\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    printf 'skill:legacy-fixture\tkeyboard-layout-fixer\nagent:organizer\n' \
+        > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    printf '{\n  "entries": [\n    { "path": "%s" },\n    { "path": "%s" }\n  ]\n}\n' \
+        "${legacy_skill}" "${user_gemini_path}" > "${gemini_skills}" || return 1
+    git -C "${FIXTURE_PROJECT}" config --local core.hooksPath .githooks || return 1
+
+    run_haws sync || return 1
+    source_haws || return 1
+    ownership_list agents | grep -F "${legacy_agent}" >/dev/null || {
+        echo 'Exact legacy Claude agent was not adopted from the frozen 7846259 fixture.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    if [ ! -e "${legacy_skill_link}" ] && [ ! -L "${legacy_skill_link}" ]; then
+        echo 'Exact legacy skill link was not preserved/adopted during Sync.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    ownership_list skills | grep -F "${legacy_skill_link}" >/dev/null || return 1
+    [ -f "${gemini_manifest}" ] || return 1
+    ownership_list environments | grep -F "${gemini_skills}" >/dev/null || return 1
+    ownership_list hooks | grep -F "${FIXTURE_PROJECT}/.githooks" >/dev/null || return 1
+
+    local first_agent_record second_agent_record
+    first_agent_record="$(ownership_list agents | grep -F "${legacy_agent}")" || return 1
+    run_haws sync || return 1
+    source_haws || return 1
+    second_agent_record="$(ownership_list agents | grep -F "${legacy_agent}")" || return 1
+    [ "${second_agent_record}" = "${first_agent_record}" ] || return 1
+    if grep -F '[ADOPTED] Exact legacy Claude Agent' "${OUTPUT_FILE}" >/dev/null; then
+        echo 'A previously adopted Claude agent was adopted a second time.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+
+    HAWS_TEST_KEYS=y run_haws uninstall || return 1
+    assert_file_not_exists "${legacy_agent}" || return 1
+    assert_file_not_exists "${legacy_skill_link}" || return 1
+    assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest" || return 1
+    assert_file_not_exists "${gemini_manifest}" || return 1
+    [ -z "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath 2>/dev/null || true)" ] || return 1
+    HAWS_GEMINI_SKILLS_FILE="${gemini_skills}" \
+        HAWS_GEMINI_LEGACY_SUFFIX='skills/custom/keyboard-layout-fixer' \
+        HAWS_GEMINI_USER_SUFFIX='user-owned/legacy-fixture-entry' \
+        node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.env.HAWS_GEMINI_SKILLS_FILE,"utf8"));if(data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_LEGACY_SUFFIX)))process.exit(1);if(!data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_USER_SUFFIX)))process.exit(2);' || return 1
 }
 
 # ==============================================================================
@@ -479,7 +941,15 @@ else
     run_test test_google_antigravity_gemini_sync_and_native_config
     run_test test_plugin_containing_skills_and_extensions
     run_test test_command_surface_status_doctor_hook
+    run_test test_fresh_exact_user_integrations_remain_unowned
+    run_test test_sync_migrates_agent_only_legacy_manifest
+    run_test test_existing_legacy_ledger_prevents_unsafe_re_adoption
+    run_test test_unversioned_ownership_record_is_preserved_on_uninstall
+    run_test test_invalid_integration_migration_marker_fails_closed
+    run_test test_skill_link_ownership_write_failure_is_propagated
+    run_test test_sync_adopts_frozen_legacy_artifacts_and_uninstall_removes_them
     run_test test_clean_full_uninstall
+    run_test test_stateful_fresh_setup_update_uninstall_and_bare_launch
 fi
 
 echo "CLI lifecycle and plugins E2E tests: ${passed} passed, ${failed} failed"

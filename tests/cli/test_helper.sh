@@ -14,8 +14,11 @@ fail() {
 
 assert_output_contains() {
     local expected="$1"
-    grep -F -- "${expected}" "${OUTPUT_FILE}" >/dev/null 2>&1 ||
+    if ! grep -F -- "${expected}" "${OUTPUT_FILE}" >/dev/null 2>&1; then
         fail "expected output to contain: ${expected}"
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    fi
 }
 
 assert_file_not_exists() {
@@ -27,8 +30,11 @@ assert_file_not_exists() {
 assert_file_contains() {
     local target="$1"
     local expected="$2"
-    grep -F -- "${expected}" "${target}" >/dev/null 2>&1 ||
+    if ! grep -F -- "${expected}" "${target}" >/dev/null 2>&1; then
         fail "expected ${target} to contain: ${expected}"
+        cat "${target}" >&2
+        return 1
+    fi
 }
 
 create_fixture() {
@@ -63,7 +69,7 @@ cleanup_fixture() {
 run_test() {
     local name="$1"
     create_fixture
-    if "${name}"; then
+    if ( "${name}" ); then
         echo "PASS ${name}"
         passed=$((passed + 1))
     else

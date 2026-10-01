@@ -185,7 +185,7 @@ test_ownership_round_trip_preserves_spaces_in_paths() {
         "/source/with spaces" fingerprint123 || return 1
     ownership_list pointers |
         awk -F '\t' -v p="${owned_path}" \
-            '$3 == p && $4 == "/source/with spaces" && $5 == "fingerprint123" {found=1} END {exit found ? 0 : 1}'
+            '$3 == p && $4 == "/source/with spaces" && $5 == "fingerprint123" && $6 == "schema=2" {found=1} END {exit found ? 0 : 1}'
 }
 
 test_ownership_record_updates_one_identity_without_duplicates() {

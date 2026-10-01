@@ -1,6 +1,6 @@
 // Native Codex profiles point to canonical HAWS roles; no model or tool overrides.
 import { lstatSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, renameSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,12 +36,17 @@ try {
   if (manifestStat && (!manifestStat.isFile() || manifestStat.isSymbolicLink())) {
     throw new Error(`Preserving linked or non-file ownership record: ${manifestPath}`);
   }
+  const roles = ['backend-engineer', 'frontend-engineer', 'organizer', 'researcher', 'tester'];
   const manifest = manifestStat ? JSON.parse(readFileSync(manifestPath, 'utf8')) : { version: 1, hashes: {} };
-  if (manifest.version !== 1 || !manifest.hashes || typeof manifest.hashes !== 'object') {
+  if (manifest.version !== 1 || !manifest.hashes || Array.isArray(manifest.hashes) ||
+      typeof manifest.hashes !== 'object' ||
+      (manifest.owner !== undefined && manifest.owner !== 'HAWS') ||
+      Object.keys(manifest).some(key => !['version', 'owner', 'hashes'].includes(key)) ||
+      Object.entries(manifest.hashes).some(([name, value]) =>
+        !roles.includes(name) || typeof value !== 'string' || !/^[a-f0-9]{64}$/u.test(value))) {
     throw new Error(`Unrecognized ownership record: ${manifestPath}`);
   }
   const hash = content => createHash('sha256').update(content).digest('hex');
-  const roles = ['backend-engineer', 'frontend-engineer', 'organizer', 'researcher', 'tester'];
   const plans = roles.map(name => {
     const rolePath = join(source, 'agents', `${name}.md`);
     const markdown = readFileSync(rolePath, 'utf8');
@@ -82,11 +87,16 @@ try {
     if (missing.length) throw new Error(`Missing Codex profiles: ${missing.map(plan => plan.name).join(', ')}`);
     console.log('PASS: 5/5 native Codex HAWS profiles match canonical sources.');
   } else {
-    const pending = plans.filter(plan => command === 'install' ? !plan.same : plan.same || plan.owned);
-    if (!values['dry-run'] && (pending.length || (command === 'install' && !manifestStat))) {
+    const pending = plans.filter(plan => command === 'install' ? !plan.same : plan.owned);
+    if (!values['dry-run'] && (
+      pending.length ||
+      (command === 'install' && !manifestStat) ||
+      (command === 'uninstall' && manifestStat)
+    )) {
       if (command === 'install') mkdirSync(target, { recursive: true });
       const changed = [];
-      const temporaryManifest = `${manifestPath}.tmp-${process.pid}`;
+      const temporaryManifest = `${manifestPath}.tmp-${process.pid}-${randomUUID()}`;
+      let temporaryManifestCreated = false;
       try {
         for (const plan of pending) {
           if (command === 'install') {
@@ -97,16 +107,23 @@ try {
           changed.push(plan);
         }
         if (command === 'install') {
-          const next = { version: 1, hashes: Object.fromEntries(plans.map(plan => [plan.name, hash(plan.content)])) };
+          const ownedPlans = plans.filter(plan => plan.owned || !plan.existing);
+          const next = {
+            version: 1,
+            owner: 'HAWS',
+            hashes: Object.fromEntries(ownedPlans.map(plan => [plan.name, hash(plan.content)])),
+          };
           writeFileSync(temporaryManifest, JSON.stringify(next, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
+          temporaryManifestCreated = true;
           renameSync(temporaryManifest, manifestPath);
+          temporaryManifestCreated = false;
         } else if (manifestStat) unlinkSync(manifestPath);
       } catch (error) {
         for (const plan of changed.reverse()) {
           if (plan.previous === undefined) unlinkSync(plan.path);
           else writeFileSync(plan.path, plan.previous, 'utf8');
         }
-        if (stat(temporaryManifest)) unlinkSync(temporaryManifest);
+        if (temporaryManifestCreated && stat(temporaryManifest)) unlinkSync(temporaryManifest);
         throw error;
       }
     }

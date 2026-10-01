@@ -5,6 +5,14 @@
 # ==============================================================================
 set -euo pipefail
 
+if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] ||
+    { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 2 ]; }; then
+    printf '[ERROR] HAWS requires Bash 4.2 or newer; detected %s.\n' "${BASH_VERSION:-unknown}" >&2
+    printf '%s\n' 'macOS ships Bash 3.2. Install a newer Bash (for example: brew install bash), then run:' >&2
+    printf '%s\n' '  "$(brew --prefix)/bin/bash" ./haws.sh' >&2
+    exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMAND="${1:-menu}"
 BARE_LAUNCH="${HAWS_BARE_LAUNCH:-0}"
@@ -26,6 +34,16 @@ run_codex_agents() {
     # Node 20+ otherwise realpaths Windows temp/worktree parents before loading
     # the module, which can fail even though the target checkout is readable.
     node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$@"
+}
+
+_haws_codex_agents_dir() {
+    command -v node >/dev/null 2>&1 || return 1
+    node -e 'const { join, resolve } = require("node:path"); const { homedir } = require("node:os"); process.stdout.write(join(resolve(process.env.CODEX_HOME || join(homedir(), ".codex")), "agents"));'
+}
+
+_haws_codex_agents_manifest() {
+    command -v node >/dev/null 2>&1 || return 1
+    node -e 'const { join, resolve } = require("node:path"); const { homedir } = require("node:os"); process.stdout.write(join(resolve(process.env.CODEX_HOME || join(homedir(), ".codex")), "haws-agents.json"));'
 }
 
 
@@ -51,7 +69,13 @@ _health_env_path() {
     case "$1" in
         claude) printf '%s/.claude\n' "$HOME" ;;
         gemini) printf '%s/.gemini\n' "$HOME" ;;
-        agents) printf '%s/.agents\n' "$HOME" ;;
+        codex)
+            if [ -d "$HOME/.codex" ]; then
+                printf '%s/.codex\n' "$HOME"
+            else
+                printf '%s/.agents\n' "$HOME"
+            fi
+            ;;
         *) printf '%s/.%s\n' "$HOME" "$1" ;;
     esac
 }
@@ -93,7 +117,9 @@ _health_fingerprint() {
         "$SCRIPT_DIR/skills.disabled" \
         "$SCRIPT_DIR/config/skills.disabled" \
         "$state/ownership.tsv" \
-        "$state/install.complete"; do
+        "$state/install.complete" \
+        "$state/integration-ownership-migration-v1" \
+        "$state/ownership-ledger-v2"; do
         if [ -f "$config_file" ]; then
             state_stamp+="$config_file:$(_haws_sha256 "$config_file");"
         else
@@ -109,7 +135,7 @@ _health_fingerprint() {
             else
                 env_stamp+="missing:$p;"
             fi
-        done < <(awk -F $'\t' '$1 == "environments" {print $2}' "$state/ownership.tsv" 2>/dev/null)
+        done < <(awk -F $'\t' '$1 == "environments" && NF == 6 && $6 == "schema=2" {print $2}' "$state/ownership.tsv" 2>/dev/null)
     fi
     printf '%s|%s|%s|%s\n' "$git_head" "$hooks_cfg" "$state_stamp" "$env_stamp"
 }
@@ -174,7 +200,7 @@ _health_collect() {
     fi
 
     local env env_path
-    for env in claude gemini agents; do
+    for env in claude gemini codex; do
         env_path="$(_health_env_path "$env")"
         if [ -n "${DISABLED_ENVS[$env]-}" ]; then
             _health_add Ready "AI Environments" "$env disabled by local configuration"
@@ -306,12 +332,12 @@ _health_collect_hooks() {
 _health_active_ai_names() {
     [[ "$(declare -p DISABLED_ENVS 2>/dev/null)" =~ "declare -A" ]] || declare -A DISABLED_ENVS=()
     local result="" env env_path label
-    for env in claude gemini agents; do
+    for env in claude gemini codex; do
         env_path="$(_health_env_path "$env")"
         case "$env" in
             claude) label=Claude ;;
             gemini) label=Gemini ;;
-            agents) label=Codex ;;
+            codex) label=Codex ;;
         esac
         if [ -z "${DISABLED_ENVS[$env]-}" ] && _haws_environment_present "$env"; then
             [ -n "$result" ] && result+=", "
@@ -594,6 +620,31 @@ _haws_sha256() {
     fi
 }
 
+_haws_sha256_stream() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 | awk '{print $1}'
+    else
+        cksum | awk '{print $1 ":" $2}'
+    fi
+}
+
+_haws_pointer_block_fingerprint() {
+    local path="${1:-}"
+    local start='<!-- HAWS_GLOBAL_POINTER_START -->'
+    local end='<!-- HAWS_GLOBAL_POINTER_END -->'
+    [ -f "${path}" ] && [ ! -L "${path}" ] || return 1
+    [ "$(grep -Fc "${start}" "${path}" 2>/dev/null || true)" = 1 ] || return 1
+    [ "$(grep -Fc "${end}" "${path}" 2>/dev/null || true)" = 1 ] || return 1
+    awk -v start="${start}" -v end="${end}" '
+        $0 == start { if (inside || seen) bad=1; inside=1; seen=1 }
+        inside { print }
+        $0 == end && inside { inside=0 }
+        END { if (bad || inside || !seen) exit 1 }
+    ' "${path}" | _haws_sha256_stream
+}
+
 _haws_state_replace() {
     local temporary="$1"
     local destination="$2"
@@ -605,6 +656,108 @@ _haws_state_replace() {
         return 70
     fi
     mv -f -- "${temporary}" "${destination}"
+}
+
+_haws_schema_marker_valid() {
+    local marker="${1:-}" schema="${2:-}" timestamp_key="${3:-}"
+    [ -n "${marker}" ] && [ -n "${schema}" ] && [ -n "${timestamp_key}" ] || return 1
+    [ -f "${marker}" ] && [ ! -L "${marker}" ] || return 1
+    awk -F $'\t' -v schema="schema=${schema}" -v timestamp_key="${timestamp_key}" '
+        NR == 1 && NF == 2 && $1 == schema &&
+            substr($2, 1, length(timestamp_key) + 1) == timestamp_key "=" &&
+            substr($2, length(timestamp_key) + 2) ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$/ {
+            valid = 1
+            next
+        }
+        { valid = 0; exit 1 }
+        END { if (valid && NR == 1) exit 0; exit 1 }
+    ' "${marker}"
+}
+
+_haws_mark_integration_ownership_migration_complete() {
+    local marker="$(_haws_state_dir)/integration-ownership-migration-v1"
+    local temporary="${marker}.stage.$$"
+    if [ -e "${marker}" ] || [ -L "${marker}" ]; then
+        _haws_schema_marker_valid "${marker}" 1 migrated_at
+        return $?
+    fi
+    if ! mkdir -p "$(dirname "${marker}")" ||
+        ! printf 'schema=1\tmigrated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${temporary}" ||
+        ! _haws_state_replace "${temporary}" "${marker}"; then
+        rm -f -- "${temporary}"
+        return 1
+    fi
+    _haws_schema_marker_valid "${marker}" 1 migrated_at
+}
+
+_haws_ownership_ledger_has_unversioned_rows() {
+    local file result
+    for file in "$(_haws_state_dir)/ownership.tsv" "${HOME}/.haws/skills-ownership.tsv"; do
+        if [ -e "${file}" ] || [ -L "${file}" ]; then
+            [ -f "${file}" ] && [ ! -L "${file}" ] || return 2
+            if awk -F $'\t' '$1 != "" && !(NF == 6 && $6 == "schema=2") { found=1 } END { exit found ? 0 : 1 }' \
+                "${file}"; then
+                return 0
+            else
+                result=$?
+                [ "${result}" -eq 1 ] || return 2
+            fi
+        fi
+    done
+    return 1
+}
+
+_haws_prepare_ownership_ledger_v2() {
+    local state="$(_haws_state_dir)"
+    local integration_marker="${state}/integration-ownership-migration-v1"
+    local ledger_marker="${state}/ownership-ledger-v2"
+    local gemini_manifest="${state}/gemini-skills-ownership.json"
+    local gemini_quarantine="${gemini_manifest}.untrusted-v1"
+    local temporary="${ledger_marker}.stage.$$"
+    local has_unversioned=0 marker_status manifest_present=0 quarantine_present=0
+
+    if [ -e "${integration_marker}" ] || [ -L "${integration_marker}" ]; then
+        _haws_schema_marker_valid "${integration_marker}" 1 migrated_at || return 1
+    fi
+    if [ -e "${ledger_marker}" ] || [ -L "${ledger_marker}" ]; then
+        _haws_schema_marker_valid "${ledger_marker}" 2 upgraded_at || return 1
+        return 0
+    fi
+
+    if [ -e "${gemini_manifest}" ] || [ -L "${gemini_manifest}" ]; then
+        [ -f "${gemini_manifest}" ] && [ ! -L "${gemini_manifest}" ] || return 1
+        manifest_present=1
+    fi
+    if [ -e "${gemini_quarantine}" ] || [ -L "${gemini_quarantine}" ]; then
+        [ -f "${gemini_quarantine}" ] && [ ! -L "${gemini_quarantine}" ] || return 1
+        quarantine_present=1
+    fi
+    [ "${manifest_present}" -eq 0 ] || [ "${quarantine_present}" -eq 0 ] || return 1
+
+    if _haws_ownership_ledger_has_unversioned_rows; then
+        has_unversioned=1
+    else
+        marker_status=$?
+        [ "${marker_status}" -eq 1 ] || return 1
+    fi
+    if [ "${manifest_present}" -eq 1 ] || [ "${quarantine_present}" -eq 1 ]; then
+        has_unversioned=1
+    fi
+    if [ "${has_unversioned}" -eq 1 ]; then
+        _haws_mark_integration_ownership_migration_complete || return 1
+    fi
+
+    if [ "${manifest_present}" -eq 1 ]; then
+        mv -- "${gemini_manifest}" "${gemini_quarantine}" || return 1
+    fi
+
+    if ! mkdir -p "${state}" ||
+        ! printf 'schema=2\tupgraded_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${temporary}" ||
+        ! _haws_state_replace "${temporary}" "${ledger_marker}"; then
+        rm -f -- "${temporary}"
+        return 1
+    fi
+    _haws_schema_marker_valid "${ledger_marker}" 2 upgraded_at
 }
 
 _skills_disabled_state_file() {
@@ -919,21 +1072,21 @@ ownership_record() {
     awk -F $'\t' -v OFS=$'\t' -v group="${group}" -v kind="${kind}" \
         -v path="${path}" -v source="${source}" -v fingerprint="${fingerprint}" '
         $1 == group && $2 == kind && $3 == path {
-            if (!found) print group, kind, path, source, fingerprint
+            if (!found) print group, kind, path, source, fingerprint, "schema=2"
             found = 1
             next
         }
         { print }
         END {
-            if (!found) print group, kind, path, source, fingerprint
+            if (!found) print group, kind, path, source, fingerprint, "schema=2"
         }
     ' "${file}" 2>/dev/null > "${temporary}" || {
         if [ -f "${file}" ]; then
             rm -f -- "${temporary}"
             return 1
         fi
-        printf '%s\t%s\t%s\t%s\t%s\n' \
-            "${group}" "${kind}" "${path}" "${source}" "${fingerprint}" > "${temporary}" || {
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "${group}" "${kind}" "${path}" "${source}" "${fingerprint}" "schema=2" > "${temporary}" || {
             rm -f -- "${temporary}"
             return 1
         }
@@ -953,8 +1106,7 @@ ownership_list() {
         [ -f "${legacy_file}" ] && files+=("${legacy_file}")
         [ -f "${file}" ] && files+=("${file}")
         [ "${#files[@]}" -gt 0 ] || return 0
-        awk -F $'\t' '
-            {
+        awk -F $'\t' '$1 == "skills" && NF == 6 && $6 == "schema=2" {
                 key = $1 SUBSEP $2 SUBSEP $3
                 if (!(key in order)) order[++count] = key
                 rows[key] = $0
@@ -966,11 +1118,22 @@ ownership_list() {
         return 0
     fi
     [ -f "${file}" ] || return 0
-    if [ -n "${group}" ]; then
-        awk -F $'\t' -v group="${group}" '$1 == group' "${file}"
-    else
-        cat -- "${file}"
-    fi
+    awk -F $'\t' -v group="${group}" \
+        'NF == 6 && $6 == "schema=2" && (group == "" || $1 == group)' "${file}"
+}
+
+ownership_record_for_path() {
+    local wanted_group="${1:-}" wanted_path="${2:-}"
+    local group kind path source fingerprint extra
+    [ -n "${wanted_group}" ] && [ -n "${wanted_path}" ] || return 1
+    while IFS=$'\t' read -r group kind path source fingerprint extra ||
+        [ -n "${group}" ]; do
+        if [ "${group}" = "${wanted_group}" ] && [ "${path}" = "${wanted_path}" ]; then
+            printf '%s\t%s\t%s\t%s\n' "${kind}" "${path}" "${source}" "${fingerprint}"
+            return 0
+        fi
+    done < <(ownership_list "${wanted_group}")
+    return 1
 }
 
 sync_lock_acquire() {
@@ -1390,6 +1553,17 @@ _manifest_has_skill_target() {
     return 1
 }
 
+_haws_legacy_manifest_has_entry() {
+    local kind="${1:-}" wanted="${2:-}" manifest="${3:-${PREV_MANIFEST:-}}"
+    [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] || return 1
+    [ -n "${manifest}" ] && [ -f "${manifest}" ] || return 1
+    case "${kind}" in
+        skill) _manifest_has_skill_target "${manifest}" "${wanted}" ;;
+        agent) grep -Fqx -- "agent:${wanted}" "${manifest}" ;;
+        *) return 1 ;;
+    esac
+}
+
 declare -gA HAWS_OWNERSHIP_SKILLS_CACHE=()
 declare -g HAWS_OWNERSHIP_SKILLS_LOADED=0
 
@@ -1427,7 +1601,7 @@ _haws_skill_link_legacy_owned_record() {
             [ -f "${candidate}" ] || continue
             while IFS=$'\t' read -r group kind path source fingerprint extra ||
                 [ -n "${group}" ]; do
-                [ "${group}" = skills ] || continue
+                [ "${group}" = skills ] && [ "${extra}" = schema=2 ] || continue
                 record_native="$(_uninstall_native_path "${path}")"
                 record_canonical="$(canonical_path "${path}" 2>/dev/null || true)"
                 if [ "${path}" = "${wanted}" ] ||
@@ -1613,6 +1787,7 @@ _prune_disabled_environment_skill_links() {
 
 _haws_record_skill_link() {
     local kind="${1:-symlink}" dest="${2:-}" source="${3:-}" fingerprint
+    local created_by_current_sync="${4:-0}"
     [ -n "${dest}" ] && [ -n "${source}" ] || return 2
     [ -L "${dest}" ] || return 0
     fingerprint="${source}"
@@ -1628,8 +1803,11 @@ _haws_record_skill_link() {
             [ "${existing_fingerprint}" = "${fingerprint}" ]; then
             return 0
         fi
+    elif [ "${created_by_current_sync}" != 1 ] &&
+        ! _haws_legacy_manifest_has_entry skill "$(basename "${dest}")"; then
+        return 0
     fi
-    ownership_record skills "${kind}" "${dest}" "${source}" "${fingerprint}"
+    ownership_record skills "${kind}" "${dest}" "${source}" "${fingerprint}" || return 1
     HAWS_OWNERSHIP_SKILLS_CACHE["${dest}"]="${kind}"$'\t'"${dest}"$'\t'"${source}"$'\t'"${fingerprint}"
     [ "${wanted_native}" != "${dest}" ] && HAWS_OWNERSHIP_SKILLS_CACHE["${wanted_native}"]="${kind}"$'\t'"${dest}"$'\t'"${source}"$'\t'"${fingerprint}"
     return 0
@@ -2404,12 +2582,17 @@ sync_run() {
     return "${status}"
 }
 
-run_sync() {
+_run_sync_impl() {
     local CLEAN_UNMANAGED=false
     for opt in "$@"; do
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
     done
     shift || true
+
+    _haws_prepare_ownership_ledger_v2 || {
+        echo "[ERROR] Ownership migration state is invalid; sync stopped safely." >&2
+        return 1
+    }
 
     # Refresh once per sync process and share the source snapshot with Step 1
     # and Step 4. The latter otherwise re-runs Git config/revision discovery.
@@ -2428,6 +2611,14 @@ run_sync() {
     echo "============================================================="
     echo ""
     local sync_status=0
+    local HAWS_LEGACY_INTEGRATION_MIGRATION=0
+    local legacy_migration_marker="$(_haws_state_dir)/integration-ownership-migration-v1"
+    if [ -s "$(_haws_state_dir)/install.complete" ] &&
+        [ -s "${HOME}/.haws_manifest" ] &&
+        [ ! -e "${legacy_migration_marker}" ] && [ ! -L "${legacy_migration_marker}" ] &&
+        grep -Eq '^(skill|agent):' "${HOME}/.haws_manifest"; then
+        HAWS_LEGACY_INTEGRATION_MIGRATION=1
+    fi
     echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
     if [ "${sync_status}" -eq 0 ]; then
@@ -2494,47 +2685,152 @@ run_sync() {
         local src="$1"
         local dest="$2"
         local label="$3"
-        mkdir -p "$(dirname "${dest}")"
+        local record record_kind record_path record_source record_fingerprint current_target
+        local legacy_kind legacy_fingerprint
+        local legacy_agent_name legacy_agent_file
+        mkdir -p "$(dirname "${dest}")" || return 1
 
-        # Fast path: same inode / hardlink (0 processes spawned, microsecond test)
-        if [ -f "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
-            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-            return 0
-        fi
-
-        if [ -L "${dest}" ]; then
-            local current_target
-            current_target="$(readlink "${dest}" || true)"
-            if [ "${current_target}" = "${src}" ]; then
+        if [ -e "${dest}" ] || [ -L "${dest}" ]; then
+            record="$(ownership_record_for_path agents "${dest}" 2>/dev/null || true)"
+            if [ -z "${record}" ]; then
+                legacy_kind=""
+                legacy_fingerprint=""
+                legacy_agent_name=""
+                if [[ "${src}" == "${SCRIPT_DIR}/agents/"* ]]; then
+                    legacy_agent_file="${src##*/}"
+                    legacy_agent_name="${legacy_agent_file%.md}"
+                fi
+                if [ -n "${legacy_agent_name}" ] &&
+                    _haws_legacy_manifest_has_entry agent "${legacy_agent_name}"; then
+                    if [ -L "${dest}" ]; then
+                        current_target="$(readlink "${dest}" 2>/dev/null || true)"
+                        if [ "${current_target}" = "${src}" ]; then
+                            legacy_kind=symlink
+                            legacy_fingerprint="${current_target}"
+                        fi
+                    elif [ -f "${dest}" ]; then
+                        if [ -f "${src}" ] && [ "${src}" -ef "${dest}" ]; then
+                            legacy_kind=hardlink
+                            legacy_fingerprint="$(_haws_sha256 "${dest}")"
+                        elif [ -f "${src}" ] && cmp -s -- "${src}" "${dest}"; then
+                            legacy_kind=generated-file
+                            legacy_fingerprint="$(_haws_sha256 "${dest}")"
+                        fi
+                    fi
+                fi
+                if [ -n "${legacy_kind}" ]; then
+                    ownership_record agents "${legacy_kind}" "${dest}" \
+                        "${src}" "${legacy_fingerprint}" || return 1
+                    record="${legacy_kind}"$'\t'"${dest}"$'\t'"${src}"$'\t'"${legacy_fingerprint}"
+                    echo "  [ADOPTED] Exact legacy ${label}: ${dest}"
+                else
+                    echo "  [PRESERVED] ${label}: existing item is not recorded as HAWS-owned: ${dest}"
+                    return 0
+                fi
+            fi
+            IFS=$'\t' read -r record_kind record_path record_source record_fingerprint <<< "${record}"
+            if ! ownership_verify "${record_kind}"$'\t'"${record_path}"$'\t'"${record_source}"$'\t'"${record_fingerprint}"; then
+                echo "  [PRESERVED] ${label}: owned item changed; leaving it untouched: ${dest}"
+                return 0
+            fi
+            if [ "${record_kind}" = symlink ] && [ -L "${dest}" ]; then
+                current_target="$(readlink "${dest}" 2>/dev/null || true)"
+                if [ "${current_target}" = "${src}" ]; then
+                    ownership_record agents symlink "${dest}" "${src}" "${current_target}" || return 1
+                    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                    return 0
+                fi
+            elif [ "${record_kind}" = hardlink ] && [ -f "${dest}" ] &&
+                [ "${src}" -ef "${dest}" ]; then
+                ownership_record agents hardlink "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || return 1
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
-            rm -f "${dest}"
-        elif [ -f "${dest}" ]; then
-            if cmp -s "${src}" "${dest}" || diff -q --strip-trailing-cr "${src}" "${dest}" >/dev/null 2>&1; then
-                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-                return 0
-            fi
-            rm -f "${dest}"
+            rm -f -- "${dest}" || return 1
         fi
 
         if [ "$IS_WINDOWS" = true ]; then
             local win_src win_dest
             win_src="$(_haws_winpath "${src}")"
             win_dest="$(_haws_winpath "${dest}")"
-            rm -f "${dest}" 2>/dev/null || true
             if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" >/dev/null 2>&1; then
+                ownership_record agents hardlink "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
+                    rm -f -- "${dest}"
+                    return 1
+                }
                 echo "  [HARDLINK] ${label}: ${dest} -> ${src}"
                 return 0
             fi
         fi
 
         if ln -sf "${src}" "${dest}" 2>/dev/null || ln -s "${src}" "${dest}" 2>/dev/null; then
+            current_target="$(readlink "${dest}" 2>/dev/null || true)"
+            ownership_record agents symlink "${dest}" "${src}" "${current_target}" || {
+                rm -f -- "${dest}"
+                return 1
+            }
             echo "  [LINKED] ${label}: ${dest} -> ${src}"
         else
-            cp -f "${src}" "${dest}"
+            cp -f "${src}" "${dest}" || return 1
+            ownership_record agents generated-file "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
+                rm -f -- "${dest}"
+                return 1
+            }
             echo "  [COPIED] ${label}: ${dest} -> ${src}"
         fi
+    }
+
+    safe_generated_file() {
+        local src="$1"
+        local dest="$2"
+        local label="$3"
+        local group="$4"
+        local record_source="${5:-${src}}"
+        local record record_kind record_path record_fingerprint
+        local legacy_command_name=""
+        local temporary="${dest}.haws-stage.$$"
+        mkdir -p "$(dirname "${dest}")" || return 1
+        if [ -e "${dest}" ] || [ -L "${dest}" ]; then
+            record="$(ownership_record_for_path "${group}" "${dest}" 2>/dev/null || true)"
+            if [ -z "${record}" ]; then
+                case "${dest}" in
+                    "${HOME}/.claude/commands/"*.md)
+                        legacy_command_name="$(basename "${dest}" .md)"
+                        ;;
+                esac
+                if [ "${group}" = agents ] && [ -n "${legacy_command_name}" ] &&
+                    [ "${record_source}" = "${SCRIPT_DIR}/skills/custom/${legacy_command_name}/SKILL.md" ] &&
+                    _haws_legacy_manifest_has_entry skill "${legacy_command_name}" &&
+                    [ -f "${src}" ] && [ -f "${dest}" ] && [ ! -L "${dest}" ] && \
+                    cmp -s -- "${src}" "${dest}"; then
+                    ownership_record "${group}" generated-file "${dest}" \
+                        "${record_source}" "$(_haws_sha256 "${dest}")" || return 1
+                    record="generated-file"$'\t'"${dest}"$'\t'"${record_source}"$'\t'"$(_haws_sha256 "${dest}")"
+                    echo "  [ADOPTED] Exact legacy ${label}: ${dest}"
+                else
+                    echo "  [PRESERVED] ${label}: existing file is not recorded as HAWS-owned: ${dest}"
+                    return 0
+                fi
+            fi
+            IFS=$'\t' read -r record_kind record_path record_source record_fingerprint <<< "${record}"
+            if ! ownership_verify "${record_kind}"$'\t'"${record_path}"$'\t'"${record_source}"$'\t'"${record_fingerprint}"; then
+                echo "  [PRESERVED] ${label}: owned file changed; leaving it untouched: ${dest}"
+                return 0
+            fi
+            cp -p -- "${dest}" "${temporary}" || return 1
+            cat -- "${src}" > "${temporary}" || {
+                rm -f -- "${temporary}"
+                return 1
+            }
+        else
+            cp -p -- "${src}" "${temporary}" || return 1
+        fi
+        mv -f -- "${temporary}" "${dest}" || {
+            rm -f -- "${temporary}"
+            return 1
+        }
+        ownership_record "${group}" generated-file "${dest}" "${record_source}" "$(_haws_sha256 "${dest}")" || return 1
+        echo "  [CONFIG] ${label}: ${dest}"
     }
 
     safe_link_dir() {
@@ -2543,11 +2839,11 @@ run_sync() {
         local label="$3"
         local dest_dir was_dangling=false
         dest_dir="$(dirname "${dest}")"
-        mkdir -p "${dest_dir}"
+        mkdir -p "${dest_dir}" || return 1
 
         # Fast path 1: destination is already linked to src (junction / symlink / same dir)
         if [ -d "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
-            _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || true
+            _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || return 1
             SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
             return 0
         fi
@@ -2557,7 +2853,7 @@ run_sync() {
             local current_target
             current_target="$(readlink "${dest}" 2>/dev/null || true)"
             if [ -n "${current_target}" ] && [ "${current_target}" = "${src}" ]; then
-                _haws_record_skill_link symlink "${dest}" "${src}" 2>/dev/null || true
+                _haws_record_skill_link symlink "${dest}" "${src}" 2>/dev/null || return 1
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -2571,7 +2867,7 @@ run_sync() {
 
         if [ -f "${src_marker}" ] && [ -f "${dest_marker}" ]; then
             if [ "${src_marker}" -ef "${dest_marker}" ]; then
-                _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || true
+                _haws_record_skill_link junction "${dest}" "${src}" 2>/dev/null || return 1
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                 return 0
             fi
@@ -2586,7 +2882,7 @@ run_sync() {
                     SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                     return 0
                 fi
-            elif _manifest_has_skill_target "${HOME}/.haws_manifest" "$(basename "${dest}")" &&
+            elif _haws_legacy_manifest_has_entry skill "$(basename "${dest}")" &&
                 _haws_skill_link_target_in_registered_worktree "${dest}" "${src}"; then
                 if ! _uninstall_remove_path junction "${dest}"; then
                     SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
@@ -2606,18 +2902,18 @@ run_sync() {
             win_src="$(_haws_winpath "${src}")"
             win_dest="$(_haws_winpath "${dest}")"
             if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /J "${win_dest}" "${win_src}" >/dev/null 2>&1; then
-                _haws_record_skill_link junction "${dest}" "${src}" || return 1
+                _haws_record_skill_link junction "${dest}" "${src}" 1 || return 1
                 echo "  [JUNCTION] ${label}: ${dest} -> ${src}"
                 return 0
             fi
         fi
 
         if ln -sfn "${src}" "${dest}" 2>/dev/null || ln -s "${src}" "${dest}" 2>/dev/null; then
-            _haws_record_skill_link symlink "${dest}" "${src}" || return 1
+            _haws_record_skill_link symlink "${dest}" "${src}" 1 || return 1
             echo "  [LINKED] ${label}: ${dest} -> ${src}"
         else
-            cp -rf "${src}" "${dest}"
-            echo "  [COPIED] ${label}: ${dest} -> ${src}"
+            echo "  [FAIL] Could not create an owned link for ${label}: ${dest}" >&2
+            return 1
         fi
     }
 
@@ -2625,8 +2921,11 @@ run_sync() {
         local target_file="$1"
         local marker_start="<!-- HAWS_GLOBAL_POINTER_START -->"
         local marker_end="<!-- HAWS_GLOBAL_POINTER_END -->"
+        local pointer_source=appended
+        local prior_record prior_kind prior_path prior_source prior_fingerprint
+        local pointer_hash temporary
 
-        mkdir -p "$(dirname "${target_file}")"
+        mkdir -p "$(dirname "${target_file}")" || return 1
 
         local pointer_content=""
         pointer_content+="${marker_start}\n"
@@ -2637,45 +2936,121 @@ run_sync() {
         pointer_content+="- Second Brain documents: ${SOURCE_DIR}/secondbrain/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)\n"
         pointer_content+="- Subagent roles: ${SOURCE_DIR}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.\n"
         pointer_content+="${marker_end}\n"
+        pointer_hash="$(printf '%b' "${pointer_content}" | _haws_sha256_stream)" || return 1
 
-        if [ -f "${target_file}" ]; then
-            if grep -q "${marker_start}" "${target_file}" 2>/dev/null; then
-                local tmp_file="${target_file}.tmp.$$"
-                awk -v start="${marker_start}" -v end="${marker_end}" '
-                    $0 ~ start { skip=1; next }
-                    $0 ~ end { skip=0; next }
-                    !skip { print }
-                ' "${target_file}" > "${tmp_file}"
-                printf "%b" "${pointer_content}" >> "${tmp_file}"
-                mv -f "${tmp_file}" "${target_file}"
-                echo "  [UPDATED] Refreshed HAWS Global Pointer in ${target_file}"
-                RULES_LINKED=$((RULES_LINKED + 1))
-                return 0
-            else
-                printf "\n%b" "${pointer_content}" >> "${target_file}"
-                echo "  [UPDATED] Appended HAWS Global Pointer to ${target_file}"
-                RULES_LINKED=$((RULES_LINKED + 1))
-                return 0
-            fi
-        else
-            printf "%b" "${pointer_content}" > "${target_file}"
-            echo "  [CREATED] Created HAWS Global Pointer at ${target_file}"
-            RULES_LINKED=$((RULES_LINKED + 1))
+        if [ -L "${target_file}" ]; then
+            echo "  [PRESERVED] Global pointer target is a user-managed link: ${target_file}"
             return 0
         fi
+        if [ -e "${target_file}" ] && [ ! -f "${target_file}" ]; then
+            echo "  [PRESERVED] Global pointer target is not a regular file: ${target_file}"
+            return 0
+        fi
+        if [ -f "${target_file}" ] && grep -q "${marker_start}" "${target_file}" 2>/dev/null; then
+            [ "$(grep -Fc "${marker_start}" "${target_file}" 2>/dev/null || true)" = 1 ] &&
+                [ "$(grep -Fc "${marker_end}" "${target_file}" 2>/dev/null || true)" = 1 ] || {
+                    echo "  [PRESERVED] Global pointer markers are malformed: ${target_file}"
+                    return 0
+                }
+            prior_record="$(ownership_record_for_path pointers "${target_file}" 2>/dev/null || true)"
+            if [ -z "${prior_record}" ]; then
+                local existing_pointer_hash
+                existing_pointer_hash="$(_haws_pointer_block_fingerprint "${target_file}" 2>/dev/null || true)"
+                if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] &&
+                    [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ]; then
+                    if awk -v start="${marker_start}" -v end="${marker_end}" '
+                        $0 == start { inside=1; next }
+                        $0 == end { inside=0; next }
+                        !inside { print }
+                    ' "${target_file}" | grep -q '[^[:space:]]'; then
+                        pointer_source=appended
+                    else
+                        pointer_source=created
+                    fi
+                    ownership_record pointers pointer-block "${target_file}" \
+                        "${pointer_source}" "${existing_pointer_hash}" || return 1
+                    echo "  [ADOPTED] Exact legacy HAWS pointer ownership: ${target_file}"
+                    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                    return 0
+                fi
+                if [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ]; then
+                    echo "  [PRESERVED] Exact HAWS pointer is unowned outside the one-time legacy migration: ${target_file}"
+                else
+                    echo "  [PRESERVED] Existing global pointer block is not an exact HAWS block: ${target_file}"
+                fi
+                return 0
+            fi
+            IFS=$'\t' read -r prior_kind prior_path prior_source prior_fingerprint <<< "${prior_record}"
+            if [ "${prior_kind}" != pointer-block ]; then
+                echo "  [PRESERVED] Existing global pointer ownership type is unsupported: ${target_file}"
+                return 0
+            fi
+            if ! ownership_verify "${prior_kind}"$'\t'"${prior_path}"$'\t'"${prior_source}"$'\t'"${prior_fingerprint}"; then
+                echo "  [PRESERVED] HAWS pointer block was edited; leaving it untouched: ${target_file}"
+                return 0
+            fi
+            [ "${prior_source}" = created ] && pointer_source=created
+        else
+            [ -f "${target_file}" ] || pointer_source=created
+        fi
+
+        temporary="${target_file}.tmp.$$"
+        if [ -f "${target_file}" ] && grep -q "${marker_start}" "${target_file}" 2>/dev/null; then
+            local transformed="${temporary}.content"
+            awk -v start="${marker_start}" -v end="${marker_end}" '
+                { line=$0; sub(/\r$/, "", line) }
+                line == start { if (inside) bad=1; inside=1; next }
+                line == end { if (!inside) bad=1; inside=0; next }
+                !inside { print }
+                END { if (bad || inside) exit 1 }
+            ' "${target_file}" > "${transformed}" || {
+                rm -f -- "${transformed}"
+                return 1
+            }
+            cp -p -- "${target_file}" "${temporary}" || {
+                rm -f -- "${transformed}" "${temporary}"
+                return 1
+            }
+            cat -- "${transformed}" > "${temporary}" || {
+                rm -f -- "${transformed}" "${temporary}"
+                return 1
+            }
+            rm -f -- "${transformed}"
+            printf "\n%b" "${pointer_content}" >> "${temporary}" || return 1
+        elif [ -f "${target_file}" ]; then
+            cp -p -- "${target_file}" "${temporary}" || return 1
+            printf "\n%b" "${pointer_content}" >> "${temporary}" || {
+                rm -f -- "${temporary}"
+                return 1
+            }
+        else
+            printf '%b' "${pointer_content}" > "${temporary}" || return 1
+        fi
+        mv -f -- "${temporary}" "${target_file}" || {
+            rm -f -- "${temporary}"
+            return 1
+        }
+        [ "$(_haws_pointer_block_fingerprint "${target_file}")" = "${pointer_hash}" ] || return 1
+        ownership_record pointers pointer-block "${target_file}" "${pointer_source}" "${pointer_hash}" || return 1
+        echo "  [UPDATED] HAWS Global Pointer in ${target_file}"
+        RULES_LINKED=$((RULES_LINKED + 1))
     }
 
     # 3. Setup Global Pointers
     echo "[*] Step 3: Configuring global environment pointers"
-    [ "$DETECTED_CLAUDE" = true ] && safe_append_pointer "${HOME}/.claude/CLAUDE.md"
-    [ "$DETECTED_GEMINI" = true ] && safe_append_pointer "${HOME}/.gemini/GEMINI.md"
+    if [ "$DETECTED_CLAUDE" = true ]; then
+        safe_append_pointer "${HOME}/.claude/CLAUDE.md" || return 1
+    fi
+    if [ "$DETECTED_GEMINI" = true ]; then
+        safe_append_pointer "${HOME}/.gemini/GEMINI.md" || return 1
+    fi
     if [ "$DETECTED_CODEX" = true ]; then
         if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+            safe_append_pointer "${HOME}/.codex/AGENTS.override.md" || return 1
         elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.md"
+            safe_append_pointer "${HOME}/.codex/AGENTS.md" || return 1
         elif [ -d "${HOME}/.codex" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.override.md"
+            safe_append_pointer "${HOME}/.codex/AGENTS.override.md" || return 1
         fi
     fi
     echo "[PASS] Global environment pointers configured"
@@ -2720,10 +3095,12 @@ run_sync() {
     local PREV_MANIFEST="${HOME}/.haws_manifest.prev"
     local TMP_MANIFEST="${HOME}/.haws_manifest.tmp"
 
-    rm -f "${PREV_MANIFEST}"
-    [ -f "${MANIFEST_FILE}" ] && cp -f "${MANIFEST_FILE}" "${PREV_MANIFEST}"
-    rm -f "${TMP_MANIFEST}"
-    touch "${TMP_MANIFEST}"
+    rm -f -- "${PREV_MANIFEST}" || return 1
+    if [ -f "${MANIFEST_FILE}" ]; then
+        cp -f -- "${MANIFEST_FILE}" "${PREV_MANIFEST}" || return 1
+    fi
+    rm -f -- "${TMP_MANIFEST}" || return 1
+    touch "${TMP_MANIFEST}" || return 1
 
     local -a active_skill_records=()
     while IFS=$'\t' read -r source_id skill_id skill_display skill_description entrypoint active ||
@@ -2739,14 +3116,14 @@ run_sync() {
             target_name="${skill_display} [${source_label}]"
         fi
         active_count=$((active_count + 1))
-        printf 'skill:%s\t%s\n' "${skill_id}" "${target_name}" >> "${TMP_MANIFEST}"
+        printf 'skill:%s\t%s\n' "${skill_id}" "${target_name}" >> "${TMP_MANIFEST}" || return 1
         active_skill_records+=("${source_path}"$'\t'"${entrypoint}"$'\t'"${target_name}"$'\t'"${skill_display}")
     done <<< "${skill_rows}"
 
     _prune_disabled_environment_skill_links
 
     local can_fast_skip_skills=0
-    if [ -f "${MANIFEST_FILE}" ]; then
+    if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" != 1 ] && [ -f "${MANIFEST_FILE}" ]; then
         if cmp -s <(grep '^skill:' "${MANIFEST_FILE}" 2>/dev/null || true) "${TMP_MANIFEST}"; then
             can_fast_skip_skills=1
             local link_record existing_skill_dir plugin_dir
@@ -2815,7 +3192,7 @@ run_sync() {
 
             if [ "$DETECTED_CLAUDE" = true ]; then
                 safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${target_name}" \
-                    "Claude Skill [${target_name}]"
+                    "Claude Skill [${target_name}]" || return 1
                 if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.claude/skills/${target_name}"; then
                     claude_linked_count=$((claude_linked_count + 1))
                     SKILLS_LINKED=$((SKILLS_LINKED + 1))
@@ -2832,7 +3209,7 @@ run_sync() {
                     codex_plugin_count=$((codex_plugin_count + 1))
                 else
                     safe_link_dir "${skill_dir}" "${HOME}/.agents/skills/${target_name}" \
-                        "Codex Skill [${target_name}]"
+                        "Codex Skill [${target_name}]" || return 1
                     if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.agents/skills/${target_name}"; then
                         codex_linked_count=$((codex_linked_count + 1))
                         SKILLS_LINKED=$((SKILLS_LINKED + 1))
@@ -2848,6 +3225,13 @@ run_sync() {
     if [ "$DETECTED_GEMINI" = true ]; then
         local target_json="${HOME}/.gemini/config/skills.json"
         mkdir -p "${HOME}/.gemini/config"
+        local candidate_json
+        candidate_json="$(mktemp "${target_json}.haws-candidate.XXXXXX")" || return 1
+        local candidate_legacy_map="${candidate_json}.legacy.tsv"
+        : > "${candidate_legacy_map}" || {
+            rm -f -- "${candidate_json}"
+            return 1
+        }
         local json_entries=()
         declare -A seen_dirs
         while IFS=$'\t' read -r source_id skill_id skill_display skill_description entrypoint active ||
@@ -2873,6 +3257,17 @@ run_sync() {
                 esac
                 win_target="${upper_drive}:/${rest}"
             fi
+            target_name="${skill_display}"
+            if [ "${display_counts[${skill_display}]:-0}" -gt 1 ]; then
+                source_label="${source_path##*/}"
+                target_name="${skill_display} [${source_label}]"
+            fi
+            if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ]; then
+                printf '%s\t%s\n' "${win_target}" "${target_name}" >> "${candidate_legacy_map}" || {
+                    rm -f -- "${candidate_json}" "${candidate_legacy_map}"
+                    return 1
+                }
+            fi
             if [ -z "${seen_dirs[${win_target}]:-}" ]; then
                 seen_dirs["${win_target}"]=1
                 json_entries+=("    { \"path\": \"${win_target}\" }")
@@ -2890,8 +3285,71 @@ run_sync() {
             done
             echo '  ]'
             echo "}"
-        } > "${target_json}"
-        echo "  [CONFIG] Antigravity Native Config (Dynamic): ${target_json}"
+        } > "${candidate_json}" || {
+            rm -f -- "${candidate_json}" "${candidate_legacy_map}"
+            return 1
+        }
+        local gemini_manifest="$(_haws_state_dir)/gemini-skills-ownership.json"
+        local previous_gemini_record previous_gemini_kind previous_gemini_path
+        local previous_gemini_source previous_gemini_fingerprint
+        local replace_owned_gemini=0
+        local preserve_gemini_config=0
+        previous_gemini_record="$(ownership_record_for_path environments "${target_json}" 2>/dev/null || true)"
+        if [ -n "${previous_gemini_record}" ]; then
+            IFS=$'\t' read -r previous_gemini_kind previous_gemini_path \
+                previous_gemini_source previous_gemini_fingerprint <<< "${previous_gemini_record}"
+            if [ "${previous_gemini_kind}" = gemini-skills-json ]; then
+                if ! ownership_verify "${previous_gemini_kind}"$'\t'"${previous_gemini_path}"$'\t'"${previous_gemini_source}"$'\t'"${previous_gemini_fingerprint}"; then
+                    preserve_gemini_config=1
+                fi
+            else
+                if [ "${previous_gemini_kind}" = generated-file ] &&
+                    ownership_verify "${previous_gemini_kind}"$'\t'"${previous_gemini_path}"$'\t'"${previous_gemini_source}"$'\t'"${previous_gemini_fingerprint}"; then
+                    replace_owned_gemini=1
+                fi
+                _ownership_remove_record "environments"$'\t'"${previous_gemini_kind}"$'\t'"${previous_gemini_path}"$'\t'"${previous_gemini_source}"$'\t'"${previous_gemini_fingerprint}" || return 1
+            fi
+        fi
+        if [ "${preserve_gemini_config}" -eq 1 ]; then
+            echo "  [PRESERVED] Antigravity skills.json ownership changed; leaving it untouched: ${target_json}"
+        else
+            mkdir -p "$(_haws_state_dir)" || return 1
+            if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] &&
+                [ -z "${previous_gemini_record}" ] && [ ! -f "${gemini_manifest}" ] &&
+                [ -f "${PREV_MANIFEST}" ] && [ -f "${target_json}" ]; then
+                node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
+                    adopt "${target_json}" "${gemini_manifest}" "${candidate_json}" \
+                    "${PREV_MANIFEST}" "${candidate_legacy_map}" || {
+                    rm -f -- "${candidate_json}" "${candidate_legacy_map}"
+                    return 1
+                }
+            fi
+            local -a gemini_apply_args=(apply "${target_json}" "${gemini_manifest}" "${candidate_json}")
+            [ "${replace_owned_gemini}" -eq 0 ] || gemini_apply_args+=(--replace-owned)
+            node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
+                "${gemini_apply_args[@]}" || {
+                rm -f -- "${candidate_json}" "${candidate_legacy_map}"
+                return 1
+            }
+            if [ -f "${target_json}" ]; then
+                echo "  [CONFIG] Antigravity Native Config (Dynamic): ${target_json}"
+            fi
+        fi
+        rm -f -- "${candidate_json}" "${candidate_legacy_map}"
+        if [ "${preserve_gemini_config}" -eq 0 ]; then
+            if [ -f "${gemini_manifest}" ]; then
+                ownership_record environments gemini-skills-json "${target_json}" \
+                    "${gemini_manifest}" "$(_haws_sha256 "${gemini_manifest}")" || return 1
+            else
+                local old_gemini_record
+                old_gemini_record="$(ownership_record_for_path environments "${target_json}" 2>/dev/null || true)"
+                if [ -n "${old_gemini_record}" ]; then
+                    local old_kind old_path old_source old_fingerprint
+                    IFS=$'\t' read -r old_kind old_path old_source old_fingerprint <<< "${old_gemini_record}"
+                    _ownership_remove_record "environments"$'\t'"${old_kind}"$'\t'"${old_path}"$'\t'"${old_source}"$'\t'"${old_fingerprint}" || return 1
+                fi
+            fi
+        fi
         SKILLS_LINKED=$((SKILLS_LINKED + active_count))
     fi
     echo "  [✓] Skills linking complete (${active_count} active catalog skills; Claude links: ${claude_linked_count}; Codex links: ${codex_linked_count}; plugin-owned: ${codex_plugin_count})."
@@ -2900,7 +3358,31 @@ run_sync() {
     # Link Subagents
     echo "  [*] Linking native subagent profiles"
     if [ "$DETECTED_CODEX" = true ]; then
-        run_codex_agents install --source "${SOURCE_DIR}"
+        run_codex_agents install --source "${SOURCE_DIR}" || return 1
+        local codex_agents_dir codex_manifest codex_owned_hash
+        codex_agents_dir="$(_haws_codex_agents_dir)" || return 1
+        codex_manifest="$(_haws_codex_agents_manifest)" || return 1
+        for agent_file in "${SOURCE_DIR}/agents"/*.md; do
+            [ -f "${agent_file}" ] || continue
+            local profile_name profile_path
+            profile_name="$(basename "${agent_file}" .md)"
+            profile_path="${codex_agents_dir}/${profile_name}.toml"
+            [ -f "${profile_path}" ] || continue
+            codex_owned_hash="$(node -e 'const fs = require("node:fs"); const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(manifest.hashes[process.argv[2]] || "");' "${codex_manifest}" "${profile_name}")" || return 1
+            if [ "${codex_owned_hash}" = "$(_haws_sha256 "${profile_path}")" ]; then
+                ownership_record agents generated-file "${profile_path}" "${agent_file}" "${codex_owned_hash}" || return 1
+            else
+                local previous_profile_record
+                previous_profile_record="$(ownership_record_for_path agents "${profile_path}" 2>/dev/null || true)"
+                if [ -n "${previous_profile_record}" ]; then
+                    local previous_kind previous_path previous_source previous_fingerprint
+                    IFS=$'\t' read -r previous_kind previous_path previous_source previous_fingerprint <<< "${previous_profile_record}"
+                    _ownership_remove_record "agents"$'\t'"${previous_kind}"$'\t'"${previous_path}"$'\t'"${previous_source}"$'\t'"${previous_fingerprint}" || return 1
+                fi
+            fi
+        done
+        [ ! -f "${codex_manifest}" ] ||
+            ownership_record agents generated-file "${codex_manifest}" "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$(_haws_sha256 "${codex_manifest}")" || return 1
         AGENTS_LINKED=$((AGENTS_LINKED + 5))
     fi
     if [ -d "${SOURCE_DIR}/agents" ]; then
@@ -2908,16 +3390,16 @@ run_sync() {
             if [ -f "${agent_file}" ]; then
                 local agent_name
                 agent_name="$(basename "${agent_file}" .md)"
-                echo "agent:${agent_name}" >> "${TMP_MANIFEST}"
+                printf 'agent:%s\n' "${agent_name}" >> "${TMP_MANIFEST}" || return 1
 
                 if [ "$DETECTED_CLAUDE" = true ]; then
-                    safe_link_file "${agent_file}" "${HOME}/.claude/agents/${agent_name}.md" "Claude Agent [${agent_name}]"
+                    safe_link_file "${agent_file}" "${HOME}/.claude/agents/${agent_name}.md" "Claude Agent [${agent_name}]" || return 1
                     AGENTS_LINKED=$((AGENTS_LINKED + 1))
                 fi
                 if [ "$DETECTED_GEMINI" = true ]; then
                     local gemini_agent_dir="${HOME}/.gemini/config/agents/${agent_name}"
-                    mkdir -p "${gemini_agent_dir}"
-                    safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]"
+                    mkdir -p "${gemini_agent_dir}" || return 1
+                    safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]" || return 1
                     AGENTS_LINKED=$((AGENTS_LINKED + 1))
                 fi
             fi
@@ -2946,24 +3428,51 @@ run_sync() {
                     fi
                 done
 
-                cat <<EOF > "${cmd_target}"
+                local cmd_source="$(_haws_state_dir)/claude-command-${custom_name}.$$"
+                cat <<EOF > "${cmd_source}"
 ---
 description: ${desc}
 ---
 Execute the ${custom_name} skill workflow defined in ~/.claude/skills/${custom_name}/SKILL.md.
 EOF
-                echo "  [COMMAND] Claude Slash Command [/${custom_name}]: ${cmd_target}"
+                safe_generated_file "${cmd_source}" "${cmd_target}" "Claude Slash Command [/${custom_name}]" agents "${custom_skill_dir}/SKILL.md" || {
+                    rm -f -- "${cmd_source}"
+                    return 1
+                }
+                rm -f -- "${cmd_source}"
                 COMMANDS_LINKED=$((COMMANDS_LINKED + 1))
             fi
         done
     fi
     echo ""
     # Commit Manifest
-    [ -f "${TMP_MANIFEST}" ] && mv -f "${TMP_MANIFEST}" "${MANIFEST_FILE}"
+    if [ -f "${TMP_MANIFEST}" ]; then
+        mv -f "${TMP_MANIFEST}" "${MANIFEST_FILE}" || return 1
+        ownership_record metadata generated-file "${MANIFEST_FILE}" "${SCRIPT_DIR}" "$(_haws_sha256 "${MANIFEST_FILE}")" || return 1
+    fi
 
     # 4. Finalize linked state and prune removed items
     echo "  [*] Pruning removed items"
     local PRUNED=0
+    prune_owned_file() {
+        local dest="$1" label="$2"
+        local record kind path source fingerprint
+        [ -e "${dest}" ] || [ -L "${dest}" ] || return 0
+        record="$(ownership_record_for_path agents "${dest}" 2>/dev/null || true)"
+        if [ -z "${record}" ]; then
+            echo "  [PRESERVED] Unowned ${label}: ${dest}"
+            return 0
+        fi
+        IFS=$'\t' read -r kind path source fingerprint <<< "${record}"
+        if ownership_verify "${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}" &&
+            _uninstall_remove_path "${kind}" "${path}" "${source}"; then
+            _ownership_remove_record "agents"$'\t'"${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}" || return 1
+            PRUNED=$((PRUNED + 1))
+            echo "  [PRUNED] ${label} (owned): ${dest}"
+        else
+            echo "  [PRESERVED] Changed ${label}: ${dest}"
+        fi
+    }
     if [ -f "${PREV_MANIFEST}" ] && [ -f "${MANIFEST_FILE}" ]; then
         local -A current_manifest_entries=()
         local m_entry
@@ -2991,9 +3500,9 @@ EOF
                     fi
                     echo "  [PRUNED] Skill [${target_name}] (owned links only)"
                 elif [ "$type" = "agent" ]; then
-                    [ -e "${HOME}/.claude/agents/${name}.md" ] && rm -f "${HOME}/.claude/agents/${name}.md" && PRUNED=$((PRUNED + 1))
-                    [ -e "${HOME}/.gemini/config/agents/${name}" ] && rm -rf "${HOME}/.gemini/config/agents/${name}" && PRUNED=$((PRUNED + 1))
-                    echo "  [PRUNED] Agent [${name}]"
+                    prune_owned_file "${HOME}/.claude/agents/${name}.md" "Claude Agent [${name}]" || return 1
+                    prune_owned_file "${HOME}/.gemini/config/agents/${name}/agent.md" "Antigravity Agent [${name}]" || return 1
+                    rmdir "${HOME}/.gemini/config/agents/${name}" 2>/dev/null || true
                 fi
             fi
         done < "${PREV_MANIFEST}"
@@ -3046,6 +3555,16 @@ EOF
         echo "[WARN] Git advisory hooks directory is not present"
     fi
 
+    # Mark migration complete only after every integration has succeeded. A
+    # failed Sync remains eligible for a safe retry on the next run.
+    if [ "${sync_status}" -eq 0 ] &&
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION}" -eq 1 ]; then
+        if ! _haws_mark_integration_ownership_migration_complete; then
+            echo "[FAIL] Ownership migration marker could not be saved; Sync must be retried."
+            sync_status=1
+        fi
+    fi
+
     # Protect secondbrain user files from upstream framework pull clobbering
     if [ -d "${SCRIPT_DIR}/.git" ] || [ -f "${SCRIPT_DIR}/.git" ]; then
         for b_file in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
@@ -3085,6 +3604,14 @@ EOF
     unset HAWS_CATALOG_SKILLS_CACHE 2>/dev/null || true
     unset HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
     [ "${wait_status}" -eq 0 ] || return "${wait_status}"
+    return "${sync_status}"
+}
+
+run_sync() {
+    local sync_status=0
+    _run_sync_impl "$@" || sync_status=$?
+    rm -f -- "${HOME}/.haws_manifest.tmp" 2>/dev/null || true
+    unset HAWS_CATALOG_SKILLS_CACHE HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
     return "${sync_status}"
 }
 
@@ -3850,6 +4377,165 @@ _second_brain_ensure_identity() {
     fi
 }
 
+_second_brain_connect_cleanup_stage() {
+    local stage="$1"
+    local expected_prefix="$2"
+    case "${stage}" in
+        "${expected_prefix}"*) rm -rf -- "${stage}" ;;
+        *)
+            echo "  [ERROR] Refusing to remove unexpected Second Brain staging path: ${stage}" >&2
+            return 1
+            ;;
+    esac
+}
+
+_second_brain_connect_report_partial_push() {
+    local revision="$1"
+    echo "  [PARTIAL] Remote push succeeded at commit ${revision}, but the local Second Brain checkout was not activated." >&2
+    echo "  [ACTION] Retry Connect to activate the pushed checkout; if it still fails, fetch ${revision} from the target remote used for this Connect." >&2
+}
+
+_second_brain_connect_transaction() {
+    local brain_dir="$1"
+    local repo_url="$2"
+    local parent base stage_prefix stage candidate baseline backup
+    local original_exists=0 pushed_revision
+
+    if [ -L "${brain_dir}" ]; then
+        echo "  [ERROR] Second Brain checkout is a linked directory; refusing transactional connect." >&2
+        return 1
+    elif [ -e "${brain_dir}" ]; then
+        if [ ! -d "${brain_dir}" ]; then
+            echo "  [ERROR] Second Brain path is not a directory: ${brain_dir}" >&2
+            return 1
+        fi
+        if [ -f "${brain_dir}/.git" ] || [ -L "${brain_dir}/.git" ]; then
+            echo "  [ERROR] Second Brain uses a linked Git worktree; refusing transactional connect." >&2
+            return 1
+        fi
+        original_exists=1
+    fi
+
+    parent="$(dirname "${brain_dir}")"
+    base="$(basename "${brain_dir}")"
+    mkdir -p "${parent}" || return 1
+    stage_prefix="${parent}/.${base}.haws-connect."
+    stage="$(mktemp -d "${stage_prefix}XXXXXX")" || {
+        echo "  [ERROR] Could not create Second Brain transaction workspace." >&2
+        return 1
+    }
+    candidate="${stage}/candidate"
+    baseline="${stage}/baseline"
+    backup="${stage}/original"
+    if ! mkdir -p "${candidate}" "${baseline}"; then
+        _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
+        return 1
+    fi
+    if [ "${original_exists}" -eq 1 ]; then
+        if ! cp -a "${brain_dir}/." "${baseline}/" ||
+            ! cp -a "${baseline}/." "${candidate}/"; then
+            echo "  [ERROR] Could not snapshot the local Second Brain checkout." >&2
+            _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
+            return 1
+        fi
+    fi
+
+    echo "============================================================="
+    echo "             HAWS Second Brain Connect"
+    echo "============================================================="
+    echo " [PRIVACY NOTICE] HAWS does not check GitHub repository visibility."
+    echo " Confirm this repository is Private before connecting personal Second Brain data."
+    echo "============================================================="
+    echo "  [*] Connecting Second Brain in a disposable transaction..."
+    if ! (
+        local need_commit=0 name previous_origin
+        if [ ! -d "${candidate}/.git" ]; then
+            git -C "${candidate}" init -b main --quiet 2>/dev/null ||
+                git -C "${candidate}" init --quiet || exit 1
+            need_commit=1
+        elif ! git -C "${candidate}" rev-parse --verify HEAD >/dev/null 2>&1; then
+            need_commit=1
+        fi
+        for name in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
+            [ -f "${candidate}/${name}" ] || need_commit=1
+        done
+        _second_brain_bootstrap_missing "${candidate}" || exit 1
+        _second_brain_ensure_identity "${candidate}" || {
+            echo "  [ERROR] Could not configure a local Git identity for Second Brain." >&2
+            exit 1
+        }
+        if [ "${need_commit}" -eq 1 ]; then
+            git -C "${candidate}" add . || exit 1
+            git -C "${candidate}" commit -m "Initialize second brain" --quiet || exit 1
+        fi
+
+        previous_origin="$(git -C "${candidate}" remote get-url origin 2>/dev/null || true)"
+        if [ -n "${previous_origin}" ]; then
+            git -C "${candidate}" remote set-url origin "${repo_url}" || exit 1
+        else
+            git -C "${candidate}" remote add origin "${repo_url}" || exit 1
+        fi
+
+        echo "  [*] Testing remote connection..."
+        if git -C "${candidate}" fetch origin main --quiet 2>/dev/null; then
+            echo "  [*] Remote repo has existing history. Performing Symmetrical Merge..."
+            symmetrical_merge_secondbrain "${candidate}" || exit 1
+            if ! git -C "${candidate}" push -u origin main --quiet 2>/dev/null; then
+                echo "  [ERROR] Failed to push merged updates to ${repo_url}."
+                exit 1
+            fi
+            echo "  [✓] Second brain synced and connected to ${repo_url}"
+        else
+            echo "  [*] Remote is fresh or initial push. Publishing local brain..."
+            if ! git -C "${candidate}" push -u origin main --quiet 2>/dev/null; then
+                echo "  [ERROR] Failed to connect or push to ${repo_url}."
+                echo "  [INFO] Please check URL, network, or GitHub SSH/Token authentication."
+                exit 1
+            fi
+            echo "  [✓] Local second brain pushed to cloud ${repo_url}"
+        fi
+    ); then
+        _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
+        return 1
+    fi
+    pushed_revision="$(git -C "${candidate}" rev-parse HEAD 2>/dev/null || printf unknown)"
+
+    if [ "${original_exists}" -eq 1 ]; then
+        if [ ! -d "${brain_dir}" ] || ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1; then
+            echo "  [ERROR] Local Second Brain changed during connect; keeping the current checkout untouched." >&2
+            _second_brain_connect_report_partial_push "${pushed_revision}"
+            _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
+            return 1
+        fi
+        if ! mv -- "${brain_dir}" "${backup}"; then
+            echo "  [ERROR] Could not preserve the original Second Brain checkout for activation." >&2
+            _second_brain_connect_report_partial_push "${pushed_revision}"
+            _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
+            return 1
+        fi
+    elif [ -e "${brain_dir}" ] || [ -L "${brain_dir}" ]; then
+        echo "  [ERROR] A Second Brain checkout appeared during connect; leaving it untouched." >&2
+        _second_brain_connect_report_partial_push "${pushed_revision}"
+        _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
+        return 1
+    fi
+
+    if ! mv -- "${candidate}" "${brain_dir}"; then
+        echo "  [ERROR] Could not activate the connected Second Brain checkout." >&2
+        _second_brain_connect_report_partial_push "${pushed_revision}"
+        if [ "${original_exists}" -eq 1 ] && ! mv -- "${backup}" "${brain_dir}"; then
+            echo "  [CRITICAL] Could not restore the original Second Brain checkout from ${backup}." >&2
+            echo "  [CRITICAL] Preserved the recoverable original at ${backup}; manual recovery is required." >&2
+            return 1
+        fi
+        _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
+        return 1
+    fi
+    _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || \
+        echo "  [WARN] Connected successfully but could not remove temporary Second Brain snapshots."
+    return 0
+}
+
 run_user() {
     local action="${1:-status}"
     shift || true
@@ -3875,6 +4561,8 @@ run_user() {
             echo "  [INFO] URL must start with git@, https://, ssh://, or be a valid repository path."
             return 1
         fi
+        _second_brain_connect_transaction "${brain_dir}" "${repo_url}"
+        return $?
     fi
 
     mkdir -p "${brain_dir}"
@@ -3905,40 +4593,7 @@ run_user() {
 
     case "${action}" in
         connect)
-            echo "============================================================="
-            echo "             HAWS Second Brain Connect"
-            echo "============================================================="
-            echo " [PRIVACY NOTICE] Ensure your repository is set to PRIVATE on GitHub!"
-            echo " Second Brain stores personal notes & anti-patterns and must NEVER be Public."
-            echo "============================================================="
-            echo "  [*] Connecting Second Brain, please wait..."
-            if git -C "${brain_dir}" remote get-url origin &>/dev/null; then
-                git -C "${brain_dir}" remote set-url origin "${repo_url}"
-            else
-                git -C "${brain_dir}" remote add origin "${repo_url}"
-            fi
-
-            echo "  [*] Testing remote connection..."
-            if git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
-                echo "  [*] Remote repo has existing history. Performing Symmetrical Merge..."
-                symmetrical_merge_secondbrain "${brain_dir}" || return 1
-                if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
-                    echo "  [✓] Second brain synced and connected to ${repo_url}"
-                else
-                    echo "  [ERROR] Failed to push merged updates to ${repo_url}."
-                    return 1
-                fi
-            else
-                echo "  [*] Remote is fresh or initial push. Publishing local brain..."
-                if git -C "${brain_dir}" push -u origin main --quiet 2>/dev/null; then
-                    echo "  [✓] Local second brain pushed to cloud ${repo_url}"
-                else
-                    echo "  [ERROR] Failed to connect or push to ${repo_url}."
-                    echo "  [INFO] Please check URL, network, or GitHub SSH/Token authentication."
-                    git -C "${brain_dir}" remote remove origin 2>/dev/null || true
-                    return 1
-                fi
-            fi
+            return 2
             ;;
         disconnect)
             local confirm="${1:-}"
@@ -4040,35 +4695,86 @@ second_brain_detail_page() {
         commit_count="$(git -C "${brain_dir}" rev-list --count HEAD 2>/dev/null || echo 0)"
         echo "Total Commits : ${commit_count}"
         echo ""
-        confirm=""
-        printf '%s' "Do you want to disconnect? (y/N): "
-        read -r confirm || confirm=""
-        printf '\n'
-        if [[ "${confirm}" =~ ^[Yy]$ ]]; then
-            run_user disconnect --yes || return $?
+        if [ "${HAWS_DRAFT_BRAIN_ACTION:-}" = disconnect ]; then
+            echo "Draft action : Disconnect after Apply, Preview, and Install/Update confirmation"
+            confirm=""
+            printf '%s' "Cancel the pending disconnect? (y/N): "
+            read -r confirm || confirm=""
+            printf '\n'
+            if [[ "${confirm}" =~ ^[Yy]$ ]]; then
+                HAWS_DRAFT_BRAIN_ACTION=""
+                HAWS_DRAFT_BRAIN_URL=""
+                export HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL
+                echo "  [INFO] Pending disconnect removed from the draft."
+            fi
         else
-            echo "  [INFO] Disconnect cancelled. Connection preserved."
+            if [ "${HAWS_DRAFT_BRAIN_ACTION:-}" = connect ]; then
+                HAWS_DRAFT_BRAIN_ACTION=""
+                HAWS_DRAFT_BRAIN_URL=""
+                export HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL
+                echo "  [INFO] The saved remote changed while Settings was open; the stale connection draft was cleared."
+            fi
+            confirm=""
+            printf '%s' "Schedule disconnect after Apply and final confirmation? (y/N): "
+            read -r confirm || confirm=""
+            printf '\n'
+            if [[ "${confirm}" =~ ^[Yy]$ ]]; then
+                HAWS_DRAFT_BRAIN_ACTION=disconnect
+                HAWS_DRAFT_BRAIN_URL="${current_remote}"
+                export HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL
+                echo "  [INFO] Disconnect is only scheduled in this draft."
+            else
+                echo "  [INFO] Connection remains unchanged."
+            fi
         fi
     else
         echo "Mode          : [LOCAL-ONLY (Zero Cloud Telemetry)]"
         echo "Path          : ${brain_dir}"
         echo "Status        : [SAFE & CONFINED TO THIS MACHINE]"
         echo ""
-        confirm=""
-        printf '%s' "Do you want to connect? (y/N): "
-        read -r confirm || confirm=""
-        printf '\n'
-        if [[ "${confirm}" =~ ^[Yy]$ ]]; then
-            url=""
-            read -r -p "Enter Private GitHub Repository URL (blank cancels): " url || url=""
-            url="${url%$'\r'}"
-            if [ -z "${url}" ]; then
-                echo "  [INFO] Connection cancelled."
-                return 0
+        if [ "${HAWS_DRAFT_BRAIN_ACTION:-}" = connect ]; then
+            echo "Draft action : Connect to ${HAWS_DRAFT_BRAIN_URL}"
+            confirm=""
+            printf '%s' "Cancel the pending connection? (y/N): "
+            read -r confirm || confirm=""
+            printf '\n'
+            if [[ "${confirm}" =~ ^[Yy]$ ]]; then
+                HAWS_DRAFT_BRAIN_ACTION=""
+                HAWS_DRAFT_BRAIN_URL=""
+                export HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL
+                echo "  [INFO] Pending connection removed from the draft."
             fi
-            run_user connect "${url}" || return $?
         else
-            echo "  [INFO] Connection cancelled."
+            if [ "${HAWS_DRAFT_BRAIN_ACTION:-}" = disconnect ]; then
+                HAWS_DRAFT_BRAIN_ACTION=""
+                HAWS_DRAFT_BRAIN_URL=""
+                export HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL
+                echo "  [INFO] The saved remote changed while Settings was open; the stale disconnect draft was cleared."
+            fi
+            confirm=""
+            printf '%s' "Schedule connection after Apply and final confirmation? (y/N): "
+            read -r confirm || confirm=""
+            printf '\n'
+            if [[ "${confirm}" =~ ^[Yy]$ ]]; then
+                url=""
+                read -r -p "Enter Private GitHub Repository URL (blank cancels): " url || url=""
+                url="$(printf '%s' "${url}" | tr -d '\r\n' | xargs 2>/dev/null || true)"
+                if [ -z "${url}" ]; then
+                    echo "  [INFO] Connection draft cancelled."
+                    return 0
+                fi
+                if [[ "${url}" == *[[:cntrl:]]* ]] ||
+                    [[ ! "${url}" =~ (git@|https?://|ssh://|file://|^/|^[A-Za-z]:|^(\.\.?/)) ]]; then
+                    echo "  [ERROR] Invalid Git repository URL format. No draft changes made."
+                    return 0
+                fi
+                HAWS_DRAFT_BRAIN_ACTION=connect
+                HAWS_DRAFT_BRAIN_URL="${url}"
+                export HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL
+                echo "  [INFO] Connection is only scheduled in this draft."
+            else
+                echo "  [INFO] Connection draft cancelled."
+            fi
         fi
     fi
     return 0
@@ -4080,9 +4786,34 @@ run_hooks() {
         install)
             echo "=== Installing HAWS Git Hooks ==="
             if [ -d "${SCRIPT_DIR}/.githooks" ]; then
-                if ! git -C "${SCRIPT_DIR}" config core.hooksPath .githooks; then
-                    echo "  [ERROR] Could not configure Git core.hooksPath"
-                    return 1
+                local current_hooks hook_record
+                current_hooks="$(git -C "${SCRIPT_DIR}" config --local --get-all core.hooksPath 2>/dev/null || true)"
+                hook_record="$(ownership_record_for_path hooks "${SCRIPT_DIR}/.githooks" 2>/dev/null || true)"
+                if [ "${current_hooks}" = .githooks ]; then
+                    if [ -z "${hook_record}" ] &&
+                        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] &&
+                        git -C "${SCRIPT_DIR}" ls-files --error-unmatch -- .githooks/commit-msg >/dev/null 2>&1 &&
+                        git -C "${SCRIPT_DIR}" cat-file blob HEAD:.githooks/commit-msg 2>/dev/null | \
+                            cmp -s - "${SCRIPT_DIR}/.githooks/commit-msg"; then
+                        ownership_record hooks git-config "${SCRIPT_DIR}/.githooks" \
+                            __HAWS_UNSET__ .githooks || return 1
+                        echo "  [ADOPTED] Tracked HAWS Git hooks configuration"
+                    elif [ -z "${hook_record}" ]; then
+                        echo "  [PRESERVED] Existing core.hooksPath is unowned outside the one-time legacy migration"
+                    fi
+                elif [ -n "${current_hooks}" ] || [ -n "${hook_record}" ]; then
+                    echo "  [PRESERVED] Existing core.hooksPath is not HAWS-owned: ${current_hooks:-unset}"
+                    return 0
+                else
+                    if ! git -C "${SCRIPT_DIR}" config --local core.hooksPath .githooks; then
+                        echo "  [ERROR] Could not configure Git core.hooksPath"
+                        return 1
+                    fi
+                    if ! ownership_record hooks git-config "${SCRIPT_DIR}/.githooks" __HAWS_UNSET__ .githooks; then
+                        git -C "${SCRIPT_DIR}" config --local --unset-all core.hooksPath >/dev/null 2>&1 || true
+                        echo "  [ERROR] Could not record Git hook ownership"
+                        return 1
+                    fi
                 fi
                 chmod +x "${SCRIPT_DIR}/.githooks/commit-msg" 2>/dev/null || true
                 echo "  [✓] Git core.hooksPath set to .githooks"
@@ -4249,6 +4980,30 @@ ownership_verify() {
     esac
 
     case "$kind" in
+        git-config)
+            local hooks_repo hooks_value
+            hooks_repo="$(dirname "$actual")"
+            hooks_value="$(git -C "$hooks_repo" config --local --get-all core.hooksPath 2>/dev/null || true)"
+            [ "$hooks_value" = "$fingerprint" ]
+            ;;
+        gemini-skills-json)
+            local manifest_path expected_manifest manifest_hash
+            manifest_path="$(_uninstall_native_path "$source")"
+            expected_manifest="$(_uninstall_native_path "$(_haws_state_dir)/gemini-skills-ownership.json")"
+            [ "$(canonical_path "$manifest_path" 2>/dev/null || true)" = \
+                "$(canonical_path "$expected_manifest" 2>/dev/null || true)" ] || return 1
+            [ -f "$actual" ] && [ ! -L "$actual" ] &&
+                [ -f "$manifest_path" ] && [ ! -L "$manifest_path" ] || return 1
+            manifest_hash="$(_haws_sha256 "$manifest_path")"
+            [ -n "$manifest_hash" ] && [ "$manifest_hash" = "$fingerprint" ] || return 1
+            node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
+                verify "$actual" "$manifest_path" >/dev/null 2>&1
+            ;;
+        pointer-block)
+            local pointer_hash
+            pointer_hash="$(_haws_pointer_block_fingerprint "$actual" 2>/dev/null || true)"
+            [ -n "$pointer_hash" ] && [ "$pointer_hash" = "$fingerprint" ]
+            ;;
         symlink|junction|directory-link)
             [ -L "$actual" ] || return 1
             [ "$verify_mode" = preview ] && return 0
@@ -4431,8 +5186,54 @@ _ownership_remove_record() {
 _uninstall_remove_path() {
     local kind="$1"
     local path="$(_uninstall_native_path "$2")"
+    local source="${3:-}"
     _ownership_path_safe "$path" || return 1
     case "$kind" in
+        gemini-skills-json)
+            local manifest_path
+            manifest_path="$(_uninstall_native_path "$source")"
+            node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
+                uninstall "$path" "$manifest_path"
+            return $?
+            ;;
+        git-config)
+            local repo
+            repo="$(dirname "$path")"
+            if [ "$source" = __HAWS_UNSET__ ]; then
+                [ "$(git -C "$repo" config --local --get-all core.hooksPath 2>/dev/null || true)" = .githooks ] || return 1
+                git -C "$repo" config --local --unset-all core.hooksPath >/dev/null 2>&1 || {
+                    [ -z "$(git -C "$repo" config --local --get core.hooksPath 2>/dev/null || true)" ]
+                }
+            else
+                git -C "$repo" config --local core.hooksPath "$source"
+            fi
+            return $?
+            ;;
+        pointer-block)
+            local temporary="${path}.haws-uninstall.$$"
+            local contents="${temporary}.content"
+            cp -p -- "$path" "$temporary" || return 1
+            awk '
+                /<!-- HAWS_GLOBAL_POINTER_START -->/ { if (inside) bad=1; inside=1; next }
+                /<!-- HAWS_GLOBAL_POINTER_END -->/ { if (!inside) bad=1; inside=0; next }
+                !inside { print }
+                END { if (bad || inside) exit 1 }
+            ' "$path" > "$contents" || {
+                rm -f -- "$temporary" "$contents"
+                return 1
+            }
+            cat -- "$contents" > "$temporary" || {
+                rm -f -- "$temporary" "$contents"
+                return 1
+            }
+            rm -f -- "$contents"
+            if [ "$source" = created ] && ! grep -q '[^[:space:]]' "$temporary"; then
+                rm -f -- "$temporary" "$path"
+            else
+                mv -f -- "$temporary" "$path" || return 1
+            fi
+            return 0
+            ;;
         symlink|junction|directory-link)
             if [ -d "$path" ] && [ -L "$path" ] &&
                 command -v cmd.exe >/dev/null 2>&1 &&
@@ -4464,30 +5265,9 @@ uninstall_apply() {
     local threshold
     threshold="$(printenv HAWS_TEST_UNINSTALL_INTERRUPT_AFTER 2>/dev/null || true)"
     local interrupted=0
-    local -A removed_keys=()
     local removed_count=0
-    _uninstall_flush_ownership() {
-        [ "${removed_count}" -gt 0 ] || return 0
-        local state="$(_health_state)"
-        local file="$state/ownership.tsv"
-        local temporary="$state/ownership.stage.$$"
-        [ -f "$file" ] || return 0
-        local keys_file="$state/ownership.removed.$$"
-        printf '%s\n' "${!removed_keys[@]}" > "$keys_file"
-        if awk -F $'\t' '
-            NR == FNR { removed[$0] = 1; next }
-            { key = $1 "\t" $2 "\t" $3 }
-            !(key in removed) { print }
-        ' "$keys_file" "$file" > "$temporary" 2>/dev/null; then
-            _haws_state_replace "$temporary" "$file"
-        fi
-        rm -f -- "$keys_file" "$temporary"
-        removed_keys=()
-        removed_count=0
-    }
     _uninstall_interrupt() {
         interrupted=1
-        _uninstall_flush_ownership
     }
     trap _uninstall_interrupt INT TERM
     local action group kind path source fingerprint extra record verify_record verify_status
@@ -4508,9 +5288,14 @@ uninstall_apply() {
         record="$group"$'\t'"$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
         verify_record="$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"
         if ownership_verify "$verify_record"; then
-            if _uninstall_remove_path "$kind" "$path"; then
-                removed_keys["$group"$'\t'"$kind"$'\t'"$path"]=1
-                removed_count=$((removed_count + 1))
+            if _uninstall_remove_path "$kind" "$path" "$source"; then
+                if _ownership_remove_record "$record"; then
+                    removed_count=$((removed_count + 1))
+                else
+                    printf 'Removed: %s %s %s; ownership record could not be updated\n' \
+                        "$group" "$kind" "$path"
+                    status=1
+                fi
             else
                 printf 'Preserved: %s %s %s (removal failed)\n' "$group" "$kind" "$path"
                 status=1
@@ -4523,11 +5308,15 @@ uninstall_apply() {
             else
                 printf 'Preserved: %s %s %s (type or fingerprint changed)\n' \
                     "$group" "$kind" "$path"
+                if ! _ownership_remove_record "$record"; then
+                    printf 'Could not clear stale ownership record: %s %s %s\n' \
+                        "$group" "$kind" "$path"
+                    status=1
+                fi
             fi
         fi
         processed=$((processed + 1))
     done < "$plan"
-    _uninstall_flush_ownership || status=1
     trap - INT TERM
     if [ "$status" -eq 0 ]; then
         printf '[PASS] Successfully detached and removed %d managed items.\n' "${removed_count}"
@@ -4537,8 +5326,69 @@ uninstall_apply() {
     return "$status"
 }
 
+_uninstall_filter_codex_native_records() {
+    local plan="$1"
+    local codex_home codex_agents_dir codex_manifest filtered_plan
+    local action group kind path source fingerprint extra native_path
+    codex_home="$(_uninstall_native_path "${CODEX_HOME:-${HOME}/.codex}")"
+    codex_agents_dir="${codex_home%/}/agents"
+    codex_manifest="${codex_home%/}/haws-agents.json"
+    filtered_plan="${plan}.filtered.$$"
+    while IFS=$'\t' read -r action group kind path source fingerprint extra ||
+        [ -n "${action:-}" ]; do
+        native_path="$(_uninstall_native_path "${path:-}")"
+        if [ "${action:-}" = remove ] && [ "${group:-}" = agents ]; then
+            case "${native_path}" in
+                "${codex_manifest}"|"${codex_agents_dir}/"*.toml) continue ;;
+            esac
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "${action:-}" "${group:-}" "${kind:-}" "${path:-}" \
+            "${source:-}" "${fingerprint:-}" >> "${filtered_plan}" || {
+                rm -f -- "${filtered_plan}"
+                return 1
+            }
+    done < "$plan"
+    mv -f -- "${filtered_plan}" "$plan" || {
+        rm -f -- "${filtered_plan}"
+        return 1
+    }
+}
+
+_uninstall_plan_has_codex_native() {
+    local plan="$1"
+    local codex_home codex_agents_dir codex_manifest manifest_owner
+    local action group kind path source fingerprint extra native_path found=1
+    [ -f "$plan" ] || return 1
+    codex_home="$(_uninstall_native_path "${CODEX_HOME:-${HOME}/.codex}")"
+    codex_agents_dir="${codex_home%/}/agents"
+    codex_manifest="${codex_home%/}/haws-agents.json"
+    while IFS=$'\t' read -r action group kind path source fingerprint extra ||
+        [ -n "${action:-}" ]; do
+        [ "${action:-}" = remove ] && [ "${group:-}" = agents ] || continue
+        native_path="$(_uninstall_native_path "${path:-}")"
+        case "${native_path}" in
+            "${codex_manifest}"|"${codex_agents_dir}/"*.toml)
+                found=0
+                break
+                ;;
+        esac
+    done < "$plan"
+    if [ "${found}" -ne 0 ] && [ -f "${codex_manifest}" ] && [ ! -L "${codex_manifest}" ] &&
+        grep -Eq '"version"[[:space:]]*:[[:space:]]*1([[:space:],}]|$)' "${codex_manifest}" &&
+        grep -Eq '"hashes"[[:space:]]*:[[:space:]]*[{]' "${codex_manifest}"; then
+        manifest_owner="$(grep -Eo '"owner"[[:space:]]*:[[:space:]]*"[^"]*"' "${codex_manifest}" | head -n 1 || true)"
+        if [ -z "${manifest_owner}" ] ||
+            [[ "${manifest_owner}" =~ ^\"owner\"[[:space:]]*:[[:space:]]*\"HAWS\"$ ]]; then
+            return 0
+        fi
+    fi
+    return "$found"
+}
+
 uninstall_run() {
     local dry_run=0 confirmed=0
+    local full_uninstall=0
     local requested="" arg
     while [ "$#" -gt 0 ]; do
         arg="$1"
@@ -4603,6 +5453,58 @@ uninstall_run() {
         esac
     fi
     [ "$confirmed" -eq 1 ] || return 0
+    [ -n "$requested" ] || full_uninstall=1
+    local remove_agents=0
+    if [ "$full_uninstall" -eq 1 ] ||
+        [[ ",${requested}," == *",agents,"* ]] ||
+        [[ ",${requested}," == *",agent,"* ]] ||
+        [[ ",${requested}," == *",subagents,"* ]]; then
+        remove_agents=1
+    fi
+    local codex_cleanup_failed=0
+    if [ "$remove_agents" -eq 1 ] &&
+        { [ -d "${CODEX_HOME:-${HOME}/.codex}" ] || [ -d "${HOME}/.agents" ]; } &&
+        _uninstall_plan_has_codex_native "$plan"; then
+        if ! run_codex_agents uninstall; then
+            codex_cleanup_failed=1
+            _uninstall_filter_codex_native_records "$plan" || {
+                rm -f -- "$plan"
+                return 1
+            }
+            echo "[WARN] Native Codex profiles could not be removed; preserving them and continuing other cleanup."
+        else
+        local codex_agents_dir codex_profile codex_manifest record
+        codex_agents_dir="$(_haws_codex_agents_dir)" || {
+            rm -f -- "$plan"
+            return 1
+        }
+        for codex_profile in "${SCRIPT_DIR}"/agents/*.md; do
+            [ -f "${codex_profile}" ] || continue
+            record="$(ownership_record_for_path agents "${codex_agents_dir}/$(basename "${codex_profile}" .md).toml" 2>/dev/null || true)"
+            if [ -n "${record}" ]; then
+                IFS=$'\t' read -r kind path source fingerprint <<< "${record}"
+                _ownership_remove_record "agents"$'\t'"${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}" || {
+                    rm -f -- "$plan"
+                    return 1
+                }
+            fi
+        done
+        codex_manifest="$(_haws_codex_agents_manifest)" || {
+            rm -f -- "$plan"
+            return 1
+        }
+        record="$(ownership_record_for_path agents "${codex_manifest}" 2>/dev/null || true)"
+        if [ -n "${record}" ]; then
+            IFS=$'\t' read -r kind path source fingerprint <<< "${record}"
+            _ownership_remove_record "agents"$'\t'"${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}" || {
+                rm -f -- "$plan"
+                return 1
+            }
+        fi
+        rm -f -- "$plan"
+        plan="$(uninstall_plan "${requested}")" || return $?
+        fi
+    fi
     local result
     if uninstall_apply "$plan"; then
         result=0
@@ -4610,6 +5512,21 @@ uninstall_run() {
         result="$?"
     fi
     rm -f -- "$plan"
+    if [ "${codex_cleanup_failed}" -eq 1 ]; then
+        [ "$result" -ne 0 ] || result=1
+        echo "[WARN] Unrelated HAWS-owned items were processed; retry Codex cleanup after resolving the adapter failure."
+    fi
+    if [ "$result" -eq 0 ] && [ "$full_uninstall" -eq 1 ]; then
+        local state="$(_haws_state_dir)"
+        local marker="${state}/uninstalled"
+        local marker_temporary="${marker}.stage.$$"
+        printf 'schema=1\tuninstalled_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker_temporary}" || return 1
+        _haws_state_replace "${marker_temporary}" "${marker}" || {
+            rm -f -- "${marker_temporary}"
+            return 1
+        }
+        rm -f -- "${state}/install.complete"
+    fi
     return "$result"
 }
 
@@ -4618,7 +5535,8 @@ run_uninstall() {
 }
 
 install_is_complete() {
-    [ -s "$(_haws_state_dir)/install.complete" ] || [ -s "${HOME}/.haws_manifest" ]
+    [ ! -s "$(_haws_state_dir)/uninstalled" ] || return 1
+    [ -s "$(_haws_state_dir)/install.complete" ]
 }
 
 _haws_all_environments() {
@@ -4779,6 +5697,14 @@ _settings_ensure_skill_draft() {
     export HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
 }
 
+_settings_draft_second_brain_remote() {
+    case "${HAWS_DRAFT_BRAIN_ACTION:-}" in
+        connect) printf '%s\n' "${HAWS_DRAFT_BRAIN_URL:-}" ;;
+        disconnect) printf '%s\n' "" ;;
+        *) _second_brain_remote_url ;;
+    esac
+}
+
 settings_draft_load() {
     migrate_legacy_skill_state || return $?
     settings_load || return $?
@@ -4787,6 +5713,9 @@ settings_draft_load() {
     HAWS_PERSIST_AUTO_UPDATE="${HAWS_AUTO_UPDATE}"
     HAWS_PERSIST_AUTO_UPDATE_SKILLS="${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}"
     HAWS_PERSIST_AUTO_UPDATE_BRAIN="${HAWS_AUTO_UPDATE_BRAIN:-on}"
+    HAWS_PERSIST_BRAIN_REMOTE_URL="$(_second_brain_remote_url)"
+    HAWS_DRAFT_BRAIN_ACTION=""
+    HAWS_DRAFT_BRAIN_URL=""
     HAWS_PERSIST_ENVIRONMENTS=""
     local environment
     while IFS= read -r environment; do
@@ -4810,6 +5739,7 @@ settings_draft_load() {
     HAWS_DRAFT_SKILLS=""
     HAWS_DRAFT_SKILLS_LOADED=0
     export HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_AUTO_UPDATE_SKILLS HAWS_PERSIST_AUTO_UPDATE_BRAIN \
+        HAWS_PERSIST_BRAIN_REMOTE_URL HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL \
         HAWS_PERSIST_ENVIRONMENTS \
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
         HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN
@@ -4824,6 +5754,7 @@ settings_draft_discard() {
     rmdir -- "${state}" 2>/dev/null || true
     rmdir -- "$(dirname "${state}")" 2>/dev/null || true
     unset HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_AUTO_UPDATE_SKILLS HAWS_PERSIST_AUTO_UPDATE_BRAIN \
+        HAWS_PERSIST_BRAIN_REMOTE_URL HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL \
         HAWS_PERSIST_ENVIRONMENTS \
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
         HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN \
@@ -4834,6 +5765,7 @@ settings_draft_discard() {
 }
 
 _settings_draft_is_dirty() {
+    [ -n "${HAWS_DRAFT_BRAIN_ACTION:-}" ] && return 0
     [ "$( _settings_list_signature "${HAWS_DRAFT_SOURCES:-}" )" != \
         "$( _settings_list_signature "${HAWS_PERSIST_SOURCES:-}" )" ] && return 0
     [ -n "${HAWS_DRAFT_ADDED_REPOSITORIES:-}" ] && return 0
@@ -4849,6 +5781,32 @@ _settings_draft_is_dirty() {
         "$( _settings_list_signature "${HAWS_PERSIST_ENVIRONMENTS:-}" )" ]
 }
 
+_settings_draft_set_defaults() {
+    HAWS_DRAFT_AUTO_UPDATE="on"
+    HAWS_DRAFT_AUTO_UPDATE_SKILLS="on"
+    HAWS_DRAFT_AUTO_UPDATE_BRAIN="on"
+    HAWS_DRAFT_BRAIN_ACTION=""
+    HAWS_DRAFT_BRAIN_URL=""
+    if [ -n "${HAWS_PERSIST_BRAIN_REMOTE_URL:-}" ]; then
+        HAWS_DRAFT_BRAIN_ACTION=disconnect
+        HAWS_DRAFT_BRAIN_URL="${HAWS_PERSIST_BRAIN_REMOTE_URL}"
+    fi
+    HAWS_DRAFT_ENVIRONMENTS="$(_haws_all_environments)"
+    HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
+    HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES:-}"
+    HAWS_DRAFT_ADDED_REPOSITORIES=""
+    HAWS_DRAFT_ADDED_PATHS=""
+    # Reset must match a fresh clone: use the tracked baseline, not device-local state.
+    local reset_catalog="$(catalog_skills baseline)"
+    HAWS_DRAFT_SKILLS="$(printf '%s\n' "${reset_catalog}" | awk -F $'\t' '$6 == 1 {print $2}')"
+    HAWS_DRAFT_SKILLS_LOADED=1
+    export HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
+        HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL \
+        HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_SOURCES \
+        HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
+        HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
+}
+
 settings_draft_reset() {
     echo "Reset Settings to Defaults?"
     echo "This will replace the current draft. Nothing will change on this computer yet."
@@ -4860,22 +5818,7 @@ settings_draft_reset() {
         echo "Reset cancelled."
         return 1
     }
-    HAWS_DRAFT_AUTO_UPDATE="on"
-    HAWS_DRAFT_AUTO_UPDATE_SKILLS="on"
-    HAWS_DRAFT_AUTO_UPDATE_BRAIN="on"
-    HAWS_DRAFT_ENVIRONMENTS="$(_haws_detected_environments)"
-    HAWS_DRAFT_ENVIRONMENTS_TOUCHED=1
-    HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES:-}"
-    HAWS_DRAFT_ADDED_REPOSITORIES=""
-    HAWS_DRAFT_ADDED_PATHS=""
-    # Reset must match a fresh clone: use the tracked baseline, not device-local state.
-    local reset_catalog="$(catalog_skills baseline)"
-    HAWS_DRAFT_SKILLS="$(printf '%s\n' "${reset_catalog}" | awk -F $'\t' '$6 == 1 {print $2}')"
-    HAWS_DRAFT_SKILLS_LOADED=1
-    export HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
-        HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_SOURCES \
-        HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
-        HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
+    _settings_draft_set_defaults || return $?
     echo "The draft now contains default values. Nothing has changed on this computer yet."
     return 0
 }
@@ -5182,12 +6125,14 @@ _settings_repository_remove_page() {
 
     while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
+        _settings_list_contains "${HAWS_DRAFT_SOURCES:-}" "${id}" || continue
         name="${path##*/}"
         name_counts["${name}"]=$(( ${name_counts[${name}]:-0} + 1 ))
     done <<< "${rows}"
     local single_records=() pack_records=() other_records=()
     while IFS=$'\t' read -r id path url revision || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
+        _settings_list_contains "${HAWS_DRAFT_SOURCES:-}" "${id}" || continue
         name="${path##*/}"
         catalog_source_kind "${id}" type
         label="${name}"
@@ -5281,7 +6226,7 @@ settings_repositories_page() {
 }
 
 settings_auto_update_page() {
-    local brain_remote="$(_second_brain_remote_url)"
+    local brain_remote="$(_settings_draft_second_brain_remote)"
     local brain_state="-"
     local brain_desc="[Local-Only] Connect remote in Second Brain to enable"
     if [ -n "${brain_remote}" ]; then
@@ -5313,7 +6258,7 @@ settings_auto_update_page() {
                 "Back to Auto Update Settings"; then
                 if [ "${INTERACTIVE_MENU_SELECTION:-0}" -eq 0 ]; then
                     second_brain_detail_page || true
-                    brain_remote="$(_second_brain_remote_url)"
+                    brain_remote="$(_settings_draft_second_brain_remote)"
                     if [ -n "${brain_remote}" ]; then
                         brain_state="${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"
                         brain_desc="Sync Second Brain with remote during Sync"
@@ -5357,16 +6302,21 @@ settings_page() {
     fi
     local skills_detail="Active ${skills_active}/${skills_total}"
     local auto_update_detail
-    if [ -n "$(_second_brain_remote_url)" ]; then
+    if [ -n "$(_settings_draft_second_brain_remote)" ]; then
         auto_update_detail="(Skills: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}"), Brain: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"))"
     else
         auto_update_detail="(Skills: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}"))"
     fi
+    local brain_detail="[$(_second_brain_status_label)] Cloud sync / Configure"
+    case "${HAWS_DRAFT_BRAIN_ACTION:-}" in
+        connect) brain_detail="Connect pending after final confirmation" ;;
+        disconnect) brain_detail="Disconnect pending after final confirmation" ;;
+    esac
     local items=(
         "Repositories|Existing repository sources|-"
         "Skills|${skills_detail}|-"
         "AI Environments|${environment_count} Selected|-"
-        "Second Brain|[$(_second_brain_status_label)] Cloud sync / Configure|-"
+        "Second Brain|${brain_detail}|-"
         "Auto Update|${auto_update_detail}|-"
         "Apply|Accept the draft for preview|-"
         "Reset to Defaults|Replace the current draft|-"
@@ -5474,6 +6424,10 @@ settings_plan_build() {
         if [ "${needs_integration}" -eq 1 ]; then
             printf 'integration\t%s\told HAWS integration\n' "${action_kind,,}"
         fi
+        case "${HAWS_DRAFT_BRAIN_ACTION:-}" in
+            connect) printf 'brain-connect\tremote\t%s\n' "${HAWS_DRAFT_BRAIN_URL:-}" ;;
+            disconnect) printf 'brain-disconnect\tremote\t%s\n' "${HAWS_DRAFT_BRAIN_URL:-}" ;;
+        esac
     } > "${temporary}" || {
         rm -f -- "${temporary}"
         return 1
@@ -5489,7 +6443,7 @@ settings_plan_build() {
 }
 
 settings_preview() {
-    local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}|Review the draft; Apply is the only way to write changes."
+    local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}|Review the draft; Install or Update applies the approved plan."
     [ "${HAWS_PLAN_CHANGED:-1}" -eq 0 ] || title+="|1"
     local skills_was_loaded="${HAWS_DRAFT_SKILLS_LOADED:-0}"
     if [ "${skills_was_loaded}" != 1 ]; then
@@ -5625,10 +6579,14 @@ settings_preview() {
     [ "${printed_environment}" -eq 1 ] || echo "  None detected"
     echo ""
     echo "Second Brain"
-    echo "  $(_second_brain_status_label)"
+    case "${HAWS_DRAFT_BRAIN_ACTION:-}" in
+        connect) echo "  Connect after final confirmation: ${HAWS_DRAFT_BRAIN_URL:-}" ;;
+        disconnect) echo "  Disconnect after final confirmation" ;;
+        *) echo "  $(_second_brain_status_label)" ;;
+    esac
     echo ""
     echo "Auto Update"
-    if [ -n "$(_second_brain_remote_url)" ]; then
+    if [ -n "$(_settings_draft_second_brain_remote)" ]; then
         echo "  Skills: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}")"
         echo "  Brain: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}")"
     else
@@ -5820,6 +6778,28 @@ settings_preflight_plan() {
             remove-source)
                 settings_apply_repository_action "remove-source" "${value}" "${rest}" "" 1 || return $?
                 ;;
+            brain-connect)
+                local current_remote
+                current_remote="$(_second_brain_remote_url)"
+                if [ -n "${current_remote}" ] || [ -z "${value}" ] ||
+                    [ "${HAWS_DRAFT_BRAIN_ACTION:-}" != connect ] ||
+                    [ "${HAWS_DRAFT_BRAIN_URL:-}" != "${value}" ] ||
+                    [[ "${value}" == *[[:cntrl:]]* ]] ||
+                    [[ ! "${value}" =~ (git@|https?://|ssh://|file://|^/|^[A-Za-z]:|^(\.\.?/)) ]]; then
+                    echo "Blocked: Second Brain connection changed or is invalid; reload Settings before applying."
+                    return 1
+                fi
+                ;;
+            brain-disconnect)
+                local current_remote
+                current_remote="$(_second_brain_remote_url)"
+                if [ -z "${current_remote}" ] || [ "${current_remote}" != "${value}" ] ||
+                    [ "${HAWS_DRAFT_BRAIN_ACTION:-}" != disconnect ] ||
+                    [ "${HAWS_DRAFT_BRAIN_URL:-}" != "${value}" ]; then
+                    echo "Blocked: Second Brain remote changed; reload Settings before applying."
+                    return 1
+                fi
+                ;;
             integration|initialize|pointer|skill-link)
                 if [ "${HAWS_TEST_NO_INTEGRATION:-0}" != 1 ] && ! command -v git >/dev/null 2>&1; then
                     echo "Blocked: Git is required before applying integrations."
@@ -5919,6 +6899,18 @@ settings_verify_plan() {
                     return 1
                 fi
                 ;;
+            brain-connect)
+                if [ "$(_second_brain_remote_url)" != "${value}" ]; then
+                    echo "Verification failed: Second Brain is not connected to the approved remote."
+                    return 1
+                fi
+                ;;
+            brain-disconnect)
+                if [ -n "$(_second_brain_remote_url)" ]; then
+                    echo "Verification failed: Second Brain remains connected."
+                    return 1
+                fi
+                ;;
         esac
     done < "${plan}"
 }
@@ -5984,6 +6976,24 @@ settings_apply_final() {
                 printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
                 echo "Completed: ${action}"
                 ;;
+            brain-connect)
+                if ! run_user connect "${value}"; then
+                    echo "Partial failure"
+                    echo "Remaining: Second Brain connection"
+                    return 3
+                fi
+                printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
+                echo "Completed: Second Brain connection"
+                ;;
+            brain-disconnect)
+                if ! run_user disconnect --yes; then
+                    echo "Partial failure"
+                    echo "Remaining: Second Brain disconnection"
+                    return 3
+                fi
+                printf '%s\tcompleted\n' "${action}" >> "${state}/apply.result"
+                echo "Completed: Second Brain disconnection"
+                ;;
             initialize|pointer|skill-link|integration)
                 if [ "${HAWS_TEST_NO_INTEGRATION:-0}" = 1 ]; then
                     echo "Skipped: ${action} (test fixture)"
@@ -5994,13 +7004,10 @@ settings_apply_final() {
                     else
                         run_sync || sync_exit=$?
                     fi
-                    if [ "${sync_exit}" -gt 1 ]; then
-                        if [ "${HAWS_RESULT_NAVIGATION:-home}" = home ]; then
-                            settings_load >/dev/null 2>&1 || true
-                            return 0
-                        fi
+                    if [ "${sync_exit}" -ne 0 ]; then
                         echo "Partial failure"
                         echo "Remaining: ${action}"
+                        [ "${sync_exit}" -gt 1 ] && return "${sync_exit}"
                         return 3
                     fi
                 fi
@@ -6021,6 +7028,13 @@ settings_apply_final() {
         return 3
     fi
     echo "  [PASS] Settings apply verified."
+    rm -f -- "${state}/uninstalled" || return 1
+    if [ "${HAWS_PLAN_KIND:-Install}" = Install ] &&
+        ! _haws_mark_integration_ownership_migration_complete; then
+        echo "Partial failure"
+        echo "Remaining: install state"
+        return 3
+    fi
     local marker_temporary="${state}/install.complete.stage.$$"
     printf 'schema=1\tcompleted_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker_temporary}" || return 1
     _haws_state_replace "${marker_temporary}" "${state}/install.complete"
@@ -6050,10 +7064,15 @@ settings_flow_run() {
                 result=$?
                 [ "${result}" -eq 2 ] && continue
                 settings_draft_discard
+                [ "${result}" -gt 1 ] && return "${result}"
                 return 1
             fi
         fi
-        settings_plan_build || return 1
+        settings_plan_build || {
+            result=$?
+            [ "${result}" -gt 1 ] && return "${result}"
+            return 1
+        }
         if settings_preview; then
             settings_apply_final
             result=$?
@@ -6061,7 +7080,7 @@ settings_flow_run() {
                 settings_draft_discard
                 return 0
             fi
-            [ "${result}" -eq 3 ] && return 3
+            [ "${result}" -gt 1 ] && return "${result}"
             return 1
         else
             result=$?
@@ -6071,6 +7090,7 @@ settings_flow_run() {
             fi
             settings_draft_discard
             echo "Cancelled. No changes saved."
+            [ "${result}" -gt 1 ] && return "${result}"
             return 1
         fi
     done
@@ -6092,7 +7112,7 @@ run_skills_route() {
 }
 
 setup_run() {
-    local result
+    local result settings_choice
     while true; do
         echo ""
         echo "No changes have been made to this computer."
@@ -6103,27 +7123,35 @@ setup_run() {
         echo "AI Environments     Default"
         echo "Second Brain       Local-Only"
         echo "Auto Update         On"
+        if [ -f "$(_haws_state_dir)/settings.tsv" ]; then
+            settings_choice="Use Previous Settings|Load saved values and edit before Preview"
+        else
+            settings_choice="Customize Settings|Choose values and preview the setup"
+        fi
         if interactive_menu menu "HAWS Setup|Choose a setup option or leave without changes." \
             "Use Default Setup|Preview the standard HAWS setup" \
-            "Customize Settings|Edit settings before preview"; then
+            "${settings_choice}"; then
             case "${INTERACTIVE_MENU_SELECTION}" in
                 0)
                     settings_draft_load || return 1
+                    _settings_draft_set_defaults || return $?
                     if settings_flow_run preview; then
                         home_run
                         return $?
+                    else
+                        result=$?
+                        [ "${result}" -gt 1 ] && return "${result}"
                     fi
-                    result=$?
-                    [ "${result}" -eq 3 ] && return 3
                     ;;
                 1)
                     settings_draft_load || return 1
                     if settings_flow_run settings; then
                         home_run
                         return $?
+                    else
+                        result=$?
+                        [ "${result}" -gt 1 ] && return "${result}"
                     fi
-                    result=$?
-                    [ "${result}" -eq 3 ] && return 3
                     ;;
                 *)
                     return 0
@@ -6170,6 +7198,7 @@ home_run() {
                     run_sync || sync_status=$?
                     unset HAWS_INTERACTIVE_RESULT
                     [ "${HAWS_RESULT_NAVIGATION:-home}" = exit ] && return "${sync_status}"
+                    [ "${sync_status}" -gt 1 ] && return "${sync_status}"
                     ;;
                 1)
                     settings_draft_load || return 1
@@ -6178,6 +7207,7 @@ home_run() {
                         [ "${HAWS_RESULT_NAVIGATION:-home}" = exit ] && return 0
                     else
                         result=$?
+                        [ "${result}" -gt 1 ] && return "${result}"
                         if [ "${HAWS_RESULT_NAVIGATION:-home}" = home ]; then
                             settings_load >/dev/null 2>&1 || true
                             continue
@@ -6231,7 +7261,7 @@ case "${COMMAND}" in
             home_run
             result=$?
         fi
-        [ "${result}" -eq 3 ] && exit 3
+        exit "${result}"
         ;;
     codex-agents)
         shift || true
