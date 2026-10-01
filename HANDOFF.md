@@ -35,28 +35,31 @@ Updated: 2026-10-01
 - Codex native profile tests passed 14/14. Disposable Gemini adapter checks passed for preserving user entries, removing only HAWS-owned entries, retaining edited entries, cleaning HAWS-created JSON, and leaving empty candidates untouched.
 - `bash -n haws.sh`, `node --check ai-configs/codex/agents.mjs`, `node --check ai-configs/gemini/skills-json.mjs`, and `git diff --check` passed for commit `7846259`. [Unverified] The startup guard has not been exercised on macOS's system Bash 3.2; this machine has Git Bash 5.3.15. That commit is the pushed `origin/dev` baseline; the separate review fixes below are local until reported complete.
 
-## ChatGPT Review Feedback Follow-up — Local Changes
+## ChatGPT Review Feedback Follow-up — Commit 4d5d222
 
-- Evaluated the review findings for commit `7846259` against the current CLI, adapters, and tests. Implemented exact-only ownership recovery for legacy pointers, agent files, Claude commands, Gemini skill entries, and the tracked Git hook; modified and unrelated user content remains unowned and is preserved.
-- Fixed Install/Update to return severe Sync failures, stale-manifest launch detection, fresh setup defaults after uninstall, uninstall ownership-ledger cleanup, draft repository filtering, Codex environment naming, and partial cleanup when the native Codex adapter cannot run.
-- Second Brain reconnect now restores the previous `origin` URL when the remote operation fails. README privacy text now states that HAWS does not check GitHub repository visibility. Settings Apply documentation and the production Sync→Uninstall E2E were corrected.
-- `tests/cli/run.sh` passed on Windows Git Bash 5.3.15 with **179 passed, 0 failed**:
+- Evaluated the nine review findings against the current CLI, Gemini/Codex adapters, ownership records, and lifecycle tests. Legacy ownership recovery is now limited to a one-time migration from an installed v1 manifest and exact matching artifacts. Gemini adoption uses a path-specific candidate map; newly encountered exact-looking user integrations remain unowned.
+- Uninstall now clears stale ownership rows for changed or missing artifacts while retaining ownership for dirty managed repositories. Codex Node adapter execution is required when either owned native records or a valid HAWS Codex manifest exists, and skipped when no HAWS Codex state exists.
+- Second Brain reconnect operates on a disposable sibling candidate and only swaps it into place after fetch, merge, and push succeed. A failed push leaves the existing local checkout, history, and index unchanged; linked worktrees are refused.
+- Install, Update, Settings, and Home preserve severe statuses such as `2` and `130`, including the `settings` command's final process status. First-use Setup no longer offers “Use Previous Settings” unless saved settings exist.
+- Lifecycle coverage now includes a fresh integration that remains unowned through Uninstall, a frozen legacy fixture sourced from `7846259`, stateful Setup → Update → Uninstall → Setup, and Windows junction fixtures. The post-uninstall Auto Update assertion fails when its expected saved value is absent.
+- The final `tests/cli/run.sh` regression passed on Windows Git Bash with **188 passed, 0 failed**:
 
 | Suite | Result |
 | --- | ---: |
 | Launcher/menu | 17 passed |
 | Local state | 16 passed |
-| Settings flow | 46 passed |
+| Settings flow | 51 passed |
 | Catalog | 6 passed |
 | Repository/skill | 24 passed |
 | Sync | 31 passed |
 | Status/doctor | 14 passed |
-| Uninstall | 14 passed |
+| Uninstall | 16 passed |
 | Home entrypoint | 4 passed |
-| Lifecycle/plugins E2E | 7 passed |
+| Lifecycle/plugins E2E | 9 passed |
 
-- The lifecycle E2E includes a production Sync→Uninstall run without seeded ownership rows and an upgrade fixture that adopts exact legacy HAWS artifacts while preserving edited files and user entries. Focused tests also cover final Install/Update failure propagation, post-uninstall defaults, stale manifest handling, Codex disabled health, Second Brain rollback, interrupted uninstall recovery, and ownership-ledger cleanup.
-- `bash -n haws.sh`, `node --check ai-configs/gemini/skills-json.mjs`, `node --check ai-configs/codex/agents.mjs`, and `git diff --check` passed on the final local tree. [Unverified] macOS and Linux were not run; Second Brain rollback with no pre-existing `origin` was not separately verified. These review fixes remain uncommitted and unpushed on `dev`.
+- The post-uninstall Auto Update assertion was mutation-tested: changing the expected saved value makes its focused test fail. `bash -n haws.sh`, `node --check ai-configs/gemini/skills-json.mjs`, `node --check ai-configs/codex/agents.mjs`, and `git diff --check` passed.
+- These verified review fixes were committed on `dev` and pushed to `origin/dev` after the checks above; the exact revision is in Git history.
+- [Unverified] macOS and Linux were not run. Native platform behavior outside Windows Git Bash remains unverified.
 
 ## Completed
 

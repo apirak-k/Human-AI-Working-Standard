@@ -65,6 +65,19 @@ source_haws() {
     unset HAWS_SOURCE_ONLY
 }
 
+create_test_directory_link() {
+    local source="$1" destination="$2"
+    if command -v cmd.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        local windows_source windows_destination
+        windows_source="$(cygpath -w "${source}")" || return 1
+        windows_destination="$(cygpath -w "${destination}")" || return 1
+        MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /J \
+            "${windows_destination}" "${windows_source}" >/dev/null 2>&1
+    else
+        ln -s "${source}" "${destination}"
+    fi
+}
+
 init_project_repo() {
     git -C "${FIXTURE_PROJECT}" init -q || return 1
     git -C "${FIXTURE_PROJECT}" config user.name "HAWS Tester"
@@ -446,7 +459,11 @@ test_clean_full_uninstall() {
         fail "Expected managed caveman link in .claude/skills"
 
     # Run 'haws.sh uninstall' with confirmation 'y'
-    HAWS_TEST_KEYS=y run_haws uninstall || return 1
+    if ! HAWS_TEST_KEYS=y run_haws uninstall; then
+        echo 'Uninstall of the fresh user-owned integration fixture failed.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
     assert_output_contains 'HAWS Uninstall Preview' || return 1
     assert_output_contains 'Applying uninstall changes' || return 1
 
@@ -476,86 +493,269 @@ test_clean_full_uninstall() {
     fi
 }
 
-test_sync_adopts_only_exact_legacy_pointer_artifacts() {
+test_stateful_fresh_setup_update_uninstall_and_bare_launch() {
     populate_full_fixture || return 1
-    mkdir -p "${FIXTURE_HOME}/.claude/skills" "${FIXTURE_HOME}/.gemini" || return 1
-    run_haws sync || return 1
+    local brain="${FIXTURE_PROJECT}/secondbrain"
+    local brain_remote="${FIXTURE_ROOT}/stateful-brain.git"
+    printf '%s\n' '# Fixture Workflow' > "${brain}/WORKFLOW.md" || return 1
+    git init --bare -q "${brain_remote}" || return 1
+    git -C "${brain}" init -q -b main 2>/dev/null || git -C "${brain}" init -q || return 1
+    git -C "${brain}" checkout -q -B main || return 1
+    git -C "${brain}" config user.name HAWS-Test
+    git -C "${brain}" config user.email test@example.invalid
+    git -C "${brain}" add . || return 1
+    git -C "${brain}" commit -qm 'fixture Second Brain baseline' || return 1
+    git -C "${brain}" remote add origin "file://${brain_remote}" || return 1
+    git -C "${brain}" push -q -u origin main || return 1
+    git --git-dir="${brain_remote}" symbolic-ref HEAD refs/heads/main || return 1
 
+    export HAWS_TEST_NO_INTEGRATION=1
+    if ! run_haws_input $'\n\033[A\nq'; then
+        echo 'Fresh launch setup/install flow exited unsuccessfully.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_output_contains 'HAWS Setup' || return 1
+    assert_output_contains 'HAWS — Preview Install' || return 1
+    assert_output_contains 'HAWS Home' || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/install.complete" 'schema=1' || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
+        $'auto_update_brain\ton' || return 1
+
+    # Change Skills Auto Update, accept the Update preview, and run the update.
+    local down=$'\033[B' up=$'\033[A'
+    local update_input="${down}${down}${down}${down}\n"
+    update_input+="\nq"
+    update_input+="${down}${down}${down}${down}${down}\n${up}\nq"
+    if ! run_haws_input "${update_input}" settings; then
+        echo 'Settings Update/Update flow exited unsuccessfully.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_output_contains 'HAWS — Preview Update' || {
+        echo 'Settings navigation did not reach Update preview.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    assert_output_contains 'Update completed.' || {
+        echo 'Update confirmation is missing from the completed lifecycle.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
+        $'auto_update_skills\toff' || return 1
+
+    if ! HAWS_TEST_KEYS=y run_haws uninstall; then
+        echo 'Uninstall in the stateful lifecycle fixture failed.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_output_contains 'Applying uninstall changes' || return 1
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
+        $'auto_update_skills\toff' || {
+        echo 'Uninstall did not preserve the saved Skills Auto Update setting.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+
+    run_haws_input 'q' || return 1
+    assert_output_contains 'HAWS Setup' || return 1
+    assert_output_contains 'Use Previous Settings' || return 1
+    local expected_post_uninstall_skills=$'auto_update_skills\toff'
+    if ! grep -F "${expected_post_uninstall_skills}" \
+        "${FIXTURE_PROJECT}/.haws/state/settings.tsv" >/dev/null; then
+        echo 'Post-uninstall bare launch did not retain the saved Skills Auto Update value.'
+        cat "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+        return 1
+    fi
+}
+
+test_fresh_exact_user_integrations_remain_unowned() {
+    populate_full_fixture || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude/agents" \
+        "${FIXTURE_HOME}/.claude/commands" "${FIXTURE_HOME}/.claude/skills" \
+        "${FIXTURE_HOME}/.gemini/config" || return 1
     source_haws || return 1
-    local claude_pointer="${FIXTURE_HOME}/.claude/CLAUDE.md"
-    local gemini_pointer="${FIXTURE_HOME}/.gemini/GEMINI.md"
+    settings_save auto_update_all off off || return 1
     local exact_agent="${FIXTURE_HOME}/.claude/agents/organizer.md"
-    local edited_agent="${FIXTURE_HOME}/.claude/agents/tester.md"
     local command_file="${FIXTURE_HOME}/.claude/commands/demo-one.md"
+    local skill_link="${FIXTURE_HOME}/.claude/skills/demo-one"
+    local skill_source="${FIXTURE_PROJECT}/skills/custom/demo-one"
+    local gemini_skills="${FIXTURE_HOME}/.gemini/config/skills.json"
+    local gemini_path="${FIXTURE_PROJECT}/skills/custom/demo-one"
+    cp "${FIXTURE_PROJECT}/agents/organizer.md" "${exact_agent}" || return 1
+    create_test_directory_link "${skill_source}" "${skill_link}" || {
+        echo 'Could not create the fresh user-owned skill symlink fixture.'
+        return 1
+    }
+    cat > "${command_file}" <<'EOF'
+---
+description: Fixture single skill.
+---
+Execute the demo-one skill workflow defined in ~/.claude/skills/demo-one/SKILL.md.
+EOF
+    printf '{\n  "entries": [\n    { "path": "%s" }\n  ]\n}\n' \
+        "${gemini_path}" > "${gemini_skills}" || return 1
+    git -C "${FIXTURE_PROJECT}" config --local core.hooksPath .githooks || return 1
+    local agent_before command_before gemini_before
+    agent_before="$(cat "${exact_agent}")"
+    command_before="$(cat "${command_file}")"
+    gemini_before="$(cat "${gemini_skills}")"
+
+    run_haws sync || return 1
+    source_haws || return 1
+    for path in "${exact_agent}" "${command_file}"; do
+        if ownership_list agents | grep -F "${path}" >/dev/null; then
+            echo "Fresh exact user-owned integration was adopted: ${path}"
+            ownership_list agents | grep -F "${path}"
+            cat "${OUTPUT_FILE}"
+            return 1
+        fi
+    done
+    if ownership_list skills | grep -F "${skill_link}" >/dev/null; then
+        echo "Fresh user-created exact skill link was adopted: ${skill_link}"
+        ownership_list skills | grep -F "${skill_link}"
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    [ "$(cat "${exact_agent}")" = "${agent_before}" ] || return 1
+    [ "$(cat "${command_file}")" = "${command_before}" ] || return 1
+    if grep -F "${gemini_path}" "${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json" \
+        >/dev/null 2>&1; then
+        echo 'Fresh exact user-owned Gemini entry was adopted.'
+        cat "${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json"
+        return 1
+    fi
+    [ "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath)" = .githooks ] || return 1
+    if ownership_list hooks | grep -F "${FIXTURE_PROJECT}/.githooks" >/dev/null; then
+        echo 'Fresh user core.hooksPath was incorrectly recorded as HAWS-owned.'
+        ownership_list hooks | grep -F "${FIXTURE_PROJECT}/.githooks"
+        return 1
+    fi
+    [ "$(cat "${gemini_skills}")" != "${gemini_before}" ] || {
+        echo 'Sync should merge generated Gemini entries while retaining the user entry.'
+        return 1
+    }
+    HAWS_GEMINI_SKILLS_FILE="${gemini_skills}" \
+        HAWS_GEMINI_SKILLS_SUFFIX='skills/custom/demo-one' \
+        node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.env.HAWS_GEMINI_SKILLS_FILE,"utf8"));if(!data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_SKILLS_SUFFIX)))process.exit(1);' || return 1
+
+    if ! { [ -L "${skill_link}" ] && [ "$(readlink "${skill_link}" 2>/dev/null || true)" = "${skill_source}" ]; } &&
+        ! { [ -d "${skill_link}" ] && [ "${skill_link}" -ef "${skill_source}" ]; }; then
+        echo 'Sync did not preserve the fresh user-owned skill symlink.'
+        printf 'link=%s source=%s exists=%s symlink=%s directory=%s target=%s\n' \
+            "${skill_link}" "${skill_source}" \
+            "$([ -e "${skill_link}" ] && echo yes || echo no)" \
+            "$([ -L "${skill_link}" ] && echo yes || echo no)" \
+            "$([ -d "${skill_link}" ] && echo yes || echo no)" \
+            "$(readlink "${skill_link}" 2>/dev/null || true)"
+        ls -ld "${skill_link}" "${skill_source}" 2>&1 || true
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    if ! HAWS_TEST_KEYS=y run_haws uninstall; then
+        echo 'Uninstall of the fresh user-owned integration fixture failed.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_file_contains "${exact_agent}" 'name: organizer' || return 1
+    assert_file_contains "${command_file}" 'Execute the demo-one skill workflow' || return 1
+    { [ -L "${skill_link}" ] && [ "$(readlink "${skill_link}" 2>/dev/null || true)" = "${skill_source}" ]; } ||
+        { [ -d "${skill_link}" ] && [ "${skill_link}" -ef "${skill_source}" ]; } || {
+        echo 'Uninstall removed the fresh user-owned skill symlink.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    [ "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath)" = .githooks ] || return 1
+    HAWS_GEMINI_SKILLS_FILE="${gemini_skills}" \
+        HAWS_GEMINI_SKILLS_SUFFIX='skills/custom/demo-one' \
+        node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.env.HAWS_GEMINI_SKILLS_FILE,"utf8"));if(!data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_SKILLS_SUFFIX)))process.exit(1);' || return 1
+}
+
+test_sync_adopts_frozen_legacy_artifacts_and_uninstall_removes_them() {
+    populate_full_fixture || return 1
+    mkdir -p "${FIXTURE_HOME}/.claude/agents" "${FIXTURE_HOME}/.claude/skills" \
+        "${FIXTURE_HOME}/.gemini/config" "${FIXTURE_PROJECT}/.haws/state" || return 1
+    source_haws || return 1
+    settings_save auto_update_all off off || return 1
+
+    # Frozen fixture uses the v1 manifest format and committed artifacts from
+    # 7846259; it does not create a current Sync result and strip its ledger.
+    git -C "${PROJECT_ROOT}" show 7846259:agents/organizer.md \
+        > "${FIXTURE_PROJECT}/agents/organizer.md" || return 1
+    git -C "${PROJECT_ROOT}" show 7846259:skills/custom/keyboard-layout-fixer/SKILL.md \
+        > "${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer.SOURCE" || return 1
+    git -C "${PROJECT_ROOT}" show 7846259:.githooks/commit-msg \
+        > "${FIXTURE_PROJECT}/.githooks/commit-msg" || return 1
+    mkdir -p "${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer" || return 1
+    mv "${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer.SOURCE" \
+        "${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer/SKILL.md" || return 1
+    git -C "${FIXTURE_PROJECT}" add agents/organizer.md \
+        skills/custom/keyboard-layout-fixer/SKILL.md .githooks/commit-msg || return 1
+    git -C "${FIXTURE_PROJECT}" commit -qm 'freeze legacy artifacts from 7846259' || return 1
+
+    local legacy_agent="${FIXTURE_HOME}/.claude/agents/organizer.md"
+    local legacy_skill="${FIXTURE_PROJECT}/skills/custom/keyboard-layout-fixer"
+    local legacy_skill_link="${FIXTURE_HOME}/.claude/skills/keyboard-layout-fixer"
     local gemini_skills="${FIXTURE_HOME}/.gemini/config/skills.json"
     local gemini_manifest="${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json"
-    local user_gemini_path="/user-owned/gemini-entry"
-    [ -f "${claude_pointer}" ] || fail "Missing generated Claude pointer"
-    [ -f "${gemini_pointer}" ] || fail "Missing generated Gemini pointer"
-    [ -f "${exact_agent}" ] || [ -L "${exact_agent}" ] || fail "Missing generated Claude agent"
-    [ -f "${edited_agent}" ] || [ -L "${edited_agent}" ] || fail "Missing generated tester agent"
-    [ -f "${command_file}" ] || fail "Missing generated Claude command"
-    [ -f "${gemini_skills}" ] || fail "Missing generated Gemini skills config"
-    [ -f "${gemini_manifest}" ] || fail "Missing generated Gemini ownership manifest"
-    [ "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath)" = .githooks ] || \
-        fail "Sync did not configure the advisory hooks"
-
-    # Simulate an older install whose integration artifacts exist but whose
-    # current ownership rows and Gemini manifest were not written.
-    local ownership_file="${FIXTURE_PROJECT}/.haws/state/ownership.tsv"
-    awk -F '\t' '
-        $1 == "pointers" || $1 == "agents" || $1 == "hooks" || $1 == "metadata" { next }
-        $1 == "environments" && $3 ~ /[.]gemini\/config\/skills[.]json$/ { next }
-        { print }
-    ' "${ownership_file}" > "${ownership_file}.tmp" || return 1
-    mv "${ownership_file}.tmp" "${ownership_file}" || return 1
-    rm -f -- "${gemini_manifest}"
-    sed -i 's/This environment operates under HAWS\./User-edited HAWS pointer./' \
-        "${gemini_pointer}" || return 1
-    rm -f -- "${edited_agent}" || return 1
-    cp "${FIXTURE_PROJECT}/agents/tester.md" "${edited_agent}" || return 1
-    printf '%s\n' 'User-edited agent content.' >> "${edited_agent}"
-    node -e 'const fs=require("node:fs");const f=process.argv[1];const data=JSON.parse(fs.readFileSync(f,"utf8"));data.entries.push({path:process.argv[2],owner:"user"});fs.writeFileSync(f,JSON.stringify(data,null,2)+"\n");' \
-        "${gemini_skills}" "${user_gemini_path}" || return 1
-    local gemini_before
-    gemini_before="$(cat "${gemini_pointer}")"
+    local user_gemini_path="/user-owned/legacy-fixture-entry"
+    [ ! -e "${gemini_manifest}" ] || return 1
+    if ! ln -s "${FIXTURE_PROJECT}/agents/organizer.md" "${legacy_agent}" 2>/dev/null; then
+        cp "${FIXTURE_PROJECT}/agents/organizer.md" "${legacy_agent}" || return 1
+    fi
+    create_test_directory_link "${legacy_skill}" "${legacy_skill_link}" || {
+        echo 'Could not create the legacy skill symlink fixture.'
+        return 1
+    }
+    printf 'schema=1\tcompleted_at=legacy-7846259\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
+    printf 'skill:legacy-fixture\tkeyboard-layout-fixer\nagent:organizer\n' \
+        > "${FIXTURE_HOME}/.haws_manifest" || return 1
+    printf '{\n  "entries": [\n    { "path": "%s" },\n    { "path": "%s" }\n  ]\n}\n' \
+        "${legacy_skill}" "${user_gemini_path}" > "${gemini_skills}" || return 1
+    git -C "${FIXTURE_PROJECT}" config --local core.hooksPath .githooks || return 1
 
     run_haws sync || return 1
     source_haws || return 1
-    ownership_list pointers | grep -F $'pointers\tpointer-block\t' | \
-        grep -F "${claude_pointer}" >/dev/null || \
-        { fail "Exact legacy Claude pointer was not adopted"; return 1; }
-    ! ownership_list pointers | grep -F "${gemini_pointer}" >/dev/null || \
-        { fail "Edited Gemini pointer was incorrectly adopted"; return 1; }
-    [ "$(cat "${gemini_pointer}")" = "${gemini_before}" ] || \
-        { fail "Edited Gemini pointer changed during sync"; return 1; }
-    ownership_list agents | grep -F $'agents\t' | grep -F "${exact_agent}" >/dev/null || \
-        { fail "Exact legacy Claude agent was not adopted"; return 1; }
-    ! ownership_list agents | grep -F "${edited_agent}" >/dev/null || \
-        { fail "Edited Claude agent was incorrectly adopted"; return 1; }
-    [ "$(cat "${edited_agent}" | tail -n 1)" = 'User-edited agent content.' ] || \
-        { fail "Edited Claude agent changed during sync"; return 1; }
-    ownership_list agents | grep -F "${command_file}" >/dev/null || \
-        { fail "Exact legacy Claude command was not adopted"; return 1; }
-    ownership_list environments | grep -F 'gemini-skills-json' | \
-        grep -F "${gemini_skills}" >/dev/null || \
-        { fail "Exact legacy Gemini skills entries were not adopted"; return 1; }
-    ownership_list metadata | grep -F "${FIXTURE_HOME}/.haws_manifest" >/dev/null || \
-        { fail "Exact legacy HAWS manifest was not adopted"; return 1; }
-    ownership_list hooks | grep -F 'git-config' | grep -F "${FIXTURE_PROJECT}/.githooks" \
-        >/dev/null || { fail "Existing HAWS hook configuration was not adopted"; return 1; }
+    ownership_list agents | grep -F "${legacy_agent}" >/dev/null || {
+        echo 'Exact legacy Claude agent was not adopted from the frozen 7846259 fixture.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    }
+    if [ ! -e "${legacy_skill_link}" ] && [ ! -L "${legacy_skill_link}" ]; then
+        echo 'Exact legacy skill link was not preserved/adopted during Sync.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    ownership_list skills | grep -F "${legacy_skill_link}" >/dev/null || return 1
+    [ -f "${gemini_manifest}" ] || return 1
+    ownership_list environments | grep -F "${gemini_skills}" >/dev/null || return 1
+    ownership_list hooks | grep -F "${FIXTURE_PROJECT}/.githooks" >/dev/null || return 1
+
+    local first_agent_record second_agent_record
+    first_agent_record="$(ownership_list agents | grep -F "${legacy_agent}")" || return 1
+    run_haws sync || return 1
+    source_haws || return 1
+    second_agent_record="$(ownership_list agents | grep -F "${legacy_agent}")" || return 1
+    [ "${second_agent_record}" = "${first_agent_record}" ] || return 1
+    if grep -F '[ADOPTED] Exact legacy Claude Agent' "${OUTPUT_FILE}" >/dev/null; then
+        echo 'A previously adopted Claude agent was adopted a second time.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
 
     HAWS_TEST_KEYS=y run_haws uninstall || return 1
-    assert_file_not_exists "${claude_pointer}" || return 1
-    assert_file_contains "${gemini_pointer}" 'User-edited HAWS pointer.' || return 1
-    assert_file_not_exists "${exact_agent}" || return 1
-    assert_file_contains "${edited_agent}" 'User-edited agent content.' || return 1
-    assert_file_not_exists "${command_file}" || return 1
-    node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!data.entries.some(entry=>entry.path===process.argv[2]))process.exit(1);if(data.entries.some(entry=>entry.path.includes("/skills/custom/demo-one")))process.exit(2);' \
-        "${gemini_skills}" "${user_gemini_path}" || { fail "Uninstall did not preserve only the user Gemini entry"; return 1; }
+    assert_file_not_exists "${legacy_agent}" || return 1
+    assert_file_not_exists "${legacy_skill_link}" || return 1
     assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest" || return 1
-    [ -z "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath 2>/dev/null || true)" ] || \
-        { fail "Uninstall retained adopted HAWS core.hooksPath"; return 1; }
+    assert_file_not_exists "${gemini_manifest}" || return 1
+    [ -z "$(git -C "${FIXTURE_PROJECT}" config --local --get core.hooksPath 2>/dev/null || true)" ] || return 1
+    HAWS_GEMINI_SKILLS_FILE="${gemini_skills}" \
+        HAWS_GEMINI_LEGACY_SUFFIX='skills/custom/keyboard-layout-fixer' \
+        HAWS_GEMINI_USER_SUFFIX='user-owned/legacy-fixture-entry' \
+        node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.env.HAWS_GEMINI_SKILLS_FILE,"utf8"));if(data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_LEGACY_SUFFIX)))process.exit(1);if(!data.entries.some(entry=>typeof entry.path==="string"&&entry.path.endsWith("/"+process.env.HAWS_GEMINI_USER_SUFFIX)))process.exit(2);' || return 1
 }
 
 # ==============================================================================
@@ -571,8 +771,10 @@ else
     run_test test_google_antigravity_gemini_sync_and_native_config
     run_test test_plugin_containing_skills_and_extensions
     run_test test_command_surface_status_doctor_hook
-    run_test test_sync_adopts_only_exact_legacy_pointer_artifacts
+    run_test test_fresh_exact_user_integrations_remain_unowned
+    run_test test_sync_adopts_frozen_legacy_artifacts_and_uninstall_removes_them
     run_test test_clean_full_uninstall
+    run_test test_stateful_fresh_setup_update_uninstall_and_bare_launch
 fi
 
 echo "CLI lifecycle and plugins E2E tests: ${passed} passed, ${failed} failed"

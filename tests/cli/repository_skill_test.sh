@@ -443,6 +443,8 @@ test_run_sync_repairs_dangling_manifest_skill_link() {
     mkdir -p "${stale_project}/skills/custom/repair-me" || return 1
     write_sync_settings
     printf 'skill:repair-me\n' > "${FIXTURE_HOME}/.haws_manifest"
+    printf 'schema=1\tcompleted_at=previous-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
 
     create_test_directory_link \
         "${stale_project}/skills/custom/repair-me" \
@@ -476,6 +478,8 @@ test_run_sync_rebinds_unowned_haws_workspace_skill_link() {
         > "${old_project}/skills/custom/workspace-skill/SKILL.md"
     write_sync_settings
     printf 'skill:workspace-skill\n' > "${FIXTURE_HOME}/.haws_manifest"
+    printf 'schema=1\tcompleted_at=previous-install\n' \
+        > "${FIXTURE_PROJECT}/.haws/state/install.complete" || return 1
 
     create_test_directory_link \
         "${old_project}/skills/custom/workspace-skill" \

@@ -88,7 +88,7 @@ test_slow_routes_have_explicit_progress_messages() {
     for message in \
         '[*] Running diagnostics, please wait...' \
         '[*] Loading skills catalog, please wait...' \
-        '[*] Connecting Second Brain, please wait...' \
+        '[*] Connecting Second Brain in a disposable transaction...' \
         '[*] Syncing Second Brain, please wait...' \
         '[*] Building uninstall preview, please wait...' \
         '[*] Applying uninstall changes, please wait...' \

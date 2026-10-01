@@ -99,7 +99,11 @@ test_first_use_opens_setup_without_mutation() {
     assert_output_contains 'HAWS Setup' || return 1
     assert_output_contains 'No changes have been made to this computer.' || return 1
     assert_output_contains 'Use Default Setup' || return 1
-    assert_output_contains 'Use Previous Settings' || return 1
+    if grep -F 'Use Previous Settings' "${OUTPUT_FILE}" >/dev/null; then
+        echo 'Virgin Setup exposed the Use Previous Settings action without saved settings.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
     assert_output_contains 'Exit' || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv" || return 1
     assert_file_not_exists "${FIXTURE_HOME}/.haws_manifest"
@@ -233,6 +237,70 @@ test_failed_second_brain_reconnect_restores_previous_origin() {
     [ "${connect_status}" -ne 0 ] || return 1
     assert_output_contains 'Failed to connect or push' || return 1
     [ "$(git -C "${brain}" remote get-url origin)" = "${previous_remote}" ]
+}
+
+test_second_brain_push_failure_restores_local_state_after_successful_merge() {
+    seed_second_brain_with_remote || return 1
+    local brain="${FIXTURE_PROJECT}/secondbrain"
+    local previous_remote target_remote target_work
+    previous_remote="$(git -C "${brain}" remote get-url origin)" || return 1
+    target_remote="${FIXTURE_ROOT}/connect-target.git"
+    target_work="${FIXTURE_ROOT}/connect-target-work"
+    git clone --bare -q "${previous_remote}" "${target_remote}" || return 1
+    git clone -q "${target_remote}" "${target_work}" || return 1
+    git -C "${target_work}" config user.name HAWS-Test
+    git -C "${target_work}" config user.email test@example.invalid
+    printf '%s\n' 'remote-only contribution' >> "${target_work}/WORKFLOW.md" || return 1
+    git -C "${target_work}" add WORKFLOW.md || return 1
+    git -C "${target_work}" commit -qm 'remote contribution' || return 1
+    git -C "${target_work}" push -q origin main || return 1
+    local target_head_before
+    target_head_before="$(git --git-dir="${target_remote}" rev-parse refs/heads/main)" || return 1
+
+    printf '%s\n' 'staged local contribution' >> "${brain}/ANTI_PATTERNS.md" || return 1
+    git -C "${brain}" add ANTI_PATTERNS.md || return 1
+    printf '%s\n' 'unstaged local contribution' >> "${brain}/USER_PREFERENCES.md" || return 1
+    printf '%s\n' 'untracked local contribution' > "${brain}/local-notes.md" || return 1
+
+    second_brain_snapshot() {
+        git -C "${brain}" rev-parse HEAD || return 1
+        git -C "${brain}" write-tree || return 1
+        git -C "${brain}" status --porcelain=v1 -uall || return 1
+        git -C "${brain}" diff --cached --binary | sha256sum || return 1
+        git -C "${brain}" diff --binary | sha256sum || return 1
+        git -C "${brain}" remote get-url origin || return 1
+        find "${brain}" -path "${brain}/.git" -prune -o -type f -print0 |
+            sort -z | xargs -0 sha256sum || return 1
+    }
+
+    local before after target_url connect_status=0
+    before="$(second_brain_snapshot)" || return 1
+    target_url="file://${target_remote}"
+    source_haws || return 1
+    git() {
+        local args=" $* "
+        if [[ "${args}" == *" push -u origin main "* ]]; then
+            echo 'forced final push failure after fetch and merge' >&2
+            return 1
+        fi
+        command git "$@"
+    }
+    run_user connect "${target_url}" >"${OUTPUT_FILE}" 2>&1 || connect_status=$?
+    unset -f git
+    after="$(second_brain_snapshot)" || return 1
+
+    [ "${connect_status}" -ne 0 ] || return 1
+    assert_output_contains 'Failed to push merged updates' || return 1
+    if [ "${before}" != "${after}" ]; then
+        echo 'Second Brain connect changed local HEAD/index/worktree/origin despite final push failure.'
+        echo '--- before ---'
+        printf '%s\n' "${before}"
+        echo '--- after ---'
+        printf '%s\n' "${after}"
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    [ "$(git --git-dir="${target_remote}" rev-parse refs/heads/main)" = "${target_head_before}" ]
 }
 
 test_second_brain_connect_final_apply_is_hermetic_and_persists_remote() {
@@ -528,7 +596,13 @@ test_successful_install_records_completion_and_next_launch_home() {
 test_install_sync_status_2_does_not_enter_home_or_claim_completion() {
     source_haws || return 1
     run_sync() { return 2; }
-    setup_run < <(printf '%b' $'\n\033[A\nq') >"${OUTPUT_FILE}" 2>&1 || true
+    local setup_status=0
+    setup_run < <(printf '%b' $'\n\033[A\nq') >"${OUTPUT_FILE}" 2>&1 || setup_status=$?
+    if [ "${setup_status}" -ne 2 ]; then
+        echo "Setup swallowed run_sync status 2; returned ${setup_status}."
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
     if grep -F 'HAWS Home' "${OUTPUT_FILE}" >/dev/null; then
         cat "${OUTPUT_FILE}"
         return 1
@@ -539,7 +613,13 @@ test_install_sync_status_2_does_not_enter_home_or_claim_completion() {
 test_install_sync_status_130_does_not_enter_home_or_claim_completion() {
     source_haws || return 1
     run_sync() { return 130; }
-    setup_run < <(printf '%b' $'\n\033[A\nq') >"${OUTPUT_FILE}" 2>&1 || true
+    local setup_status=0
+    setup_run < <(printf '%b' $'\n\033[A\nq') >"${OUTPUT_FILE}" 2>&1 || setup_status=$?
+    if [ "${setup_status}" -ne 130 ]; then
+        echo "Setup swallowed run_sync status 130; returned ${setup_status}."
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
     if grep -F 'HAWS Home' "${OUTPUT_FILE}" >/dev/null; then
         cat "${OUTPUT_FILE}"
         return 1
@@ -550,11 +630,10 @@ test_install_sync_status_130_does_not_enter_home_or_claim_completion() {
 test_manifest_without_install_complete_opens_setup() {
     printf '%s\n' 'legacy manifest' > "${FIXTURE_HOME}/.haws_manifest"
     run_haws_input 'q' || return 1
-    assert_output_contains 'HAWS Setup' || return 1
-    if grep -F 'HAWS Home' "${OUTPUT_FILE}" >/dev/null; then
-        cat "${OUTPUT_FILE}"
-        return 1
-    fi
+    assert_output_contains 'No changes have been made to this computer.' || return 1
+    assert_output_contains 'Default Setup' || return 1
+    assert_output_contains 'Use Default Setup' || return 1
+    assert_output_not_contains 'HAWS Home' || return 1
 }
 
 test_default_setup_after_uninstall_applies_labeled_defaults() {
@@ -577,10 +656,11 @@ test_default_setup_after_uninstall_applies_labeled_defaults() {
     export HAWS_TEST_NO_INTEGRATION=1
     setup_run < <(printf '%b' $'\n\033[A\nq') >"${OUTPUT_FILE}" 2>&1 || true
     assert_output_contains 'Use Default Setup' || return 1
+    assert_output_contains 'Use Previous Settings' || return 1
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
         $'auto_update_skills\ton' || return 1
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/settings.tsv" \
-        $'auto_update_brain\ton'
+        $'auto_update_brain\ton' || return 1
     if git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin >/dev/null 2>&1; then
         echo 'Default Setup left the previous Second Brain origin connected.'
         cat "${OUTPUT_FILE}"
@@ -611,6 +691,52 @@ assert_update_sync_failure_is_not_success() {
     [ "${apply_status}" -ne 0 ] || return 1
     [ "$(cat "${marker}")" = $'schema=1\tcompleted_at=before-update' ] || return 1
     ! grep -F 'HAWS Home' "${OUTPUT_FILE}" >/dev/null
+}
+
+assert_settings_flow_preserves_status() {
+    local expected_status="$1" actual_status=0
+    source_haws || return 1
+    settings_plan_build() { return 0; }
+    settings_preview() { return 0; }
+    settings_apply_final() { return "${expected_status}"; }
+    settings_flow_run preview >"${OUTPUT_FILE}" 2>&1 || actual_status=$?
+    if [ "${actual_status}" -ne "${expected_status}" ]; then
+        echo "settings_flow_run changed apply status ${expected_status} to ${actual_status}."
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    return 0
+}
+
+test_settings_flow_preserves_sync_status_2() {
+    assert_settings_flow_preserves_status 2
+}
+
+test_settings_flow_preserves_sync_status_130() {
+    assert_settings_flow_preserves_status 130
+}
+
+assert_home_exit_preserves_sync_status() {
+    local expected_status="$1" actual_status=0
+    source_haws || return 1
+    interactive_menu() {
+        INTERACTIVE_MENU_SELECTION=0
+        return 0
+    }
+    run_sync() {
+        HAWS_RESULT_NAVIGATION=exit
+        return "${expected_status}"
+    }
+    home_run >"${OUTPUT_FILE}" 2>&1 || actual_status=$?
+    [ "${actual_status}" -eq "${expected_status}" ]
+}
+
+test_home_exit_preserves_sync_status_2() {
+    assert_home_exit_preserves_sync_status 2
+}
+
+test_home_exit_preserves_sync_status_130() {
+    assert_home_exit_preserves_sync_status 130
 }
 
 test_update_sync_status_2_is_failure_without_rewriting_completion() {
@@ -725,6 +851,7 @@ run_test test_second_brain_local_only_cancel_preserves_local_only_mode
 run_test test_second_brain_connected_detail_schedules_disconnect_without_mutation
 run_test test_second_brain_connect_is_only_scheduled_in_settings_draft
 run_test test_failed_second_brain_reconnect_restores_previous_origin
+run_test test_second_brain_push_failure_restores_local_state_after_successful_merge
 run_test test_second_brain_connect_final_apply_is_hermetic_and_persists_remote
 run_test test_settings_repositories_route_keeps_old_actions
 run_test test_settings_skills_route_keeps_old_single_pack_labels
@@ -752,6 +879,10 @@ run_test test_second_brain_settings_have_no_deferred_remote_validation
 run_test test_successful_install_records_completion_and_next_launch_home
 run_test test_install_sync_status_2_does_not_enter_home_or_claim_completion
 run_test test_install_sync_status_130_does_not_enter_home_or_claim_completion
+run_test test_settings_flow_preserves_sync_status_2
+run_test test_settings_flow_preserves_sync_status_130
+run_test test_home_exit_preserves_sync_status_2
+run_test test_home_exit_preserves_sync_status_130
 run_test test_manifest_without_install_complete_opens_setup
 run_test test_default_setup_after_uninstall_applies_labeled_defaults
 run_test test_update_sync_status_2_is_failure_without_rewriting_completion

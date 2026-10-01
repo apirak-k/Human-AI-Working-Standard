@@ -122,7 +122,14 @@ test_modified_owned_file_is_preserved() {
     plan="$(uninstall_plan pointers)" || return 1
     uninstall_apply "${plan}" >"${OUTPUT_FILE}" 2>&1 || return 1
     [ -f "${FIXTURE_HOME}/.claude/CLAUDE.md" ] || return 1
-    assert_output_contains 'Preserved'
+    assert_output_contains 'Preserved' || return 1
+    if ownership_list | grep -F "${FIXTURE_HOME}/.claude/CLAUDE.md" >/dev/null; then
+        echo 'Modified HAWS-owned pointer was preserved but its ownership record was not relinquished.'
+        ownership_list | grep -F "${FIXTURE_HOME}/.claude/CLAUDE.md"
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    return 0
 }
 
 test_unrelated_files_and_second_brain_are_preserved() {
@@ -156,7 +163,62 @@ test_dirty_owned_repository_is_blocked() {
     plan="$(uninstall_plan repositories)" || return 1
     uninstall_apply "${plan}" >"${OUTPUT_FILE}" 2>&1 || true
     assert_output_contains 'Blocked' || return 1
-    [ -d "${owned_repo}/.git" ]
+    [ -d "${owned_repo}/.git" ] || return 1
+    ownership_list repositories | grep -F "${owned_repo}" >/dev/null
+}
+
+test_full_uninstall_without_owned_codex_state_does_not_require_node() {
+    seed_uninstall_state || return 1
+    mkdir -p "${FIXTURE_HOME}/.codex" || return 1
+    printf '%s\n' 'user Codex config' > "${FIXTURE_HOME}/.codex/config.toml" || return 1
+
+    local original_path="${PATH}" uninstall_status=0
+    PATH=/usr/bin:/bin
+    export PATH
+    uninstall_run --yes >"${OUTPUT_FILE}" 2>&1 || uninstall_status=$?
+    PATH="${original_path}"
+    export PATH
+
+    if [ "${uninstall_status}" -ne 0 ] || grep -F 'Node.js is required' "${OUTPUT_FILE}" >/dev/null; then
+        echo "Expected full uninstall without Codex ownership to succeed without Node; exit=${uninstall_status}."
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_file_not_exists "${FIXTURE_HOME}/.claude/skills/managed" || return 1
+    assert_file_contains "${FIXTURE_HOME}/.codex/config.toml" 'user Codex config'
+}
+
+test_native_codex_manifest_without_ledger_requires_node_before_uninstall() {
+    seed_uninstall_state || return 1
+    cp -R "${PROJECT_ROOT}/agents" "${FIXTURE_PROJECT}/" || return 1
+    mkdir -p "${FIXTURE_PROJECT}/ai-configs/codex" || return 1
+    cp "${PROJECT_ROOT}/ai-configs/codex/agents.mjs" \
+        "${FIXTURE_PROJECT}/ai-configs/codex/agents.mjs" || return 1
+    run_codex_agents install --source "${FIXTURE_PROJECT}" || return 1
+
+    local codex_manifest="${FIXTURE_HOME}/.codex/haws-agents.json"
+    local codex_profile="${FIXTURE_HOME}/.codex/agents/organizer.toml"
+    [ -f "${codex_manifest}" ] && [ -f "${codex_profile}" ] || return 1
+    if ownership_list agents | grep -E 'haws-agents[.]json|/agents/.*[.]toml' >/dev/null; then
+        echo 'Fixture unexpectedly created a Codex ownership ledger row.'
+        ownership_list agents
+        return 1
+    fi
+
+    local original_path="${PATH}" uninstall_status=0
+    PATH=/usr/bin:/bin
+    export PATH
+    uninstall_run --yes >"${OUTPUT_FILE}" 2>&1 || uninstall_status=$?
+    PATH="${original_path}"
+    export PATH
+
+    if [ "${uninstall_status}" -eq 0 ]; then
+        echo 'Expected valid unledgered HAWS Codex state to block uninstall while Node is unavailable.'
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+    assert_output_contains 'Node.js is required' || return 1
+    [ -f "${codex_manifest}" ] && [ -f "${codex_profile}" ]
 }
 
 test_missing_node_does_not_abort_unrelated_uninstall_actions() {
@@ -268,6 +330,8 @@ else
     run_test test_unrelated_files_and_second_brain_are_preserved
     run_test test_dirty_owned_repository_is_blocked
     run_test test_missing_node_does_not_abort_unrelated_uninstall_actions
+    run_test test_full_uninstall_without_owned_codex_state_does_not_require_node
+    run_test test_native_codex_manifest_without_ledger_requires_node_before_uninstall
     run_test test_interrupted_apply_keeps_remaining_records_recoverable
     run_test test_direct_uninstall_requires_preview_confirmation_and_applies
     run_test test_default_confirmation_cancels_safely
