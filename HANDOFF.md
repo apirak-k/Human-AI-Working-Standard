@@ -4,7 +4,7 @@ Updated: 2026-10-02
 
 ## Branch Contract
 
-- `main` is the ready-to-use baseline at `dc9d393`.
+- `main` is the ready-to-use baseline at `e7da972`.
 - At the start of this review follow-up, `dev` and `origin/dev` both pointed to `7846259` (parent `87a9c3a`); `main` and `origin/main` both pointed to `dc9d393`. Keep this work on `dev`.
 - This handoff is the only development-status document kept on `dev`; shared Agent and HAWS documents remain available on both branches.
 - The public `origin` branch set is `main` and `dev`.
@@ -14,7 +14,8 @@ Updated: 2026-10-02
 - Root cause: candidate validation required every active skill entrypoint to remain at its previous path. A valid upstream move or removal therefore failed the entire source update.
 - Updated validation to inspect regular skill entrypoints in the fetched candidate tree, accept path changes/removals when the candidate still has usable skill content, and continue rejecting an empty candidate without falling back to old content.
 - Verification: `tests/cli/sync_test.sh` passed **32/32**; `bash -n haws.sh tests/cli/sync_test.sh` and `git diff --check` passed.
-- Promotion of this follow-up to `main` is pending.
+- Fix commit `9df9a79` was promoted to `main` in merge commit `e7da972`; `origin/main` was verified at that revision.
+- Next action for an affected device: update HAWS to `main`, then retry Sync.
 
 ## Baseline Audit Follow-up — Commit 7846259
 
