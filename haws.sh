@@ -1585,37 +1585,63 @@ _haws_ownership_skills_invalidate() {
 }
 
 _haws_skill_link_legacy_owned_record() {
-    local wanted="${1:-}" resolved parent candidate
+    local wanted="${1:-}" resolved parent candidate wanted_parent search_path
     local group kind path source fingerprint extra
+    local ledger_line legacy_fields
     local wanted_native record_native wanted_canonical record_canonical
+    local -a search_paths=()
     [ -n "${wanted}" ] || return 1
-    resolved="$(canonical_path "${wanted}" 2>/dev/null || true)"
-    [ -n "${resolved}" ] || return 1
     wanted_native="$(_uninstall_native_path "${wanted}")"
+    wanted_parent="$(canonical_path "$(dirname "${wanted_native}")" 2>/dev/null || true)"
+    [ -n "${wanted_parent}" ] || return 1
+    # Resolve the containing directory only. Resolving the link itself follows
+    # it to its source, which may be stale or dangling after a skill moves.
+    resolved="${wanted_parent%/}/$(basename "${wanted_native}")"
     wanted_canonical="$(canonical_path "${wanted}" 2>/dev/null || true)"
-    parent="${resolved}"
-    while [ -n "${parent}" ] && [ "${parent}" != / ]; do
-        for candidate in \
-            "${parent}/.haws/state/ownership.tsv" \
-            "${parent}/.haws/skills-ownership.tsv"; do
-            [ -f "${candidate}" ] || continue
-            while IFS=$'\t' read -r group kind path source fingerprint extra ||
-                [ -n "${group}" ]; do
-                [ "${group}" = skills ] && [ "${extra}" = schema=2 ] || continue
-                record_native="$(_uninstall_native_path "${path}")"
-                record_canonical="$(canonical_path "${path}" 2>/dev/null || true)"
-                if [ "${path}" = "${wanted}" ] ||
-                    [ "${record_native}" = "${wanted_native}" ] ||
-                    { [ -n "${record_canonical}" ] &&
-                        [ "${record_canonical}" = "${wanted_canonical}" ]; }; then
-                    printf '%s\t%s\t%s\t%s\n' \
-                        "${kind}" "${path}" "${source}" "${fingerprint}"
-                    return 0
-                fi
-            done < "${candidate}"
+    search_paths+=("${resolved}")
+    if [ -n "${wanted_canonical}" ] && [ "${wanted_canonical}" != "${resolved}" ]; then
+        # Older checkout-local ledgers are stored beside the recorded target,
+        # so retain that lookup while also searching beside the link itself.
+        search_paths+=("${wanted_canonical}")
+    fi
+    for search_path in "${search_paths[@]}"; do
+        parent="${search_path}"
+        while [ -n "${parent}" ] && [ "${parent}" != / ]; do
+            for candidate in \
+                "${parent}/.haws/state/ownership.tsv" \
+                "${parent}/.haws/skills-ownership.tsv"; do
+                [ -f "${candidate}" ] || continue
+                while IFS= read -r ledger_line || [ -n "${ledger_line}" ]; do
+                    IFS=$'\t' read -r group kind path source fingerprint extra <<< "${ledger_line}"
+                    [ "${group}" = skills ] || continue
+                    record_native="$(_uninstall_native_path "${path}")"
+                    record_canonical="$(canonical_path "${path}" 2>/dev/null || true)"
+                    if [ "${path}" = "${wanted}" ] ||
+                        [ "${record_native}" = "${wanted_native}" ] ||
+                        { [ -n "${record_canonical}" ] &&
+                            [ "${record_canonical}" = "${wanted_canonical}" ]; }; then
+                        if [ "${extra}" != schema=2 ]; then
+                            # Pre-v2 skill ledgers used five columns. Trust one
+                            # only when it exactly describes the current link;
+                            # this prevents taking over a modified link.
+                            legacy_fields="$(awk -F $'\t' '{ print NF }' <<< "${ledger_line}")"
+                            [ "${legacy_fields}" -eq 5 ] || continue
+                            case "${kind}" in
+                                symlink|junction|directory-link) ;;
+                                *) continue ;;
+                            esac
+                            ownership_verify \
+                                "${kind}"$'\t'"${path}"$'\t'"${source}"$'\t'"${fingerprint}" || continue
+                        fi
+                        printf '%s\t%s\t%s\t%s\n' \
+                            "${kind}" "${path}" "${source}" "${fingerprint}"
+                        return 0
+                    fi
+                done < "${candidate}"
+            done
+            [ "${parent}" = "${parent%/*}" ] && break
+            parent="${parent%/*}"
         done
-        [ "${parent}" = "${parent%/*}" ] && break
-        parent="${parent%/*}"
     done
     return 1
 }

@@ -572,6 +572,101 @@ test_run_sync_rebinds_owned_skill_link_after_worktree_switch() {
     run_worktree_switch_rebind_case 0
 }
 
+test_run_sync_rebinds_owned_skill_link_after_skill_directory_move() {
+    local old_skill_dir="${FIXTURE_PROJECT}/skills/custom/in-progress/moved-skill"
+    local new_skill_dir="${FIXTURE_PROJECT}/skills/custom/engineering/moved-skill"
+    init_superproject || return 1
+    write_catalog_skill 'skills/custom/in-progress/moved-skill/SKILL.md' \
+        'moved-skill' 'Skill moved to a new directory.'
+    mkdir -p "${FIXTURE_HOME}/.agents" || return 1
+    write_sync_settings
+
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    local link="${FIXTURE_HOME}/.agents/skills/moved-skill"
+    [ "${link}" -ef "${old_skill_dir}" ] || return 1
+    awk -F '\t' -v wanted="${link}" \
+        '$1 == "skills" && $3 == wanted { found = 1 } END { exit found ? 0 : 1 }' \
+        "${FIXTURE_HOME}/.haws/skills-ownership.tsv" || return 1
+
+    mkdir -p "${new_skill_dir}" || return 1
+    mv "${old_skill_dir}/SKILL.md" "${new_skill_dir}/SKILL.md" || return 1
+    rmdir "${old_skill_dir}" \
+        "${FIXTURE_PROJECT}/skills/custom/in-progress" || return 1
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    source_haws || return 1
+    _haws_ownership_skills_invalidate
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    [ "${link}" -ef "${new_skill_dir}" ] || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    assert_file_contains "${link}/SKILL.md" 'Skill moved to a new directory.' || return 1
+    awk -F '\t' -v wanted="${link}" -v source="${new_skill_dir}" \
+        '$1 == "skills" && $3 == wanted && $4 == source { found = 1 } END { exit found ? 0 : 1 }' \
+        "${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+}
+
+test_run_sync_migrates_unversioned_owned_link_after_skill_directory_move() {
+    local old_skill_dir="${FIXTURE_PROJECT}/skills/custom/in-progress/moved-skill"
+    local new_skill_dir="${FIXTURE_PROJECT}/skills/custom/engineering/moved-skill"
+    init_superproject || return 1
+    write_catalog_skill 'skills/custom/in-progress/moved-skill/SKILL.md' \
+        'moved-skill' 'Skill moved to a new directory.'
+    mkdir -p "${FIXTURE_HOME}/.agents" || return 1
+    write_sync_settings
+
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    local link="${FIXTURE_HOME}/.agents/skills/moved-skill"
+    local ownership_file="${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+    local staged_ownership="${ownership_file}.test"
+    [ "${link}" -ef "${old_skill_dir}" ] || return 1
+    awk -F '\t' -v OFS='\t' -v wanted="${link}" '
+        $1 == "skills" && $3 == wanted {
+            print $1, $2, $3, $4, $5
+            found = 1
+            next
+        }
+        { print }
+        END { if (!found) exit 1 }
+    ' "${ownership_file}" > "${staged_ownership}" || return 1
+    mv "${staged_ownership}" "${ownership_file}" || return 1
+    _haws_ownership_skills_invalidate
+    local legacy_record
+    legacy_record="$(_haws_skill_link_legacy_owned_record "${link}" 2>/dev/null || true)"
+    [ -n "${legacy_record}" ] || {
+        printf 'legacy ownership lookup failed for %s\n' "${link}" >&2
+        cat "${ownership_file}" >&2
+        return 1
+    }
+
+    mkdir -p "${new_skill_dir}" || return 1
+    mv "${old_skill_dir}/SKILL.md" "${new_skill_dir}/SKILL.md" || return 1
+    rmdir "${old_skill_dir}" \
+        "${FIXTURE_PROJECT}/skills/custom/in-progress" || return 1
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    source_haws || return 1
+    _haws_ownership_skills_invalidate
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    [ "${link}" -ef "${new_skill_dir}" ] || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    assert_file_contains "${link}/SKILL.md" 'Skill moved to a new directory.' || return 1
+    awk -F '\t' -v wanted="${link}" -v source="${new_skill_dir}" \
+        '$1 == "skills" && $3 == wanted && $4 == source && $6 == "schema=2" { found = 1 } END { exit found ? 0 : 1 }' \
+        "${ownership_file}"
+}
+
 test_run_sync_rebinds_legacy_owned_skill_link_after_worktree_switch() {
     run_worktree_switch_rebind_case 1
 }
@@ -606,6 +701,48 @@ test_run_sync_preserves_modified_owned_skill_link_after_worktree_switch() {
     run_codex_agents() { return 0; }
     run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
     assert_file_contains "${link}/SKILL.md" foreign
+}
+
+test_run_sync_preserves_modified_unversioned_owned_skill_link() {
+    local foreign="${FIXTURE_ROOT}/foreign-skill"
+    init_superproject || return 1
+    write_catalog_skill 'skills/custom/owned-skill/SKILL.md' \
+        'owned-skill' 'Legacy ownership safety fixture.'
+    mkdir -p "${FIXTURE_HOME}/.agents" "${foreign}" || return 1
+    printf '%s\n' 'foreign user skill' > "${foreign}/SKILL.md"
+    write_sync_settings
+
+    source_haws || return 1
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    local link="${FIXTURE_HOME}/.agents/skills/owned-skill"
+    local ownership_file="${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+    local staged_ownership="${ownership_file}.test"
+    awk -F '\t' -v OFS='\t' -v wanted="${link}" '
+        $1 == "skills" && $3 == wanted {
+            print $1, $2, $3, $4, $5
+            found = 1
+            next
+        }
+        { print }
+        END { if (!found) exit 1 }
+    ' "${ownership_file}" > "${staged_ownership}" || return 1
+    mv "${staged_ownership}" "${ownership_file}" || return 1
+    rm -f -- "${link}" || return 1
+    create_test_directory_link "${foreign}" "${link}" || return 1
+
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    source_haws || return 1
+    _haws_ownership_skills_invalidate
+    run_codex_agents() { return 0; }
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    [ "${link}" -ef "${foreign}" ] || return 1
+    assert_file_contains "${link}/SKILL.md" 'foreign user skill' || return 1
+    awk -F '\t' -v wanted="${link}" \
+        '$1 == "skills" && $3 == wanted && NF == 5 { found = 1 } END { exit found ? 0 : 1 }' \
+        "${ownership_file}"
 }
 
 test_skill_draft_persists_source_identity_only_on_final_apply() {
@@ -822,8 +959,11 @@ run_test test_run_sync_repairs_dangling_manifest_skill_link
 run_test test_run_sync_rebinds_unowned_haws_workspace_skill_link
 run_test test_run_sync_preserves_unowned_link_to_unregistered_repo_path
 run_test test_run_sync_rebinds_owned_skill_link_after_worktree_switch
+run_test test_run_sync_rebinds_owned_skill_link_after_skill_directory_move
+run_test test_run_sync_migrates_unversioned_owned_link_after_skill_directory_move
 run_test test_run_sync_rebinds_legacy_owned_skill_link_after_worktree_switch
 run_test test_run_sync_preserves_modified_owned_skill_link_after_worktree_switch
+run_test test_run_sync_preserves_modified_unversioned_owned_skill_link
 run_test test_skill_draft_persists_source_identity_only_on_final_apply
 run_test test_legacy_tracked_skill_state_migrates_to_device_state
 run_test test_repository_back_and_discard_do_not_mutate_git_files
