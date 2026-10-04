@@ -110,12 +110,13 @@ personal user data separate:
   the ignored device-local cache under `${HAWS_STATE_DIR}/skill-sources/`.
   The parent repository's gitlink is not changed by this refresh, and HAWS
   does not automatically stage, commit, or push the root repository.
-- **Link ownership:** A stale link is re-bound when HAWS verifies its
-  ownership record. If no ownership record exists, HAWS re-binds it only when
-  the previous HAWS manifest lists that skill and the link points to the same
-  relative skill path in another registered worktree of this repository.
-  Other unowned links and ownership records that fail verification are
-  preserved.
+- **Link ownership:** A stale link is re-bound only when its recorded link
+  type and target verify. For a pre-v2 five-field skill record, Sync checks the
+  exact link path, link type, and current target before repairing it, then
+  writes a schema-v2 ownership record. If no ownership record verifies, HAWS
+  re-binds the link only when the previous HAWS manifest lists that skill and
+  it points to the same relative skill path in another registered worktree of
+  this repository. Links that meet neither rule are preserved.
 - **Local-ahead safety:** If the local HAWS checkout is already ahead of the
   fetched remote candidate, Sync reports it as up to date and preserves the
   local HEAD; it does not reset or move the checkout backwards.
@@ -124,10 +125,10 @@ personal user data separate:
   failures are reported as failures rather than a false success.
 
 When a checkout or HAWS version changes, run `bash haws.sh doctor` and then
-`bash haws.sh sync`. Do not delete links manually to repair a stale worktree
-target; HAWS can re-bind a verified owned link or a manifest-listed skill link
-from another registered worktree, and preserves links that do not meet either
-rule.
+`bash haws.sh sync`. Do not delete links manually to repair a stale skill
+target; HAWS can re-bind a verified owned link, including one recorded by a
+pre-v2 five-field ownership row, or a manifest-listed skill link from another
+registered worktree. Links that do not meet either rule are preserved.
 
 ---
 
