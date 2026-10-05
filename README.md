@@ -32,6 +32,7 @@ The actual goal and required outcome always take priority over following rigid p
 - `Enter`: Select item, open sub-menu, or toggle settings.
 - `Space` / `x`: Toggle checkboxes in checklists.
 - `Q`: Return to previous screen or exit without changes.
+- In an interactive terminal, long lists show the visible item range and keep the selected item on screen while you move.
 
 ---
 
