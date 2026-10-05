@@ -4,25 +4,31 @@ Updated: 2026-10-05
 
 ## Branch Contract
 
-- `dev` is the working branch; `main` mirrors its completed, verified code and shared documentation.
+- `dev` is the working branch and carries automated tests, fixtures, and development instructions. `main` is the user branch and carries user-facing HAWS code and finalized documentation.
 - At the start of this correction, `dev` and `origin/dev` pointed to `50b9665`; `main` and `origin/main` pointed to `2ae4967`. The code fix was already on both branches, while the shared workflow instructions existed only on `dev`.
-- `AGENTS.md`, `PROJECT_SPECIFIC.md`, and this Handoff are development instructions and continuation records; keep them on `dev` only. Keep product code and user-facing documentation on both branches.
-- When a completed work chunk is pushed to `dev`, synchronize the same shared code and documentation to `main` in that task. Do not wait for the user to repeat this direction.
+- `AGENTS.md`, `PROJECT_SPECIFIC.md`, `HANDOFF.md`, tests, fixtures, unfinished plans, and development-only tooling stay on `dev`; keep product code and user-facing documentation on both branches.
+- When a completed work chunk is pushed to `dev`, synchronize its user-facing code and documentation to `main` in that task. Do not wait for the user to repeat this direction.
 - The `origin` branch set is `main` and `dev`.
+
+## User Branch Content — 2026-10-05
+
+- `main` is for HAWS users. Keep the automated test suite and fixtures on `dev`; they are not part of the user branch.
+- The full `tests/` directory is retained on `dev` and removed from the current `main` tree. Past commits remain in Git history; no history rewrite was performed.
+- Keep finalized user-facing code, skills, templates, README, and user documentation synchronized to both branches. Keep test and continuation material on `dev` only.
 
 ## Branch Sync Rule Correction — 2026-10-05
 
 - The previous correction incorrectly placed `AGENTS.md` and `PROJECT_SPECIFIC.md` on `main`; both are development-only instructions and must remain on `dev` with this Handoff.
-- The standing rule is stored in the dev-only `PROJECT_SPECIFIC.md`: every completed, checked work chunk delivered to `dev` also syncs its code, tests, and user-facing documentation/templates to `main` in the same task.
+- The standing rule is stored in the dev-only `PROJECT_SPECIFIC.md`: every completed, checked work chunk delivered to `dev` also syncs its user-facing code and documentation/templates to `main` in the same task; tests stay on `dev`.
 - Updated the user-facing README on both branches to describe scrolling long menus. Removed the development instruction files from `main`.
-- Delivery: only product code, tests, and user-facing documentation are synchronized to `main`; development instructions and this Handoff remain on `dev`. Resume from the current `dev` HEAD.
+- Delivery under the current policy: only user-facing product code and documentation are synchronized to `main`; tests, development instructions, and this Handoff remain on `dev`. Resume from the current `dev` HEAD.
 
 ## Skill Menu Viewport and Codex Skill Check — 2026-10-05
 
 - Root cause: `interactive_menu` redrew every checklist row and moved the cursor by the full list height. Long skill packs exceeded the terminal viewport; cursor movement was clamped at the screen boundary, so redraws duplicated rows. Long descriptions also wrapped and made the physical list taller than its row count.
 - Fix: render only the visible row window, keep the selection in view, show the item range, and fit row details to the terminal width. The key controls are shortened only when they would wrap.
 - Codex skill check: `frontend-ui-engineering` exists in the `agent-skills` pack, its `SKILL.md` and HAWS Codex link are readable, it is not disabled in the device-local skill list, and the current Codex catalog exposes it. The screenshot's `mattpocock-skills` pack is separate; no skill repair was needed.
-- Branch workflow rule: completed, checked work is synchronized to both branches. `AGENTS.md`, `PROJECT_SPECIFIC.md`, this Handoff, and unfinished continuation documents stay on `dev`.
+- Branch workflow rule at that delivery: completed, checked work was synchronized to both branches. The current rule keeps tests and development instructions on `dev` and sends only user-facing work to `main`.
 - Verification: launcher/menu **19/19**, local state **16/16**, settings flow **56/56**, catalog **6/6**, repository/skill **27/27**, sync **32/32**, status/doctor **14/14**, uninstall **16/16**, home **4/4**, lifecycle/plugins **14/14** — **204 passed, 0 failed**. `bash -n` and `git diff --check` passed. Manual 24×80 TTY check with 35 skills showed 16 visible rows per frame, range update from `Items 1-16 of 36` to `Items 2-17 of 36`, and no wrapped details.
 - Delivery: menu fix commit `ef23b16` was pushed to `origin/dev`, and the same code and regression test were delivered to `main` as `2ae4967`. This Handoff and the workflow instructions remain on `dev`; the README behavior note is shared. Resume from the current `dev` HEAD.
 
@@ -127,4 +133,4 @@ Additional checks passed: Settings Apply regression, Second Brain merge preserva
 
 ## Resume Point
 
-Continue new work on `dev`. Keep the shared Agent and HAWS documents in both branches, and promote verified changes to `main` when they are ready for use.
+Continue new work on `dev`. Keep tests and development documents on `dev`; promote verified user-facing code and finalized HAWS documentation to `main` when ready for users.
