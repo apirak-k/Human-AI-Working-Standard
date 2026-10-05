@@ -6,7 +6,7 @@ Updated: 2026-10-05
 
 - `dev` is the working branch and carries automated tests, fixtures, and development instructions. `main` is the user branch and carries user-facing HAWS code and finalized documentation.
 - At the start of this correction, `dev` and `origin/dev` pointed to `50b9665`; `main` and `origin/main` pointed to `2ae4967`. The code fix was already on both branches, while the shared workflow instructions existed only on `dev`.
-- `AGENTS.md`, `PROJECT_SPECIFIC.md`, `HANDOFF.md`, tests, fixtures, unfinished plans, and development-only tooling stay on `dev`; keep product code and user-facing documentation on both branches.
+- `AGENTS.md`, `PROJECT_SPECIFIC.md`, `HANDOFF.md`, tests, fixtures, unfinished plans, and task progress notes stay on `dev`; keep user-facing product code and documentation on both branches.
 - When a completed work chunk is pushed to `dev`, synchronize its user-facing code and documentation to `main` in that task. Do not wait for the user to repeat this direction.
 - The `origin` branch set is `main` and `dev`.
 
