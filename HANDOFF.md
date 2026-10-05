@@ -15,6 +15,7 @@ Updated: 2026-10-05
 - `main` is for HAWS users. Keep the automated test suite and fixtures on `dev`; they are not part of the user branch.
 - The full `tests/` directory is retained on `dev` and removed from the current `main` tree. Past commits remain in Git history; no history rewrite was performed.
 - Keep finalized user-facing code, skills, templates, README, and user documentation synchronized to both branches. Keep test and continuation material on `dev` only.
+- Delivery: policy and handoff commit `59a7ba4` was pushed to `origin/dev`; main cleanup commit `f0e5ecf` removed the 15 tracked test files (5,740 lines) and was pushed to `origin/main`. The branch tree comparison confirmed that tests and development-only documents are the only intended differences. `git diff --check` passed; no runtime tests were run because this cleanup changed no executable product code.
 
 ## Branch Sync Rule Correction — 2026-10-05
 
