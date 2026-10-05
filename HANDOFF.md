@@ -17,7 +17,7 @@ Updated: 2026-10-05
 - Codex skill check: `frontend-ui-engineering` exists in the `agent-skills` pack, its `SKILL.md` and HAWS Codex link are readable, it is not disabled in the device-local skill list, and the current Codex catalog exposes it. The screenshot's `mattpocock-skills` pack is separate; no skill repair was needed.
 - Dev workflow rule: `AGENTS.md` routes future work to `PROJECT_SPECIFIC.md`. Keep continuation documents on `dev`; an unnamed authorized push targets `origin/dev`; only deliberately selected release-ready changes may be promoted to `main`.
 - Verification: launcher/menu **19/19**, local state **16/16**, settings flow **56/56**, catalog **6/6**, repository/skill **27/27**, sync **32/32**, status/doctor **14/14**, uninstall **16/16**, home **4/4**, lifecycle/plugins **14/14** — **204 passed, 0 failed**. `bash -n` and `git diff --check` passed. Manual 24×80 TTY check with 35 skills showed 16 visible rows per frame, range update from `Items 1-16 of 36` to `Items 2-17 of 36`, and no wrapped details.
-- Delivery: changes are on `dev`; requested push destination is `origin/dev`. Do not promote the dev-only instructions or Handoff to `main`.
+- Delivery: menu fix commit `ef23b16` was pushed to `origin/dev`; this Handoff update records completion. Resume from the updated `dev` HEAD. Leave `main` unchanged.
 
 ## Sync Candidate Validation Follow-up — 2026-10-02
 
