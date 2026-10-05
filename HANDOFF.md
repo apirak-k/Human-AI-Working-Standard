@@ -17,6 +17,14 @@ Updated: 2026-10-05
 - Keep finalized user-facing code, skills, templates, README, and user documentation synchronized to both branches. Keep test and continuation material on `dev` only.
 - Delivery: policy and handoff commit `59a7ba4` was pushed to `origin/dev`; main cleanup commit `f0e5ecf` removed the 15 tracked test files (5,740 lines) and was pushed to `origin/main`. The branch tree comparison confirmed that tests and development-only documents are the only intended differences. `git diff --check` passed; no runtime tests were run because this cleanup changed no executable product code.
 
+## Main User-Branch Audit Follow-up — 2026-10-05
+
+- After `f0e5ecf` removed the root test suite, the tracked-file audit found two HAWS-maintained tests elsewhere: `ai-configs/codex/agents.test.mjs` and `skills/custom/keyboard-layout-fixer/tests/test_layout_fixer.mjs`. Commit `ee957ae` removes them from `main`; both remain on `dev`.
+- `PROJECT_SPECIFIC.md` now keeps all HAWS-maintained tests and fixtures on `dev`, regardless of path, including `tests/`, `test/`, `__tests__/`, `*.test.*`, and `*.spec.*`. This closes the prior gap where tests next to product code escaped the root-suite cleanup.
+- Verified the resulting repository-level tree: no HAWS-maintained test files remain in `main`. Imported skill submodules remain upstream Gitlinks; their upstream contents are not HAWS-owned test artifacts.
+- `origin/main` was pushed to `ee957ae`; the branch-policy update was pushed to `origin/dev` at `fc4a349` before this Handoff update.
+- The Ponytail/Caveman preference was present only in a skip-worktree local overlay of the `main` checkout, not in the tracked `main` commit. The tracked default is neutral. The preference and the ignored local `SKILLS_GUIDE.md` were moved into the private `dev/secondbrain/notes/` directory; both files match `.gitignore` and are not staged.
+- History check: old `main` commits contain root development instructions, tests, planning records, and a `secondbrain/notes/SKILLS_GUIDE.md`; those files are absent from the current `main` tree. The old skill guide inspected here is a generic skills taxonomy. Normal cleanup commits preserve old objects in Git history; no history rewrite was performed.
 ## Branch Sync Rule Correction — 2026-10-05
 
 - The previous correction incorrectly placed `AGENTS.md` and `PROJECT_SPECIFIC.md` on `main`; both are development-only instructions and must remain on `dev` with this Handoff.
