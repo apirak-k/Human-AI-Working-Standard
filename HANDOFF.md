@@ -4,20 +4,27 @@ Updated: 2026-10-05
 
 ## Branch Contract
 
-- `dev` is the active continuation branch; `main` is the ready-to-use baseline.
-- At the start of this task, `dev` and `origin/dev` both pointed to `aad6436`; `main` and `origin/main` both pointed to `dd6c293`. This task stays on `dev`.
-- `AGENTS.md` points agents to `PROJECT_SPECIFIC.md`, which owns branch, push, and documentation routing. Keep `AGENTS.md`, `PROJECT_SPECIFIC.md`, and this Handoff on `dev`.
-- Keep ongoing work and continuation documents on `dev`; promote only verified, human-approved code and finalized shared documentation needed by `main`.
+- `dev` is the working branch; `main` mirrors its completed, verified code and shared documentation.
+- At the start of this correction, `dev` and `origin/dev` pointed to `50b9665`; `main` and `origin/main` pointed to `2ae4967`. The code fix was already on both branches, while the shared workflow instructions existed only on `dev`.
+- `AGENTS.md` and `PROJECT_SPECIFIC.md` are shared instructions and must exist on both branches. Keep this Handoff, unfinished plans or drafts, and task-specific progress notes on `dev` only.
+- When a completed work chunk is pushed to `dev`, synchronize the same shared code and documentation to `main` in that task. Do not wait for the user to repeat this direction.
 - The `origin` branch set is `main` and `dev`.
+
+## Branch Sync Rule Correction — 2026-10-05
+
+- The previous rule incorrectly kept `AGENTS.md` and `PROJECT_SPECIFIC.md` on `dev` and required a separate request before updating `main`.
+- The corrected standing rule is now in both branches: completed, verified work sent to `dev` is synchronized to `main` in the same task; `AGENTS.md`, `PROJECT_SPECIFIC.md`, code, and finalized shared documents belong on both branches.
+- Keep only `HANDOFF.md`, unfinished plans or drafts, and task-specific progress notes on `dev`.
+- Delivery: shared policy documents are committed on both branches, and this Handoff is committed on `dev` only. The branch contents match except for this continuation Handoff. Resume from the current `dev` HEAD.
 
 ## Skill Menu Viewport and Codex Skill Check — 2026-10-05
 
 - Root cause: `interactive_menu` redrew every checklist row and moved the cursor by the full list height. Long skill packs exceeded the terminal viewport; cursor movement was clamped at the screen boundary, so redraws duplicated rows. Long descriptions also wrapped and made the physical list taller than its row count.
 - Fix: render only the visible row window, keep the selection in view, show the item range, and fit row details to the terminal width. The key controls are shortened only when they would wrap.
 - Codex skill check: `frontend-ui-engineering` exists in the `agent-skills` pack, its `SKILL.md` and HAWS Codex link are readable, it is not disabled in the device-local skill list, and the current Codex catalog exposes it. The screenshot's `mattpocock-skills` pack is separate; no skill repair was needed.
-- Dev workflow rule: `AGENTS.md` routes future work to `PROJECT_SPECIFIC.md`. Keep continuation documents on `dev`; an unnamed authorized push targets `origin/dev`; only deliberately selected release-ready changes may be promoted to `main`.
+- Branch workflow rule: completed, verified work is synchronized to both branches. `AGENTS.md` and `PROJECT_SPECIFIC.md` are shared; this Handoff and unfinished continuation documents remain on `dev`.
 - Verification: launcher/menu **19/19**, local state **16/16**, settings flow **56/56**, catalog **6/6**, repository/skill **27/27**, sync **32/32**, status/doctor **14/14**, uninstall **16/16**, home **4/4**, lifecycle/plugins **14/14** — **204 passed, 0 failed**. `bash -n` and `git diff --check` passed. Manual 24×80 TTY check with 35 skills showed 16 visible rows per frame, range update from `Items 1-16 of 36` to `Items 2-17 of 36`, and no wrapped details.
-- Delivery: menu fix commit `ef23b16` was pushed to `origin/dev`; this Handoff update records completion. Resume from the updated `dev` HEAD. Leave `main` unchanged.
+- Delivery: menu fix commit `ef23b16` was pushed to `origin/dev`, and the same code and regression test were delivered to `main` as `2ae4967`. The shared `AGENTS.md` and `PROJECT_SPECIFIC.md` rules are now synchronized to both branches; this Handoff remains on `dev`. Resume from the current `dev` HEAD.
 
 ## Sync Candidate Validation Follow-up — 2026-10-02
 

@@ -2,11 +2,12 @@
 
 ## Branch and documentation flow
 
-- Use `dev` for ongoing HAWS implementation, investigation, drafts, and continuation work. Treat `main` as the ready-to-use public baseline.
-- When the user authorizes a push without naming a destination branch, push to `origin/dev`. Do not promote to or push `main` unless the user explicitly requests that destination.
-- Keep `AGENTS.md`, `PROJECT_SPECIFIC.md`, `HANDOFF.md`, unfinished plans, work-in-progress documents, and development notes on `dev`. Do not merge, cherry-pick, or otherwise carry these continuation documents into `main`.
-- Promote only verified, human-approved code and finalized shared documentation needed by the ready-to-use baseline. Select those files deliberately; keep development notes on `dev`.
+- Use `dev` as the working branch and keep `main` synchronized with completed, verified code and shared documentation.
+- A request to push a completed work chunk to `dev` also directs Codex to sync that chunk to `main` in the same task. Do not wait for or request a repeated instruction to update `main`. If the user explicitly says a chunk is `dev`-only, follow that narrower direction.
+- At each completed delivery boundary, push the corresponding changes to both `origin/dev` and `origin/main`. The shared source and documentation trees should match across branches.
+- `AGENTS.md` and `PROJECT_SPECIFIC.md` are shared workflow instructions and must be present and updated on both branches. Product code and finalized shared documents also belong on both.
+- Keep only continuation material on `dev`: `HANDOFF.md`, unfinished plans or drafts, and task-specific progress notes. Never carry those continuation documents into `main`.
 - Keep personal or device-local Second Brain content in its ignored/private location. Do not stage it for either branch.
 - At the end of a substantial `dev` task, update `HANDOFF.md` with the root cause or decision, changed files, executed checks and results, commit/push state, and exact resume point.
 
-Automated test results are evidence for review; they do not count as human acceptance or authorize promotion to `main`.
+When the completed work is ready to push to `dev`, synchronize the shared deliverable to `main` in the same task under this standing instruction.
