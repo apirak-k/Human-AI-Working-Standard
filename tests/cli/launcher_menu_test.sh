@@ -32,6 +32,39 @@ test_single_entrypoint_reuses_old_interaction_engine() {
     grep -Fq 'printf "\033[?25h"' "${source}"
 }
 
+source_haws() {
+    export HOME="${FIXTURE_HOME}"
+    export HAWS_REPO_DIR="${FIXTURE_PROJECT}"
+    export HAWS_STATE_DIR="${FIXTURE_PROJECT}/.haws/state"
+    export HAWS_SOURCE_ONLY=1
+    . "${FIXTURE_PROJECT}/haws.sh"
+    unset HAWS_SOURCE_ONLY
+}
+
+test_long_checklist_window_tracks_selection() {
+    source_haws || return 1
+    local window start visible
+    window="$(_interactive_menu_window 35 20 16 0)" || return 1
+    IFS=$'\t' read -r start visible <<< "${window}"
+    [ "${start}" -eq 5 ] && [ "${visible}" -eq 16 ] || return 1
+
+    window="$(_interactive_menu_window 35 4 16 "${start}")" || return 1
+    IFS=$'\t' read -r start visible <<< "${window}"
+    [ "${start}" -eq 4 ] && [ "${visible}" -eq 16 ] || return 1
+
+    window="$(_interactive_menu_window 7 6 16 "${start}")" || return 1
+    IFS=$'\t' read -r start visible <<< "${window}"
+    [ "${start}" -eq 0 ] && [ "${visible}" -eq 7 ]
+}
+
+test_long_checklist_detail_fits_terminal_row() {
+    source_haws || return 1
+    local detail
+    detail="$(_interactive_menu_fit_detail 'A long skill description that needs to fit inside the terminal row' 80 11 checklist)" || return 1
+    [ "${#detail}" -le 59 ] || return 1
+    [[ "${detail}" == *'...' ]]
+}
+
 test_help_aliases_exit_successfully() {
     local command
     for command in help --help -h; do
@@ -129,8 +162,10 @@ test_menu_descriptions_use_a_shared_label_column() {
 
 test_checklist_redraws_rows_and_footer_as_one_frame() {
     local source="${PROJECT_ROOT}/haws.sh"
-    grep -Fq 'if [ "${mode}" = "checklist" ] || [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then' "${source}" || return 1
-    grep -Fq 'redraw_rows=$((total + 2))' "${source}" || return 1
+    grep -Fq 'if [ "${interactive_terminal}" -eq 1 ] || [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then' "${source}" || return 1
+    grep -Fq '_interactive_menu_window "${total}" "${cursor}" "${available_rows}" "${visible_start}"' "${source}" || return 1
+    grep -Fq '_interactive_menu_window "${total}" "${cursor}" "${visible_count}" "${visible_start}"' "${source}" || return 1
+    grep -Fq 'redraw_rows=$((visible_count + 2))' "${source}" || return 1
 }
 
 test_bare_eof_exits_without_home_mutation() {
@@ -220,6 +255,8 @@ run_test test_menu_and_bare_launch_use_the_same_home
 run_test test_home_has_purpose_and_context_controls
 run_test test_home_shows_local_status_without_health_page
 run_test test_menu_descriptions_use_a_shared_label_column
+run_test test_long_checklist_window_tracks_selection
+run_test test_long_checklist_detail_fits_terminal_row
 run_test test_checklist_redraws_rows_and_footer_as_one_frame
 run_test test_bare_eof_exits_without_home_mutation
 run_test test_skills_keeps_old_categories_and_controls
