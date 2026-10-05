@@ -1,13 +1,23 @@
 # Development Handoff
 
-Updated: 2026-10-02
+Updated: 2026-10-05
 
 ## Branch Contract
 
-- `main` is the ready-to-use baseline at `e7da972`.
-- At the start of this review follow-up, `dev` and `origin/dev` both pointed to `7846259` (parent `87a9c3a`); `main` and `origin/main` both pointed to `dc9d393`. Keep this work on `dev`.
-- This handoff is the only development-status document kept on `dev`; shared Agent and HAWS documents remain available on both branches.
-- The public `origin` branch set is `main` and `dev`.
+- `dev` is the active continuation branch; `main` is the ready-to-use baseline.
+- At the start of this task, `dev` and `origin/dev` both pointed to `aad6436`; `main` and `origin/main` both pointed to `dd6c293`. This task stays on `dev`.
+- `AGENTS.md` points agents to `PROJECT_SPECIFIC.md`, which owns branch, push, and documentation routing. Keep `AGENTS.md`, `PROJECT_SPECIFIC.md`, and this Handoff on `dev`.
+- Keep ongoing work and continuation documents on `dev`; promote only verified, human-approved code and finalized shared documentation needed by `main`.
+- The `origin` branch set is `main` and `dev`.
+
+## Skill Menu Viewport and Codex Skill Check — 2026-10-05
+
+- Root cause: `interactive_menu` redrew every checklist row and moved the cursor by the full list height. Long skill packs exceeded the terminal viewport; cursor movement was clamped at the screen boundary, so redraws duplicated rows. Long descriptions also wrapped and made the physical list taller than its row count.
+- Fix: render only the visible row window, keep the selection in view, show the item range, and fit row details to the terminal width. The key controls are shortened only when they would wrap.
+- Codex skill check: `frontend-ui-engineering` exists in the `agent-skills` pack, its `SKILL.md` and HAWS Codex link are readable, it is not disabled in the device-local skill list, and the current Codex catalog exposes it. The screenshot's `mattpocock-skills` pack is separate; no skill repair was needed.
+- Dev workflow rule: `AGENTS.md` routes future work to `PROJECT_SPECIFIC.md`. Keep continuation documents on `dev`; an unnamed authorized push targets `origin/dev`; only deliberately selected release-ready changes may be promoted to `main`.
+- Verification: launcher/menu **19/19**, local state **16/16**, settings flow **56/56**, catalog **6/6**, repository/skill **27/27**, sync **32/32**, status/doctor **14/14**, uninstall **16/16**, home **4/4**, lifecycle/plugins **14/14** — **204 passed, 0 failed**. `bash -n` and `git diff --check` passed. Manual 24×80 TTY check with 35 skills showed 16 visible rows per frame, range update from `Items 1-16 of 36` to `Items 2-17 of 36`, and no wrapped details.
+- Delivery: changes are on `dev`; requested push destination is `origin/dev`. Do not promote the dev-only instructions or Handoff to `main`.
 
 ## Sync Candidate Validation Follow-up — 2026-10-02
 

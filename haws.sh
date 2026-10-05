@@ -3718,6 +3718,78 @@ _interactive_source_label() {
     _interactive_truncate "${source_path}" 24
 }
 
+_interactive_terminal_rows() {
+    local terminal_size rows
+    terminal_size="$(stty size 2>/dev/null || true)"
+    rows="${terminal_size%%[[:space:]]*}"
+    case "${rows}" in
+        ''|*[!0-9]*|0) rows="$(tput lines 2>/dev/null || true)" ;;
+    esac
+    case "${rows}" in
+        ''|*[!0-9]*|0) rows="${LINES:-24}" ;;
+    esac
+    case "${rows}" in
+        ''|*[!0-9]*|0) rows=24 ;;
+    esac
+    printf '%s\n' "${rows}"
+}
+
+_interactive_terminal_columns() {
+    local terminal_size="" rows="" columns=""
+    terminal_size="$(stty size 2>/dev/null || true)"
+    IFS=$' \t' read -r rows columns <<< "${terminal_size}" || true
+    case "${columns}" in
+        ''|*[!0-9]*|0) columns="$(tput cols 2>/dev/null || true)" ;;
+    esac
+    case "${columns}" in
+        ''|*[!0-9]*|0) columns="${COLUMNS:-80}" ;;
+    esac
+    case "${columns}" in
+        ''|*[!0-9]*|0) columns=80 ;;
+    esac
+    printf '%s\n' "${columns}"
+}
+
+_interactive_menu_fit_detail() {
+    local detail="$1"
+    local columns="$2"
+    local label_width="$3"
+    local mode="$4"
+    local overhead=10
+    case "${mode}" in
+        settings) overhead=15 ;;
+        menu) overhead=6 ;;
+    esac
+    local maximum=$((columns - label_width - overhead))
+    [ "${maximum}" -gt 0 ] || maximum=1
+    [ "${#detail}" -le "${maximum}" ] && {
+        printf '%s\n' "${detail}"
+        return 0
+    }
+    if [ "${maximum}" -ge 3 ]; then
+        printf '%s...\n' "${detail:0:$((maximum - 3))}"
+    else
+        printf '%s\n' "${detail:0:maximum}"
+    fi
+}
+
+_interactive_menu_window() {
+    local total="$1"
+    local cursor="$2"
+    local capacity="$3"
+    local start="$4"
+    local visible="${capacity}"
+
+    [ "${visible}" -le 0 ] && visible=1
+    [ "${visible}" -gt "${total}" ] && visible="${total}"
+    [ "${start}" -lt 0 ] && start=0
+    [ "${cursor}" -lt "${start}" ] && start="${cursor}"
+    [ "${cursor}" -ge "$((start + visible))" ] && start="$((cursor - visible + 1))"
+    local last_start=$((total - visible))
+    [ "${start}" -gt "${last_start}" ] && start="${last_start}"
+    [ "${start}" -lt 0 ] && start=0
+    printf '%s\t%s\n' "${start}" "${visible}"
+}
 interactive_menu() {
     local mode="$1"
     local title_spec="$2"
@@ -3820,18 +3892,25 @@ interactive_menu() {
                 local real_idx=$((idx - 1))
                 local mark="[ ]"
                 local color="\033[0m"
+                local detail="${item_details[$real_idx]}"
+                if [ "${interactive_terminal:-0}" -eq 1 ]; then
+                    detail="$(_interactive_menu_fit_detail "${detail}" "${terminal_columns}" "${menu_label_width}" checklist)"
+                fi
                 if [ "${item_states[$real_idx]}" -eq 1 ]; then
                     mark="[x]"
                     color="\033[32m"
                 else
                     color="\033[90m"
                 fi
-                printf "\033[2K\r%s%s %b%-*s\033[0m \033[90m(%s)\033[0m\n" "${ptr}" "${mark}" "${color}" "${menu_label_width}" "${item_names[$real_idx]}" "${item_details[$real_idx]}"
+                printf "\033[2K\r%s%s %b%-*s\033[0m \033[90m(%s)\033[0m\n" "${ptr}" "${mark}" "${color}" "${menu_label_width}" "${item_names[$real_idx]}" "${detail}"
             fi
         elif [ "${mode}" = "settings" ]; then
             local state_mark=""
             local detail="${item_details[$idx]:-}"
             local state_width=8
+            if [ "${interactive_terminal:-0}" -eq 1 ]; then
+                detail="$(_interactive_menu_fit_detail "${detail}" "${terminal_columns}" "${menu_label_width}" settings)"
+            fi
             case "${item_states[$idx]}" in
                 on) state_mark=" [ On ]" ;;
                 off) state_mark=" [ Off ]" ;;
@@ -3847,12 +3926,72 @@ interactive_menu() {
             fi
         else
             local detail="${item_details[$idx]:-}"
+            if [ "${interactive_terminal:-0}" -eq 1 ]; then
+                detail="$(_interactive_menu_fit_detail "${detail}" "${terminal_columns}" "${menu_label_width}" menu)"
+            fi
             if [ -n "${detail}" ]; then
                 printf "\033[2K\r%s%-*s \033[90m- %s\033[0m\n" \
                     "${ptr}" "${menu_label_width}" "${item_names[$idx]}" "${detail}"
             else
                 printf "\033[2K\r%s%s\n" "${ptr}" "${item_names[$idx]}"
             fi
+        fi
+    }
+
+    local interactive_terminal=0
+    [ -t 0 ] && [ -t 1 ] && interactive_terminal=1
+    local visible_start=0 visible_count="${total}"
+    local terminal_rows terminal_columns available_rows="${total}" header_rows=5
+    local base_controls="${controls}" menu_window
+    if [ "${interactive_terminal}" -eq 1 ]; then
+        terminal_rows="$(_interactive_terminal_rows)"
+        terminal_columns="$(_interactive_terminal_columns)"
+        if [ "${#base_controls}" -ge "${terminal_columns}" ]; then
+            case "${mode}" in
+                checklist) base_controls="Up/Down Move | Space Toggle | Enter Save | Q Cancel" ;;
+                settings) base_controls="Up/Down Move | Enter/Space Toggle | Q Back" ;;
+                *)
+                    local compact_exit="Back"
+                    case "${title}" in
+                        "HAWS Setup"|"HAWS Home") compact_exit="Exit" ;;
+                    esac
+                    base_controls="Up/Down Move | Enter Select | Q ${compact_exit}"
+                    ;;
+            esac
+        fi
+        if [ "${mode}" != "checklist" ] && [ "${mode}" != "settings" ] &&
+            [ "${HAWS_MENU_SUPPRESS_HEADER:-0}" = 1 ]; then
+            header_rows=2
+        fi
+        [ -n "${purpose}" ] && header_rows=$((header_rows + 1))
+        available_rows=$((terminal_rows - header_rows - 3))
+        [ "${available_rows}" -gt 0 ] || available_rows=1
+    fi
+    menu_window="$(_interactive_menu_window "${total}" "${cursor}" "${available_rows}" "${visible_start}")" || return 1
+    IFS=$'\t' read -r visible_start visible_count <<< "${menu_window}"
+    local redraw_rows=$((visible_count + 2))
+
+    render_visible_rows() {
+        local offset idx is_curr
+        for ((offset=0; offset<visible_count; offset++)); do
+            idx=$((visible_start + offset))
+            is_curr=0
+            [ "${idx}" -eq "${cursor}" ] && is_curr=1
+            render_row "${idx}" "${is_curr}"
+        done
+    }
+
+    render_footer() {
+        if [ "${interactive_terminal}" -eq 1 ] && [ "${visible_count}" -lt "${total}" ]; then
+            printf "\033[2K\rItems %d-%d of %d\n" \
+                "$((visible_start + 1))" "$((visible_start + visible_count))" "${total}"
+        else
+            echo ""
+        fi
+        if [ "${interactive_terminal}" -eq 1 ]; then
+            printf "\033[2K\r%s\n" "${base_controls}"
+        else
+            echo "${base_controls}"
         fi
     }
 
@@ -3872,17 +4011,8 @@ interactive_menu() {
     fi
     echo ""
 
-    for ((i=0; i<total; i++)); do
-        local is_c=0
-        [ "$i" -eq "$cursor" ] && is_c=1
-        render_row "$i" "$is_c"
-    done
-    echo ""
-    echo "${controls}"
-
-    local interactive_terminal=0
-    [ -t 0 ] && [ -t 1 ] && interactive_terminal=1
-    local redraw_rows=$((total + 2))
+    render_visible_rows
+    render_footer
     [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25l" 2>/dev/null || true
     while true; do
         local key=""
@@ -3952,18 +4082,14 @@ interactive_menu() {
         fi
 
         if [ "${interactive_terminal}" -eq 1 ]; then
+            menu_window="$(_interactive_menu_window "${total}" "${cursor}" "${visible_count}" "${visible_start}")" || return 1
+            IFS=$'\t' read -r visible_start visible_count <<< "${menu_window}"
+            redraw_rows=$((visible_count + 2))
             printf "\033[%dA" "${redraw_rows}"
         fi
         if [ "${interactive_terminal}" -eq 1 ] || [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
-            for ((i=0; i<total; i++)); do
-                local is_c=0
-                [ "$i" -eq "$cursor" ] && is_c=1
-                render_row "$i" "$is_c"
-            done
-            if [ "${mode}" = "checklist" ] || [ "${mode}" = "menu" ] || [ "${mode}" = "settings" ]; then
-                echo ""
-                echo "${controls}"
-            fi
+            render_visible_rows
+            render_footer
         fi
     done
     [ "${interactive_terminal}" -eq 1 ] && printf "\033[?25h" 2>/dev/null || true
