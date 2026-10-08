@@ -142,11 +142,13 @@ registered worktree. Links that do not meet either rule are preserved.
 | `bash haws.sh status` | Read-only current health summary and measured last-sync result |
 | `bash haws.sh doctor` | Read-only evidence-based diagnostic report (`--json` supported) |
 | `bash haws.sh uninstall` | Safely detach HAWS pointers, skills, and hooks without deleting user data (`--dry-run` supported) |
-| `bash haws.sh kit setup` | Interactive skill kit selector (Review/prune existing packs or add new Git links) |
-| `bash haws.sh kit add <url> [name]` | Add external skill pack submodule with merge protection |
-| `bash haws.sh kit prune <name>` | Cleanly remove submodule, clear git cache, and delete directory |
-| `bash haws.sh kit update [name]` | Update active submodules from upstream remote links |
-| `bash haws.sh kit list` | List installed skill submodules and statuses |
+| `bash haws.sh kit setup` | Configure the standard tracked kit or manage external device-local skill sources |
+| `bash haws.sh kit add <url> [name]` | Clone and register an external skill in device-local state, then Sync without dirtying the HAWS root |
+| `bash haws.sh kit add --tracked <url> [name]` | Maintainer mode: add a repository-tracked skill submodule; commit `.gitmodules` and its gitlink before Sync |
+| `bash haws.sh kit migrate <name>` | Safely convert one exact, clean, pending Kit submodule addition to device-local state |
+| `bash haws.sh kit prune <name>` | Remove a registered source and its HAWS-owned skill links; dirty source checkouts are preserved |
+| `bash haws.sh kit update [name]` | Safely update tracked submodules and device-local skill sources |
+| `bash haws.sh kit list` | List tracked submodules and device-local skill sources |
 | `bash haws.sh brain status` | Check Second Brain cloud connection and commit count (alias: `user status`) |
 | `bash haws.sh brain connect <url>` | Connect Second Brain to private GitHub repository (alias: `user connect`) |
 | `bash haws.sh brain disconnect` | Switch Second Brain to local-only mode (alias: `user disconnect`) |
@@ -162,12 +164,18 @@ HAWS organizes skills into three explicit categories:
 3. **Multi-Skill Packs (`skills/packs/`)**: External repositories that provide multiple related skills.
 
 For Single Skills and Multi-Skill Packs:
-   - **Interactive CLI Wizard**: Run `bash haws.sh kit setup` (or choose `2) Setup` during initial `bash haws.sh setup`). The CLI lists configured sources with their Git URLs and lets you add or prune them.
+   - **Interactive CLI Wizard**: Run `bash haws.sh kit setup` (or choose `2) Setup` during initial `bash haws.sh setup`). The CLI lists configured sources with their Git URLs and lets you add or prune device-local sources.
    - **Direct CLI Commands**:
-     - Add repository: `bash haws.sh kit add <git-url> [name]`
+     - Add a user skill: `bash haws.sh kit add <git-url> [name]`. HAWS clones it under `${HAWS_STATE_DIR}/skill-sources/`, registers it only on this device, and runs Sync; it does not modify `.gitmodules` or the HAWS root.
+     - Add a repository-tracked bundle as a maintainer: `bash haws.sh kit add --tracked <git-url> [name]`. This changes `.gitmodules` and a gitlink; commit those changes before running Sync.
+     - Convert a pending submodule added by an older Kit flow: `bash haws.sh kit migrate <name>`. Migration proceeds only when that is the sole clean staged root change and `.gitmodules` contains exactly that one new registration; otherwise it leaves the checkout untouched.
      - Remove repository: `bash haws.sh kit prune <name>`
-     - List active submodules: `bash haws.sh kit list`
-     - Update from remotes: `bash haws.sh kit update [name]`
+     - List installed sources: `bash haws.sh kit list`
+     - Update sources from remotes: `bash haws.sh kit update [name]`
+
+Committed skill sources registered in `.gitmodules` remain supported as tracked
+submodules. The migration command handles only a single uncommitted Kit addition;
+new user-added sources use device-local state by default.
 
 Custom skills can be removed by deleting the folder and running `bash haws.sh sync --clean`.
 
