@@ -427,6 +427,31 @@ test_root_preflight_ignores_only_legacy_submodule_worktree_drift() {
     [ "$?" -eq 2 ]
 }
 
+test_root_preflight_blocks_tracked_untracked_and_gitmodules_edits() {
+    add_indexed_source root-safety
+    source_haws || return 1
+
+    printf '\nuser edit\n' >> "${FIXTURE_REPO}/haws.sh"
+    _sync_root_preflight
+    [ "$?" -eq 2 ] || return 1
+    git -C "${FIXTURE_REPO}" checkout -- haws.sh || return 1
+
+    printf 'untracked user file\n' > "${FIXTURE_REPO}/user-data.txt"
+    _sync_root_preflight
+    [ "$?" -eq 2 ] || return 1
+    rm -f -- "${FIXTURE_REPO}/user-data.txt" || return 1
+
+    printf '\n# user registration\n' >> "${FIXTURE_REPO}/.gitmodules"
+    _sync_root_preflight
+    [ "$?" -eq 2 ] || return 1
+    git -C "${FIXTURE_REPO}" add .gitmodules || return 1
+    _sync_root_preflight
+    [ "$?" -eq 2 ] || return 1
+    git -C "${FIXTURE_REPO}" reset -q -- .gitmodules || return 1
+    git -C "${FIXTURE_REPO}" checkout -- .gitmodules || return 1
+    _sync_root_preflight
+}
+
 test_haws_sync_treats_remote_ancestor_as_up_to_date() {
     local remote="${FIXTURE_ROOT}/haws.git"
     git init --bare -q "${remote}" || return 1
@@ -802,6 +827,7 @@ else
     run_test test_device_source_without_seed_remote_stays_local_only
     run_test test_indexed_submodule_skill_update_does_not_dirty_root
     run_test test_root_preflight_ignores_only_legacy_submodule_worktree_drift
+    run_test test_root_preflight_blocks_tracked_untracked_and_gitmodules_edits
     run_test test_haws_sync_treats_remote_ancestor_as_up_to_date
     run_test test_up_to_date_requires_measured_head_equality
     run_test test_dirty_source_is_blocked_while_clean_source_continues

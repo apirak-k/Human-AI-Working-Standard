@@ -113,6 +113,13 @@ write_catalog_skill() {
         > "${FIXTURE_PROJECT}/${relative_path}"
 }
 
+write_sync_settings() {
+    local auto_update="${1:-off}"
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state"
+    printf 'schema_version\t1\nsecond_brain\toff\nauto_update\t%s\n' \
+        "${auto_update}" > "${FIXTURE_PROJECT}/.haws/state/settings.tsv"
+}
+
 create_test_directory_link() {
     local target="$1"
     local link="$2"
@@ -255,8 +262,128 @@ enable_local_sources() {
     export HAWS_TEST_NO_INTEGRATION=1
 }
 
-test_add_only_apply_creates_local_submodule_entry() {
+prepare_clean_kit_project() {
     init_superproject || return 1
+    printf '/.haws/\n/ai-configs/environments.disabled\n' > "${FIXTURE_PROJECT}/.gitignore"
+    git_fixture -C "${FIXTURE_PROJECT}" add .gitignore haws.sh \
+        skills/custom skills/packs/demo-pack || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" commit -qm 'clean HAWS fixture' || return 1
+}
+
+prepare_pending_kit_source() {
+    local name="${1:-pending-source}"
+    prepare_clean_kit_project || return 1
+    make_remote "${name}" single || return 1
+    printf '# Existing tracked skill sources\n' > "${FIXTURE_PROJECT}/.gitmodules"
+    git_fixture -C "${FIXTURE_PROJECT}" add .gitmodules || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" commit -qm 'track an empty submodule registry' || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" submodule add -- "${REMOTE_URL}" \
+        "skills/packs/${name}" || return 1
+}
+
+test_kit_migrate_converts_exact_pending_addition() {
+    prepare_pending_kit_source pending-migrate || return 1
+    source_haws || return 1
+    enable_local_sources
+    mkdir -p "${FIXTURE_HOME}/.claude"
+
+    if ! run_kit migrate pending-migrate >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    fi
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/pending-migrate"
+    [ -s "${device_source}/SKILL.md" ] || return 1
+    [ ! -e "${FIXTURE_PROJECT}/skills/packs/pending-migrate" ] || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" ls-files --stage -- skills/packs/pending-migrate)" ] || return 1
+    [ "$(git_fixture -C "${FIXTURE_PROJECT}" show HEAD:.gitmodules)" = '# Existing tracked skill sources' ] || return 1
+    catalog_skills | awk -F '\t' '$3 == "pending-migrate-skill" { found=1 } END { exit !found }' || return 1
+    [ "${FIXTURE_HOME}/.claude/skills/pending-migrate-skill" -ef "${device_source}" ] || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain=v1 --untracked-files=all)" ] || return 1
+    _sync_root_preflight
+}
+
+test_kit_migrate_reuses_clean_device_mirror() {
+    prepare_pending_kit_source cached-migrate || return 1
+    source_haws || return 1
+    enable_local_sources
+    local source_id device_source old_head
+    source_id="$(catalog_sources | cut -f1)" || return 1
+    _haws_prepare_device_source "${source_id}" || return 1
+    device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/cached-migrate"
+    old_head="$(git_fixture -C "${device_source}" rev-parse HEAD)" || return 1
+
+    if ! run_kit migrate cached-migrate >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    fi
+    [ "$(git_fixture -C "${device_source}" rev-parse HEAD)" = "${old_head}" ] || return 1
+    _catalog_device_source_is_registered skills/packs/cached-migrate || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain=v1 --untracked-files=all)" ]
+}
+
+test_kit_migrate_refuses_unrelated_root_changes() {
+    prepare_pending_kit_source blocked-root-change || return 1
+    source_haws || return 1
+    enable_local_sources
+    printf '\nUser-owned edit.\n' >> "${FIXTURE_PROJECT}/README.md"
+
+    if run_kit migrate blocked-root-change >"${OUTPUT_FILE}" 2>&1; then
+        return 1
+    fi
+    assert_output_contains 'no files were changed' || return 1
+    [ -d "${FIXTURE_PROJECT}/skills/packs/blocked-root-change" ] || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" ls-files --stage -- .haws/state/skill-sources/skills/packs/blocked-root-change)" ] || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" ls-files --stage -- skills/packs/blocked-root-change |
+        awk '$1 == "160000" {found=1} END {exit !found}'
+}
+
+test_kit_migrate_refuses_unrelated_gitmodules_addition() {
+    prepare_pending_kit_source blocked-gitmodules-change || return 1
+    source_haws || return 1
+    enable_local_sources
+    git_fixture -C "${FIXTURE_PROJECT}" config --file .gitmodules \
+        submodule.unrelated.path skills/packs/unrelated || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" config --file .gitmodules \
+        submodule.unrelated.url https://github.com/acme/unrelated.git || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" add .gitmodules || return 1
+
+    if run_kit migrate blocked-gitmodules-change >"${OUTPUT_FILE}" 2>&1; then
+        return 1
+    fi
+    assert_output_contains 'no files were changed' || return 1
+    [ -d "${FIXTURE_PROJECT}/skills/packs/blocked-gitmodules-change" ] || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" ls-files --stage -- skills/packs/blocked-gitmodules-change |
+        awk '$1 == "160000" {found=1} END {exit !found}'
+}
+
+test_kit_migrate_preserves_ignored_submodule_files() {
+    prepare_clean_kit_project || return 1
+    make_remote ignored-migrate single || return 1
+    local source_work="${FIXTURE_ROOT}/ignored-migrate-work"
+    printf '/private-cache/\n' > "${source_work}/.gitignore"
+    git_fixture -C "${source_work}" add .gitignore || return 1
+    git_fixture -C "${source_work}" commit -qm 'ignore private local cache' || return 1
+    git_fixture -C "${source_work}" push -q origin main || return 1
+    printf '# Existing tracked skill sources\n' > "${FIXTURE_PROJECT}/.gitmodules"
+    git_fixture -C "${FIXTURE_PROJECT}" add .gitmodules || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" commit -qm 'track an empty submodule registry' || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" submodule add -- "${REMOTE_URL}" \
+        skills/packs/ignored-migrate || return 1
+    mkdir -p "${FIXTURE_PROJECT}/skills/packs/ignored-migrate/private-cache"
+    printf 'preserve me\n' > "${FIXTURE_PROJECT}/skills/packs/ignored-migrate/private-cache/user.txt"
+    source_haws || return 1
+    enable_local_sources
+
+    if run_kit migrate ignored-migrate >"${OUTPUT_FILE}" 2>&1; then
+        return 1
+    fi
+    [ -f "${FIXTURE_PROJECT}/skills/packs/ignored-migrate/private-cache/user.txt" ] || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" ls-files --stage -- skills/packs/ignored-migrate |
+        awk '$1 == "160000" {found=1} END {exit !found}'
+}
+
+test_add_only_apply_creates_device_local_source() {
+    prepare_clean_kit_project || return 1
     make_remote add-source single || return 1
     source_haws || return 1
     settings_draft_load || return 1
@@ -265,11 +392,308 @@ test_add_only_apply_creates_local_submodule_entry() {
     settings_plan_build || return 1
     grep -F $'add-source\tsources\t' "${HAWS_PLAN_FILE}" >/dev/null || return 1
     if ! settings_apply_final >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}" >&2
         return 1
     fi
-    [ -f "${FIXTURE_PROJECT}/skills/packs/add-source/SKILL.md" ] || return 1
+    if [ ! -f "${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/add-source/SKILL.md" ]; then
+        echo "device-local source was not created" >&2
+        cat "${OUTPUT_FILE}" >&2
+        find "${FIXTURE_PROJECT}/.haws/state" -maxdepth 5 -type f -print 2>/dev/null >&2 || true
+        return 1
+    fi
+    ! git_fixture -C "${FIXTURE_PROJECT}" config --file .gitmodules \
+        --get submodule.skills/packs/add-source.path >/dev/null 2>&1 || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain --untracked-files=all)" ]
+}
+
+test_kit_add_registers_device_source_and_links_skill() {
+    prepare_clean_kit_project || return 1
+    make_remote hallmark single || return 1
+    source_haws || return 1
+    enable_local_sources
+    mkdir -p "${FIXTURE_HOME}/.claude"
+
+    run_kit add "${REMOTE_URL}" hallmark >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/hallmark"
+    [ -s "${device_source}/SKILL.md" ] || return 1
+    catalog_skills | awk -F '\t' '$3 == "hallmark-skill" { found=1 } END { exit !found }' || return 1
+    [ -L "${FIXTURE_HOME}/.claude/skills/hallmark-skill" ] || return 1
+    [ "${FIXTURE_HOME}/.claude/skills/hallmark-skill" -ef "${device_source}" ] || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain --untracked-files=all)" ] || {
+        git_fixture -C "${FIXTURE_PROJECT}" status --short >&2
+        return 1
+    }
+    _sync_root_preflight
+}
+
+test_kit_add_survives_remote_skill_update() {
+    prepare_clean_kit_project || return 1
+    make_remote updated-skill single || return 1
+    source_haws || return 1
+    enable_local_sources
+    mkdir -p "${FIXTURE_HOME}/.claude"
+    run_kit add "${REMOTE_URL}" updated-skill >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/updated-skill"
+    local old_head new_head work="${FIXTURE_ROOT}/updated-skill-work"
+    old_head="$(git_fixture -C "${device_source}" rev-parse HEAD)" || return 1
+    printf '%s\n' '---' 'name: updated-skill-skill' \
+        'description: Updated from remote.' '---' > "${work}/SKILL.md"
+    git_fixture -C "${work}" add SKILL.md || return 1
+    git_fixture -C "${work}" commit -qm 'update skill' || return 1
+    git_fixture -C "${work}" push -q origin main || return 1
+    new_head="$(git_fixture -C "${work}" rev-parse HEAD)" || return 1
+    [ "${new_head}" != "${old_head}" ] || return 1
+
+    write_sync_settings on
+    if ! run_sync >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    fi
+    [ "$(git_fixture -C "${device_source}" rev-parse HEAD)" = "${new_head}" ] || return 1
+    grep -F 'Updated from remote.' "${device_source}/SKILL.md" >/dev/null || return 1
+    [ "${FIXTURE_HOME}/.claude/skills/updated-skill-skill" -ef "${device_source}" ] || return 1
+    [ -n "$(catalog_sources | grep -F 'skills/packs/updated-skill')" ] || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain --untracked-files=all)" ]
+}
+
+test_local_skill_survives_haws_remote_update() {
+    prepare_clean_kit_project || return 1
+    make_remote hallmark single || return 1
+    local haws_remote="${FIXTURE_ROOT}/haws.git"
+    git_fixture init --bare -q "${haws_remote}" || return 1
+    local branch
+    branch="$(git_fixture -C "${FIXTURE_PROJECT}" branch --show-current)" || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" remote add origin "${haws_remote}" || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" push -q -u origin "${branch}" || return 1
+    git_fixture --git-dir="${haws_remote}" symbolic-ref HEAD "refs/heads/${branch}" || return 1
+
+    source_haws || return 1
+    enable_local_sources
+    mkdir -p "${FIXTURE_HOME}/.claude"
+    run_kit add "${REMOTE_URL}" hallmark >"${OUTPUT_FILE}" 2>&1 || return 1
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/hallmark"
+    local upstream="${FIXTURE_ROOT}/haws-upstream"
+    git_fixture clone -q "${haws_remote}" "${upstream}" || return 1
+    git_fixture -C "${upstream}" config user.name HAWS-Test
+    git_fixture -C "${upstream}" config user.email test@example.invalid
+    printf 'remote update\n' >> "${upstream}/README.md"
+    git_fixture -C "${upstream}" add README.md || return 1
+    git_fixture -C "${upstream}" commit -qm 'remote HAWS update' || return 1
+    git_fixture -C "${upstream}" push -q origin "${branch}" || return 1
+    local remote_head
+    remote_head="$(git_fixture -C "${upstream}" rev-parse HEAD)" || return 1
+
+    write_sync_settings on
+    if ! run_sync >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    fi
+    local current_head
+    current_head="$(git_fixture -C "${FIXTURE_PROJECT}" rev-parse HEAD)" || return 1
+    [ "${current_head}" = "${remote_head}" ] || {
+        echo "expected HAWS to advance to ${remote_head}, got ${current_head}" >&2
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    catalog_skills | awk -F '\t' '$3 == "hallmark-skill" { found=1 } END { exit !found }' || return 1
+    [ "${FIXTURE_HOME}/.claude/skills/hallmark-skill" -ef "${device_source}" ] || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain --untracked-files=all)" ]
+}
+
+test_kit_update_refreshes_device_local_source_when_auto_update_is_off() {
+    prepare_clean_kit_project || return 1
+    make_remote explicit-update single || return 1
+    source_haws || return 1
+    enable_local_sources
+    run_kit add "${REMOTE_URL}" explicit-update >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/explicit-update"
+    local old_head new_head work="${FIXTURE_ROOT}/explicit-update-work"
+    old_head="$(git_fixture -C "${device_source}" rev-parse HEAD)" || return 1
+    printf '%s\n' '---' 'name: explicit-update-skill' \
+        'description: Explicit kit update.' '---' > "${work}/SKILL.md"
+    git_fixture -C "${work}" add SKILL.md || return 1
+    git_fixture -C "${work}" commit -qm 'explicit source update' || return 1
+    git_fixture -C "${work}" push -q origin main || return 1
+    new_head="$(git_fixture -C "${work}" rev-parse HEAD)" || return 1
+    write_sync_settings off
+
+    if ! run_kit update explicit-update >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    fi
+    [ "${new_head}" != "${old_head}" ] || return 1
+    [ "$(git_fixture -C "${device_source}" rev-parse HEAD)" = "${new_head}" ] || return 1
+    grep -F 'Explicit kit update.' "${device_source}/SKILL.md" >/dev/null || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain --untracked-files=all)" ]
+}
+
+test_doctor_cache_refreshes_after_device_source_changes() {
+    prepare_clean_kit_project || return 1
+    make_remote health-source single || return 1
+    source_haws || return 1
+    enable_local_sources
+    run_kit add "${REMOTE_URL}" health-source >"${OUTPUT_FILE}" 2>&1 || return 1
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    _health_collect --deep || return 1
+    [ "${HAWS_HEALTH_SKILLS_TOTAL}" -eq 2 ] || return 1
+
+    : > "$(_catalog_device_source_registry)"
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    _health_collect || return 1
+    [ "${HAWS_HEALTH_SKILLS_TOTAL}" -eq 1 ]
+}
+
+test_kit_list_includes_device_local_sources() {
+    prepare_clean_kit_project || return 1
+    make_remote listed single || return 1
+    source_haws || return 1
+    enable_local_sources
+    run_kit add "${REMOTE_URL}" listed >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    run_kit list >"${OUTPUT_FILE}" 2>&1 || return 1
+    assert_output_contains 'device-local' || return 1
+    assert_output_contains 'skills/packs/listed' || return 1
+}
+
+test_kit_prune_removes_device_source_and_owned_link() {
+    prepare_clean_kit_project || return 1
+    make_remote prunable single || return 1
+    source_haws || return 1
+    enable_local_sources
+    mkdir -p "${FIXTURE_HOME}/.claude"
+    run_kit add "${REMOTE_URL}" prunable >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    run_kit prune prunable >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/prunable" || return 1
+    assert_file_not_exists "${FIXTURE_HOME}/.claude/skills/prunable-skill" || return 1
+    ! catalog_sources | grep -F 'skills/packs/prunable' >/dev/null || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain --untracked-files=all)" ]
+}
+
+test_kit_prune_blocks_dirty_device_source() {
+    prepare_clean_kit_project || return 1
+    make_remote protected single || return 1
+    source_haws || return 1
+    enable_local_sources
+    run_kit add "${REMOTE_URL}" protected >"${OUTPUT_FILE}" 2>&1 || return 1
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/protected"
+    printf 'user edit\n' >> "${device_source}/SKILL.md"
+
+    if run_kit prune protected >"${OUTPUT_FILE}" 2>&1; then
+        return 1
+    fi
+    assert_output_contains 'repository has local changes' || return 1
+    [ -f "${device_source}/SKILL.md" ] || return 1
+    catalog_sources | grep -F 'skills/packs/protected' >/dev/null
+}
+
+test_kit_prune_preserves_ignored_device_source_files() {
+    prepare_clean_kit_project || return 1
+    make_remote ignored-prune single || return 1
+    local source_work="${FIXTURE_ROOT}/ignored-prune-work"
+    printf '/private-cache/\n' > "${source_work}/.gitignore"
+    git_fixture -C "${source_work}" add .gitignore || return 1
+    git_fixture -C "${source_work}" commit -qm 'ignore private local cache' || return 1
+    git_fixture -C "${source_work}" push -q origin main || return 1
+    source_haws || return 1
+    enable_local_sources
+    run_kit add "${REMOTE_URL}" ignored-prune >"${OUTPUT_FILE}" 2>&1 || return 1
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/ignored-prune"
+    mkdir -p "${device_source}/private-cache"
+    printf 'preserve me\n' > "${device_source}/private-cache/user.txt"
+
+    if run_kit prune ignored-prune >"${OUTPUT_FILE}" 2>&1; then
+        return 1
+    fi
+    assert_output_contains 'repository has local changes' || return 1
+    [ -f "${device_source}/private-cache/user.txt" ] || return 1
+    _catalog_device_source_is_registered skills/packs/ignored-prune
+}
+
+test_kit_prune_refuses_replaced_device_source() {
+    prepare_clean_kit_project || return 1
+    make_remote replaced-source single || return 1
+    source_haws || return 1
+    enable_local_sources
+    run_kit add "${REMOTE_URL}" replaced-source >"${OUTPUT_FILE}" 2>&1 || return 1
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/replaced-source"
+    git_fixture -C "${device_source}" remote set-url origin https://github.com/acme/unrelated.git || return 1
+
+    if run_kit prune replaced-source >"${OUTPUT_FILE}" 2>&1; then
+        return 1
+    fi
+    assert_output_contains 'origin does not match' || return 1
+    [ -s "${device_source}/SKILL.md" ] || return 1
+    _catalog_device_source_is_registered skills/packs/replaced-source
+}
+
+test_tracked_kit_add_requires_explicit_flag() {
+    prepare_clean_kit_project || return 1
+    make_remote bundled single || return 1
+    source_haws || return 1
+    enable_local_sources
+
+    run_kit add --tracked "${REMOTE_URL}" bundled >"${OUTPUT_FILE}" 2>&1 || return 1
     git_fixture -C "${FIXTURE_PROJECT}" config --file .gitmodules \
-        --get submodule.skills/packs/add-source.path >/dev/null
+        --get submodule.skills/packs/bundled.path >/dev/null || return 1
+    assert_output_contains 'Commit' || return 1
+}
+
+test_kit_update_reports_tracked_submodule_failure() {
+    prepare_clean_kit_project || return 1
+    make_remote tracked-update single || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" submodule add -q -- "${REMOTE_URL}" \
+        skills/packs/tracked-update || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" add .gitmodules skills/packs/tracked-update || return 1
+    git_fixture -C "${FIXTURE_PROJECT}" commit -qm 'add tracked skill source' || return 1
+    source_haws || return 1
+    enable_local_sources
+    write_sync_settings off
+    local source_dir="${FIXTURE_PROJECT}/skills/packs/tracked-update"
+    local old_head bad_remote="file://${FIXTURE_ROOT}/missing-tracked-update.git"
+    old_head="$(git_fixture -C "${source_dir}" rev-parse HEAD)" || return 1
+    git_fixture -C "${source_dir}" remote set-url origin "${bad_remote}" || return 1
+
+    if run_kit update tracked-update >"${OUTPUT_FILE}" 2>&1; then
+        return 1
+    fi
+    assert_output_contains 'Submodule tracked-update update failed' || return 1
+    [ "$(git_fixture -C "${source_dir}" rev-parse HEAD)" = "${old_head}" ] || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain=v1 --untracked-files=all)" ]
+}
+
+test_settings_remove_only_apply_removes_device_local_source() {
+    prepare_clean_kit_project || return 1
+    make_remote settings-remove single || return 1
+    source_haws || return 1
+    enable_local_sources
+    settings_draft_load || return 1
+    settings_draft_add_source "${REMOTE_URL}" || return 1
+    settings_plan_build || return 1
+    settings_apply_final >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    settings_draft_load || return 1
+    local source_id
+    source_id="$(catalog_sources | cut -f1)" || return 1
+    [ -n "${source_id}" ] || return 1
+    settings_draft_remove_source "${source_id}" || return 1
+    settings_plan_build || return 1
+    if ! settings_apply_final >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    fi
+    assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/settings-remove" || return 1
+    ! catalog_sources | grep -F 'skills/packs/settings-remove' >/dev/null || return 1
+    [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain --untracked-files=all)" ]
 }
 
 prepare_registered_source() {
@@ -946,7 +1370,25 @@ fi
 run_test test_catalog_resolves_source_scoped_logical_skills
 run_test test_catalog_respects_repository_folder_taxonomy
 run_test test_catalog_keeps_only_historical_canonical_skill_copies
-run_test test_add_only_apply_creates_local_submodule_entry
+run_test test_kit_migrate_converts_exact_pending_addition
+run_test test_kit_migrate_reuses_clean_device_mirror
+run_test test_kit_migrate_refuses_unrelated_root_changes
+run_test test_kit_migrate_refuses_unrelated_gitmodules_addition
+run_test test_kit_migrate_preserves_ignored_submodule_files
+run_test test_add_only_apply_creates_device_local_source
+run_test test_kit_add_registers_device_source_and_links_skill
+run_test test_kit_add_survives_remote_skill_update
+run_test test_local_skill_survives_haws_remote_update
+run_test test_kit_update_refreshes_device_local_source_when_auto_update_is_off
+run_test test_doctor_cache_refreshes_after_device_source_changes
+run_test test_kit_list_includes_device_local_sources
+run_test test_kit_prune_removes_device_source_and_owned_link
+run_test test_kit_prune_blocks_dirty_device_source
+run_test test_kit_prune_preserves_ignored_device_source_files
+run_test test_kit_prune_refuses_replaced_device_source
+run_test test_tracked_kit_add_requires_explicit_flag
+run_test test_kit_update_reports_tracked_submodule_failure
+run_test test_settings_remove_only_apply_removes_device_local_source
 run_test test_remove_only_apply_removes_registered_source_and_keeps_unrelated_file
 run_test test_reopened_removal_selector_excludes_sources_already_removed_in_draft
 run_test test_dirty_source_removal_is_blocked_before_disk_removal

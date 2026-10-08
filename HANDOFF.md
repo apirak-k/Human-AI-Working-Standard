@@ -1,6 +1,6 @@
 # Development Handoff
 
-Updated: 2026-10-05
+Updated: 2026-10-09
 
 ## Branch Contract
 
@@ -9,6 +9,18 @@ Updated: 2026-10-05
 - `AGENTS.md`, `PROJECT_SPECIFIC.md`, `HANDOFF.md`, tests, fixtures, unfinished plans, and task progress notes stay on `dev`; keep user-facing product code and documentation on both branches.
 - When a completed work chunk is pushed to `dev`, synchronize its user-facing code and documentation to `main` in that task. Do not wait for the user to repeat this direction.
 - The `origin` branch set is `main` and `dev`.
+
+## Kit Device-Local Skill Sources — 2026-10-09
+
+- Root cause: default `kit add` edited the HAWS root by registering a submodule and then immediately ran Sync. Strict root preflight correctly blocked that uncommitted `.gitmodules`/gitlink change, so the add and Sync flow contradicted each other.
+- Default `kit add` and Settings repository Add now clone/register external skills under device-local `.haws/state/skill-sources/`; Sync links those skills without dirtying the HAWS root. Maintainers can still request `kit add --tracked` for a committed submodule.
+- Added strict `kit migrate <name>` for one exact older Kit addition. It requires the staged gitlink and `.gitmodules` registration to be the only clean root changes, verifies the checkout/origin and ignored files, reuses an existing clean device mirror, and refuses unrelated root or `.gitmodules` changes. `_sync_root_status` and `_sync_root_preflight` remain unchanged.
+- Updated the shared README and added dev-only regressions for add → Sync, source and HAWS updates, strict root protection, migration, ignored-file preservation, prune ownership/origin checks, and tracked submodule compatibility.
+- Verification on Windows Git Bash: `tests/cli/run.sh` passed **223/223** across launcher/menu (19), local state (16), Settings (56), catalog (6), repository/skill (45), Sync (33), status/doctor (14), uninstall (16), Home (4), and lifecycle/plugins E2E (14). `bash -n` and `git diff --check` passed. Mutation-testing the strict `.gitmodules` comparison made `test_kit_migrate_refuses_unrelated_gitmodules_addition` fail; restoring the comparison made it pass.
+- User-facing commit: `696b498` on `dev`; local `main` promotion: `6487055`. Neither branch was pushed, as requested.
+- On local `main`, the staged Hallmark addition was verified clean, including ignored files, with origin `https://github.com/Nutlope/hallmark.git` and matching checkout/index SHA `13ac0ec7e148655948100b6396439e481361d690`. `kit migrate hallmark` moved it into device-local state; the HAWS root is clean and `kit list` reports the local source `up-to-date`.
+- Post-migration `doctor` reports one unrelated device-local warning: `gemini-skills-json` differs from its recorded ownership fingerprint. It was left untouched. macOS and Linux were not tested.
+- Resume on `dev` at the follow-up test/Handoff commit recorded below; keep this Handoff and the test files dev-only.
 
 ## User Branch Content — 2026-10-05
 
