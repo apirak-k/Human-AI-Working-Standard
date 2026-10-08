@@ -106,11 +106,12 @@ _health_fingerprint() {
     local repo state
     repo="$(_health_repo)"
     state="$(_health_state)"
-    local git_head hooks_cfg state_stamp="" env_stamp="" config_file
+    local git_head hooks_cfg state_stamp="" env_stamp="" config_file source_fp skill_fp
     git_head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)"
     hooks_cfg="$(git -C "$repo" config --get core.hooksPath 2>/dev/null || true)"
     for config_file in \
         "$state/settings.tsv" \
+        "$(_catalog_device_source_registry)" \
         "$(_haws_compat_file environments.disabled)" \
         "$state/skills.disabled" \
         "$SCRIPT_DIR/skills/skills.disabled" \
@@ -137,7 +138,10 @@ _health_fingerprint() {
             fi
         done < <(awk -F $'\t' '$1 == "environments" && NF == 6 && $6 == "schema=2" {print $2}' "$state/ownership.tsv" 2>/dev/null)
     fi
-    printf '%s|%s|%s|%s\n' "$git_head" "$hooks_cfg" "$state_stamp" "$env_stamp"
+    source_fp="$(catalog_sources 2>/dev/null | cksum | awk '{print $1":"$2}')"
+    skill_fp="$(catalog_skills 2>/dev/null | cksum | awk '{print $1":"$2}')"
+    printf '%s|%s|%s|%s|%s|%s\n' \
+        "$git_head" "$hooks_cfg" "$state_stamp" "$env_stamp" "$source_fp" "$skill_fp"
 }
 
 _health_collect() {
@@ -1244,10 +1248,26 @@ _haws_device_source_root() {
     printf '%s/skill-sources\n' "$(_haws_state_dir)"
 }
 
+_catalog_device_source_registry() {
+    printf '%s/registry.tsv\n' "$(_haws_device_source_root)"
+}
+
+_catalog_external_skill_url_valid() {
+    local url="${1:-}"
+    [ -n "${url}" ] && [[ "${url}" != *[[:cntrl:]]* ]] || return 1
+    if [ "${HAWS_TEST_ALLOW_LOCAL_SOURCES:-0}" = 1 ]; then
+        case "${url}" in file://*|/*|[A-Za-z]:[\\/]*) return 0 ;; esac
+    fi
+    [[ "${url}" =~ ^https?://[^/[:space:]]+/.+ ]] ||
+        [[ "${url}" =~ ^ssh://[^/[:space:]]+/.+ ]] ||
+        [[ "${url}" =~ ^git://[^/[:space:]]+/.+ ]] ||
+        [[ "${url}" =~ ^git@[^:[:space:]]+:.+ ]]
+}
+
 _haws_source_path_safe() {
     local source_path="${1:-}"
     case "${source_path}" in
-        ''|/*|[A-Za-z]:[\\/]*|../*|*/../*|./*|*/./*) return 1 ;;
+        ''|.|..|/*|[A-Za-z]:[\\/]*|../*|*/../*|*/..|./*|*/./*|*/.) return 1 ;;
     esac
     return 0
 }
@@ -1265,9 +1285,72 @@ _catalog_device_source_dir() {
     printf '%s/%s\n' "$(_haws_device_source_root)" "${source_path}"
 }
 
+_catalog_device_source_fields() {
+    local wanted_path="${1:-}" registry name path url
+    registry="$(_catalog_device_source_registry)"
+    [ -f "${registry}" ] || return 1
+    while IFS=$'\t' read -r name path url || [ -n "${name:-}" ]; do
+        [ -n "${name:-}" ] || continue
+        [[ "${name}" =~ ^[A-Za-z0-9_.-]+$ ]] || continue
+        case "${path:-}" in skills/packs/*|skills/standalone/*) ;; *) continue ;; esac
+        _haws_source_path_safe "${path}" || continue
+        [ "${path##*/}" = "${name}" ] || continue
+        _catalog_external_skill_url_valid "${url:-}" || continue
+        if [ "${path}" = "${wanted_path}" ]; then
+            printf '%s\t%s\n' "${name}" "${url}"
+            return 0
+        fi
+    done < "${registry}"
+    return 1
+}
+
+_catalog_device_source_is_registered() {
+    _catalog_device_source_fields "${1:-}" >/dev/null
+}
+
+_catalog_device_source_id() {
+    _catalog_source_id "device-${1}" "${2}"
+}
+
+_catalog_submodule_cache_dir() {
+    local source_path="${1:-}" repo modules_root cache_dir relative current part
+    local -a components=()
+    _haws_source_path_safe "${source_path}" || return 1
+    repo="$(_catalog_repo_dir)"
+    modules_root="$(git -C "${repo}" rev-parse --path-format=absolute --git-path modules 2>/dev/null)" || return 1
+    cache_dir="$(git -C "${repo}" rev-parse --path-format=absolute --git-path "modules/${source_path}" 2>/dev/null)" || return 1
+    case "${cache_dir}" in
+        "${modules_root%/}/"*)
+            relative="${cache_dir#"${modules_root%/}/"}"
+            IFS='/' read -r -a components <<< "${relative}"
+            current="${modules_root%/}"
+            for part in "${components[@]}"; do
+                current="${current}/${part}"
+                [ ! -L "${current}" ] || return 1
+            done
+            printf '%s\n' "${cache_dir}"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+_catalog_invalidate_source_catalog() {
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    if [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]]; then
+        HAWS_CATALOG_SOURCE_KIND_CACHE=()
+    fi
+}
+
 _catalog_runtime_source_dir() {
     local source_path="${1:-}" device_dir
     local repo="$(_catalog_repo_dir)"
+    if _catalog_device_source_is_registered "${source_path}"; then
+        device_dir="$(_catalog_device_source_dir "${source_path}" 2>/dev/null || true)"
+        [ -n "${device_dir}" ] && {
+            printf '%s\n' "${device_dir}"
+            return 0
+        }
+    fi
     if _catalog_source_is_gitlink "${source_path}"; then
         device_dir="$(_catalog_device_source_dir "${source_path}" 2>/dev/null || true)"
         if [ -n "${device_dir}" ] &&
@@ -1286,6 +1369,26 @@ _haws_prepare_device_source() {
     fields="$(_catalog_source_fields "${source_id}" 2>/dev/null || true)"
     [ -n "${fields}" ] || return 1
     IFS=$'\t' read -r source_path source_url _ <<< "${fields}"
+    if _catalog_device_source_is_registered "${source_path}"; then
+        device_dir="$(_catalog_device_source_dir "${source_path}")" || return 1
+        [ ! -L "${device_dir}" ] || return 1
+        if git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            [ "$(git -C "${device_dir}" config --get remote.origin.url 2>/dev/null || true)" = "${source_url}" ] || return 1
+            return 0
+        fi
+        [ ! -e "${device_dir}" ] || return 1
+        mkdir -p "$(dirname "${device_dir}")" || return 1
+        if ! git clone -q -- "${source_url}" "${device_dir}"; then
+            rm -rf -- "${device_dir}"
+            return 1
+        fi
+        find "${device_dir}" -type f \( -name SKILL.md -o -name skill.md \) -print -quit 2>/dev/null |
+            grep -q . || {
+            rm -rf -- "${device_dir}"
+            return 1
+        }
+        return 0
+    fi
     _catalog_source_is_gitlink "${source_path}" || return 0
     device_dir="$(_catalog_device_source_dir "${source_path}")" || return 1
     git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 && return 0
@@ -1324,25 +1427,41 @@ catalog_sources() {
     fi
     local repo="$(_catalog_repo_dir)"
     local gitmodules="$(_catalog_gitmodules)"
-    local record key name path source_id url revision
-    [ -f "${gitmodules}" ] || return 0
-    while IFS= read -r -d '' record; do
-        key="${record%%$'\n'*}"
-        path="${record#*$'\n'}"
-        case "${key}" in
-            submodule.*.path)
-                name="${key#submodule.}"
-                name="${name%.path}"
-                path="${path#./}"
-                source_id="$(_catalog_source_id "${name}" "${path}")"
-                url="$(_catalog_source_url "${name}")"
-                revision="$(_catalog_source_revision "${path}")"
-                printf '%s\t%s\t%s\t%s\n' \
-                    "${source_id}" "${path}" "${url}" "${revision}"
-                ;;
-        esac
-    done < <(git -C "${repo}" config --null --file "${gitmodules}" \
-        --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
+    local record key name path source_id url revision registry
+    if [ -f "${gitmodules}" ]; then
+        while IFS= read -r -d '' record; do
+            key="${record%%$'\n'*}"
+            path="${record#*$'\n'}"
+            case "${key}" in
+                submodule.*.path)
+                    name="${key#submodule.}"
+                    name="${name%.path}"
+                    path="${path#./}"
+                    source_id="$(_catalog_source_id "${name}" "${path}")"
+                    url="$(_catalog_source_url "${name}")"
+                    revision="$(_catalog_source_revision "${path}")"
+                    printf '%s\t%s\t%s\t%s\n' \
+                        "${source_id}" "${path}" "${url}" "${revision}"
+                    ;;
+            esac
+        done < <(git -C "${repo}" config --null --file "${gitmodules}" \
+            --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
+    fi
+    registry="$(_catalog_device_source_registry)"
+    if [ -f "${registry}" ]; then
+        while IFS=$'\t' read -r name path url || [ -n "${name:-}" ]; do
+            [ -n "${name:-}" ] || continue
+            [[ "${name}" =~ ^[A-Za-z0-9_.-]+$ ]] || continue
+            case "${path:-}" in skills/packs/*|skills/standalone/*) ;; *) continue ;; esac
+            _haws_source_path_safe "${path}" || continue
+            [ "${path##*/}" = "${name}" ] || continue
+            _catalog_external_skill_url_valid "${url:-}" || continue
+            source_id="$(_catalog_device_source_id "${name}" "${path}")"
+            revision="$(_catalog_source_revision "${path}")"
+            printf '%s\t%s\t%s\t%s\n' \
+                "${source_id}" "${path}" "${url}" "${revision}"
+        done < "${registry}"
+    fi
 }
 
 _catalog_skill_sources() {
@@ -4135,12 +4254,14 @@ run_kit() {
     case "${action}" in
         add)
             local target_type="skill"
+            local tracked=0
             local url=""
             local name=""
             while [ $# -gt 0 ]; do
                 case "$1" in
                     --skill) target_type="skill"; shift ;;
                     --tool) target_type="tool"; shift ;;
+                    --tracked) tracked=1; shift ;;
                     *)
                         if [ -z "${url}" ]; then
                             url="$1"
@@ -4153,7 +4274,7 @@ run_kit() {
             done
 
             if [ -z "${url}" ]; then
-                echo "Usage: ./haws.sh kit add <git-url> [name]"
+                echo "Usage: ./haws.sh kit add [--tracked] <git-url> [name]"
                 return 1
             fi
 
@@ -4164,15 +4285,22 @@ run_kit() {
             local dest_path="skills/packs/${name}"
 
             echo "=== Adding ${target_type} to KIT: ${name} ==="
-            if ! settings_apply_repository_action "add-source" "${url}" "${dest_path}" kit; then
-                return 1
+            if [ "${tracked}" -eq 1 ]; then
+                settings_apply_repository_action "add-tracked-source" "${url}" "${dest_path}" kit || return 1
+                echo "  [!] Tracked HAWS files changed. Commit .gitmodules and the skill gitlink before running Sync."
+                return 0
             fi
-            if ! git -C "${SCRIPT_DIR}" submodule update --init --recursive "${dest_path}"; then
-                echo "  [ERROR] Repository was added but could not be initialized: ${dest_path}" >&2
-                return 1
-            fi
-            echo "  [✓] Submodule added at ${dest_path}"
+            settings_apply_repository_action "add-source" "${url}" "${dest_path}" kit || return 1
             run_sync || return 1
+            ;;
+        migrate)
+            local name="${1:-}"
+            [ -n "${name}" ] || {
+                echo "Usage: ./haws.sh kit migrate <name>"
+                return 1
+            }
+            _catalog_migrate_pending_source "${name}" || return $?
+            run_sync || return $?
             ;;
         prune|remove|rm)
             local name="${1:-}"
@@ -4184,6 +4312,7 @@ run_kit() {
             echo "=== Pruning from KIT: ${name} ==="
             local found_path=""
             local found_source_id=""
+            local tracked_source=0
             local candidate candidate_id candidate_path candidate_url candidate_revision
             for candidate in "skills/packs/${name}" "skills/standalone/${name}"; do
                 while IFS=$'\t' read -r candidate_id candidate_path candidate_url candidate_revision || [ -n "${candidate_id}" ]; do
@@ -4201,25 +4330,33 @@ run_kit() {
                 return 1
             fi
 
+            _catalog_source_is_gitlink "${found_path}" && tracked_source=1
             settings_apply_repository_action "remove-source" "${found_source_id}" "${found_path}" || return $?
-            echo "  [*] Purging internal submodule git cache..."
-            if [ -d "${SCRIPT_DIR}/.git/modules/${found_path}" ]; then
-                rm -rf -- "${SCRIPT_DIR}/.git/modules/${found_path}" || return 1
+            if [ "${tracked_source}" -eq 1 ]; then
+                local module_cache
+                module_cache="$(_catalog_submodule_cache_dir "${found_path}")" || {
+                    echo "  [!] Removed the Git link, but could not resolve its private module cache." >&2
+                    return 1
+                }
+                if [ -d "${module_cache}" ]; then
+                    [ ! -L "${module_cache}" ] || {
+                        echo "  [!] Refusing to remove a linked submodule cache: ${module_cache}" >&2
+                        return 1
+                    }
+                    echo "  [*] Purging internal submodule git cache..."
+                    rm -rf -- "${module_cache}" || return 1
+                fi
             fi
-            echo "  [✓] ${name} pruned completely (Zero ghost files)."
+            echo "  [✓] ${name} removed from HAWS Kit."
             run_sync --clean || return 1
             ;;
         update)
             local target="${1:-}"
-            echo "=== HAWS KIT Submodule Remote Updater ==="
-            echo "Preserving local configuration: only updating submodules present in local .gitmodules."
+            local target_source_id="" target_source_path="" update_status=0
+            echo "=== HAWS KIT Source Updater ==="
+            echo "Updating tracked skill packs and device-local external skill sources."
             echo "Local 'skills/custom/' remains 100% protected and untouched."
             echo ""
-
-            if [ ! -f "${SCRIPT_DIR}/.gitmodules" ]; then
-                echo "  [INFO] No .gitmodules file found. Nothing to update."
-                return 0
-            fi
 
             if [ -n "${target}" ]; then
                 local found_path=""
@@ -4230,29 +4367,67 @@ run_kit() {
                     fi
                 done
                 if [ -z "${found_path}" ]; then
-                    echo "  [ERROR] Submodule '${target}' not found in local .gitmodules."
-                    return 1
+                    while IFS=$'\t' read -r target_source_id target_source_path _ _ || [ -n "${target_source_id:-}" ]; do
+                        [ -n "${target_source_id:-}" ] || continue
+                        if [ "${target_source_path##*/}" = "${target}" ]; then
+                            found_path="${target_source_path}"
+                            break
+                        fi
+                    done < <(catalog_sources)
                 fi
-                echo "  [*] Updating submodule [${target}] (${found_path}) from remote link..."
-                git -C "${SCRIPT_DIR}" submodule update --remote --merge "${found_path}" 2>/dev/null || \
-                git -C "${SCRIPT_DIR}" submodule update --remote "${found_path}" 2>/dev/null || true
-                echo "  [✓] Submodule ${target} updated successfully."
+                [ -n "${found_path}" ] || {
+                    echo "  [ERROR] Skill source '${target}' is not registered."
+                    return 1
+                }
+                if _catalog_device_source_is_registered "${found_path}"; then
+                    target_source_id="$(_catalog_device_source_id "${target}" "${found_path}")"
+                    HAWS_AUTO_UPDATE_SKILLS=on sync_target "${target_source_id}" || return $?
+                    echo "  [✓] Device-local source ${target} updated safely."
+                else
+                    echo "  [*] Updating tracked submodule [${target}] (${found_path}) from remote link..."
+                    if git -C "${SCRIPT_DIR}" submodule update --remote --merge "${found_path}"; then
+                        echo "  [✓] Submodule ${target} updated."
+                    else
+                        echo "  [ERROR] Submodule ${target} update failed; its local state was preserved." >&2
+                        update_status=1
+                    fi
+                fi
             else
                 echo "  [*] Scanning active submodules in local .gitmodules..."
                 local updated_count=0
-                while IFS= read -r sub_path; do
-                    [ -z "${sub_path}" ] && continue
-                    if [ -d "${SCRIPT_DIR}/${sub_path}" ]; then
-                        echo "  --> Updating [${sub_path}] from remote link..."
-                        git -C "${SCRIPT_DIR}" submodule update --remote --merge "${sub_path}" 2>/dev/null || \
-                        git -C "${SCRIPT_DIR}" submodule update --remote "${sub_path}" 2>/dev/null || true
+                if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
+                    while IFS= read -r sub_path; do
+                        [ -z "${sub_path}" ] && continue
+                        if [ -d "${SCRIPT_DIR}/${sub_path}" ]; then
+                            echo "  --> Updating [${sub_path}] from remote link..."
+                            if git -C "${SCRIPT_DIR}" submodule update --remote --merge "${sub_path}"; then
+                                updated_count=$((updated_count + 1))
+                            else
+                                echo "  [ERROR] Submodule update failed: ${sub_path}" >&2
+                                update_status=1
+                            fi
+                        fi
+                    done < <(git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print $2}')
+                fi
+                while IFS=$'\t' read -r target_source_id target_source_path _ _ || [ -n "${target_source_id:-}" ]; do
+                    [ -n "${target_source_id:-}" ] || continue
+                    _catalog_device_source_is_registered "${target_source_path}" || continue
+                    if HAWS_AUTO_UPDATE_SKILLS=on sync_target "${target_source_id}"; then
                         updated_count=$((updated_count + 1))
+                    else
+                        update_status=$?
+                        echo "  [ERROR] Device-local source update failed: ${target_source_path}" >&2
                     fi
-                done < <(git -C "${SCRIPT_DIR}" config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print $2}')
-                echo "  [✓] Updated ${updated_count} active submodule(s) from remote links."
+                done < <(catalog_sources)
+                if [ "${update_status}" -eq 0 ]; then
+                    echo "  [✓] Updated ${updated_count} tracked or device-local skill source(s)."
+                else
+                    echo "  [ERROR] One or more skill sources could not be updated." >&2
+                fi
             fi
             echo ""
-            run_sync
+            run_sync || update_status=$?
+            return "${update_status}"
             ;;
         edit|modules)
             run_edit_gitmodules
@@ -4285,15 +4460,23 @@ run_kit() {
             fi
             ;;
         list|status)
-            echo "=== HAWS KIT Installed Submodules & Tools ==="
+            echo "=== HAWS KIT Installed Sources ==="
             if [ -f "${SCRIPT_DIR}/.gitmodules" ]; then
                 git -C "${SCRIPT_DIR}" submodule status
             else
-                echo "  No submodules configured."
+                echo "  No tracked skill sources configured."
             fi
+            local source_id source_path source_url source_revision source_name
+            while IFS=$'\t' read -r source_id source_path source_url source_revision || [ -n "${source_id:-}" ]; do
+                [ -n "${source_id:-}" ] || continue
+                _catalog_device_source_is_registered "${source_path}" || continue
+                source_name="${source_path##*/}"
+                printf '  [device-local] %s (%s) %s\n' \
+                    "${source_name}" "${source_path}" "${source_revision}"
+            done < <(catalog_sources)
             ;;
         *)
-            echo "Usage: ./haws.sh kit [setup|edit|add|prune|update|list]"
+            echo "Usage: ./haws.sh kit [setup|edit|add|migrate|prune|update|list]"
             return 1
             ;;
     esac
@@ -6386,7 +6569,8 @@ settings_repositories_page() {
                 echo "============================================================="
                 echo "                 Add Git Repository"
                 echo "============================================================="
-                echo "Enter external Git repository URLs to add as submodules."
+                echo "Enter an external skill repository URL to add as a device-local source."
+                echo "This keeps user-added skills out of the HAWS Git root."
                 read -r -p "Enter Git Repository URL (or 'c' to cancel): " url || url=""
                 url="${url%$'\r'}"
                 case "${url}" in
@@ -6780,6 +6964,338 @@ settings_preview() {
     return 2
 }
 
+_catalog_directory_has_discoverable_skill() {
+    local source_dir="${1:-}" skill_file skill_rel
+    [ -d "${source_dir}" ] || return 1
+    while IFS= read -r -d '' skill_file; do
+        skill_rel="${skill_file#${source_dir}/}"
+        _catalog_skill_is_eligible "${skill_rel}" || continue
+        [ -n "$(extract_skill_name "${skill_file}")" ] && return 0
+    done < <(find "${source_dir}" -type f \( -name SKILL.md -o -name skill.md \) -print0 2>/dev/null)
+    return 1
+}
+
+_catalog_add_device_source() {
+    local source_url="${1:-}" destination="${2:-}" preflight_only="${3:-0}"
+    local validation_mode="${4:-settings}" source_name="${destination##*/}"
+    local allow_existing_submodule="${5:-0}"
+    local device_dir staged registry temporary row source_id path url revision
+    local existing_identity wanted_identity device_status reuse_existing=0 created_device=0
+
+    if [ "${validation_mode}" = kit ]; then
+        _catalog_external_skill_url_valid "${source_url}"
+    else
+        catalog_validate_url "${source_url}"
+    fi || {
+        echo "Blocked: invalid repository URL: ${source_url}"
+        return 1
+    }
+    case "${destination}" in skills/packs/*|skills/standalone/*) ;; *)
+        echo "Blocked: repository destination is outside the skill roots: ${destination}"
+        return 1
+        ;;
+    esac
+    if [ "${allow_existing_submodule}" = 1 ]; then
+        _haws_source_path_safe "${destination}" &&
+            [[ "${source_name}" =~ ^[A-Za-z0-9_.-]+$ ]] || {
+            echo "Blocked: repository destination is unsafe: ${destination}"
+            return 1
+        }
+    else
+        catalog_validate_destination "${destination}" || {
+            echo "Blocked: repository destination is unsafe or occupied: ${destination}"
+            return 1
+        }
+    fi
+    if _catalog_device_source_is_registered "${destination}"; then
+        echo "Blocked: device-local repository destination is already registered: ${destination}"
+        return 1
+    fi
+    _catalog_invalidate_source_catalog
+    wanted_identity="$(_settings_url_identity "${source_url}")"
+    while IFS=$'\t' read -r source_id path url revision || [ -n "${source_id:-}" ]; do
+        [ -n "${source_id:-}" ] || continue
+        if [ "${allow_existing_submodule}" = 1 ] &&
+            [ "${path}" = "${destination}" ] && [ "${url}" = "${source_url}" ]; then
+            continue
+        fi
+        [ "${path}" != "${destination}" ] || {
+            echo "Blocked: repository destination is already registered: ${destination}"
+            return 1
+        }
+        existing_identity="$(_settings_url_identity "${url}")"
+        [ "${existing_identity}" != "${wanted_identity}" ] || {
+            echo "Blocked: repository URL is already registered: ${source_url}"
+            return 1
+        }
+    done < <(catalog_sources)
+
+    device_dir="$(_catalog_device_source_dir "${destination}")" || return 1
+    if [ -e "${device_dir}" ] || [ -L "${device_dir}" ]; then
+        if [ "${allow_existing_submodule}" != 1 ] || [ -L "${device_dir}" ] ||
+            ! git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 ||
+            [ "$(git -C "${device_dir}" config --get remote.origin.url 2>/dev/null || true)" != "${source_url}" ]; then
+            echo "Blocked: device-local repository destination is occupied: ${destination}"
+            return 1
+        fi
+        device_status="$(git -C "${device_dir}" status --porcelain --untracked-files=all --ignored=traditional 2>/dev/null)" || {
+            echo "Blocked: could not inspect existing device-local repository: ${destination}"
+            return 1
+        }
+        [ -z "${device_status}" ] && _catalog_directory_has_discoverable_skill "${device_dir}" || {
+            echo "Blocked: existing device-local repository is dirty or has no discoverable skill: ${destination}"
+            return 1
+        }
+        reuse_existing=1
+    fi
+    [ "${preflight_only}" = 1 ] && return 0
+
+    if [ "${reuse_existing}" -ne 1 ]; then
+        staged="${device_dir}.stage.$$"
+        [ ! -e "${staged}" ] && [ ! -L "${staged}" ] || {
+            echo "Blocked: temporary repository destination is occupied: ${destination}"
+            return 1
+        }
+        mkdir -p "$(dirname "${device_dir}")" || return 1
+        if ! git clone -q -- "${source_url}" "${staged}"; then
+            rm -rf -- "${staged}"
+            echo "Blocked: could not clone repository: ${source_url}"
+            return 1
+        fi
+        if ! _catalog_directory_has_discoverable_skill "${staged}"; then
+            rm -rf -- "${staged}"
+            echo "Blocked: repository has no discoverable HAWS skills: ${source_url}"
+            return 1
+        fi
+        mv -- "${staged}" "${device_dir}" || {
+            rm -rf -- "${staged}"
+            return 1
+        }
+        created_device=1
+    fi
+
+    registry="$(_catalog_device_source_registry)"
+    temporary="${registry}.stage.$$"
+    [ ! -e "${temporary}" ] && [ ! -L "${temporary}" ] || {
+        [ "${created_device}" -eq 1 ] && rm -rf -- "${device_dir}"
+        echo "Blocked: temporary repository registry is occupied: ${destination}"
+        return 1
+    }
+    if [ -f "${registry}" ]; then
+        cat -- "${registry}" > "${temporary}" || {
+            rm -f -- "${temporary}"
+            [ "${created_device}" -eq 1 ] && rm -rf -- "${device_dir}"
+            return 1
+        }
+    else
+        : > "${temporary}" || {
+            [ "${created_device}" -eq 1 ] && rm -rf -- "${device_dir}"
+            return 1
+        }
+    fi
+    printf '%s\t%s\t%s\n' "${source_name}" "${destination}" "${source_url}" >> "${temporary}" || {
+        rm -f -- "${temporary}"
+        [ "${created_device}" -eq 1 ] && rm -rf -- "${device_dir}"
+        return 1
+    }
+    mv -f -- "${temporary}" "${registry}" || {
+        rm -f -- "${temporary}"
+        [ "${created_device}" -eq 1 ] && rm -rf -- "${device_dir}"
+        return 1
+    }
+    _catalog_invalidate_source_catalog
+    echo "Repository added as device-local source: ${destination}"
+}
+
+_catalog_pending_submodule_url() (
+    local name="${1:-}" path="skills/packs/${1:-}" repo status expected_status
+    local source_url path_count temp_dir base_modules index_modules expected_modules
+    [[ "${name}" =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
+    _haws_source_path_safe "${path}" || return 1
+    repo="$(_catalog_repo_dir)"
+    [ -f "${repo}/.gitmodules" ] && [ -d "${repo}/${path}" ] && [ ! -L "${repo}/${path}" ] || return 1
+    if git -C "${repo}" cat-file -e HEAD:.gitmodules 2>/dev/null; then
+        expected_status=$'M  .gitmodules\nA  '"${path}"
+    else
+        expected_status=$'A  .gitmodules\nA  '"${path}"
+    fi
+    status="$(git -C "${repo}" status --porcelain=v1 --untracked-files=all --ignore-submodules=none 2>/dev/null)" || return 1
+    [ "$(printf '%s\n' "${status}" | LC_ALL=C sort)" = \
+        "$(printf '%s\n' "${expected_status}" | LC_ALL=C sort)" ] || return 1
+    git -C "${repo}" diff --quiet -- .gitmodules || return 1
+    git -C "${repo}" diff --quiet -- "${path}" || return 1
+
+    local index_line index_meta index_mode index_sha index_stage checkout_head
+    index_line="$(git -C "${repo}" ls-files --stage -- "${path}")"
+    [ -n "${index_line}" ] || return 1
+    index_meta="${index_line%%$'\t'*}"
+    IFS=' ' read -r index_mode index_sha index_stage <<< "${index_meta}"
+    [ "${index_mode}" = 160000 ] && [ "${index_stage}" = 0 ] || return 1
+    [ -z "$(git -C "${repo}" ls-tree HEAD -- "${path}")" ] || return 1
+    checkout_head="$(git -C "${repo}/${path}" rev-parse --verify HEAD 2>/dev/null)" || return 1
+    [ "${checkout_head}" = "${index_sha}" ] || return 1
+
+    status="$(git -C "${repo}/${path}" status --porcelain --untracked-files=all --ignored=traditional 2>/dev/null)" || return 1
+    [ -z "${status}" ] || return 1
+    path_count="$(git -C "${repo}" config --file .gitmodules --get-all "submodule.${path}.path" 2>/dev/null | wc -l | tr -d ' ')"
+    [ "${path_count}" = 1 ] || return 1
+    [ "$(git -C "${repo}" config --file .gitmodules --get "submodule.${path}.path" 2>/dev/null)" = "${path}" ] || return 1
+    source_url="$(git -C "${repo}" config --file .gitmodules --get "submodule.${path}.url" 2>/dev/null)" || return 1
+    _catalog_external_skill_url_valid "${source_url}" || return 1
+    [ "$(git -C "${repo}/${path}" config --get remote.origin.url 2>/dev/null || true)" = "${source_url}" ] || return 1
+
+    temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/haws-migrate.XXXXXX")" || return 1
+    trap 'rm -rf -- "${temp_dir}"' EXIT
+    base_modules="${temp_dir}/base.gitmodules"
+    index_modules="${temp_dir}/index.gitmodules"
+    expected_modules="${temp_dir}/expected.gitmodules"
+    if git -C "${repo}" cat-file -e HEAD:.gitmodules 2>/dev/null; then
+        git -C "${repo}" show HEAD:.gitmodules > "${base_modules}" || {
+            return 1
+        }
+    else
+        : > "${base_modules}"
+    fi
+    git -C "${repo}" show :.gitmodules > "${index_modules}" || return 1
+    sed 's/\r$//' "${base_modules}" > "${temp_dir}/base.normalized" || return 1
+    sed 's/\r$//' "${index_modules}" > "${temp_dir}/index.normalized" || return 1
+    if [ -s "${temp_dir}/base.normalized" ] &&
+        [ -n "$(tail -c 1 "${temp_dir}/base.normalized")" ]; then
+        return 1
+    fi
+    cp -- "${temp_dir}/base.normalized" "${expected_modules}" || return 1
+    printf '[submodule "%s"]\n\tpath = %s\n\turl = %s\n' \
+        "${path}" "${path}" "${source_url}" >> "${expected_modules}" || return 1
+    cmp -s -- "${expected_modules}" "${temp_dir}/index.normalized" || return 1
+    printf '%s\n' "${source_url}"
+)
+
+_catalog_migrate_pending_source() {
+    local name="${1:-}" destination="skills/packs/${1:-}" repo source_url module_cache status
+    repo="$(_catalog_repo_dir)"
+    source_url="$(_catalog_pending_submodule_url "${name}")" || {
+        echo "Blocked: ${name} is not the only clean, staged Kit submodule addition; no files were changed." >&2
+        return 1
+    }
+    module_cache="$(_catalog_submodule_cache_dir "${destination}")" || {
+        echo "Blocked: could not resolve the pending submodule's private cache." >&2
+        return 1
+    }
+    [ ! -L "${module_cache}" ] || {
+        echo "Blocked: pending submodule cache is a symbolic link." >&2
+        return 1
+    }
+    _catalog_add_device_source "${source_url}" "${destination}" 0 kit 1 || return $?
+
+    if ! git -C "${repo}" submodule deinit -f -- "${destination}"; then
+        echo "Migration paused: the device-local copy is registered, but Git could not deinitialize the old submodule." >&2
+        return 1
+    fi
+    git -C "${repo}" update-index --force-remove -- "${destination}" || return 1
+    if git -C "${repo}" cat-file -e HEAD:.gitmodules 2>/dev/null; then
+        git -C "${repo}" restore --source=HEAD --staged --worktree -- .gitmodules || return 1
+    else
+        git -C "${repo}" update-index --force-remove -- .gitmodules || return 1
+        rm -f -- "${repo}/.gitmodules" || return 1
+    fi
+    if [ -e "${repo}/${destination}" ] || [ -L "${repo}/${destination}" ]; then
+        [ ! -L "${repo}/${destination}" ] || return 1
+        rm -rf -- "${repo}/${destination}" || return 1
+    fi
+    if [ -d "${module_cache}" ]; then
+        [ "$(_catalog_submodule_cache_dir "${destination}")" = "${module_cache}" ] &&
+            [ ! -L "${module_cache}" ] || return 1
+        rm -rf -- "${module_cache}" || return 1
+    fi
+    status="$(git -C "${repo}" status --porcelain=v1 --untracked-files=all --ignore-submodules=none 2>/dev/null)" || return 1
+    [ -z "${status}" ] || {
+        echo "Migration copied the skill, but Git still reports HAWS root changes: ${status}" >&2
+        return 1
+    }
+    _catalog_invalidate_source_catalog
+    echo "Migrated ${destination} to device-local state. HAWS root is clean."
+}
+
+_catalog_remove_device_source() {
+    local destination="${1:-}" preflight_only="${2:-0}"
+    local fields name source_url registry temporary device_dir tombstone
+    local row existing_name path url found=0
+    fields="$(_catalog_device_source_fields "${destination}" 2>/dev/null || true)"
+    [ -n "${fields}" ] || return 1
+    IFS=$'\t' read -r name source_url <<< "${fields}"
+    registry="$(_catalog_device_source_registry)"
+    device_dir="$(_catalog_device_source_dir "${destination}")" || return 1
+    [ ! -L "${device_dir}" ] || {
+        echo "Blocked: device-local repository path is a symbolic link: ${destination}"
+        return 1
+    }
+    if [ -e "${device_dir}" ]; then
+        git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+            echo "Blocked: device-local repository is not a Git checkout: ${destination}"
+            return 1
+        }
+        local status
+        if ! status="$(git -C "${device_dir}" status --porcelain --untracked-files=all --ignored=traditional 2>/dev/null)"; then
+            echo "Blocked: could not inspect repository: ${destination}"
+            return 1
+        fi
+        [ "$(git -C "${device_dir}" config --get remote.origin.url 2>/dev/null || true)" = "${source_url}" ] || {
+            echo "Blocked: repository origin does not match its registered source: ${destination}"
+            return 1
+        }
+        [ -z "${status}" ] || {
+            echo "Blocked: repository has local changes: ${destination}"
+            return 2
+        }
+    fi
+    [ "${preflight_only}" = 1 ] && return 0
+
+    temporary="${registry}.stage.$$"
+    [ ! -e "${temporary}" ] && [ ! -L "${temporary}" ] || {
+        echo "Blocked: temporary repository registry is occupied: ${destination}"
+        return 1
+    }
+    {
+        while IFS=$'\t' read -r existing_name path url || [ -n "${existing_name:-}" ]; do
+            [ -n "${existing_name:-}" ] || continue
+            if [ "${path}" = "${destination}" ]; then
+                found=1
+                continue
+            fi
+            printf '%s\t%s\t%s\n' "${existing_name}" "${path}" "${url}"
+        done < "${registry}"
+    } > "${temporary}" || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    [ "${found}" -eq 1 ] || {
+        rm -f -- "${temporary}"
+        return 1
+    }
+    if [ -e "${device_dir}" ]; then
+        tombstone="${device_dir}.prune.$$"
+        [ ! -e "${tombstone}" ] && [ ! -L "${tombstone}" ] || {
+            rm -f -- "${temporary}"
+            echo "Blocked: temporary cleanup path is occupied: ${destination}"
+            return 1
+        }
+        mv -- "${device_dir}" "${tombstone}" || {
+            rm -f -- "${temporary}"
+            return 1
+        }
+    fi
+    if ! mv -f -- "${temporary}" "${registry}"; then
+        rm -f -- "${temporary}"
+        [ -n "${tombstone:-}" ] && mv -- "${tombstone}" "${device_dir}" 2>/dev/null || true
+        return 1
+    fi
+    _catalog_invalidate_source_catalog
+    if [ -n "${tombstone:-}" ] && ! rm -rf -- "${tombstone}"; then
+        echo "Warning: source was unregistered but its clean cache remains at ${tombstone}" >&2
+    fi
+    echo "Repository removed from device-local sources: ${destination}"
+}
+
 settings_apply_repository_action() {
     local action="${1:-}"
     local source_url="${2:-}"
@@ -6791,31 +7307,36 @@ settings_apply_repository_action() {
 
     case "${action}" in
         add-source)
+            _catalog_add_device_source "${source_url}" "${destination}" \
+                "${preflight_only}" "${validation_mode}"
+            ;;
+        add-tracked-source)
             if [ "${validation_mode}" = kit ]; then
-                [ -n "${source_url}" ] && [[ "${source_url}" != *[[:cntrl:]]* ]] || {
-                    echo "Blocked: invalid repository URL: ${source_url}"
-                    return 1
-                }
-            elif ! catalog_validate_url "${source_url}"; then
+                _catalog_external_skill_url_valid "${source_url}"
+            else
+                catalog_validate_url "${source_url}"
+            fi || {
                 echo "Blocked: invalid repository URL: ${source_url}"
                 return 1
-            fi
+            }
             catalog_validate_destination "${destination}" || {
                 echo "Blocked: repository destination is unsafe or occupied: ${destination}"
                 return 1
             }
-            while IFS=$'\t' read -r source_id path url revision || [ -n "${source_id}" ]; do
-                [ -n "${source_id}" ] || continue
-                [ "${path}" = "${destination}" ] || continue
-                echo "Blocked: repository destination is already registered: ${destination}"
-                return 1
+            while IFS=$'\t' read -r source_id path url revision || [ -n "${source_id:-}" ]; do
+                [ -n "${source_id:-}" ] || continue
+                if [ "${path}" = "${destination}" ] ||
+                    [ "$(_settings_url_identity "${url}")" = "$(_settings_url_identity "${source_url}")" ]; then
+                    echo "Blocked: repository is already registered: ${destination}"
+                    return 1
+                fi
             done < <(catalog_sources)
             [ "${preflight_only}" = 1 ] && return 0
             git -C "${repo}" submodule add -- "${source_url}" "${destination}" || {
                 echo "Blocked: could not add repository: ${source_url}"
                 return 1
             }
-            echo "Repository added: ${destination}"
+            echo "Repository added as tracked HAWS content: ${destination}"
             ;;
         remove-source)
             source_id="${source_url}"
@@ -6841,13 +7362,25 @@ settings_apply_repository_action() {
                     return 1
                     ;;
             esac
+            if _catalog_device_source_is_registered "${path}"; then
+                [ -z "${destination}" ] || [ "${destination}" = "${path}" ] || {
+                    echo "Blocked: repository destination changed: ${path}"
+                    return 1
+                }
+                _catalog_remove_device_source "${path}" "${preflight_only}"
+                return $?
+            fi
             if ! git -C "${repo}" ls-files --stage -- "${path}" |
                 awk '$1 == "160000" {found=1} END {exit found ? 0 : 1}'; then
                 echo "Blocked: repository is not a registered submodule: ${path}"
                 return 1
             fi
+            [ ! -L "${repo}/${path}" ] || {
+                echo "Blocked: submodule checkout is a symbolic link: ${path}"
+                return 1
+            }
             if [ -d "${repo}/${path}" ]; then
-                if ! status="$(git -C "${repo}/${path}" status --porcelain --untracked-files=all 2>/dev/null)"; then
+                if ! status="$(git -C "${repo}/${path}" status --porcelain --untracked-files=all --ignored=traditional 2>/dev/null)"; then
                     echo "Blocked: could not inspect repository: ${path}"
                     return 1
                 fi
@@ -6855,6 +7388,16 @@ settings_apply_repository_action() {
                     echo "Blocked: repository has local changes: ${path}"
                     return 2
                 fi
+                local expected_git_dir actual_git_dir
+                expected_git_dir="$(_catalog_submodule_cache_dir "${path}")" || {
+                    echo "Blocked: could not resolve submodule ownership: ${path}"
+                    return 1
+                }
+                actual_git_dir="$(git -C "${repo}/${path}" rev-parse --path-format=absolute --absolute-git-dir 2>/dev/null || true)"
+                [ -n "${actual_git_dir}" ] && [ "${actual_git_dir}" = "${expected_git_dir}" ] || {
+                    echo "Blocked: repository is not the initialized submodule owned by HAWS: ${path}"
+                    return 1
+                }
             fi
             [ "${preflight_only}" = 1 ] && return 0
             git -C "${repo}" submodule deinit -f -- "${path}" || {
@@ -7060,7 +7603,7 @@ settings_verify_plan() {
                         break
                     fi
                 done < <(catalog_sources)
-                if [ "${found}" -ne 1 ] || ! _catalog_source_is_gitlink "${rest}"; then
+                if [ "${found}" -ne 1 ] || ! _catalog_device_source_is_registered "${rest}"; then
                     echo "Verification failed: repository was not registered: ${rest}"
                     return 1
                 fi
@@ -7070,8 +7613,12 @@ settings_verify_plan() {
                 while IFS=$'\t' read -r source_id source_path source_url revision || [ -n "${source_id:-}" ]; do
                     [ "${source_path}" = "${rest}" ] && found=1
                 done < <(catalog_sources)
+                local device_path
+                device_path="$(_catalog_device_source_dir "${rest}" 2>/dev/null || true)"
                 if [ "${found}" -ne 0 ] || _catalog_source_is_gitlink "${rest}" ||
-                    [ -e "${SCRIPT_DIR}/${rest}" ] || [ -L "${SCRIPT_DIR}/${rest}" ]; then
+                    _catalog_device_source_is_registered "${rest}" ||
+                    [ -e "${SCRIPT_DIR}/${rest}" ] || [ -L "${SCRIPT_DIR}/${rest}" ] ||
+                    { [ -n "${device_path}" ] && { [ -e "${device_path}" ] || [ -L "${device_path}" ]; }; }; then
                     echo "Verification failed: repository remains after removal: ${rest}"
                     return 1
                 fi
@@ -7484,7 +8031,7 @@ case "${COMMAND}" in
         echo "  codex-agents [install|check|uninstall] [--dry-run] Native Codex roles only (no network sync)"
         echo "  setup           Complete frictionless setup: secondbrain + submodules + sync + hooks + doctor"
         echo "  sync [--clean]  All-in-one Smart Sync (use --clean to purge unmanaged foreign skills)"
-        echo "  kit [add|prune|update] Manage KIT submodules and external tools with merge protection"
+        echo "  kit [add|migrate|prune|update] Manage tracked bundles and device-local skill sources safely"
         echo "  user [connect]  Manage personal Second Brain (symmetrical 1-click cloud sync)"
         echo "  hook [install]  Install or inspect the HAWS advisory Git commit-msg hook"
         echo "  status          Instant sub-second skill count and token budget check"
