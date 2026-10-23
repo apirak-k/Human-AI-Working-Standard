@@ -682,8 +682,11 @@ _haws_mark_integration_ownership_migration_complete() {
     local marker="$(_haws_state_dir)/integration-ownership-migration-v1"
     local temporary="${marker}.stage.$$"
     if [ -e "${marker}" ] || [ -L "${marker}" ]; then
-        _haws_schema_marker_valid "${marker}" 1 migrated_at
-        return $?
+        _haws_schema_marker_valid "${marker}" 1 migrated_at || return $?
+        if [ "${1:-}" != --refresh-ledger-upgrade ] ||
+            ! _haws_integration_migration_matches_ledger_upgrade; then
+            return 0
+        fi
     fi
     if ! mkdir -p "$(dirname "${marker}")" ||
         ! printf 'schema=1\tmigrated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${temporary}" ||
@@ -694,9 +697,58 @@ _haws_mark_integration_ownership_migration_complete() {
     _haws_schema_marker_valid "${marker}" 1 migrated_at
 }
 
+_haws_integration_migration_matches_ledger_upgrade() {
+    local state="$(_haws_state_dir)"
+    local integration_marker="${state}/integration-ownership-migration-v1"
+    local ledger_marker="${state}/ownership-ledger-v2"
+    local integration_schema integration_timestamp ledger_schema ledger_timestamp
+    _haws_schema_marker_valid "${integration_marker}" 1 migrated_at || return 1
+    _haws_schema_marker_valid "${ledger_marker}" 2 upgraded_at || return 1
+    IFS=$'\t' read -r integration_schema integration_timestamp < "${integration_marker}"
+    IFS=$'\t' read -r ledger_schema ledger_timestamp < "${ledger_marker}"
+    [ "${integration_schema}" = schema=1 ] && [ "${ledger_schema}" = schema=2 ] || return 1
+    integration_timestamp="${integration_timestamp#migrated_at=}"
+    ledger_timestamp="${ledger_timestamp#upgraded_at=}"
+    [ -n "${integration_timestamp}" ] && [ "${integration_timestamp}" = "${ledger_timestamp}" ]
+}
+
+_haws_file_mtime_epoch() {
+    local path="${1:-}" timestamp
+    [ -n "${path}" ] || return 1
+    timestamp="$(stat -c '%Y' -- "${path}" 2>/dev/null)" && {
+        printf '%s\n' "${timestamp}"
+        return 0
+    }
+    timestamp="$(stat -f '%m' "${path}" 2>/dev/null)" && {
+        printf '%s\n' "${timestamp}"
+        return 0
+    }
+    return 1
+}
+
+_haws_pointer_predates_ledger_migration() {
+    local pointer="${1:-}"
+    local marker="$(_haws_state_dir)/integration-ownership-migration-v1"
+    local pointer_mtime marker_mtime
+    if [ ! -e "${marker}" ] && [ ! -L "${marker}" ]; then
+        marker="$(_haws_state_dir)/ownership-ledger-v2"
+    fi
+    pointer_mtime="$(_haws_file_mtime_epoch "${pointer}")" || return 1
+    marker_mtime="$(_haws_file_mtime_epoch "${marker}")" || return 1
+    [[ "${pointer_mtime}" =~ ^[0-9]+$ && "${marker_mtime}" =~ ^[0-9]+$ ]] || return 1
+    [ "${pointer_mtime}" -le "${marker_mtime}" ]
+}
+
 _haws_ownership_ledger_has_unversioned_rows() {
     local file result
-    for file in "$(_haws_state_dir)/ownership.tsv" "${HOME}/.haws/skills-ownership.tsv"; do
+    local ownership_files=("$(_haws_state_dir)/ownership.tsv")
+    # The old device-level skill ledger is a supported input to legacy
+    # migration. Only an unversioned current state ledger is ambiguous enough
+    # to block adopting other legacy integrations.
+    if [ "${1:-}" != --state-only ]; then
+        ownership_files+=("${HOME}/.haws/skills-ownership.tsv")
+    fi
+    for file in "${ownership_files[@]}"; do
         if [ -e "${file}" ] || [ -L "${file}" ]; then
             [ -f "${file}" ] && [ ! -L "${file}" ] || return 2
             if awk -F $'\t' '$1 != "" && !(NF == 6 && $6 == "schema=2") { found=1 } END { exit found ? 0 : 1 }' \
@@ -718,7 +770,7 @@ _haws_prepare_ownership_ledger_v2() {
     local gemini_manifest="${state}/gemini-skills-ownership.json"
     local gemini_quarantine="${gemini_manifest}.untrusted-v1"
     local temporary="${ledger_marker}.stage.$$"
-    local has_unversioned=0 marker_status manifest_present=0 quarantine_present=0
+    local marker_status manifest_present=0 quarantine_present=0
 
     if [ -e "${integration_marker}" ] || [ -L "${integration_marker}" ]; then
         _haws_schema_marker_valid "${integration_marker}" 1 migrated_at || return 1
@@ -739,18 +791,11 @@ _haws_prepare_ownership_ledger_v2() {
     [ "${manifest_present}" -eq 0 ] || [ "${quarantine_present}" -eq 0 ] || return 1
 
     if _haws_ownership_ledger_has_unversioned_rows; then
-        has_unversioned=1
+        :
     else
         marker_status=$?
         [ "${marker_status}" -eq 1 ] || return 1
     fi
-    if [ "${manifest_present}" -eq 1 ] || [ "${quarantine_present}" -eq 1 ]; then
-        has_unversioned=1
-    fi
-    if [ "${has_unversioned}" -eq 1 ]; then
-        _haws_mark_integration_ownership_migration_complete || return 1
-    fi
-
     if [ "${manifest_present}" -eq 1 ]; then
         mv -- "${gemini_manifest}" "${gemini_quarantine}" || return 1
     fi
@@ -2782,12 +2827,36 @@ _run_sync_impl() {
     echo ""
     local sync_status=0
     local HAWS_LEGACY_INTEGRATION_MIGRATION=0
+    local HAWS_LEGACY_POINTER_RECOVERY=0
+    local HAWS_LEGACY_INTEGRATION_MIGRATION_FROM_LEDGER_UPGRADE=0
+    local HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED=0
     local legacy_migration_marker="$(_haws_state_dir)/integration-ownership-migration-v1"
+    if _haws_ownership_ledger_has_unversioned_rows --state-only; then
+        HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED=1
+    else
+        local legacy_ledger_status=$?
+        [ "${legacy_ledger_status}" -eq 1 ] || {
+            echo "[ERROR] Ownership ledger is invalid; sync stopped safely." >&2
+            return 1
+        }
+    fi
+    if [ -e "$(_haws_state_dir)/gemini-skills-ownership.json.untrusted-v1" ] ||
+        [ -L "$(_haws_state_dir)/gemini-skills-ownership.json.untrusted-v1" ]; then
+        HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED=1
+    fi
     if [ -s "$(_haws_state_dir)/install.complete" ] &&
         [ -s "${HOME}/.haws_manifest" ] &&
-        [ ! -e "${legacy_migration_marker}" ] && [ ! -L "${legacy_migration_marker}" ] &&
         grep -Eq '^(skill|agent):' "${HOME}/.haws_manifest"; then
-        HAWS_LEGACY_INTEGRATION_MIGRATION=1
+        if [ ! -e "${legacy_migration_marker}" ] && [ ! -L "${legacy_migration_marker}" ]; then
+            if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED}" -eq 1 ]; then
+                HAWS_LEGACY_POINTER_RECOVERY=1
+            else
+                HAWS_LEGACY_INTEGRATION_MIGRATION=1
+            fi
+        elif _haws_integration_migration_matches_ledger_upgrade; then
+            HAWS_LEGACY_POINTER_RECOVERY=1
+            HAWS_LEGACY_INTEGRATION_MIGRATION_FROM_LEDGER_UPGRADE=1
+        fi
     fi
     echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
@@ -3126,8 +3195,11 @@ _run_sync_impl() {
             if [ -z "${prior_record}" ]; then
                 local existing_pointer_hash
                 existing_pointer_hash="$(_haws_pointer_block_fingerprint "${target_file}" 2>/dev/null || true)"
-                if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] &&
-                    [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ]; then
+                if { [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] ||
+                    [ "${HAWS_LEGACY_POINTER_RECOVERY:-0}" = 1 ]; } &&
+                    [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ] &&
+                    { [ "${HAWS_LEGACY_POINTER_RECOVERY:-0}" != 1 ] ||
+                        _haws_pointer_predates_ledger_migration "${target_file}"; }; then
                     if awk -v start="${marker_start}" -v end="${marker_end}" '
                         $0 == start { inside=1; next }
                         $0 == end { inside=0; next }
@@ -3727,9 +3799,14 @@ EOF
 
     # Mark migration complete only after every integration has succeeded. A
     # failed Sync remains eligible for a safe retry on the next run.
-    if [ "${sync_status}" -eq 0 ] &&
-        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION}" -eq 1 ]; then
-        if ! _haws_mark_integration_ownership_migration_complete; then
+    if [ "${sync_status}" -eq 0 ] && {
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION}" -eq 1 ] ||
+        [ "${HAWS_LEGACY_POINTER_RECOVERY}" -eq 1 ] ||
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED}" -eq 1 ]; }; then
+        local migration_marker_mode=""
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION_FROM_LEDGER_UPGRADE}" -eq 1 ] &&
+            migration_marker_mode=--refresh-ledger-upgrade
+        if ! _haws_mark_integration_ownership_migration_complete "${migration_marker_mode}"; then
             echo "[FAIL] Ownership migration marker could not be saved; Sync must be retried."
             sync_status=1
         fi

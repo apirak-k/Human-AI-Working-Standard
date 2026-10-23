@@ -155,3 +155,13 @@ Additional checks passed: Settings Apply regression, Second Brain merge preserva
 ## Resume Point
 
 Continue new work on `dev`. Keep tests and development documents on `dev`; promote verified user-facing code and finalized HAWS documentation to `main` when ready for users.
+
+## Global Pointer Ownership Migration Repair — 2026-10-23
+
+- Root cause: `_haws_prepare_ownership_ledger_v2` completed the legacy integration migration while upgrading the ownership ledger. The two markers consequently had the same timestamp, so Sync treated existing exact HAWS pointers as unowned files after the migration window had closed.
+- Fix: ledger upgrade no longer completes integration migration. An affected install can recover pointer ownership only when the marker timestamps identify the upgrade case, the pointer predates the marker, and the complete HAWS block exactly matches current instructions. Recovery touches ownership state only; it does not rewrite the pointer or reopen agent, skill-link, Gemini, or hook adoption. An unversioned current ownership ledger or quarantined Gemini manifest blocks full legacy migration, while the supported old device-level skill ledger does not block migration of other artifacts.
+- Marker repair is written only after a successful Sync. Failed Sync leaves the recovery eligible for retry.
+- Changed user-facing files: `haws.sh` and `README.md`; both must be synchronized to `main`. Regression tests and this Handoff remain on `dev`.
+- Device evidence (read-only): the two markers both contain `2026-10-01T23:17:50Z`, the pointer ownership ledger has no entries, and both existing pointer files predate the markers. No live Sync was run during diagnosis.
+- Verification: `tests/cli/run.sh` passed 225 tests with 0 failures, including both pointer-recovery regressions and the legacy-ledger ownership-boundary case. `bash -n` and `git diff --check` passed.
+- Delivery boundary: keep regression tests and this Handoff on `dev`; promote only `haws.sh` and `README.md` to `main`. Preserve the pre-existing user edit in `secondbrain/WORKFLOW.md`; do not stage it.

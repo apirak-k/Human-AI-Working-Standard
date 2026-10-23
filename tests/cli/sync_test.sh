@@ -322,6 +322,132 @@ test_sync_runs_phases_in_order_and_configures_hooks() {
     [ "$(git -C "${FIXTURE_REPO}" config --get core.hooksPath)" = .githooks ]
 }
 
+test_sync_adopts_exact_legacy_pointer_after_ownership_ledger_upgrade() {
+    write_settings off
+    mkdir -p "${FIXTURE_HOME}/.gemini" "${FIXTURE_HOME}/.haws" \
+        "${FIXTURE_REPO}/.haws/state" "${FIXTURE_REPO}/ai-configs/gemini"
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_REPO}/ai-configs/gemini/skills-json.mjs" || return 1
+    printf 'installed\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+    printf 'skill:legacy-fixture:skills/packs/legacy-fixture\n' \
+        > "${FIXTURE_HOME}/.haws_manifest"
+    printf 'skills\tsymlink\t%s\t%s\tlegacy-hash\n' \
+        "${FIXTURE_HOME}/.gemini/config/skills/legacy-fixture" \
+        "${FIXTURE_REPO}/skills/packs/legacy-fixture" \
+        > "${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+
+    local repo_path pointer_file expected_file
+    repo_path="$(cd "${FIXTURE_REPO}" && pwd)" || return 1
+    pointer_file="${FIXTURE_HOME}/.gemini/GEMINI.md"
+    expected_file="${FIXTURE_ROOT}/expected-pointer.txt"
+    cat > "${expected_file}" <<EOF
+<!-- HAWS_GLOBAL_POINTER_START -->
+# HAWS — Human-AI Working Standard
+This environment operates under HAWS. Read and adhere to:
+- Core Standard: ${repo_path}/core/HAWS.md
+- Work Instructions: ${repo_path}/core/WORK_INSTRUCTIONS.md
+- Second Brain documents: ${repo_path}/secondbrain/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)
+- Subagent roles: ${repo_path}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.
+<!-- HAWS_GLOBAL_POINTER_END -->
+EOF
+    cp "${expected_file}" "${pointer_file}" || return 1
+
+    run_sync_process sync || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ -s "${FIXTURE_REPO}/.haws/state/ownership-ledger-v2" ] || return 1
+    [ -s "${FIXTURE_REPO}/.haws/state/integration-ownership-migration-v1" ] || return 1
+    grep -F '[ADOPTED] Exact legacy HAWS pointer ownership:' "${OUTPUT_FILE}" >/dev/null || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    ! grep -F '[PRESERVED] Exact HAWS pointer is unowned outside the one-time legacy migration:' \
+        "${OUTPUT_FILE}" >/dev/null || return 1
+    cmp -s "${expected_file}" "${pointer_file}" || return 1
+
+    source_haws || return 1
+    local expected_hash record
+    expected_hash="$(_haws_pointer_block_fingerprint "${pointer_file}")" || return 1
+    record="$(ownership_record_for_path pointers "${pointer_file}" 2>/dev/null || true)"
+    [ "${record}" = "pointer-block$(printf '\t')${pointer_file}$(printf '\t')created$(printf '\t')${expected_hash}" ]
+}
+
+test_sync_repairs_legacy_pointer_migration_marked_complete_too_early() {
+    write_settings off
+    mkdir -p "${FIXTURE_HOME}/.gemini" "${FIXTURE_HOME}/.haws" \
+        "${FIXTURE_REPO}/.haws/state" "${FIXTURE_REPO}/ai-configs/gemini"
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_REPO}/ai-configs/gemini/skills-json.mjs" || return 1
+    printf 'installed\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+    printf 'skill:legacy-fixture:skills/packs/legacy-fixture\n' \
+        > "${FIXTURE_HOME}/.haws_manifest"
+    printf 'skills\tsymlink\t%s\t%s\tlegacy-hash\n' \
+        "${FIXTURE_HOME}/.gemini/config/skills/legacy-fixture" \
+        "${FIXTURE_REPO}/skills/packs/legacy-fixture" \
+        > "${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+
+    local repo_path pointer_file expected_file old_migration_marker
+    local fixed_timestamp='2024-01-01T00:00:00Z'
+    repo_path="$(cd "${FIXTURE_REPO}" && pwd)" || return 1
+    pointer_file="${FIXTURE_HOME}/.gemini/GEMINI.md"
+    expected_file="${FIXTURE_ROOT}/expected-pointer.txt"
+    cat > "${expected_file}" <<EOF
+<!-- HAWS_GLOBAL_POINTER_START -->
+# HAWS — Human-AI Working Standard
+This environment operates under HAWS. Read and adhere to:
+- Core Standard: ${repo_path}/core/HAWS.md
+- Work Instructions: ${repo_path}/core/WORK_INSTRUCTIONS.md
+- Second Brain documents: ${repo_path}/secondbrain/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)
+- Subagent roles: ${repo_path}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.
+<!-- HAWS_GLOBAL_POINTER_END -->
+EOF
+    cp "${expected_file}" "${pointer_file}" || return 1
+    touch -t 202001010000.00 "${pointer_file}" || return 1
+
+    old_migration_marker="schema=1$(printf '\t')migrated_at=${fixed_timestamp}"
+    printf '%s\n' "${old_migration_marker}" \
+        > "${FIXTURE_REPO}/.haws/state/integration-ownership-migration-v1"
+    printf 'schema=2\tupgraded_at=%s\n' "${fixed_timestamp}" \
+        > "${FIXTURE_REPO}/.haws/state/ownership-ledger-v2"
+    touch -t 202401010000.00 \
+        "${FIXTURE_REPO}/.haws/state/integration-ownership-migration-v1" \
+        "${FIXTURE_REPO}/.haws/state/ownership-ledger-v2" || return 1
+
+    source_haws || return 1
+    _haws_schema_marker_valid "$(_haws_state_dir)/integration-ownership-migration-v1" \
+        1 migrated_at || return 1
+    _haws_schema_marker_valid "$(_haws_state_dir)/ownership-ledger-v2" \
+        2 upgraded_at || return 1
+    [ "$(<"$(_haws_state_dir)/integration-ownership-migration-v1")" = \
+        "${old_migration_marker}" ] || return 1
+    [ ! -e "$(_haws_state_dir)/ownership.tsv" ] || return 1
+
+    run_sync_process sync || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -F '[ADOPTED] Exact legacy HAWS pointer ownership:' "${OUTPUT_FILE}" >/dev/null || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    ! grep -F '[PRESERVED] Exact HAWS pointer is unowned outside the one-time legacy migration:' \
+        "${OUTPUT_FILE}" >/dev/null || return 1
+    cmp -s "${expected_file}" "${pointer_file}" || return 1
+
+    source_haws || return 1
+    local expected_hash record current_migration_marker
+    _haws_schema_marker_valid "$(_haws_state_dir)/integration-ownership-migration-v1" \
+        1 migrated_at || return 1
+    _haws_schema_marker_valid "$(_haws_state_dir)/ownership-ledger-v2" \
+        2 upgraded_at || return 1
+    current_migration_marker="$(<"$(_haws_state_dir)/integration-ownership-migration-v1")"
+    [ "${current_migration_marker}" != "${old_migration_marker}" ] || return 1
+    expected_hash="$(_haws_pointer_block_fingerprint "${pointer_file}")" || return 1
+    record="$(ownership_record_for_path pointers "${pointer_file}" 2>/dev/null || true)"
+    [ "${record}" = "pointer-block$(printf '\t')${pointer_file}$(printf '\t')created$(printf '\t')${expected_hash}" ]
+}
+
 test_sync_target_rows_use_batch_result_markers() {
     source_haws || return 1
     SYNC_SUMMARY_UPDATED=0
@@ -822,6 +948,8 @@ else
     run_test test_run_sync_reuses_catalog_cache_for_step4
     run_test test_run_sync_reuses_runtime_source_cache_for_step4
     run_test test_sync_runs_phases_in_order_and_configures_hooks
+    run_test test_sync_adopts_exact_legacy_pointer_after_ownership_ledger_upgrade
+    run_test test_sync_repairs_legacy_pointer_migration_marked_complete_too_early
     run_test test_sync_target_rows_use_batch_result_markers
     run_test test_clean_source_applies_remote_revision
     run_test test_device_source_without_seed_remote_stays_local_only
