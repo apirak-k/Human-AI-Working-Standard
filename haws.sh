@@ -136,7 +136,7 @@ _health_fingerprint() {
             else
                 env_stamp+="missing:$p;"
             fi
-        done < <(awk -F $'\t' '$1 == "environments" && NF == 6 && $6 == "schema=2" {print $2}' "$state/ownership.tsv" 2>/dev/null)
+        done < <(awk -F $'\t' '$1 == "environments" && NF == 6 && $6 == "schema=2" {print $3}' "$state/ownership.tsv" 2>/dev/null)
     fi
     source_fp="$(catalog_sources 2>/dev/null | cksum | awk '{print $1":"$2}')"
     skill_fp="$(catalog_skills 2>/dev/null | cksum | awk '{print $1":"$2}')"
@@ -215,9 +215,9 @@ _health_collect() {
         fi
     done
 
-    local kind path source fingerprint verify_status
-    while IFS=$'\t' read -r kind path source fingerprint _ ||
-        [ -n "$kind" ]; do
+    local group kind path source fingerprint extra verify_status
+    while IFS=$'\t' read -r group kind path source fingerprint extra ||
+        [ -n "$group" ]; do
         [ -n "$kind" ] || continue
         if ownership_verify "$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"; then
             _health_add Ready "AI Environment ownership" "$kind $path matches its recorded fingerprint"
