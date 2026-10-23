@@ -1120,7 +1120,7 @@ ownership_record() {
     mkdir -p "$(dirname "${file}")" || return 1
     awk -F $'\t' -v OFS=$'\t' -v group="${group}" -v kind="${kind}" \
         -v path="${path}" -v source="${source}" -v fingerprint="${fingerprint}" '
-        $1 == group && $2 == kind && $3 == path {
+        $1 == group && $3 == path {
             if (!found) print group, kind, path, source, fingerprint, "schema=2"
             found = 1
             next
@@ -2968,6 +2968,16 @@ _run_sync_impl() {
                 fi
             fi
             IFS=$'\t' read -r record_kind record_path record_source record_fingerprint <<< "${record}"
+            if { [ "${record_kind}" = symlink ] || [ "${record_kind}" = hardlink ]; } &&
+                [ "${record_source}" = "${src}" ] && [ -f "${src}" ] &&
+                [ -f "${dest}" ] && [ ! -L "${dest}" ] && cmp -s -- "${src}" "${dest}"; then
+                record_kind=generated-file
+                record_fingerprint="$(_haws_sha256 "${dest}")"
+                ownership_record agents generated-file "${dest}" "${src}" \
+                    "${record_fingerprint}" || return 1
+                record="generated-file"$'\t'"${dest}"$'\t'"${src}"$'\t'"${record_fingerprint}"
+                echo "  [REPAIRED] Corrected stale agent link ownership: ${dest}"
+            fi
             if ! ownership_verify "${record_kind}"$'\t'"${record_path}"$'\t'"${record_source}"$'\t'"${record_fingerprint}"; then
                 echo "  [PRESERVED] ${label}: owned item changed; leaving it untouched: ${dest}"
                 return 0
@@ -2992,7 +3002,8 @@ _run_sync_impl() {
             local win_src win_dest
             win_src="$(_haws_winpath "${src}")"
             win_dest="$(_haws_winpath "${dest}")"
-            if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" >/dev/null 2>&1; then
+            if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" \
+                >/dev/null 2>&1 && [ -f "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
                 ownership_record agents hardlink "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
                     rm -f -- "${dest}"
                     return 1
@@ -3002,21 +3013,29 @@ _run_sync_impl() {
             fi
         fi
 
+        current_target=""
         if ln -sf "${src}" "${dest}" 2>/dev/null || ln -s "${src}" "${dest}" 2>/dev/null; then
             current_target="$(readlink "${dest}" 2>/dev/null || true)"
-            ownership_record agents symlink "${dest}" "${src}" "${current_target}" || {
-                rm -f -- "${dest}"
-                return 1
-            }
-            echo "  [LINKED] ${label}: ${dest} -> ${src}"
-        else
-            cp -f "${src}" "${dest}" || return 1
-            ownership_record agents generated-file "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
-                rm -f -- "${dest}"
-                return 1
-            }
-            echo "  [COPIED] ${label}: ${dest} -> ${src}"
+            if [ -L "${dest}" ] && [ "${current_target}" = "${src}" ]; then
+                ownership_record agents symlink "${dest}" "${src}" "${current_target}" || {
+                    rm -f -- "${dest}"
+                    return 1
+                }
+                echo "  [LINKED] ${label}: ${dest} -> ${src}"
+                return 0
+            fi
         fi
+
+        # Some Windows/MSYS environments may report success for `ln -s`
+        # while leaving a regular file. Verify the actual filesystem link
+        # before claiming it; otherwise use and record the copy fallback.
+        rm -f -- "${dest}" || return 1
+        cp -f "${src}" "${dest}" || return 1
+        ownership_record agents generated-file "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
+            rm -f -- "${dest}"
+            return 1
+        }
+        echo "  [COPIED] ${label}: ${dest} -> ${src}"
     }
 
     safe_generated_file() {
