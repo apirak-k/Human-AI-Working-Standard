@@ -3190,40 +3190,52 @@ _run_sync_impl() {
             if [ -z "${prior_record}" ]; then
                 local existing_pointer_hash
                 existing_pointer_hash="$(_haws_pointer_block_fingerprint "${target_file}" 2>/dev/null || true)"
+                local outside_content
+                outside_content="$(awk -v start="${marker_start}" -v end="${marker_end}" '
+                    $0 == start { inside=1; next }
+                    $0 == end { inside=0; next }
+                    !inside { print }
+                ' "${target_file}" | grep -q '[^[:space:]]' && echo "appended" || echo "created")"
+
+                # Check if the block is an unowned standard HAWS pointer block (e.g. legacy/moved repository path)
+                local is_canonical_haws_block=0
+                if grep -Fq "# HAWS — Human-AI Working Standard" "${target_file}" &&
+                    grep -Fq -- "- Core Standard: " "${target_file}" &&
+                    grep -Fq -- "- Work Instructions: " "${target_file}"; then
+                    is_canonical_haws_block=1
+                fi
+
                 if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] &&
                     [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ]; then
-                    if awk -v start="${marker_start}" -v end="${marker_end}" '
-                        $0 == start { inside=1; next }
-                        $0 == end { inside=0; next }
-                        !inside { print }
-                    ' "${target_file}" | grep -q '[^[:space:]]'; then
-                        pointer_source=appended
-                    else
-                        pointer_source=created
-                    fi
+                    pointer_source="${outside_content}"
                     ownership_record pointers pointer-block "${target_file}" \
                         "${pointer_source}" "${existing_pointer_hash}" || return 1
                     echo "  [ADOPTED] Exact legacy HAWS pointer ownership: ${target_file}"
                     SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
                     return 0
-                fi
-                if [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ]; then
-                    echo "  [PRESERVED] Exact HAWS pointer is unowned outside the one-time legacy migration: ${target_file}"
+                elif [ "${is_canonical_haws_block}" -eq 1 ]; then
+                    # Auto-repair / migrate legacy or stale HAWS pointer block to current installation
+                    pointer_source="${outside_content}"
                 else
-                    echo "  [PRESERVED] Existing global pointer block is not an exact HAWS block: ${target_file}"
+                    if [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ]; then
+                        echo "  [PRESERVED] Exact HAWS pointer is unowned outside the one-time legacy migration: ${target_file}"
+                    else
+                        echo "  [PRESERVED] Existing global pointer block is not an exact HAWS block: ${target_file}"
+                    fi
+                    return 0
                 fi
-                return 0
+            else
+                IFS=$'\t' read -r prior_kind prior_path prior_source prior_fingerprint <<< "${prior_record}"
+                if [ "${prior_kind}" != pointer-block ]; then
+                    echo "  [PRESERVED] Existing global pointer ownership type is unsupported: ${target_file}"
+                    return 0
+                fi
+                if ! ownership_verify "${prior_kind}"$'\t'"${prior_path}"$'\t'"${prior_source}"$'\t'"${prior_fingerprint}"; then
+                    echo "  [PRESERVED] HAWS pointer block was edited; leaving it untouched: ${target_file}"
+                    return 0
+                fi
+                [ "${prior_source}" = created ] && pointer_source=created
             fi
-            IFS=$'\t' read -r prior_kind prior_path prior_source prior_fingerprint <<< "${prior_record}"
-            if [ "${prior_kind}" != pointer-block ]; then
-                echo "  [PRESERVED] Existing global pointer ownership type is unsupported: ${target_file}"
-                return 0
-            fi
-            if ! ownership_verify "${prior_kind}"$'\t'"${prior_path}"$'\t'"${prior_source}"$'\t'"${prior_fingerprint}"; then
-                echo "  [PRESERVED] HAWS pointer block was edited; leaving it untouched: ${target_file}"
-                return 0
-            fi
-            [ "${prior_source}" = created ] && pointer_source=created
         else
             [ -f "${target_file}" ] || pointer_source=created
         fi
