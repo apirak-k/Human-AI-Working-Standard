@@ -2874,7 +2874,7 @@ _run_sync_impl() {
                     _haws_legacy_manifest_has_entry agent "${legacy_agent_name}"; then
                     if [ -L "${dest}" ]; then
                         current_target="$(readlink "${dest}" 2>/dev/null || true)"
-                        if [ "${current_target}" = "${src}" ]; then
+                        if [ "${current_target}" = "${src}" ] || [ "${dest}" -ef "${src}" ]; then
                             legacy_kind=symlink
                             legacy_fingerprint="${current_target}"
                         fi
@@ -2894,8 +2894,66 @@ _run_sync_impl() {
                     record="${legacy_kind}"$'\t'"${dest}"$'\t'"${src}"$'\t'"${legacy_fingerprint}"
                     echo "  [ADOPTED] Exact legacy ${label}: ${dest}"
                 else
-                    echo "  [PRESERVED] ${label}: existing item is not recorded as HAWS-owned: ${dest}"
-                    return 0
+                    # Check whether this destination is a canonical HAWS agent destination in Antigravity
+                    local canonical_agent_match=""
+                    case "${legacy_agent_name}" in
+                        backend-engineer|frontend-engineer|organizer|researcher|tester)
+                            if [ "${dest}" = "${HOME}/.gemini/config/agents/${legacy_agent_name}/agent.md" ]; then
+                                canonical_agent_match="${legacy_agent_name}"
+                            fi
+                            ;;
+                    esac
+                    if [ -n "${canonical_agent_match}" ]; then
+                        local is_broken_or_stale_link=0
+                        if [ -L "${dest}" ]; then
+                            current_target="$(readlink "${dest}" 2>/dev/null || true)"
+                            if [ ! -e "${dest}" ] || [ "${current_target}" != "${src}" ]; then
+                                is_broken_or_stale_link=1
+                            fi
+                        fi
+                        rm -f -- "${dest}" || return 1
+                        if [ "$IS_WINDOWS" = true ]; then
+                            local win_src win_dest
+                            win_src="$(_haws_winpath "${src}")"
+                            win_dest="$(_haws_winpath "${dest}")"
+                            if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" >/dev/null 2>&1; then
+                                ownership_record agents hardlink "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
+                                    rm -f -- "${dest}"
+                                    return 1
+                                }
+                                if [ "${is_broken_or_stale_link}" -eq 1 ]; then
+                                    echo "  [REPAIRED] ${label}: stale legacy link replaced: ${dest}"
+                                else
+                                    echo "  [MIGRATED] ${label}: legacy HAWS agent replaced with current version: ${dest}"
+                                fi
+                                return 0
+                            fi
+                        fi
+                        if ln -sf "${src}" "${dest}" 2>/dev/null || ln -s "${src}" "${dest}" 2>/dev/null; then
+                            current_target="$(readlink "${dest}" 2>/dev/null || true)"
+                            ownership_record agents symlink "${dest}" "${src}" "${current_target}" || {
+                                rm -f -- "${dest}"
+                                return 1
+                            }
+                            if [ "${is_broken_or_stale_link}" -eq 1 ]; then
+                                echo "  [REPAIRED] ${label}: stale legacy link replaced: ${dest}"
+                            else
+                                echo "  [MIGRATED] ${label}: legacy HAWS agent replaced with current version: ${dest}"
+                            fi
+                            return 0
+                        else
+                            cp -f "${src}" "${dest}" || return 1
+                            ownership_record agents generated-file "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
+                                rm -f -- "${dest}"
+                                return 1
+                            }
+                            echo "  [MIGRATED] ${label}: legacy HAWS agent replaced with current version: ${dest}"
+                            return 0
+                        fi
+                    else
+                        echo "  [PRESERVED] ${label}: existing item is not recorded as HAWS-owned: ${dest}"
+                        return 0
+                    fi
                 fi
             fi
             IFS=$'\t' read -r record_kind record_path record_source record_fingerprint <<< "${record}"
