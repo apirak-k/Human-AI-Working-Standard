@@ -338,6 +338,47 @@ test_google_antigravity_gemini_sync_and_native_config() {
         local agent_md="${agents_dir}/${agent}/agent.md"
         [ -f "${agent_md}" ] || fail "Expected agent profile at ${agent_md}"
     done
+
+    # 4. Assert legacy / broken Antigravity canonical agents are migrated and repaired
+    # Simulate a stale broken symlink for backend-engineer and an unowned file for tester
+    rm -f "${agents_dir}/backend-engineer/agent.md"
+    ln -s "/nonexistent/old/path/agents/backend-engineer.md" "${agents_dir}/backend-engineer/agent.md"
+    rm -f "${agents_dir}/tester/agent.md"
+    printf "legacy tester content\n" > "${agents_dir}/tester/agent.md"
+
+    # Also simulate an unrelated user-defined agent
+    mkdir -p "${agents_dir}/my-personal-agent"
+    printf "custom personal agent\n" > "${agents_dir}/my-personal-agent/agent.md"
+
+    # Remove ownership records for agents to simulate unrecorded/legacy state
+    grep -v '^\.gemini/config/agents/' "${FIXTURE_PROJECT}/.haws/state/ownership.tsv" > "${FIXTURE_PROJECT}/.haws/state/ownership.tsv.tmp" || true
+    grep -v '^agents[[:space:]]' "${FIXTURE_PROJECT}/.haws/state/ownership.tsv" > "${FIXTURE_PROJECT}/.haws/state/ownership.tsv.tmp" || true
+    mv "${FIXTURE_PROJECT}/.haws/state/ownership.tsv.tmp" "${FIXTURE_PROJECT}/.haws/state/ownership.tsv"
+
+    # Run sync again
+    run_haws sync || return 1
+    assert_output_contains '[REPAIRED] Antigravity Agent [backend-engineer]: stale legacy link replaced' || return 1
+    assert_output_contains '[MIGRATED] Antigravity Agent [tester]: legacy HAWS agent replaced with current version' || return 1
+
+    # Verify canonical agents now link to current canonical sources
+    [ -e "${agents_dir}/backend-engineer/agent.md" ] || fail "Expected backend-engineer to be repaired"
+    [ "${agents_dir}/backend-engineer/agent.md" -ef "${FIXTURE_PROJECT}/agents/backend-engineer.md" ] || \
+        fail "Expected backend-engineer to resolve to current canonical source"
+    [ "${agents_dir}/tester/agent.md" -ef "${FIXTURE_PROJECT}/agents/tester.md" ] || \
+        fail "Expected tester to resolve to current canonical source"
+
+    # Verify user agent was preserved untouched
+    [ -f "${agents_dir}/my-personal-agent/agent.md" ] || fail "Expected user-defined agent to be preserved"
+    assert_file_contains "${agents_dir}/my-personal-agent/agent.md" "custom personal agent" || return 1
+
+    # Verify second sync is clean / idempotent
+    run_haws sync || return 1
+    if grep -F '[PRESERVED] Antigravity Agent [backend-engineer]' "${OUTPUT_FILE}" >/dev/null 2>&1; then
+        fail "Unexpected preservation of backend-engineer on second sync"
+    fi
+    if grep -F '[PRESERVED] Antigravity Agent [tester]' "${OUTPUT_FILE}" >/dev/null 2>&1; then
+        fail "Unexpected preservation of tester on second sync"
+    fi
 }
 
 # ==============================================================================
