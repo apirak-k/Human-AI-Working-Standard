@@ -118,6 +118,9 @@ personal user data separate:
   re-binds the link only when the previous HAWS manifest lists that skill and
   it points to the same relative skill path in another registered worktree of
   this repository. Links that meet neither rule are preserved.
+- **Global instructions:** During legacy migration, Sync adopts an existing
+  HAWS pointer block only when it exactly matches the current HAWS instructions.
+  Edited blocks and unrelated user content are left untouched.
 - **Local-ahead safety:** If the local HAWS checkout is already ahead of the
   fetched remote candidate, Sync reports it as up to date and preserves the
   local HEAD; it does not reset or move the checkout backwards.
