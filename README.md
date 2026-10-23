@@ -121,6 +121,10 @@ personal user data separate:
 - **Global instructions:** During legacy migration, Sync adopts an existing
   HAWS pointer block only when it exactly matches the current HAWS instructions.
   Edited blocks and unrelated user content are left untouched.
+- **Antigravity skills:** Sync removes only path-only entries beneath HAWS's
+  device-local source cache when their skill directory is missing. Existing
+  active entries stay user-owned unless HAWS already has an ownership record;
+  entries with user metadata and paths outside that cache remain untouched.
 - **Local-ahead safety:** If the local HAWS checkout is already ahead of the
   fetched remote candidate, Sync reports it as up to date and preserves the
   local HEAD; it does not reset or move the checkout backwards.
