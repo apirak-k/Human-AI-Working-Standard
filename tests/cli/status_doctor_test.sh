@@ -159,7 +159,7 @@ test_status_summary_reports_health_facts_without_sync_state() {
     seed_health_fixture || return 1
     rm -f "${FIXTURE_PROJECT}/.haws/state/sync-state.tsv"
     run_haws status || return 1
-    assert_output_contains 'Overall: Attention' || return 1
+    assert_output_contains 'Overall: Ready' || return 1
     assert_output_contains 'Skills: 1 / 1 active' || return 1
     assert_output_contains 'Second Brain: Local-Only' || return 1
     assert_output_contains 'Auto Update: off' || return 1
@@ -206,6 +206,32 @@ test_status_details_labels_executed_sections() {
     grep -E $'^(Ready|Attention|Blocked)\t' "${OUTPUT_FILE}" >/dev/null 2>&1
 }
 
+test_gemini_environment_ownership_health_reads_schema_v2_columns() {
+    seed_health_fixture || return 1
+    local target="${FIXTURE_HOME}/.gemini/config/skills.json"
+    local manifest="${FIXTURE_PROJECT}/.haws/state/gemini-skills-ownership.json"
+    mkdir -p "$(dirname "${target}")" || return 1
+    mkdir -p "${FIXTURE_PROJECT}/ai-configs/gemini" || return 1
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_PROJECT}/ai-configs/gemini/skills-json.mjs" || return 1
+    printf '{"entries":[]}\n' > "${target}"
+    printf '{"version":1,"paths":[]}\n' > "${manifest}"
+    ownership_record environments gemini-skills-json "${target}" "${manifest}" \
+        "$(_haws_sha256 "${manifest}")" || return 1
+
+    run_haws doctor || true
+    assert_output_contains '[PASS] AI Environment ownership' || return 1
+    local before after
+    before="$(_health_fingerprint)" || return 1
+
+    rm -f -- "${target}" || return 1
+    after="$(_health_fingerprint)" || return 1
+    [ "${before}" != "${after}" ] || return 1
+    run_haws doctor || true
+    assert_output_contains '[WARN] AI Environment ownership' || return 1
+    assert_output_contains 'gemini-skills-json'
+}
+
 test_doctor_reports_failed_check_instead_of_fixed_ready() {
     seed_health_fixture || return 1
     rm -f "${FIXTURE_HOME}/.claude/CLAUDE.md"
@@ -242,6 +268,7 @@ else
     run_test test_codex_disabled_identifier_suppresses_agents_health_detection
     run_test test_status_derives_second_brain_from_git_remote
     run_test test_status_details_labels_executed_sections
+    run_test test_gemini_environment_ownership_health_reads_schema_v2_columns
     run_test test_doctor_reports_failed_check_instead_of_fixed_ready
     run_test test_doctor_and_status_share_classification
 fi
