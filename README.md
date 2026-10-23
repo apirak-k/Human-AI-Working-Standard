@@ -129,6 +129,11 @@ personal user data separate:
   counts links across detected environments; 120 active skills linked into two
   environments can therefore show 240 links. `Agents Linked` counts agent
   profiles separately from skills.
+- **Native agent profiles:** Sync verifies the filesystem result before calling
+  a profile a hard link or symbolic link. If Windows or the host cannot create a
+  link, Sync records and reports a regular-file fallback as `[COPIED]`. An
+  unchanged owned copy is refreshed from its source; modified or unowned files
+  remain preserved.
 - **Antigravity skills:** Sync removes only path-only entries beneath HAWS's
   device-local source cache when their skill directory is missing. Existing
   active entries stay user-owned unless HAWS already has an ownership record;
