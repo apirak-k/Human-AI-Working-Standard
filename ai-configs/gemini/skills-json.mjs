@@ -1,11 +1,14 @@
 import {
+  existsSync,
   lstatSync,
   readFileSync,
+  statSync,
   writeFileSync,
   renameSync,
   unlinkSync,
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const [command, file, manifestFile, candidateFile, option, legacyCandidateFile] = process.argv.slice(2);
 
@@ -104,10 +107,34 @@ function commit(filePath, rootState, manifestPath, manifestState, nextRoot, next
   }
 }
 
-function isPlainManagedEntry(entry, paths) {
+function isPlainPathEntry(entry) {
   return entry && !Array.isArray(entry) && typeof entry === 'object' &&
-    typeof entry.path === 'string' && paths.has(entry.path) &&
-    Object.keys(entry).length === 1;
+    typeof entry.path === 'string' && Object.keys(entry).length === 1;
+}
+
+function isPlainManagedEntry(entry, paths) {
+  return isPlainPathEntry(entry) && paths.has(entry.path);
+}
+
+function isWithin(root, target) {
+  const pathFromRoot = relative(resolve(root), resolve(target));
+  return pathFromRoot !== '' && pathFromRoot !== '..' &&
+    !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot);
+}
+
+function isValidSkillDirectory(path) {
+  try {
+    if (!statSync(path).isDirectory()) return false;
+    return existsSync(join(path, 'SKILL.md')) || existsSync(join(path, 'skill.md'));
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
+    throw error;
+  }
+}
+
+function isMissingManagedSourceEntry(entry, sourceRoot, desiredPaths) {
+  return isPlainPathEntry(entry) && !desiredPaths.has(entry.path) &&
+    isWithin(sourceRoot, entry.path) && !isValidSkillDirectory(entry.path);
 }
 
 function splitManagedEntries(entries, ownedPaths) {
@@ -209,24 +236,48 @@ try {
       }
       return entry.path;
     }))];
-    const preservedPaths = new Set(preserved
+    const desiredPathSet = new Set(desiredPaths);
+    const sourceRoot = resolve(dirname(manifestFile), 'skill-sources');
+    const existingPathCounts = new Map();
+    for (const entry of rootState.value.entries) {
+      if (!isPlainPathEntry(entry)) continue;
+      existingPathCounts.set(entry.path, (existingPathCounts.get(entry.path) || 0) + 1);
+    }
+
+    const prunedEntries = [];
+    const keptEntries = [];
+    for (const entry of preserved) {
+      if (isMissingManagedSourceEntry(entry, sourceRoot, desiredPathSet)) {
+        // Only dead path-only entries under HAWS's private source cache are pruned.
+        prunedEntries.push(entry);
+        continue;
+      }
+      keptEntries.push(entry);
+    }
+
+    const preservedPaths = new Set(keptEntries
       .filter(entry => entry && typeof entry === 'object' && typeof entry.path === 'string')
       .map(entry => entry.path));
     const nextPaths = [];
     const additions = [];
+    const managedEntries = [];
     for (const path of desiredPaths) {
       if (preservedPaths.has(path)) continue;
-      additions.push({ path });
       nextPaths.push(path);
+      managedEntries.push({ path });
+      if (!existingPathCounts.has(path)) additions.push({ path });
     }
     const createdTarget = replaceOwned || manifestState.value.createdTarget === true ||
-      (!rootState.info && additions.length > 0);
+      (!rootState.info && managedEntries.length > 0);
     const removeCreatedRoot = nextPaths.length === 0 && createdTarget &&
-      preserved.length === 0 && Object.keys(rootState.value).length === 1;
+      keptEntries.length === 0 && Object.keys(rootState.value).length === 1;
     commit(file, rootState, manifestFile, manifestState,
-      { ...rootState.value, entries: [...preserved, ...additions] }, nextPaths,
+      { ...rootState.value, entries: [...keptEntries, ...managedEntries] }, nextPaths,
       createdTarget, removeCreatedRoot);
-    console.log(`OK: merged ${additions.length} HAWS Antigravity skill entries; preserved ${preserved.length} existing entries.`);
+    if (prunedEntries.length) {
+      console.log(`OK: pruned ${prunedEntries.length} missing HAWS skill source entries.`);
+    }
+    console.log(`OK: merged ${additions.length} new HAWS Antigravity skill entries; preserved ${keptEntries.length} existing entries.`);
   } else {
     const removed = rootState.value.entries.length - preserved.length;
     const removeCreatedRoot = manifestState.value.createdTarget === true &&
