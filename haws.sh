@@ -2894,16 +2894,22 @@ _run_sync_impl() {
                     record="${legacy_kind}"$'\t'"${dest}"$'\t'"${src}"$'\t'"${legacy_fingerprint}"
                     echo "  [ADOPTED] Exact legacy ${label}: ${dest}"
                 else
-                    # Check whether this destination is a canonical HAWS agent destination in Antigravity
+                    # Global Canonical & Broken Link Authority:
+                    # For all canonical HAWS agents across any environment (Antigravity, Claude Code, Codex):
+                    # If destination is a symlink (broken or pointing to a different path),
+                    # or an unowned destination for Antigravity, HAWS is authoritative: replace, link, and record ownership.
                     local canonical_agent_match=""
                     case "${legacy_agent_name}" in
                         backend-engineer|frontend-engineer|organizer|researcher|tester)
-                            if [ "${dest}" = "${HOME}/.gemini/config/agents/${legacy_agent_name}/agent.md" ]; then
-                                canonical_agent_match="${legacy_agent_name}"
-                            fi
+                            case "${dest}" in
+                                "${HOME}/.gemini/config/agents/${legacy_agent_name}/agent.md"|\
+                                "${HOME}/.claude/agents/${legacy_agent_name}.md")
+                                    canonical_agent_match="${legacy_agent_name}"
+                                    ;;
+                            esac
                             ;;
                     esac
-                    if [ -n "${canonical_agent_match}" ]; then
+                    if [ -n "${canonical_agent_match}" ] && { [ -L "${dest}" ] || [ "${dest}" = "${HOME}/.gemini/config/agents/${legacy_agent_name}/agent.md" ]; }; then
                         local is_broken_or_stale_link=0
                         if [ -L "${dest}" ]; then
                             current_target="$(readlink "${dest}" 2>/dev/null || true)"
