@@ -2970,7 +2970,8 @@ _run_sync_impl() {
             IFS=$'\t' read -r record_kind record_path record_source record_fingerprint <<< "${record}"
             if { [ "${record_kind}" = symlink ] || [ "${record_kind}" = hardlink ]; } &&
                 [ "${record_source}" = "${src}" ] && [ -f "${src}" ] &&
-                [ -f "${dest}" ] && [ ! -L "${dest}" ] && cmp -s -- "${src}" "${dest}"; then
+                [ -f "${dest}" ] && [ ! -L "${dest}" ] &&
+                ! [ "${src}" -ef "${dest}" ] && cmp -s -- "${src}" "${dest}"; then
                 record_kind=generated-file
                 record_fingerprint="$(_haws_sha256 "${dest}")"
                 ownership_record agents generated-file "${dest}" "${src}" \
