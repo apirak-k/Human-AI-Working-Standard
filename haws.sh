@@ -1583,7 +1583,7 @@ declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
 catalog_source_kind() {
     local source_id="${1:-}"
     local out_var="${2:-}"
-    local path url revision source_dir raw_skill_count kind
+    local skill_rows skill_count kind
     [ -n "${source_id}" ] || return 1
     [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]] || declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
     if [[ -v HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"] ]]; then
@@ -1595,25 +1595,15 @@ catalog_source_kind() {
         fi
         return 0
     fi
-    IFS=$'\t' read -r path url revision <<< "$(_catalog_source_fields "${source_id}")" || return 1
-    source_dir="$(_catalog_runtime_source_dir "${path%/}")"
-    if [ ! -d "${source_dir}" ]; then
-        kind="UNVERIFIED"
-    elif [[ "${path}" == skills/standalone/* ]]; then
+    _catalog_source_fields "${source_id}" >/dev/null || return 1
+    skill_rows="$(catalog_skills baseline "${source_id}")"
+    skill_count="$(printf '%s\n' "${skill_rows}" | awk 'NF { count++ } END { print count + 0 }')"
+    if [ "${skill_count}" -eq 1 ]; then
         kind="SINGLE"
-    elif [[ "${path}" == skills/packs/* ]]; then
+    elif [ "${skill_count}" -gt 1 ]; then
         kind="PACK"
     else
-        raw_skill_count="$(find "${source_dir}" -type d -name ".*" -prune -o -type f \
-            \( -name SKILL.md -o -name skill.md \) -print 2>/dev/null |
-            awk 'END { print NR + 0 }')"
-        if [ "${raw_skill_count}" -eq 1 ]; then
-            kind="SINGLE"
-        elif [ "${raw_skill_count}" -gt 1 ]; then
-            kind="PACK"
-        else
-            kind="UNVERIFIED"
-        fi
+        kind="UNVERIFIED"
     fi
     HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
     if [ -n "${out_var}" ]; then
@@ -1672,7 +1662,9 @@ _catalog_skill_is_eligible() {
 
 catalog_skills() {
     local disabled_mode="${1:-effective}"
-    if [ "${disabled_mode}" = effective ] && [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+    local source_filter="${2:-}"
+    if [ "${disabled_mode}" = effective ] && [ -z "${source_filter}" ] &&
+        [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
         [ -n "${HAWS_CATALOG_SKILLS_CACHE}" ] && printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}"
         return 0
     fi
@@ -1682,6 +1674,7 @@ catalog_skills() {
     while IFS= read -r row || [ -n "${row}" ]; do
         [ -n "${row}" ] || continue
         IFS=$'\t' read -r source_id path url revision <<< "${row}"
+        [ -z "${source_filter}" ] || [ "${source_id}" = "${source_filter}" ] || continue
         source_dir="$(_catalog_runtime_source_dir "${path}")"
         [ -d "${source_dir}" ] || continue
         seen_names=()
@@ -2617,32 +2610,18 @@ sync_target() {
         if [ "${target}" = haws ]; then
             git -C "${source_dir}" merge --ff-only "${candidate_revision}" >/dev/null 2>&1 || activation_status=$?
         else
-            # Path-scoped diff: check if candidate modified any active skills for this target
-            local active_paths=()
-            local catalog_data="${HAWS_CATALOG_SKILLS_CACHE:-}"
-            [ -n "${catalog_data}" ] || catalog_data="$(catalog_skills 2>/dev/null || true)"
-            local skill_src _1 _2 _3 entrypoint act
-            while IFS=$'\t' read -r skill_src _1 _2 _3 entrypoint act || [ -n "${skill_src:-}" ]; do
-                if [ "${skill_src:-}" = "${target}" ] && [ "${act:-0}" = 1 ]; then
-                    local skill_rel_dir
-                    skill_rel_dir="$(dirname "${entrypoint}")"
-                    if [ "${skill_rel_dir}" = "." ] || [ -z "${skill_rel_dir}" ]; then
-                        active_paths+=("${entrypoint}")
-                    else
-                        active_paths+=("${skill_rel_dir}")
-                    fi
-                fi
-            done <<< "${catalog_data}"
-
-            if [ "${#active_paths[@]}" -gt 0 ]; then
-                local active_diff
-                active_diff="$(git -C "${source_dir}" diff --name-only "${current}" "${candidate_revision}" -- "${active_paths[@]}" 2>/dev/null || true)"
-                if [ -z "${active_diff}" ]; then
-                    _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
-                    sync_result_write "${target}" up-to-date "${current}" "active skills unchanged" || return 1
-                    _sync_legacy_echo "${target}: up-to-date"
-                    return 0
-                fi
+            local changed_path skill_structure_changed=0
+            while IFS= read -r -d '' changed_path; do
+                case "${changed_path##*/}" in
+                    SKILL.md|skill.md) skill_structure_changed=1; break ;;
+                esac
+            done < <(git -C "${source_dir}" diff --name-only -z \
+                "${current}" "${candidate_revision}" 2>/dev/null || true)
+            if [ "${skill_structure_changed}" -eq 0 ]; then
+                _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+                sync_result_write "${target}" up-to-date "${current}" "active skills unchanged" || return 1
+                _sync_legacy_echo "${target}: up-to-date"
+                return 0
             fi
 
             git -C "${source_dir}" checkout --detach "${candidate_revision}" >/dev/null 2>&1 || activation_status=$?
@@ -2659,6 +2638,9 @@ sync_target() {
     final="$(git -C "${source_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
     _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
     if [ "${final}" = "${candidate_revision}" ]; then
+        if [ "${target}" != haws ] && [ "${current}" != "${candidate_revision}" ]; then
+            _catalog_invalidate_source_catalog
+        fi
         if [ "${current}" = "${candidate_revision}" ]; then
             sync_result_write "${target}" up-to-date "${candidate_revision}" "final HEAD equals candidate" || return 1
             _sync_legacy_echo "${target}: up-to-date"
@@ -6469,14 +6451,16 @@ _settings_skill_selector() {
     local source_id id display description entrypoint active source_path
     local detail label source_label
     local items=() ids=()
-    local -A source_paths=() source_labels=() display_counts=()
+    local -A source_paths=() source_labels=() source_kinds=() display_counts=()
 
-    local source_url source_revision
+    local source_url source_revision source_kind
     while IFS=$'\t' read -r source_id source_path source_url source_revision ||
         [ -n "${source_id}" ]; do
         [ -n "${source_id}" ] || continue
         source_paths["${source_id}"]="${source_path}"
         source_labels["${source_id}"]="$(_interactive_source_label "${source_path}")"
+        catalog_source_kind "${source_id}" source_kind
+        source_kinds["${source_id}"]="${source_kind}"
     done < <(_catalog_skill_sources)
 
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
@@ -6488,7 +6472,7 @@ _settings_skill_selector() {
         [ -n "${id}" ] || continue
         source_path="${source_paths[${source_id}]:-}"
         local is_pack=0
-        [[ "${source_path}" == skills/packs/* ]] && is_pack=1
+        [ "${source_kinds[${source_id}]:-UNVERIFIED}" = PACK ] && is_pack=1
         if [ "${wanted_source}" = "__custom__" ]; then
             [[ "${source_path}" == skills/custom* ]] || continue
         elif [ "${wanted_source}" = "__single__" ]; then
@@ -6593,15 +6577,17 @@ settings_skills_page() {
     fi
     local source_id id display description entrypoint active source_path
     local pack_ids=() pack_names=()
-    local -A source_counts=() source_active_counts=() source_paths=() source_labels=()
+    local -A source_counts=() source_active_counts=() source_paths=() source_labels=() source_kinds=()
     local -A pack_name_counts=() seen_sources=()
 
-    local source_url source_revision
+    local source_url source_revision source_kind
     while IFS=$'\t' read -r source_id source_path source_url source_revision ||
         [ -n "${source_id}" ]; do
         [ -n "${source_id}" ] || continue
         source_paths["${source_id}"]="${source_path}"
         source_labels["${source_id}"]="$(_interactive_source_label "${source_path}")"
+        catalog_source_kind "${source_id}" source_kind
+        source_kinds["${source_id}"]="${source_kind}"
     done < <(_catalog_skill_sources)
 
     local -A active_draft_map=()
@@ -6620,10 +6606,7 @@ settings_skills_page() {
     done <<< "${rows}"
     while IFS=$'\t' read -r source_id id display description entrypoint active || [ -n "${id}" ]; do
         [ -n "${id}" ] || continue
-        source_path="${source_paths[${source_id}]:-}"
-        local is_pack=0
-        [[ "${source_path}" == skills/packs/* ]] && is_pack=1
-        [ "${is_pack}" -eq 1 ] || continue
+        [ "${source_kinds[${source_id}]:-UNVERIFIED}" = PACK ] || continue
         [ -z "${seen_sources[${source_id}]:-}" ] || continue
         seen_sources["${source_id}"]=1
         pack_ids+=("${source_id}")
@@ -6637,9 +6620,7 @@ settings_skills_page() {
     local single_source_id single_source_path
     for single_source_id in "${!source_counts[@]}"; do
         single_source_path="${source_paths[${single_source_id}]:-}"
-        local is_pack=0
-        [[ "${single_source_path}" == skills/packs/* ]] && is_pack=1
-        [ "${is_pack}" -eq 1 ] && continue
+        [ "${source_kinds[${single_source_id}]:-UNVERIFIED}" = PACK ] && continue
         if [[ "${single_source_path}" == skills/custom* ]]; then
             custom_total=$((custom_total + ${source_counts[${single_source_id}]:-0}))
             custom_active=$((custom_active + ${source_active_counts[${single_source_id}]:-0}))
@@ -6674,9 +6655,7 @@ settings_skills_page() {
         local rp
         for rp in "${!source_counts[@]}"; do
             local rp_path="${source_paths[${rp}]:-}"
-            local rp_pack=0
-            [[ "${rp_path}" == skills/packs/* ]] && rp_pack=1
-            if [ "${rp_pack}" -eq 1 ]; then
+            if [ "${source_kinds[${rp}]:-UNVERIFIED}" = PACK ]; then
                 pack_active=$((pack_active + ${source_active_counts[${rp}]:-0}))
             elif [[ "${rp_path}" == skills/custom* ]]; then
                 custom_active=$((custom_active + ${source_active_counts[${rp}]:-0}))
@@ -7132,15 +7111,18 @@ settings_preview() {
     local -A preview_source_active=()
     local -A preview_source_paths=()
     local -A preview_source_names=()
+    local -A preview_source_kinds=()
     local -a preview_pack_ids=()
     local -a preview_custom_skills=()
     local -a preview_single_skills=()
-    local source_path source_url source_revision
+    local source_path source_url source_revision source_kind
 
     while IFS=$'\t' read -r source_id source_path source_url source_revision || [ -n "${source_id}" ]; do
         [ -n "${source_id}" ] || continue
         preview_source_paths["${source_id}"]="${source_path}"
         preview_source_names["${source_id}"]="$(_interactive_source_label "${source_path}")"
+        catalog_source_kind "${source_id}" source_kind
+        preview_source_kinds["${source_id}"]="${source_kind}"
     done < <(_catalog_skill_sources)
 
     skill_rows="$(catalog_skills)"
@@ -7157,7 +7139,7 @@ settings_preview() {
         [ -n "${skill_id}" ] || continue
         source_path="${preview_source_paths[${skill_source_id}]:-}"
         local is_pack=0
-        [[ "${source_path}" == skills/packs/* ]] && is_pack=1
+        [ "${preview_source_kinds[${skill_source_id}]:-UNVERIFIED}" = PACK ] && is_pack=1
 
         if [ "${is_pack}" -eq 1 ]; then
             if [[ "${seen_packs}" != *" ${skill_source_id} "* ]]; then

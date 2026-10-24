@@ -177,11 +177,18 @@ registered worktree. Links that do not meet either rule are preserved.
 
 ### Managing Skills (Add & Remove)
 
-HAWS organizes skills into three explicit categories:
+HAWS presents skills in three categories:
 
 1. **Custom Skills (`skills/custom/`)**: HAWS-owned local skills with the highest linking priority. Add a folder containing a valid `SKILL.md`, then run `bash haws.sh sync`.
-2. **Single Skills (`skills/standalone/`)**: One-purpose external skill repositories.
-3. **Multi-Skill Packs (`skills/packs/`)**: External repositories that provide multiple related skills.
+2. **Single Skills**: External sources with exactly one eligible, unique skill in the HAWS catalog.
+3. **Multi-Skill Packs**: External sources with more than one eligible, unique skill in the HAWS catalog.
+
+HAWS computes an external source's category from its current catalog contents,
+before device-local enable/disable choices are applied. A source with no
+eligible skills is unverified. The `skills/packs/` and `skills/standalone/`
+folders are stable storage locations; their names do not determine the displayed
+category. Device-local Kit sources continue to use `skills/packs/<name>` as a
+stable storage path, including sources that currently provide one skill.
 
 For Single Skills and Multi-Skill Packs:
    - **Interactive CLI Wizard**: Run `bash haws.sh kit setup` (or choose `2) Setup` during initial `bash haws.sh setup`). The CLI lists configured sources with their Git URLs and lets you add or prune device-local sources.
@@ -228,10 +235,10 @@ environments in the draft; `Apply` is still required to persist the reset.
 │   ├── USER_PREFERENCES.md
 │   ├── ANTI_PATTERNS.md
 │   └── WORKFLOW.md
-├── skills/                              # Curated capability repository (3 clean categories)
+├── skills/                              # Catalog of custom skills and external source locations
 │   ├── custom/                          # In-house proprietary skills (highest linking priority)
-│   ├── packs/                           # Repositories that provide multiple related capabilities
-│   ├── standalone/                      # Single-purpose external repositories
+│   ├── packs/                           # Stable storage location for external sources
+│   ├── standalone/                      # Stable storage location for external sources
 │   └── skills.disabled                  # Tracked default Skill blacklist (filter gate)
 ├── ai-configs/                          # Multi-AI environment adapters (Gemini, Claude, Codex)
 └── templates/                           # Public project/document blueprints only
