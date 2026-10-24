@@ -22,7 +22,7 @@ Your mission is to maintain clean, orderly, and healthy tools, assets, and proje
 ## 🎯 Core Responsibilities
 
 ### 1. Skill Inventory & Health Auditing
-* Audit skills across active categories (`skills/packs/`, `skills/standalone/`, `skills/custom/`).
+* Audit the HAWS skill catalog across external source locations and `skills/custom/`; use the catalog's eligible unique skill count for SINGLE/PACK classification, not the source path.
 * Run instant health checks via `bash haws.sh status` (< 0.5s).
 * Verify that SKILL.md frontmatter and tools are intact and valid.
 * Check for broken references, missing templates, or invalid configurations.
