@@ -872,6 +872,12 @@ test_settings_repository_remove_displays_pack_and_single_without_unbound_variabl
     git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-pack.url "https://example.invalid/demo-pack.git"
     git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-single.path "skills/standalone/demo-single"
     git -C "${FIXTURE_PROJECT}" config -f "${FIXTURE_PROJECT}/.gitmodules" submodule.demo-single.url "https://example.invalid/demo-single.git"
+    mkdir -p "${FIXTURE_PROJECT}/skills/packs/demo-pack/alpha" \
+        "${FIXTURE_PROJECT}/skills/packs/demo-pack/beta"
+    printf '%s\n' '---' 'name: alpha' '---' \
+        > "${FIXTURE_PROJECT}/skills/packs/demo-pack/alpha/SKILL.md"
+    printf '%s\n' '---' 'name: beta' '---' \
+        > "${FIXTURE_PROJECT}/skills/packs/demo-pack/beta/SKILL.md"
     mkdir -p "${FIXTURE_PROJECT}/skills/standalone/demo-single"
     printf '%s\n' '---' 'name: demo-single' 'description: Single skill.' '---' \
         > "${FIXTURE_PROJECT}/skills/standalone/demo-single/SKILL.md"

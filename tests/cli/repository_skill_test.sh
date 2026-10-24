@@ -191,6 +191,12 @@ prepare_logical_skill_catalog() {
         'skills/packs/source-two/shared-skill/SKILL.md' \
         'Shared Skill' 'Canonical source-two description.'
     write_catalog_skill \
+        'skills/packs/source-two/zz-duplicate-copy/SKILL.md' \
+        'Shared Skill' 'Duplicate source-two description.'
+    write_catalog_skill \
+        'skills/packs/source-two/.openclaw/shared-skill/SKILL.md' \
+        'Another Skill' 'Ineligible source-two adapter.'
+    write_catalog_skill \
         'skills/custom/catalog-custom/SKILL.md' \
         'Catalog Custom' 'Local custom description.'
 }
@@ -232,14 +238,38 @@ test_catalog_resolves_source_scoped_logical_skills() {
         END { exit !(found == 1) }' || return 1
 }
 
-test_catalog_respects_repository_folder_taxonomy() {
+test_catalog_classifies_sources_by_effective_skill_count() {
     prepare_logical_skill_catalog || return 1
     source_haws || return 1
 
     [ "$(catalog_source_kind 'source-one::skills/packs/source-one')" = PACK ] || return 1
-    [ "$(catalog_source_kind 'source-two::skills/packs/source-two')" = PACK ] || return 1
+    [ "$(catalog_source_kind 'source-two::skills/packs/source-two')" = SINGLE ] || return 1
     [ "$(catalog_source_kind 'custom::skills/custom')" = SINGLE ] || return 1
     [ "$(catalog_source_kind 'source-uninitialized::skills/standalone/source-uninitialized')" = UNVERIFIED ] || return 1
+    catalog_skills baseline 'source-one::skills/packs/source-one' | awk 'END { exit !(NR == 3) }' || return 1
+    catalog_skills baseline 'source-two::skills/packs/source-two' | awk -F '\t' \
+        '$3 == "Shared Skill" { shared++ } END { exit !(NR == 1 && shared == 1) }'
+}
+
+test_catalog_source_kind_ignores_device_disabled_state() {
+    init_superproject || return 1
+    printf '[submodule "disabled-pack"]\n\tpath = skills/packs/disabled-pack\n\turl = https://github.com/acme/disabled-pack.git\n' \
+        > "${FIXTURE_PROJECT}/.gitmodules"
+    write_catalog_skill 'skills/packs/disabled-pack/alpha/SKILL.md' 'Alpha' 'First skill.'
+    write_catalog_skill 'skills/packs/disabled-pack/beta/SKILL.md' 'Beta' 'Second skill.'
+    source_haws || return 1
+
+    local source_id='disabled-pack::skills/packs/disabled-pack'
+    local beta_id
+    beta_id="$(catalog_skills baseline "${source_id}" | awk -F '\t' '$3 == "Beta" {print $2}')"
+    [ -n "${beta_id}" ] || return 1
+    mkdir -p "${FIXTURE_PROJECT}/.haws/state"
+    printf '%s\n' "${beta_id}" > "${FIXTURE_PROJECT}/.haws/state/skills.disabled"
+    _catalog_invalidate_source_catalog
+
+    [ "$(catalog_skills | awk -F '\t' -v source="${source_id}" \
+        '$1 == source && $6 == 1 { active++ } END { print active + 0 }')" -eq 1 ] || return 1
+    [ "$(catalog_source_kind "${source_id}")" = PACK ]
 }
 
 test_catalog_keeps_only_historical_canonical_skill_copies() {
@@ -459,6 +489,85 @@ test_kit_add_survives_remote_skill_update() {
     [ "${FIXTURE_HOME}/.claude/skills/updated-skill-skill" -ef "${device_source}" ] || return 1
     [ -n "$(catalog_sources | grep -F 'skills/packs/updated-skill')" ] || return 1
     [ -z "$(git_fixture -C "${FIXTURE_PROJECT}" status --porcelain --untracked-files=all)" ]
+}
+
+test_sync_reclassifies_pack_as_single_and_is_idempotent() {
+    prepare_clean_kit_project || return 1
+    make_remote structure-pack pack || return 1
+    source_haws || return 1
+    enable_local_sources
+    run_kit add "${REMOTE_URL}" structure-pack >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    local source_id
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/structure-pack"
+    local work="${FIXTURE_ROOT}/structure-pack-work"
+    local new_head stable_rows ownership_before
+    source_id="$(catalog_sources | awk -F '\t' '$2 == "skills/packs/structure-pack" {print $1}')"
+    [ -n "${source_id}" ] || return 1
+    [ "$(catalog_source_kind "${source_id}")" = PACK ] || return 1
+    git_fixture -C "${work}" rm -q beta/SKILL.md || return 1
+    git_fixture -C "${work}" commit -qm 'remove second skill' || return 1
+    git_fixture -C "${work}" push -q origin main || return 1
+    new_head="$(git_fixture -C "${work}" rev-parse HEAD)" || return 1
+
+    write_sync_settings on
+    run_sync >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "$(git_fixture -C "${device_source}" rev-parse HEAD)" = "${new_head}" ] || return 1
+    [ "$(catalog_sources | cut -f1)" = "${source_id}" ] || return 1
+    [ "$(catalog_source_kind "${source_id}")" = SINGLE ] || return 1
+    stable_rows="$(catalog_skills baseline "${source_id}")"
+    [ "$(printf '%s\n' "${stable_rows}" | awk 'NF { count++ } END { print count + 0 }')" -eq 1 ] || return 1
+    [ "$(catalog_skills | awk -F '\t' -v source="${source_id}" \
+        '$1 == source && $6 == 1 { count++ } END { print count + 0 }')" -eq 1 ] || return 1
+    ownership_before="$(ownership_list skills)"
+    [ -z "$(git_fixture -C "${device_source}" status --porcelain --untracked-files=all)" ] || return 1
+
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ "$(git_fixture -C "${device_source}" rev-parse HEAD)" = "${new_head}" ] || return 1
+    [ "$(catalog_source_kind "${source_id}")" = SINGLE ] || return 1
+    [ "$(catalog_skills | awk -F '\t' -v source="${source_id}" \
+        '$1 == source && $6 == 1 { count++ } END { print count + 0 }')" -eq 1 ] || return 1
+    [ "$(ownership_list skills)" = "${ownership_before}" ] || return 1
+    assert_output_not_contains '[REPAIRED]'
+}
+
+test_sync_reclassifies_single_as_pack_after_remote_addition() {
+    prepare_clean_kit_project || return 1
+    make_remote structure-single single || return 1
+    source_haws || return 1
+    enable_local_sources
+    run_kit add "${REMOTE_URL}" structure-single >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    local source_id
+    local device_source="${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/structure-single"
+    local work="${FIXTURE_ROOT}/structure-single-work"
+    local new_head stable_rows
+    source_id="$(catalog_sources | awk -F '\t' '$2 == "skills/packs/structure-single" {print $1}')"
+    [ -n "${source_id}" ] || return 1
+    [ "$(catalog_source_kind "${source_id}")" = SINGLE ] || return 1
+    mkdir -p "${work}/beta"
+    printf '%s\n' '---' 'name: beta' 'description: Second skill.' '---' \
+        > "${work}/beta/SKILL.md"
+    git_fixture -C "${work}" add beta/SKILL.md || return 1
+    git_fixture -C "${work}" commit -qm 'add second skill' || return 1
+    git_fixture -C "${work}" push -q origin main || return 1
+    new_head="$(git_fixture -C "${work}" rev-parse HEAD)" || return 1
+
+    write_sync_settings on
+    run_sync >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "$(git_fixture -C "${device_source}" rev-parse HEAD)" = "${new_head}" ] || return 1
+    [ "$(catalog_sources | cut -f1)" = "${source_id}" ] || return 1
+    [ "$(catalog_source_kind "${source_id}")" = PACK ] || return 1
+    stable_rows="$(catalog_skills baseline "${source_id}")"
+    [ "$(printf '%s\n' "${stable_rows}" | awk 'NF { count++ } END { print count + 0 }')" -eq 2 ] || return 1
+    [ "$(catalog_skills | awk -F '\t' -v source="${source_id}" \
+        '$1 == source && $6 == 1 { count++ } END { print count + 0 }')" -eq 2 ]
 }
 
 test_local_skill_survives_haws_remote_update() {
@@ -1430,6 +1539,44 @@ test_settings_skills_presents_logical_groups_and_keeps_state_draft_only() {
     [ "${disabled_before}" = "$(sha256sum "${FIXTURE_PROJECT}/skills/skills.disabled" | awk '{print $1}')" ] || return 1
 }
 
+test_settings_groups_sources_by_catalog_kind_not_storage_path() {
+    init_superproject || return 1
+    {
+        printf '[submodule "single-in-packs"]\n'
+        printf '\tpath = skills/packs/single-in-packs\n'
+        printf '\turl = https://github.com/acme/single-in-packs.git\n'
+        printf '[submodule "pack-in-standalone"]\n'
+        printf '\tpath = skills/standalone/pack-in-standalone\n'
+        printf '\turl = https://github.com/acme/pack-in-standalone.git\n'
+    } > "${FIXTURE_PROJECT}/.gitmodules"
+    write_catalog_skill 'skills/packs/single-in-packs/SKILL.md' \
+        'One Skill' 'Stored under packs but currently single.'
+    write_catalog_skill 'skills/standalone/pack-in-standalone/alpha/SKILL.md' \
+        'Alpha' 'First skill in a multi-skill source.'
+    write_catalog_skill 'skills/standalone/pack-in-standalone/beta/SKILL.md' \
+        'Beta' 'Second skill in a multi-skill source.'
+    source_haws || return 1
+    settings_draft_load || return 1
+    HAWS_DRAFT_SKILLS="$(catalog_skills | awk -F '\t' '{print $2}')"
+    HAWS_DRAFT_SKILLS_LOADED=1
+    export HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
+
+    settings_skills_page <<< 'q' >"${OUTPUT_FILE}" 2>&1 || return 1
+    grep -E 'Single Skills[[:space:]]+\[Active:[[:space:]]+1 /[[:space:]]+1 skills\]' \
+        "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -E 'Multi-Skill Packs[[:space:]]+\[Active:[[:space:]]+2 /[[:space:]]+2 skills\]' \
+        "${OUTPUT_FILE}" >/dev/null || return 1
+
+    HAWS_PLAN_KIND=Install
+    HAWS_PLAN_CHANGED=1
+    interactive_menu() { return 1; }
+    settings_preview >"${OUTPUT_FILE}" 2>&1 || true
+    assert_output_contains 'Single Skills:' || return 1
+    assert_output_contains 'One Skill' || return 1
+    assert_output_contains 'Multi-Skill Packs:' || return 1
+    assert_output_contains 'pack-in-standalone' || return 1
+}
+
 test_settings_skills_uses_one_page_frame() {
     init_superproject || return 1
     source_haws || return 1
@@ -1501,7 +1648,8 @@ if [ -n "${HAWS_REPOSITORY_TEST_ONLY:-}" ]; then
 fi
 
 run_test test_catalog_resolves_source_scoped_logical_skills
-run_test test_catalog_respects_repository_folder_taxonomy
+run_test test_catalog_classifies_sources_by_effective_skill_count
+run_test test_catalog_source_kind_ignores_device_disabled_state
 run_test test_catalog_keeps_only_historical_canonical_skill_copies
 run_test test_kit_migrate_converts_exact_pending_addition
 run_test test_kit_migrate_reuses_clean_device_mirror
@@ -1511,6 +1659,8 @@ run_test test_kit_migrate_preserves_ignored_submodule_files
 run_test test_add_only_apply_creates_device_local_source
 run_test test_kit_add_registers_device_source_and_links_skill
 run_test test_kit_add_survives_remote_skill_update
+run_test test_sync_reclassifies_pack_as_single_and_is_idempotent
+run_test test_sync_reclassifies_single_as_pack_after_remote_addition
 run_test test_local_skill_survives_haws_remote_update
 run_test test_kit_update_refreshes_device_local_source_when_auto_update_is_off
 run_test test_doctor_cache_refreshes_after_device_source_changes
@@ -1547,6 +1697,7 @@ run_test test_skill_draft_persists_source_identity_only_on_final_apply
 run_test test_legacy_tracked_skill_state_migrates_to_device_state
 run_test test_repository_back_and_discard_do_not_mutate_git_files
 run_test test_settings_skills_presents_logical_groups_and_keeps_state_draft_only
+run_test test_settings_groups_sources_by_catalog_kind_not_storage_path
 run_test test_settings_skills_uses_one_page_frame
 run_test test_settings_skills_preserves_old_single_and_pack_organization
 
