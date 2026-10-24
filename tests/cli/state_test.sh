@@ -191,12 +191,12 @@ test_ownership_round_trip_preserves_spaces_in_paths() {
 test_ownership_record_updates_one_identity_without_duplicates() {
     source_haws || return 1
     local owned_path="${FIXTURE_HOME}/managed skill"
-    ownership_record skills symlink "${owned_path}" source-a hash-a || return 1
-    ownership_record skills symlink "${owned_path}" source-b hash-b || return 1
-    [ "$(ownership_list skills | awk -F '\t' -v p="${owned_path}" '$3 == p {count++} END {print count + 0}')" = 1 ] || return 1
-    ownership_list skills |
+    ownership_record agents generated-file "${owned_path}" source-a hash-a || return 1
+    ownership_record agents symlink "${owned_path}" source-b hash-b || return 1
+    [ "$(ownership_list agents | awk -F '\t' -v p="${owned_path}" '$3 == p {count++} END {print count + 0}')" = 1 ] || return 1
+    ownership_list agents |
         awk -F '\t' -v p="${owned_path}" \
-            '$3 == p && $4 == "source-b" && $5 == "hash-b" {found=1} END {exit found ? 0 : 1}'
+            '$2 == "symlink" && $3 == p && $4 == "source-b" && $5 == "hash-b" {found=1} END {exit found ? 0 : 1}'
 }
 
 test_live_sync_lock_blocks_second_owner() {

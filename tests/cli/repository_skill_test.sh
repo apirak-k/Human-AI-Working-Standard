@@ -838,6 +838,139 @@ test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail() {
         'Plugin copy of Ponytail.'
 }
 
+test_run_sync_copies_agent_when_link_command_does_not_create_link() {
+    init_superproject || return 1
+    mkdir -p "${FIXTURE_PROJECT}/agents" "${FIXTURE_HOME}/.gemini" || return 1
+    cp "${PROJECT_ROOT}/agents/backend-engineer.md" \
+        "${FIXTURE_PROJECT}/agents/backend-engineer.md" || return 1
+    mkdir -p "${FIXTURE_PROJECT}/ai-configs/gemini" || return 1
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_PROJECT}/ai-configs/gemini/skills-json.mjs" || return 1
+    local fake_bin="${FIXTURE_ROOT}/fake-bin"
+    mkdir -p "${fake_bin}" || return 1
+    cat > "${fake_bin}/cmd.exe" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+    cat > "${fake_bin}/ln" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"/.gemini/config/agents/"* ]]; then
+    cp -f -- "$2" "$3"
+    exit $?
+fi
+exec /usr/bin/ln "$@"
+EOF
+    chmod +x "${fake_bin}/cmd.exe" "${fake_bin}/ln" || return 1
+    write_sync_settings
+    source_haws || return 1
+    if ! PATH="${fake_bin}:${PATH}" run_sync >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+
+    local source="${FIXTURE_PROJECT}/agents/backend-engineer.md"
+    local target="${FIXTURE_HOME}/.gemini/config/agents/backend-engineer/agent.md"
+    [ -f "${target}" ] && [ ! -L "${target}" ] || return 1
+    cmp -s -- "${source}" "${target}" || return 1
+    assert_output_contains '[COPIED] Antigravity Agent [backend-engineer]' || return 1
+    assert_output_not_contains '[LINKED] Antigravity Agent [backend-engineer]' || return 1
+    [ "$(ownership_list agents | awk -F '\t' -v p="${target}" '$3 == p {count++} END {print count + 0}')" = 1 ] || return 1
+    ownership_list agents |
+        awk -F '\t' -v p="${target}" -v src="${source}" \
+            '$2 == "generated-file" && $3 == p && $4 == src && $5 != "" {found=1} END {exit found ? 0 : 1}'
+}
+
+run_sync_recovers_copy_mislabeled_as_link_kind() {
+    local record_kind="$1"
+    init_superproject || return 1
+    mkdir -p "${FIXTURE_PROJECT}/agents" "${FIXTURE_HOME}/.gemini" || return 1
+    cp "${PROJECT_ROOT}/agents/backend-engineer.md" \
+        "${FIXTURE_PROJECT}/agents/backend-engineer.md" || return 1
+    mkdir -p "${FIXTURE_PROJECT}/ai-configs/gemini" || return 1
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_PROJECT}/ai-configs/gemini/skills-json.mjs" || return 1
+    local source="${FIXTURE_PROJECT}/agents/backend-engineer.md"
+    local target="${FIXTURE_HOME}/.gemini/config/agents/backend-engineer/agent.md"
+    mkdir -p "$(dirname "${target}")" || return 1
+    cp "${source}" "${target}" || return 1
+    local fake_bin="${FIXTURE_ROOT}/fake-bin"
+    mkdir -p "${fake_bin}" || return 1
+    cat > "${fake_bin}/cmd.exe" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+    cat > "${fake_bin}/ln" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"/.gemini/config/agents/"* ]]; then
+    cp -f -- "$2" "$3"
+    exit $?
+fi
+exec /usr/bin/ln "$@"
+EOF
+    chmod +x "${fake_bin}/cmd.exe" "${fake_bin}/ln" || return 1
+    write_sync_settings
+    source_haws || return 1
+    ownership_record agents "${record_kind}" "${target}" "${source}" "${source}" || return 1
+    if ! PATH="${fake_bin}:${PATH}" run_sync >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+
+    [ -f "${target}" ] && [ ! -L "${target}" ] || return 1
+    cmp -s -- "${source}" "${target}" || return 1
+    assert_output_contains '[COPIED] Antigravity Agent [backend-engineer]' || return 1
+    assert_output_not_contains '[PRESERVED] Antigravity Agent [backend-engineer]' || return 1
+    assert_output_not_contains '[LINKED] Antigravity Agent [backend-engineer]' || return 1
+    [ "$(ownership_list agents | awk -F '\t' -v p="${target}" '$3 == p {count++} END {print count + 0}')" = 1 ] || return 1
+    ownership_list agents |
+        awk -F '\t' -v p="${target}" -v src="${source}" \
+            '$2 == "generated-file" && $3 == p && $4 == src && $5 != "" {found=1} END {exit found ? 0 : 1}'
+}
+
+test_run_sync_recovers_copy_mislabeled_as_link() {
+    run_sync_recovers_copy_mislabeled_as_link_kind symlink
+}
+
+test_run_sync_recovers_copy_mislabeled_as_hardlink() {
+    run_sync_recovers_copy_mislabeled_as_link_kind hardlink
+}
+
+test_run_sync_keeps_valid_hardlink_agent_profile() {
+    init_superproject || return 1
+    mkdir -p "${FIXTURE_PROJECT}/agents" "${FIXTURE_HOME}/.gemini" || return 1
+    cp "${PROJECT_ROOT}/agents/backend-engineer.md" \
+        "${FIXTURE_PROJECT}/agents/backend-engineer.md" || return 1
+    mkdir -p "${FIXTURE_PROJECT}/ai-configs/gemini" || return 1
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_PROJECT}/ai-configs/gemini/skills-json.mjs" || return 1
+
+    local source="${FIXTURE_PROJECT}/agents/backend-engineer.md"
+    local target="${FIXTURE_HOME}/.gemini/config/agents/backend-engineer/agent.md"
+    mkdir -p "$(dirname "${target}")" || return 1
+    ln "${source}" "${target}" || return 1
+    [ "${source}" -ef "${target}" ] || return 1
+
+    write_sync_settings
+    source_haws || return 1
+    ownership_record agents hardlink "${target}" "${source}" \
+        "$(_haws_sha256 "${target}")" || return 1
+    if ! run_sync >"${OUTPUT_FILE}" 2>&1; then
+        cat "${OUTPUT_FILE}"
+        return 1
+    fi
+
+    [ -f "${target}" ] && [ ! -L "${target}" ] || return 1
+    [ "${source}" -ef "${target}" ] || return 1
+    assert_output_not_contains '[REPAIRED]' || return 1
+    assert_output_not_contains '[COPIED] Antigravity Agent [backend-engineer]' || return 1
+    assert_output_not_contains '[LINKED] Antigravity Agent [backend-engineer]' || return 1
+    assert_output_not_contains '[HARDLINK] Antigravity Agent [backend-engineer]' || return 1
+    [ "$(ownership_list agents | awk -F '\t' -v p="${target}" '$3 == p {count++} END {print count + 0}')" = 1 ] || return 1
+    ownership_list agents |
+        awk -F '\t' -v p="${target}" -v src="${source}" \
+            '$2 == "hardlink" && $3 == p && $4 == src && $5 != "" {found=1} END {exit found ? 0 : 1}'
+}
+
 test_run_sync_preserves_unowned_codex_skill_link() {
     init_superproject || return 1
     mkdir -p "${FIXTURE_PROJECT}/skills/custom/foreign-skill" \
@@ -873,7 +1006,7 @@ test_run_sync_repairs_dangling_manifest_skill_link() {
     create_test_directory_link \
         "${stale_project}/skills/custom/repair-me" \
         "${FIXTURE_HOME}/.claude/skills/repair-me" || return 1
-    rm -rf -- "${stale_project}/skills/custom/repair-me"
+    rm -rf -- "${stale_project}"
 
     source_haws || return 1
     run_codex_agents() { return 0; }
@@ -1396,6 +1529,10 @@ run_test test_run_sync_honors_source_aware_disabled_skill_without_legacy_scanner
 run_test test_direct_skills_route_uses_the_settings_catalog
 run_test test_run_sync_keeps_each_source_qualified_skill_in_state
 run_test test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail
+run_test test_run_sync_copies_agent_when_link_command_does_not_create_link
+run_test test_run_sync_recovers_copy_mislabeled_as_link
+run_test test_run_sync_recovers_copy_mislabeled_as_hardlink
+run_test test_run_sync_keeps_valid_hardlink_agent_profile
 run_test test_run_sync_preserves_unowned_codex_skill_link
 run_test test_run_sync_repairs_dangling_manifest_skill_link
 run_test test_run_sync_rebinds_unowned_haws_workspace_skill_link

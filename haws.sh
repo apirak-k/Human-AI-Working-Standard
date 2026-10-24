@@ -7,10 +7,30 @@ set -euo pipefail
 
 if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] ||
     { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 2 ]; }; then
-    printf '[ERROR] HAWS requires Bash 4.2 or newer; detected %s.\n' "${BASH_VERSION:-unknown}" >&2
-    printf '%s\n' 'macOS ships Bash 3.2. Install a newer Bash (for example: brew install bash), then run:' >&2
-    printf '%s\n' '  "$(brew --prefix)/bin/bash" ./haws.sh' >&2
+    if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+        printf '[ERROR] HAWS needs Bash 4.2 or newer; invoke haws.sh as a command instead of sourcing it.\n' >&2
+        return 2
+    fi
+    HAWS_BOOTSTRAP_BASH_CANDIDATE=""
+    for HAWS_BOOTSTRAP_BASH_CANDIDATE in \
+        "${HOME:-}/.local/bin/bash" \
+        /opt/homebrew/bin/bash \
+        /usr/local/bin/bash; do
+        [ -x "${HAWS_BOOTSTRAP_BASH_CANDIDATE}" ] || continue
+        if "${HAWS_BOOTSTRAP_BASH_CANDIDATE}" -c \
+            '(( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 2) ))' \
+            >/dev/null 2>&1; then
+            exec "${HAWS_BOOTSTRAP_BASH_CANDIDATE}" "$0" "$@"
+        fi
+    done
+    printf '[ERROR] HAWS needs Bash 4.2 or newer; detected %s.\n' "${BASH_VERSION:-unknown}" >&2
+    printf '%s\n' 'Install a newer Bash (for example: brew install bash), then run the same HAWS command again.' >&2
     exit 2
+fi
+
+HAWS_DIRECT_EXECUTION=0
+if [ "${HAWS_SOURCE_ONLY:-0}" != 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    HAWS_DIRECT_EXECUTION=1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -136,7 +156,7 @@ _health_fingerprint() {
             else
                 env_stamp+="missing:$p;"
             fi
-        done < <(awk -F $'\t' '$1 == "environments" && NF == 6 && $6 == "schema=2" {print $2}' "$state/ownership.tsv" 2>/dev/null)
+        done < <(awk -F $'\t' '$1 == "environments" && NF == 6 && $6 == "schema=2" {print $3}' "$state/ownership.tsv" 2>/dev/null)
     fi
     source_fp="$(catalog_sources 2>/dev/null | cksum | awk '{print $1":"$2}')"
     skill_fp="$(catalog_skills 2>/dev/null | cksum | awk '{print $1":"$2}')"
@@ -215,9 +235,9 @@ _health_collect() {
         fi
     done
 
-    local kind path source fingerprint verify_status
-    while IFS=$'\t' read -r kind path source fingerprint _ ||
-        [ -n "$kind" ]; do
+    local group kind path source fingerprint extra verify_status
+    while IFS=$'\t' read -r group kind path source fingerprint extra ||
+        [ -n "$group" ]; do
         [ -n "$kind" ] || continue
         if ownership_verify "$kind"$'\t'"$path"$'\t'"$source"$'\t'"$fingerprint"; then
             _health_add Ready "AI Environment ownership" "$kind $path matches its recorded fingerprint"
@@ -682,8 +702,11 @@ _haws_mark_integration_ownership_migration_complete() {
     local marker="$(_haws_state_dir)/integration-ownership-migration-v1"
     local temporary="${marker}.stage.$$"
     if [ -e "${marker}" ] || [ -L "${marker}" ]; then
-        _haws_schema_marker_valid "${marker}" 1 migrated_at
-        return $?
+        _haws_schema_marker_valid "${marker}" 1 migrated_at || return $?
+        if [ "${1:-}" != --refresh-ledger-upgrade ] ||
+            ! _haws_integration_migration_matches_ledger_upgrade; then
+            return 0
+        fi
     fi
     if ! mkdir -p "$(dirname "${marker}")" ||
         ! printf 'schema=1\tmigrated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${temporary}" ||
@@ -694,9 +717,58 @@ _haws_mark_integration_ownership_migration_complete() {
     _haws_schema_marker_valid "${marker}" 1 migrated_at
 }
 
+_haws_integration_migration_matches_ledger_upgrade() {
+    local state="$(_haws_state_dir)"
+    local integration_marker="${state}/integration-ownership-migration-v1"
+    local ledger_marker="${state}/ownership-ledger-v2"
+    local integration_schema integration_timestamp ledger_schema ledger_timestamp
+    _haws_schema_marker_valid "${integration_marker}" 1 migrated_at || return 1
+    _haws_schema_marker_valid "${ledger_marker}" 2 upgraded_at || return 1
+    IFS=$'\t' read -r integration_schema integration_timestamp < "${integration_marker}"
+    IFS=$'\t' read -r ledger_schema ledger_timestamp < "${ledger_marker}"
+    [ "${integration_schema}" = schema=1 ] && [ "${ledger_schema}" = schema=2 ] || return 1
+    integration_timestamp="${integration_timestamp#migrated_at=}"
+    ledger_timestamp="${ledger_timestamp#upgraded_at=}"
+    [ -n "${integration_timestamp}" ] && [ "${integration_timestamp}" = "${ledger_timestamp}" ]
+}
+
+_haws_file_mtime_epoch() {
+    local path="${1:-}" timestamp
+    [ -n "${path}" ] || return 1
+    timestamp="$(stat -c '%Y' -- "${path}" 2>/dev/null)" && {
+        printf '%s\n' "${timestamp}"
+        return 0
+    }
+    timestamp="$(stat -f '%m' "${path}" 2>/dev/null)" && {
+        printf '%s\n' "${timestamp}"
+        return 0
+    }
+    return 1
+}
+
+_haws_pointer_predates_ledger_migration() {
+    local pointer="${1:-}"
+    local marker="$(_haws_state_dir)/integration-ownership-migration-v1"
+    local pointer_mtime marker_mtime
+    if [ ! -e "${marker}" ] && [ ! -L "${marker}" ]; then
+        marker="$(_haws_state_dir)/ownership-ledger-v2"
+    fi
+    pointer_mtime="$(_haws_file_mtime_epoch "${pointer}")" || return 1
+    marker_mtime="$(_haws_file_mtime_epoch "${marker}")" || return 1
+    [[ "${pointer_mtime}" =~ ^[0-9]+$ && "${marker_mtime}" =~ ^[0-9]+$ ]] || return 1
+    [ "${pointer_mtime}" -le "${marker_mtime}" ]
+}
+
 _haws_ownership_ledger_has_unversioned_rows() {
     local file result
-    for file in "$(_haws_state_dir)/ownership.tsv" "${HOME}/.haws/skills-ownership.tsv"; do
+    local ownership_files=("$(_haws_state_dir)/ownership.tsv")
+    # The old device-level skill ledger is a supported input to legacy
+    # migration. Only an unversioned current state ledger is ambiguous enough
+    # to block adopting other legacy integrations.
+    if [ "${1:-}" != --state-only ]; then
+        ownership_files+=("${HOME}/.haws/skills-ownership.tsv")
+    fi
+    for file in "${ownership_files[@]}"; do
         if [ -e "${file}" ] || [ -L "${file}" ]; then
             [ -f "${file}" ] && [ ! -L "${file}" ] || return 2
             if awk -F $'\t' '$1 != "" && !(NF == 6 && $6 == "schema=2") { found=1 } END { exit found ? 0 : 1 }' \
@@ -718,7 +790,7 @@ _haws_prepare_ownership_ledger_v2() {
     local gemini_manifest="${state}/gemini-skills-ownership.json"
     local gemini_quarantine="${gemini_manifest}.untrusted-v1"
     local temporary="${ledger_marker}.stage.$$"
-    local has_unversioned=0 marker_status manifest_present=0 quarantine_present=0
+    local marker_status manifest_present=0 quarantine_present=0
 
     if [ -e "${integration_marker}" ] || [ -L "${integration_marker}" ]; then
         _haws_schema_marker_valid "${integration_marker}" 1 migrated_at || return 1
@@ -739,18 +811,11 @@ _haws_prepare_ownership_ledger_v2() {
     [ "${manifest_present}" -eq 0 ] || [ "${quarantine_present}" -eq 0 ] || return 1
 
     if _haws_ownership_ledger_has_unversioned_rows; then
-        has_unversioned=1
+        :
     else
         marker_status=$?
         [ "${marker_status}" -eq 1 ] || return 1
     fi
-    if [ "${manifest_present}" -eq 1 ] || [ "${quarantine_present}" -eq 1 ]; then
-        has_unversioned=1
-    fi
-    if [ "${has_unversioned}" -eq 1 ]; then
-        _haws_mark_integration_ownership_migration_complete || return 1
-    fi
-
     if [ "${manifest_present}" -eq 1 ]; then
         mv -- "${gemini_manifest}" "${gemini_quarantine}" || return 1
     fi
@@ -1075,7 +1140,7 @@ ownership_record() {
     mkdir -p "$(dirname "${file}")" || return 1
     awk -F $'\t' -v OFS=$'\t' -v group="${group}" -v kind="${kind}" \
         -v path="${path}" -v source="${source}" -v fingerprint="${fingerprint}" '
-        $1 == group && $2 == kind && $3 == path {
+        $1 == group && $3 == path {
             if (!found) print group, kind, path, source, fingerprint, "schema=2"
             found = 1
             next
@@ -1312,6 +1377,20 @@ _catalog_device_source_id() {
     _catalog_source_id "device-${1}" "${2}"
 }
 
+_haws_sync_note_source_materialization() {
+    [ -n "${HAWS_SYNC_PREFETCH_MATERIALIZED_FILE:-}" ] || return 0
+    printf 'materialized\n' > "${HAWS_SYNC_PREFETCH_MATERIALIZED_FILE}" 2>/dev/null || true
+}
+
+_haws_git_directory_is_repository_root() {
+    local directory="${1:-}" root_directory physical_directory
+    [ -d "${directory}" ] || return 1
+    physical_directory="$(cd "${directory}" 2>/dev/null && pwd -P)" || return 1
+    root_directory="$(git -C "${directory}" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    root_directory="$(cd "${root_directory}" 2>/dev/null && pwd -P)" || return 1
+    [ "${physical_directory}" = "${root_directory}" ]
+}
+
 _catalog_submodule_cache_dir() {
     local source_path="${1:-}" repo modules_root cache_dir relative current part
     local -a components=()
@@ -1372,7 +1451,7 @@ _haws_prepare_device_source() {
     if _catalog_device_source_is_registered "${source_path}"; then
         device_dir="$(_catalog_device_source_dir "${source_path}")" || return 1
         [ ! -L "${device_dir}" ] || return 1
-        if git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        if _haws_git_directory_is_repository_root "${device_dir}"; then
             [ "$(git -C "${device_dir}" config --get remote.origin.url 2>/dev/null || true)" = "${source_url}" ] || return 1
             return 0
         fi
@@ -1387,13 +1466,22 @@ _haws_prepare_device_source() {
             rm -rf -- "${device_dir}"
             return 1
         }
+        _haws_sync_note_source_materialization
         return 0
     fi
     _catalog_source_is_gitlink "${source_path}" || return 0
     device_dir="$(_catalog_device_source_dir "${source_path}")" || return 1
-    git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 && return 0
+    _haws_git_directory_is_repository_root "${device_dir}" && return 0
     source_dir="${repo}/${source_path}"
-    git -C "${source_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+    if ! _haws_git_directory_is_repository_root "${source_dir}"; then
+        if [ -L "${source_dir}" ] || { [ -e "${source_dir}" ] &&
+            { [ ! -d "${source_dir}" ] || [ -n "$(find "${source_dir}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; }; }; then
+            return 1
+        fi
+        git -C "${repo}" submodule update --init --quiet -- "${source_path}" || return 1
+        _haws_git_directory_is_repository_root "${source_dir}" || return 1
+        _haws_sync_note_source_materialization
+    fi
     seed_remote="$(git -C "${source_dir}" remote get-url origin 2>/dev/null || true)"
     mkdir -p "$(dirname "${device_dir}")" || return 1
     git clone -q --no-hardlinks "${source_dir}" "${device_dir}" || return 1
@@ -1403,6 +1491,7 @@ _haws_prepare_device_source() {
     elif [ -z "${seed_remote}" ]; then
         git -C "${device_dir}" remote remove origin >/dev/null 2>&1 || true
     fi
+    _haws_sync_note_source_materialization
     return 0
 }
 
@@ -1798,14 +1887,35 @@ _haws_skill_link_matches_source() {
 }
 
 _haws_link_path_key() {
-    local path="${1:-}"
+    local path="${1:-}" parent leaf missing_suffix="" candidate
     [ -n "${path}" ] || return 1
     case "${path}" in
         /*|[A-Za-z]:*) ;;
         *) path="${PWD}/${path}" ;;
     esac
     path="$(_uninstall_native_path "${path}")"
-    path="$(canonical_path "${path}" 2>/dev/null || true)"
+    if [ ! -e "${path}" ] && [ ! -L "${path}" ]; then
+        candidate="${path}"
+        while [ ! -e "${candidate}" ] && [ ! -L "${candidate}" ] &&
+            [ "${candidate}" != / ]; do
+            leaf="${candidate##*/}"
+            [ -n "${leaf}" ] && missing_suffix="/${leaf}${missing_suffix}"
+            candidate="${candidate%/*}"
+            [ -n "${candidate}" ] || candidate="/"
+        done
+        if [ -e "${candidate}" ] || [ -L "${candidate}" ]; then
+            parent="$(canonical_path "${candidate}" 2>/dev/null || true)"
+            if [ -n "${parent}" ]; then
+                if [ "${parent}" = / ]; then
+                    path="/${missing_suffix#/}"
+                else
+                    path="${parent%/}${missing_suffix}"
+                fi
+            fi
+        fi
+    else
+        path="$(canonical_path "${path}" 2>/dev/null || true)"
+    fi
     [ -n "${path}" ] || return 1
     path="${path%/}"
     [ -n "${path}" ] || path="/"
@@ -2332,6 +2442,10 @@ _sync_prefetch_target() {
 
 _sync_prefetch_all() {
     [ "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}" = on ] || return 0
+    local state="$(_haws_state_dir)"
+    local HAWS_SYNC_PREFETCH_MATERIALIZED_FILE="${state}/sync-prefetch-materialized.$$"
+    mkdir -p "${state}" || return 1
+    export HAWS_SYNC_PREFETCH_MATERIALIZED_FILE
     local pids=()
     if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
         _sync_prefetch_target haws &
@@ -2348,6 +2462,10 @@ _sync_prefetch_all() {
     for pid in "${pids[@]}"; do
         wait "$pid" 2>/dev/null || true
     done
+    if [ -s "${HAWS_SYNC_PREFETCH_MATERIALIZED_FILE}" ]; then
+        _catalog_invalidate_source_catalog
+    fi
+    rm -- "${HAWS_SYNC_PREFETCH_MATERIALIZED_FILE}" 2>/dev/null || true
     export HAWS_SYNC_PREFETCH_DONE=1
 }
 
@@ -2547,6 +2665,7 @@ sync_target() {
         else
             sync_result_write "${target}" updated "${candidate_revision}" "final HEAD equals candidate" || return 1
             _sync_legacy_echo "${target}: updated"
+            [ "${target}" != haws ] || HAWS_SYNC_HAWS_UPDATED=1
         fi
         return 0
     fi
@@ -2618,7 +2737,8 @@ _sync_interrupt() {
 }
 
 sync_run() {
-    local target_count=0 target row source_id status=0
+    local target_count=0 target row source_id status=0 restart_requested=0
+    unset HAWS_SYNC_HAWS_UPDATED
     echo "  [*] Preparing synchronization..."
     if [ "${1:-}" = --recover-lock ]; then
         sync_lock_release --recover
@@ -2686,6 +2806,10 @@ sync_run() {
         printf '  %-28s %-18s %s\n' "remote repositories (${skipped_repo_count})" "[INFO] Skipped" "Auto Update is disabled"
     else
         _sync_prefetch_all
+        cached_source_ids=()
+        while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
+            [ -n "${source_id:-}" ] && cached_source_ids+=("${source_id}")
+        done < <(catalog_sources 2>/dev/null || true)
     fi
     local caller_had_cache=1
     [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || caller_had_cache=0
@@ -2694,11 +2818,14 @@ sync_run() {
         if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
             target_count=$((target_count + 1))
             sync_target haws || status=1
+            [ "${HAWS_SYNC_HAWS_UPDATED:-0}" = 1 ] && restart_requested=1
         fi
-        for source_id in "${cached_source_ids[@]}"; do
-            target_count=$((target_count + 1))
-            sync_target "${source_id}" || status=1
-        done
+        if [ "${restart_requested}" -eq 0 ]; then
+            for source_id in "${cached_source_ids[@]}"; do
+                target_count=$((target_count + 1))
+                sync_target "${source_id}" || status=1
+            done
+        fi
     else
         local state="$(_haws_state_dir)"
         local file="${state}/sync-state.tsv"
@@ -2724,7 +2851,8 @@ sync_run() {
         _haws_state_replace "${temporary}" "${file}" || status=1
         rm -f -- "${temporary}"
     fi
-    if [ -n "$(_second_brain_remote_url)" ] || [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; then
+    if [ "${restart_requested}" -eq 0 ] &&
+        { [ -n "$(_second_brain_remote_url)" ] || [ "${HAWS_SECOND_BRAIN_ENABLED:-off}" = on ]; }; then
         target_count=$((target_count + 1))
         sync_second_brain_target || status=1
     fi
@@ -2749,6 +2877,10 @@ sync_run() {
     printf '  %-14s: %s\n' "Timeout" "${SYNC_SUMMARY_TIMEOUT}"
     HAWS_SYNC_PRESENTATION=0
     unset HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
+    if [ "${restart_requested}" -eq 1 ] && [ "${status}" -eq 0 ] &&
+        [ "${HAWS_DIRECT_EXECUTION:-0}" -eq 1 ]; then
+        return 75
+    fi
     return "${status}"
 }
 
@@ -2782,15 +2914,40 @@ _run_sync_impl() {
     echo ""
     local sync_status=0
     local HAWS_LEGACY_INTEGRATION_MIGRATION=0
+    local HAWS_LEGACY_POINTER_RECOVERY=0
+    local HAWS_LEGACY_INTEGRATION_MIGRATION_FROM_LEDGER_UPGRADE=0
+    local HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED=0
     local legacy_migration_marker="$(_haws_state_dir)/integration-ownership-migration-v1"
+    if _haws_ownership_ledger_has_unversioned_rows --state-only; then
+        HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED=1
+    else
+        local legacy_ledger_status=$?
+        [ "${legacy_ledger_status}" -eq 1 ] || {
+            echo "[ERROR] Ownership ledger is invalid; sync stopped safely." >&2
+            return 1
+        }
+    fi
+    if [ -e "$(_haws_state_dir)/gemini-skills-ownership.json.untrusted-v1" ] ||
+        [ -L "$(_haws_state_dir)/gemini-skills-ownership.json.untrusted-v1" ]; then
+        HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED=1
+    fi
     if [ -s "$(_haws_state_dir)/install.complete" ] &&
         [ -s "${HOME}/.haws_manifest" ] &&
-        [ ! -e "${legacy_migration_marker}" ] && [ ! -L "${legacy_migration_marker}" ] &&
         grep -Eq '^(skill|agent):' "${HOME}/.haws_manifest"; then
-        HAWS_LEGACY_INTEGRATION_MIGRATION=1
+        if [ ! -e "${legacy_migration_marker}" ] && [ ! -L "${legacy_migration_marker}" ]; then
+            if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED}" -eq 1 ]; then
+                HAWS_LEGACY_POINTER_RECOVERY=1
+            else
+                HAWS_LEGACY_INTEGRATION_MIGRATION=1
+            fi
+        elif _haws_integration_migration_matches_ledger_upgrade; then
+            HAWS_LEGACY_POINTER_RECOVERY=1
+            HAWS_LEGACY_INTEGRATION_MIGRATION_FROM_LEDGER_UPGRADE=1
+        fi
     fi
     echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
+    [ "${sync_status}" -ne 75 ] || return 75
     if [ "${sync_status}" -eq 0 ]; then
         echo "[PASS] Sources are synchronized or safely unchanged"
     else
@@ -2963,6 +3120,17 @@ _run_sync_impl() {
                 fi
             fi
             IFS=$'\t' read -r record_kind record_path record_source record_fingerprint <<< "${record}"
+            if { [ "${record_kind}" = symlink ] || [ "${record_kind}" = hardlink ]; } &&
+                [ "${record_source}" = "${src}" ] && [ -f "${src}" ] &&
+                [ -f "${dest}" ] && [ ! -L "${dest}" ] &&
+                ! [ "${src}" -ef "${dest}" ] && cmp -s -- "${src}" "${dest}"; then
+                record_kind=generated-file
+                record_fingerprint="$(_haws_sha256 "${dest}")"
+                ownership_record agents generated-file "${dest}" "${src}" \
+                    "${record_fingerprint}" || return 1
+                record="generated-file"$'\t'"${dest}"$'\t'"${src}"$'\t'"${record_fingerprint}"
+                echo "  [REPAIRED] Corrected stale agent link ownership: ${dest}"
+            fi
             if ! ownership_verify "${record_kind}"$'\t'"${record_path}"$'\t'"${record_source}"$'\t'"${record_fingerprint}"; then
                 echo "  [PRESERVED] ${label}: owned item changed; leaving it untouched: ${dest}"
                 return 0
@@ -2987,7 +3155,8 @@ _run_sync_impl() {
             local win_src win_dest
             win_src="$(_haws_winpath "${src}")"
             win_dest="$(_haws_winpath "${dest}")"
-            if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" >/dev/null 2>&1; then
+            if MSYS2_ARG_CONV_EXCL="*" cmd.exe /c mklink /H "${win_dest}" "${win_src}" \
+                >/dev/null 2>&1 && [ -f "${dest}" ] && [ "${src}" -ef "${dest}" ]; then
                 ownership_record agents hardlink "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
                     rm -f -- "${dest}"
                     return 1
@@ -2997,21 +3166,29 @@ _run_sync_impl() {
             fi
         fi
 
+        current_target=""
         if ln -sf "${src}" "${dest}" 2>/dev/null || ln -s "${src}" "${dest}" 2>/dev/null; then
             current_target="$(readlink "${dest}" 2>/dev/null || true)"
-            ownership_record agents symlink "${dest}" "${src}" "${current_target}" || {
-                rm -f -- "${dest}"
-                return 1
-            }
-            echo "  [LINKED] ${label}: ${dest} -> ${src}"
-        else
-            cp -f "${src}" "${dest}" || return 1
-            ownership_record agents generated-file "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
-                rm -f -- "${dest}"
-                return 1
-            }
-            echo "  [COPIED] ${label}: ${dest} -> ${src}"
+            if [ -L "${dest}" ] && [ "${current_target}" = "${src}" ]; then
+                ownership_record agents symlink "${dest}" "${src}" "${current_target}" || {
+                    rm -f -- "${dest}"
+                    return 1
+                }
+                echo "  [LINKED] ${label}: ${dest} -> ${src}"
+                return 0
+            fi
         fi
+
+        # Some Windows/MSYS environments may report success for `ln -s`
+        # while leaving a regular file. Verify the actual filesystem link
+        # before claiming it; otherwise use and record the copy fallback.
+        rm -f -- "${dest}" || return 1
+        cp -f "${src}" "${dest}" || return 1
+        ownership_record agents generated-file "${dest}" "${src}" "$(_haws_sha256 "${dest}")" || {
+            rm -f -- "${dest}"
+            return 1
+        }
+        echo "  [COPIED] ${label}: ${dest} -> ${src}"
     }
 
     safe_generated_file() {
@@ -3205,8 +3382,11 @@ _run_sync_impl() {
                     is_canonical_haws_block=1
                 fi
 
-                if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] &&
-                    [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ]; then
+                if { [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] ||
+                    [ "${HAWS_LEGACY_POINTER_RECOVERY:-0}" = 1 ]; } &&
+                    [ -n "${existing_pointer_hash}" ] && [ "${existing_pointer_hash}" = "${pointer_hash}" ] &&
+                    { [ "${HAWS_LEGACY_POINTER_RECOVERY:-0}" != 1 ] ||
+                        _haws_pointer_predates_ledger_migration "${target_file}"; }; then
                     pointer_source="${outside_content}"
                     ownership_record pointers pointer-block "${target_file}" \
                         "${pointer_source}" "${existing_pointer_hash}" || return 1
@@ -3803,9 +3983,14 @@ EOF
 
     # Mark migration complete only after every integration has succeeded. A
     # failed Sync remains eligible for a safe retry on the next run.
-    if [ "${sync_status}" -eq 0 ] &&
-        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION}" -eq 1 ]; then
-        if ! _haws_mark_integration_ownership_migration_complete; then
+    if [ "${sync_status}" -eq 0 ] && {
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION}" -eq 1 ] ||
+        [ "${HAWS_LEGACY_POINTER_RECOVERY}" -eq 1 ] ||
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION_BLOCKED}" -eq 1 ]; }; then
+        local migration_marker_mode=""
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION_FROM_LEDGER_UPGRADE}" -eq 1 ] &&
+            migration_marker_mode=--refresh-ledger-upgrade
+        if ! _haws_mark_integration_ownership_migration_complete "${migration_marker_mode}"; then
             echo "[FAIL] Ownership migration marker could not be saved; Sync must be retried."
             sync_status=1
         fi
@@ -3856,6 +4041,24 @@ EOF
 run_sync() {
     local sync_status=0
     _run_sync_impl "$@" || sync_status=$?
+    if [ "${sync_status}" -eq 75 ] && [ "${HAWS_DIRECT_EXECUTION:-0}" -eq 1 ]; then
+        if [ "${HAWS_SELF_UPDATE_REEXEC:-0}" = 1 ]; then
+            echo "[ERROR] HAWS updated again during its one allowed restart; run Sync once more to continue." >&2
+            sync_status=1
+        else
+            local -a restart_args=()
+            if [ "${1:-}" = sync ] || [ "${1:-}" = update ] || [ "${1:-}" = install ]; then
+                restart_args=("$@")
+            else
+                restart_args=(sync "$@")
+            fi
+            rm -f -- "${HOME}/.haws_manifest.tmp" 2>/dev/null || true
+            unset HAWS_CATALOG_SKILLS_CACHE HAWS_CATALOG_SOURCES_CACHE \
+                HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
+            export HAWS_SELF_UPDATE_REEXEC=1
+            exec "${BASH:-bash}" "${SCRIPT_DIR}/haws.sh" "${restart_args[@]}"
+        fi
+    fi
     rm -f -- "${HOME}/.haws_manifest.tmp" 2>/dev/null || true
     unset HAWS_CATALOG_SKILLS_CACHE HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
     return "${sync_status}"

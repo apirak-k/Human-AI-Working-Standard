@@ -18,7 +18,10 @@ fail() {
 }
 
 create_fixture() {
-    FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/haws-batch5.XXXXXX")"
+    local temp_root="${TMPDIR:-/tmp}"
+    temp_root="${temp_root%/}"
+    [ -n "${temp_root}" ] || temp_root="/"
+    FIXTURE_ROOT="$(mktemp -d "${temp_root%/}/haws-batch5.XXXXXX")"
     FIXTURE_HOME="${FIXTURE_ROOT}/home"
     FIXTURE_REPO="${FIXTURE_ROOT}/project"
     OUTPUT_FILE="${FIXTURE_ROOT}/output.txt"
@@ -36,7 +39,8 @@ cleanup_fixture() {
     fi
     unset HAWS_REPO_DIR HAWS_STATE_DIR HAWS_SOURCE_ONLY HAWS_TEST_SYNC_DELAY \
         HAWS_AUTO_UPDATE AUTO_UPDATE HAWS_SECOND_BRAIN_ENABLED HAWS_SYNC_PREFETCH_DONE \
-        HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+        HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
+        GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
     FIXTURE_HOME=""
     FIXTURE_REPO=""
@@ -175,10 +179,120 @@ assert_record() {
 }
 
 run_sync_process() {
-    local command="${1:-sync}"
+    local -a args=("$@")
+    [ "${#args[@]}" -gt 0 ] || args=(sync)
     env HOME="${FIXTURE_HOME}" HAWS_REPO_DIR="${FIXTURE_REPO}" \
         HAWS_STATE_DIR="${FIXTURE_REPO}/.haws/state" PATH="${PATH}" \
-        bash "${FIXTURE_REPO}/haws.sh" "${command}" >"${OUTPUT_FILE}" 2>&1
+        bash "${FIXTURE_REPO}/haws.sh" "${args[@]}" >"${OUTPUT_FILE}" 2>&1
+}
+
+add_device_source_pack() {
+    local name="$1" skill_count="${2:-3}"
+    local bare="${FIXTURE_ROOT}/${name}.git"
+    local seed="${FIXTURE_ROOT}/seed-${name}"
+    local registry="${FIXTURE_REPO}/.haws/state/skill-sources/registry.tsv"
+    local index skill_name
+    mkdir -p "${seed}" "$(dirname "${registry}")"
+    git init --bare -q "${bare}"
+    git init -q "${seed}"
+    git -C "${seed}" config user.name HAWS-Test
+    git -C "${seed}" config user.email test@example.invalid
+    git -C "${seed}" checkout -q -b main
+    for index in $(seq 1 "${skill_count}"); do
+        skill_name="${name}-skill-${index}"
+        mkdir -p "${seed}/${skill_name}"
+        printf '%s\n' '---' "name: ${skill_name}" \
+            "description: Fixture skill ${index}." '---' \
+            > "${seed}/${skill_name}/SKILL.md"
+    done
+    git -C "${seed}" add .
+    git -C "${seed}" commit -q -m baseline
+    git -C "${seed}" remote add origin "${bare}"
+    git -C "${seed}" push -q -u origin main
+    git --git-dir="${bare}" symbolic-ref HEAD refs/heads/main
+    printf '%s\t%s\tfile://%s\n' "${name}" \
+        "skills/packs/${name}" "${bare}" >> "${registry}"
+    export HAWS_TEST_ALLOW_LOCAL_SOURCES=1
+}
+
+device_source_id() {
+    printf 'device-%s::skills/packs/%s\n' "$1" "$1"
+}
+
+device_source_dir() {
+    printf '%s/.haws/state/skill-sources/skills/packs/%s\n' \
+        "${FIXTURE_REPO}" "$1"
+}
+
+prepare_haws_remote() {
+    local bare="${FIXTURE_ROOT}/haws.git"
+    local updater="${FIXTURE_ROOT}/haws-updater"
+    printf '%s\n' '.haws/' > "${FIXTURE_REPO}/.gitignore"
+    git -C "${FIXTURE_REPO}" checkout -q -b main
+    git -C "${FIXTURE_REPO}" config user.name HAWS-Test
+    git -C "${FIXTURE_REPO}" config user.email test@example.invalid
+    git init --bare -q "${bare}"
+    git -C "${FIXTURE_REPO}" add .gitignore .gitmodules haws.sh
+    git -C "${FIXTURE_REPO}" commit -q -m baseline
+    git -C "${FIXTURE_REPO}" remote add origin "${bare}"
+    git -C "${FIXTURE_REPO}" push -q -u origin main
+    git --git-dir="${bare}" symbolic-ref HEAD refs/heads/main
+    git clone -q "${bare}" "${updater}"
+    git -C "${updater}" config user.name HAWS-Test
+    git -C "${updater}" config user.email test@example.invalid
+    printf '%s\n' "${updater}"
+}
+
+add_runtime_marker_and_update_haws() {
+    local updater="$1"
+    awk '
+        /^_run_sync_impl\(\) \{/ { in_sync=1 }
+        in_sync && /^    shift \|\| true$/ {
+            print
+            print "    echo HAWS_RUNTIME_B"
+            print "    if [ \"${CLEAN_UNMANAGED}\" = true ]; then echo HAWS_CLEAN_ARGUMENT_PRESERVED; fi"
+            in_sync=0
+            next
+        }
+        { print }
+    ' "${updater}/haws.sh" > "${updater}/haws.sh.next" || return 1
+    mv -- "${updater}/haws.sh.next" "${updater}/haws.sh" || return 1
+    git -C "${updater}" add haws.sh || return 1
+    git -C "${updater}" commit -q -m 'add runtime marker' || return 1
+    git -C "${updater}" push -q origin main
+}
+
+add_remote_submodule_pack() {
+    local updater="$1" name="$2" skill_count="${3:-2}"
+    local bare="${FIXTURE_ROOT}/${name}-source.git"
+    local seed="${FIXTURE_ROOT}/${name}-source-seed"
+    local index skill_name
+    mkdir -p "${seed}"
+    git init --bare -q "${bare}"
+    git init -q "${seed}"
+    git -C "${seed}" config user.name HAWS-Test
+    git -C "${seed}" config user.email test@example.invalid
+    git -C "${seed}" checkout -q -b main
+    for index in $(seq 1 "${skill_count}"); do
+        skill_name="${name}-skill-${index}"
+        mkdir -p "${seed}/${skill_name}"
+        printf '%s\n' '---' "name: ${skill_name}" \
+            "description: New submodule skill ${index}." '---' \
+            > "${seed}/${skill_name}/SKILL.md"
+    done
+    git -C "${seed}" add .
+    git -C "${seed}" commit -q -m baseline
+    git -C "${seed}" remote add origin "${bare}"
+    git -C "${seed}" push -q -u origin main
+    git --git-dir="${bare}" symbolic-ref HEAD refs/heads/main
+    git -C "${updater}" -c protocol.file.allow=always submodule add -q \
+        "file://${bare}" "skills/packs/${name}" || return 1
+    git -C "${updater}" add .gitmodules "skills/packs/${name}" || return 1
+    git -C "${updater}" commit -q -m "register ${name}" || return 1
+    git -C "${updater}" push -q origin main
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0=protocol.file.allow
+    export GIT_CONFIG_VALUE_0=always
 }
 
 test_sync_output_has_sections_and_summary() {
@@ -320,6 +434,132 @@ test_sync_runs_phases_in_order_and_configures_hooks() {
     [ "${step4}" -lt "${step5}" ] || return 1
     grep -F '[PASS] Git advisory hooks configured' "${OUTPUT_FILE}" >/dev/null || return 1
     [ "$(git -C "${FIXTURE_REPO}" config --get core.hooksPath)" = .githooks ]
+}
+
+test_sync_adopts_exact_legacy_pointer_after_ownership_ledger_upgrade() {
+    write_settings off
+    mkdir -p "${FIXTURE_HOME}/.gemini" "${FIXTURE_HOME}/.haws" \
+        "${FIXTURE_REPO}/.haws/state" "${FIXTURE_REPO}/ai-configs/gemini"
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_REPO}/ai-configs/gemini/skills-json.mjs" || return 1
+    printf 'installed\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+    printf 'skill:legacy-fixture:skills/packs/legacy-fixture\n' \
+        > "${FIXTURE_HOME}/.haws_manifest"
+    printf 'skills\tsymlink\t%s\t%s\tlegacy-hash\n' \
+        "${FIXTURE_HOME}/.gemini/config/skills/legacy-fixture" \
+        "${FIXTURE_REPO}/skills/packs/legacy-fixture" \
+        > "${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+
+    local repo_path pointer_file expected_file
+    repo_path="$(cd "${FIXTURE_REPO}" && pwd)" || return 1
+    pointer_file="${FIXTURE_HOME}/.gemini/GEMINI.md"
+    expected_file="${FIXTURE_ROOT}/expected-pointer.txt"
+    cat > "${expected_file}" <<EOF
+<!-- HAWS_GLOBAL_POINTER_START -->
+# HAWS — Human-AI Working Standard
+This environment operates under HAWS. Read and adhere to:
+- Core Standard: ${repo_path}/core/HAWS.md
+- Work Instructions: ${repo_path}/core/WORK_INSTRUCTIONS.md
+- Second Brain documents: ${repo_path}/secondbrain/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)
+- Subagent roles: ${repo_path}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.
+<!-- HAWS_GLOBAL_POINTER_END -->
+EOF
+    cp "${expected_file}" "${pointer_file}" || return 1
+
+    run_sync_process sync || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ -s "${FIXTURE_REPO}/.haws/state/ownership-ledger-v2" ] || return 1
+    [ -s "${FIXTURE_REPO}/.haws/state/integration-ownership-migration-v1" ] || return 1
+    grep -F '[ADOPTED] Exact legacy HAWS pointer ownership:' "${OUTPUT_FILE}" >/dev/null || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    ! grep -F '[PRESERVED] Exact HAWS pointer is unowned outside the one-time legacy migration:' \
+        "${OUTPUT_FILE}" >/dev/null || return 1
+    cmp -s "${expected_file}" "${pointer_file}" || return 1
+
+    source_haws || return 1
+    local expected_hash record
+    expected_hash="$(_haws_pointer_block_fingerprint "${pointer_file}")" || return 1
+    record="$(ownership_record_for_path pointers "${pointer_file}" 2>/dev/null || true)"
+    [ "${record}" = "pointer-block$(printf '\t')${pointer_file}$(printf '\t')created$(printf '\t')${expected_hash}" ]
+}
+
+test_sync_repairs_legacy_pointer_migration_marked_complete_too_early() {
+    write_settings off
+    mkdir -p "${FIXTURE_HOME}/.gemini" "${FIXTURE_HOME}/.haws" \
+        "${FIXTURE_REPO}/.haws/state" "${FIXTURE_REPO}/ai-configs/gemini"
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_REPO}/ai-configs/gemini/skills-json.mjs" || return 1
+    printf 'installed\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+    printf 'skill:legacy-fixture:skills/packs/legacy-fixture\n' \
+        > "${FIXTURE_HOME}/.haws_manifest"
+    printf 'skills\tsymlink\t%s\t%s\tlegacy-hash\n' \
+        "${FIXTURE_HOME}/.gemini/config/skills/legacy-fixture" \
+        "${FIXTURE_REPO}/skills/packs/legacy-fixture" \
+        > "${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+
+    local repo_path pointer_file expected_file old_migration_marker
+    local fixed_timestamp='2024-01-01T00:00:00Z'
+    repo_path="$(cd "${FIXTURE_REPO}" && pwd)" || return 1
+    pointer_file="${FIXTURE_HOME}/.gemini/GEMINI.md"
+    expected_file="${FIXTURE_ROOT}/expected-pointer.txt"
+    cat > "${expected_file}" <<EOF
+<!-- HAWS_GLOBAL_POINTER_START -->
+# HAWS — Human-AI Working Standard
+This environment operates under HAWS. Read and adhere to:
+- Core Standard: ${repo_path}/core/HAWS.md
+- Work Instructions: ${repo_path}/core/WORK_INSTRUCTIONS.md
+- Second Brain documents: ${repo_path}/secondbrain/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)
+- Subagent roles: ${repo_path}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.
+<!-- HAWS_GLOBAL_POINTER_END -->
+EOF
+    cp "${expected_file}" "${pointer_file}" || return 1
+    touch -t 202001010000.00 "${pointer_file}" || return 1
+
+    old_migration_marker="schema=1$(printf '\t')migrated_at=${fixed_timestamp}"
+    printf '%s\n' "${old_migration_marker}" \
+        > "${FIXTURE_REPO}/.haws/state/integration-ownership-migration-v1"
+    printf 'schema=2\tupgraded_at=%s\n' "${fixed_timestamp}" \
+        > "${FIXTURE_REPO}/.haws/state/ownership-ledger-v2"
+    touch -t 202401010000.00 \
+        "${FIXTURE_REPO}/.haws/state/integration-ownership-migration-v1" \
+        "${FIXTURE_REPO}/.haws/state/ownership-ledger-v2" || return 1
+
+    source_haws || return 1
+    _haws_schema_marker_valid "$(_haws_state_dir)/integration-ownership-migration-v1" \
+        1 migrated_at || return 1
+    _haws_schema_marker_valid "$(_haws_state_dir)/ownership-ledger-v2" \
+        2 upgraded_at || return 1
+    [ "$(<"$(_haws_state_dir)/integration-ownership-migration-v1")" = \
+        "${old_migration_marker}" ] || return 1
+    [ ! -e "$(_haws_state_dir)/ownership.tsv" ] || return 1
+
+    run_sync_process sync || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -F '[ADOPTED] Exact legacy HAWS pointer ownership:' "${OUTPUT_FILE}" >/dev/null || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    ! grep -F '[PRESERVED] Exact HAWS pointer is unowned outside the one-time legacy migration:' \
+        "${OUTPUT_FILE}" >/dev/null || return 1
+    cmp -s "${expected_file}" "${pointer_file}" || return 1
+
+    source_haws || return 1
+    local expected_hash record current_migration_marker
+    _haws_schema_marker_valid "$(_haws_state_dir)/integration-ownership-migration-v1" \
+        1 migrated_at || return 1
+    _haws_schema_marker_valid "$(_haws_state_dir)/ownership-ledger-v2" \
+        2 upgraded_at || return 1
+    current_migration_marker="$(<"$(_haws_state_dir)/integration-ownership-migration-v1")"
+    [ "${current_migration_marker}" != "${old_migration_marker}" ] || return 1
+    expected_hash="$(_haws_pointer_block_fingerprint "${pointer_file}")" || return 1
+    record="$(ownership_record_for_path pointers "${pointer_file}" 2>/dev/null || true)"
+    [ "${record}" = "pointer-block$(printf '\t')${pointer_file}$(printf '\t')created$(printf '\t')${expected_hash}" ]
 }
 
 test_sync_target_rows_use_batch_result_markers() {
@@ -795,6 +1035,206 @@ test_lock_releases_after_interrupt() {
     [ ! -d "${FIXTURE_REPO}/.haws/state/sync.lock" ]
 }
 
+test_stock_bash_bootstraps_to_a_user_installed_bash() {
+    local compatible_bash
+    compatible_bash="$(command -v bash)" || return 1
+    [ -x "${compatible_bash}" ] || return 1
+    mkdir -p "${FIXTURE_HOME}/.local/bin" || return 1
+    cp -- "${compatible_bash}" "${FIXTURE_HOME}/.local/bin/bash" || return 1
+
+    env HOME="${FIXTURE_HOME}" HAWS_REPO_DIR="${FIXTURE_REPO}" \
+        PATH="${PATH}" /bin/bash "${FIXTURE_REPO}/haws.sh" help \
+        >"${OUTPUT_FILE}" 2>&1 || return 1
+    grep -F 'Usage: ./haws.sh' "${OUTPUT_FILE}" >/dev/null
+}
+
+test_sync_materializes_absent_registered_pack_and_links_same_run() {
+    local name="one-sync-pack" initial_rows rows source_dir
+    add_device_source_pack "${name}" 3 || return 1
+    write_settings on
+    mkdir -p "${FIXTURE_HOME}/.claude"
+    source_haws || return 1
+    HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
+    HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)"
+    export HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    initial_rows="${HAWS_CATALOG_SKILLS_CACHE}"
+    [ -z "${initial_rows}" ] || return 1
+
+    run_sync >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+
+    source_dir="$(device_source_dir "${name}")"
+    [ -d "${source_dir}" ] || return 1
+    ! grep -F 'source has no active skills' "${OUTPUT_FILE}" >/dev/null || return 1
+    rows="$(catalog_skills)"
+    [ "$(printf '%s\n' "${rows}" | awk -F '\t' 'NF { n++ } END { print n+0 }')" -eq 3 ] || return 1
+    [ "$(find "${FIXTURE_HOME}/.claude/skills" -type l -print | wc -l | tr -d '[:space:]')" -eq 3 ] || return 1
+    [ "$(awk -F '\t' '$1 ~ /^skill:/ { n++ } END { print n+0 }' \
+        "${FIXTURE_HOME}/.haws_manifest")" -eq 3 ]
+}
+
+test_background_prefetch_refreshes_parent_catalog_after_materialization() {
+    local name="prefetch-pack" rows source_dir
+    add_device_source_pack "${name}" 3 || return 1
+    write_settings on
+    source_haws || return 1
+    export HAWS_AUTO_UPDATE=on
+    HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
+    HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)"
+    export HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    [ -z "${HAWS_CATALOG_SKILLS_CACHE}" ] || return 1
+
+    _sync_prefetch_all || return 1
+    source_dir="$(device_source_dir "${name}")"
+    [ -d "${source_dir}" ] || return 1
+    if [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        echo 'background prefetch left the parent skill catalog cached' >&2
+        return 1
+    fi
+    rows="$(catalog_skills)"
+    [ "$(printf '%s\n' "${rows}" | awk -F '\t' 'NF { n++ } END { print n+0 }')" -eq 3 ]
+}
+
+test_multiskill_pack_counts_match_catalog_manifest_and_links() {
+    local name="count-pack" source_id source_dir rows physical total active manifest links
+    add_device_source_pack "${name}" 3 || return 1
+    write_settings on
+    mkdir -p "${FIXTURE_HOME}/.claude"
+    source_haws || return 1
+    source_id="$(device_source_id "${name}")"
+    _haws_prepare_device_source "${source_id}" || return 1
+    source_dir="$(device_source_dir "${name}")"
+    rows="$(catalog_skills)"
+    physical="$(find "${source_dir}" -type f -name SKILL.md -print | wc -l | tr -d '[:space:]')"
+    total="$(printf '%s\n' "${rows}" | awk -F '\t' 'NF { n++ } END { print n+0 }')"
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' '$6 == 1 { n++ } END { print n+0 }')"
+    [ "${physical}" -eq 3 ] && [ "${total}" -eq 3 ] && [ "${active}" -eq 3 ] || return 1
+
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    rows="$(catalog_skills)"
+    total="$(printf '%s\n' "${rows}" | awk -F '\t' 'NF { n++ } END { print n+0 }')"
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' '$6 == 1 { n++ } END { print n+0 }')"
+    manifest="$(awk -F '\t' '$1 ~ /^skill:/ { n++ } END { print n+0 }' \
+        "${FIXTURE_HOME}/.haws_manifest")"
+    links="$(find "${FIXTURE_HOME}/.claude/skills" -type l -print | wc -l | tr -d '[:space:]')"
+    [ "${physical}" -eq "${total}" ] && [ "${total}" -eq "${active}" ] &&
+        [ "${active}" -eq "${manifest}" ] && [ "${manifest}" -eq "${links}" ]
+}
+
+test_disabled_new_pack_skill_stays_disabled_while_others_link() {
+    local name="disabled-pack" source_id disabled_id disabled_file saved_disabled rows total active links
+    add_device_source_pack "${name}" 3 || return 1
+    write_settings on
+    mkdir -p "${FIXTURE_HOME}/.claude" "${FIXTURE_REPO}/.haws/state"
+    source_id="$(device_source_id "${name}")"
+    disabled_id="${source_id}::${name}-skill-2"
+    disabled_file="${FIXTURE_REPO}/.haws/state/skills.disabled"
+    saved_disabled="${FIXTURE_ROOT}/skills.disabled.before"
+    printf '%s\n' "${disabled_id}" > "${disabled_file}"
+    cp -- "${disabled_file}" "${saved_disabled}" || return 1
+    source_haws || return 1
+    HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
+    HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)"
+    export HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    rows="$(catalog_skills)"
+    total="$(printf '%s\n' "${rows}" | awk -F '\t' 'NF { n++ } END { print n+0 }')"
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' '$6 == 1 { n++ } END { print n+0 }')"
+    links="$(find "${FIXTURE_HOME}/.claude/skills" -type l -print | wc -l | tr -d '[:space:]')"
+    [ "${total}" -eq 3 ] && [ "${active}" -eq 2 ] && [ "${links}" -eq 2 ] || return 1
+    cmp -s -- "${disabled_file}" "${saved_disabled}" || return 1
+    ! [ -e "${FIXTURE_HOME}/.claude/skills/${name}-skill-2" ] &&
+        ! [ -L "${FIXTURE_HOME}/.claude/skills/${name}-skill-2" ] || return 1
+    [ "$(awk -F '\t' '$1 ~ /^skill:/ { n++ } END { print n+0 }' \
+        "${FIXTURE_HOME}/.haws_manifest")" -eq 2 ]
+}
+
+test_haws_self_update_reexecutes_new_runtime_once_and_preserves_args() {
+    local updater expected
+    write_settings on
+    updater="$(prepare_haws_remote)" || return 1
+    add_runtime_marker_and_update_haws "${updater}" || return 1
+    expected="$(git -C "${updater}" rev-parse HEAD)" || return 1
+
+    run_sync_process sync --clean || return 1
+    [ "$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" = "${expected}" ] || return 1
+    grep -F 'HAWS_RUNTIME_B' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F 'HAWS_CLEAN_ARGUMENT_PRESERVED' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F '[PASS] HAWS synchronization completed' "${OUTPUT_FILE}" >/dev/null || return 1
+    [ ! -d "${FIXTURE_REPO}/.haws/state/sync.lock" ]
+}
+
+test_haws_update_adds_submodule_source_and_links_it_in_same_sync() {
+    local name="new-haws-pack" updater expected source_dir rows active links
+    write_settings on
+    mkdir -p "${FIXTURE_HOME}/.claude"
+    updater="$(prepare_haws_remote)" || return 1
+    add_remote_submodule_pack "${updater}" "${name}" 2 || return 1
+    add_runtime_marker_and_update_haws "${updater}" || return 1
+    expected="$(git -C "${updater}" rev-parse HEAD)" || return 1
+
+    run_sync_process sync || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" = "${expected}" ] || return 1
+    grep -F 'HAWS_RUNTIME_B' "${OUTPUT_FILE}" >/dev/null || return 1
+    ! grep -F 'source has no active skills' "${OUTPUT_FILE}" >/dev/null || return 1
+    source_dir="$(device_source_dir "${name}")"
+    [ -d "${source_dir}" ] || return 1
+    git -C "${FIXTURE_REPO}/skills/packs/${name}" rev-parse --is-inside-work-tree >/dev/null || return 1
+    source_haws || return 1
+    rows="$(catalog_skills)"
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' '$6 == 1 { n++ } END { print n+0 }')"
+    links="$(find "${FIXTURE_HOME}/.claude/skills" -type l -print | wc -l | tr -d '[:space:]')"
+    [ "${active}" -eq 2 ] && [ "${links}" -eq 2 ] || return 1
+    [ "$(awk -F '\t' '$1 ~ /^skill:/ { n++ } END { print n+0 }' \
+        "${FIXTURE_HOME}/.haws_manifest")" -eq 2 ] || return 1
+    assert_record "skills/packs/${name}::skills/packs/${name}" up-to-date
+}
+
+test_second_sync_is_idempotent_for_materialized_multiskill_pack() {
+    local name="idempotent-pack" manifest_before ownership_before links_before \
+        head_before root_status_before rows total active links
+    add_device_source_pack "${name}" 3 || return 1
+    write_settings on
+    mkdir -p "${FIXTURE_HOME}/.claude"
+    source_haws || return 1
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ -f "${FIXTURE_HOME}/.haws_manifest" ] || return 1
+    manifest_before="${FIXTURE_ROOT}/manifest.before"
+    ownership_before="${FIXTURE_ROOT}/ownership.before"
+    links_before="${FIXTURE_ROOT}/links.before"
+    cp -- "${FIXTURE_HOME}/.haws_manifest" "${manifest_before}" || return 1
+    ownership_list skills | sort > "${ownership_before}"
+    find "${FIXTURE_HOME}/.claude/skills" -type l -print | sort > "${links_before}"
+    head_before="$(device_source_head "${name}")" || return 1
+    root_status_before="$(git -C "${FIXTURE_REPO}" status --porcelain --untracked-files=all)"
+
+    run_sync >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ "$(device_source_head "${name}")" = "${head_before}" ] || return 1
+    [ "$(git -C "${FIXTURE_REPO}" status --porcelain --untracked-files=all)" = \
+        "${root_status_before}" ] || return 1
+    cmp -s -- "${manifest_before}" "${FIXTURE_HOME}/.haws_manifest" || return 1
+    ownership_list skills | sort > "${FIXTURE_ROOT}/ownership.after"
+    cmp -s -- "${ownership_before}" "${FIXTURE_ROOT}/ownership.after" || return 1
+    find "${FIXTURE_HOME}/.claude/skills" -type l -print | sort > \
+        "${FIXTURE_ROOT}/links.after"
+    cmp -s -- "${links_before}" "${FIXTURE_ROOT}/links.after" || return 1
+    rows="$(catalog_skills)"
+    total="$(printf '%s\n' "${rows}" | awk -F '\t' 'NF { n++ } END { print n+0 }')"
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' '$6 == 1 { n++ } END { print n+0 }')"
+    links="$(find "${FIXTURE_HOME}/.claude/skills" -type l -print | wc -l | tr -d '[:space:]')"
+    [ "${total}" -eq 3 ] && [ "${active}" -eq 3 ] && [ "${links}" -eq 3 ] || return 1
+    ! grep -F "[LINKED] Claude Skill [${name}-skill-" "${OUTPUT_FILE}" >/dev/null || return 1
+    awk -F '\t' '$1 == "skills" { key=$1 FS $3; if (seen[key]++) duplicate=1 }
+        END { exit duplicate ? 1 : 0 }' \
+        "${FIXTURE_HOME}/.haws/skills-ownership.tsv"
+}
+
 run_test() {
     local test_name="$1"
     create_fixture
@@ -822,6 +1262,8 @@ else
     run_test test_run_sync_reuses_catalog_cache_for_step4
     run_test test_run_sync_reuses_runtime_source_cache_for_step4
     run_test test_sync_runs_phases_in_order_and_configures_hooks
+    run_test test_sync_adopts_exact_legacy_pointer_after_ownership_ledger_upgrade
+    run_test test_sync_repairs_legacy_pointer_migration_marked_complete_too_early
     run_test test_sync_target_rows_use_batch_result_markers
     run_test test_clean_source_applies_remote_revision
     run_test test_device_source_without_seed_remote_stays_local_only
@@ -843,6 +1285,14 @@ else
     run_test test_auto_update_brain_off_skips_brain_sync
     run_test test_explicit_update_uses_same_safe_application
     run_test test_haws_update_preserves_the_current_branch
+    run_test test_stock_bash_bootstraps_to_a_user_installed_bash
+    run_test test_sync_materializes_absent_registered_pack_and_links_same_run
+    run_test test_background_prefetch_refreshes_parent_catalog_after_materialization
+    run_test test_multiskill_pack_counts_match_catalog_manifest_and_links
+    run_test test_disabled_new_pack_skill_stays_disabled_while_others_link
+    run_test test_haws_self_update_reexecutes_new_runtime_once_and_preserves_args
+    run_test test_haws_update_adds_submodule_source_and_links_it_in_same_sync
+    run_test test_second_sync_is_idempotent_for_materialized_multiskill_pack
     run_test test_path_scoped_diff_skips_checkout_when_active_skills_unchanged
     run_test test_lock_releases_after_success_and_failure
     run_test test_lock_releases_after_interrupt

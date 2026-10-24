@@ -118,6 +118,26 @@ personal user data separate:
   re-binds the link only when the previous HAWS manifest lists that skill and
   it points to the same relative skill path in another registered worktree of
   this repository. Links that meet neither rule are preserved.
+- **Global instructions:** During legacy migration, Sync adopts an existing
+  HAWS pointer block only when it exactly matches the current HAWS instructions.
+  Edited blocks and unrelated user content are left untouched.
+- **Sync messages and counts:** `[ADOPTED]` means an exact legacy HAWS item was
+  recorded as HAWS-owned; `[PRESERVED]` means an existing item was left alone
+  because HAWS could not verify ownership. Neither message alone indicates a
+  failed Sync. The final Sync result and the health `Overall` status are separate
+  checks. `Skills` counts unique active catalog skills, while `Skills Linked`
+  counts links across detected environments; 120 active skills linked into two
+  environments can therefore show 240 links. `Agents Linked` counts agent
+  profiles separately from skills.
+- **Native agent profiles:** Sync verifies the filesystem result before calling
+  a profile a hard link or symbolic link. If Windows or the host cannot create a
+  link, Sync records and reports a regular-file fallback as `[COPIED]`. An
+  unchanged owned copy is refreshed from its source; modified or unowned files
+  remain preserved.
+- **Antigravity skills:** Sync removes only path-only entries beneath HAWS's
+  device-local source cache when their skill directory is missing. Existing
+  active entries stay user-owned unless HAWS already has an ownership record;
+  entries with user metadata and paths outside that cache remain untouched.
 - **Local-ahead safety:** If the local HAWS checkout is already ahead of the
   fetched remote candidate, Sync reports it as up to date and preserves the
   local HEAD; it does not reset or move the checkout backwards.

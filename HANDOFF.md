@@ -1,11 +1,10 @@
 # Development Handoff
 
-Updated: 2026-10-09
+Updated: 2026-10-24
 
 ## Branch Contract
 
 - `dev` is the working branch and carries automated tests, fixtures, and development instructions. `main` is the user branch and carries user-facing HAWS code and finalized documentation.
-- At the start of this correction, `dev` and `origin/dev` pointed to `50b9665`; `main` and `origin/main` pointed to `2ae4967`. The code fix was already on both branches, while the shared workflow instructions existed only on `dev`.
 - `AGENTS.md`, `PROJECT_SPECIFIC.md`, `HANDOFF.md`, tests, fixtures, unfinished plans, and task progress notes stay on `dev`; keep user-facing product code and documentation on both branches.
 - When a completed work chunk is pushed to `dev`, synchronize its user-facing code and documentation to `main` in that task. Do not wait for the user to repeat this direction.
 - The `origin` branch set is `main` and `dev`.
@@ -154,4 +153,58 @@ Additional checks passed: Settings Apply regression, Second Brain merge preserva
 
 ## Resume Point
 
-Continue new work on `dev`. Keep tests and development documents on `dev`; promote verified user-facing code and finalized HAWS documentation to `main` when ready for users.
+Continue on `dev`. Use the final dated entry below for the latest verified result and branch delivery state. Keep automated tests and this Handoff on `dev`; user-facing runtime files are synchronized to both branches. Preserve the pre-existing edit to `secondbrain/WORKFLOW.md` without staging or modifying it.
+
+## Global Pointer Ownership Migration Repair — 2026-10-23
+
+- Root cause: `_haws_prepare_ownership_ledger_v2` completed the legacy integration migration while upgrading the ownership ledger. The two markers consequently had the same timestamp, so Sync treated existing exact HAWS pointers as unowned files after the migration window had closed.
+- Fix: ledger upgrade no longer completes integration migration. An affected install can recover pointer ownership only when the marker timestamps identify the upgrade case, the pointer predates the marker, and the complete HAWS block exactly matches current instructions. Recovery touches ownership state only; it does not rewrite the pointer or reopen agent, skill-link, Gemini, or hook adoption. An unversioned current ownership ledger or quarantined Gemini manifest blocks full legacy migration, while the supported old device-level skill ledger does not block migration of other artifacts.
+- Marker repair is written only after a successful Sync. Failed Sync leaves the recovery eligible for retry.
+- Changed user-facing files: `haws.sh` and `README.md`; both must be synchronized to `main`. Regression tests and this Handoff remain on `dev`.
+- Device evidence (read-only): the two markers both contain `2026-10-01T23:17:50Z`, the pointer ownership ledger has no entries, and both existing pointer files predate the markers. No live Sync was run during diagnosis.
+- Verification: `tests/cli/run.sh` passed 225 tests with 0 failures, including both pointer-recovery regressions and the legacy-ledger ownership-boundary case. `bash -n` and `git diff --check` passed.
+- Delivery boundary: keep regression tests and this Handoff on `dev`; promote only `haws.sh` and `README.md` to `main`. Preserve the pre-existing user edit in `secondbrain/WORKFLOW.md`; do not stage it.
+
+## Antigravity Skill Link Ownership Repair — 2026-10-23
+
+- The user's screenshot came from the E-drive `haws.bat`; the launcher changes to its own HAWS checkout and the successful `[ADOPTED]` pointer lines confirm the current main launcher ran. `[PRESERVED]` on native Antigravity agent profiles is an ownership safeguard, not a Sync failure.
+- Root cause in the Antigravity skills adapter: dead path-only entries inside HAWS's device-local `skill-sources` cache were preserved indefinitely. The device had 14 such missing targets and only six owned entries.
+- The first candidate fix adopted exact existing paths, but the full lifecycle suite correctly rejected that behavior because a user's fresh exact-looking integration must remain unowned. Final fix on `dev`: remove only a path-only entry beneath HAWS's private source cache when its target is no longer a valid skill directory. Keep all existing active entries user-owned unless already present in HAWS's ownership record. Preserve entries with user metadata and paths outside that cache.
+- The screenshot reports 120 active skills out of 146 catalog entries. The difference is 26 disabled skills; 240 linked counts the same 120 skills in two environments. The 10 native agent profiles are a separate category, not extra skills. Do not change disabled-skill selections to force a count of 130.
+- Delivery boundary: promote only `ai-configs/gemini/skills-json.mjs` and `README.md` to `main`; keep `tests/cli/gemini_skills_json_test.mjs`, its `tests/cli/run.sh` entry, and this Handoff on `dev`. Preserve the user's existing `secondbrain/WORKFLOW.md` edit and never stage it.
+- Verification: `tests/cli/run.sh` passed 226 tests with 0 failures, including the new Antigravity stale-cache regression and all 14 lifecycle/plugin E2E cases. The focused adapter test, `node --check` for adapter/test, and `git diff --check` passed.
+
+## False Gemini Ownership Attention — 2026-10-23
+
+- Root cause: `ownership_list environments` emits six schema-v2 fields (`group`, `kind`, `path`, `source`, `fingerprint`, `schema`). `_health_collect` read the row as if it had five fields, shifting every value and reporting valid Gemini ownership as `Attention`. `_health_fingerprint` also used column 2 (`kind`) instead of column 3 (the target path), so the cache did not track the owned environment target.
+- Fix: parse the ownership row with its group column, pass the actual kind/path/source/fingerprint to verification, and fingerprint the actual target path. A valid Gemini config now verifies as Ready; a missing target still reports Attention and invalidates cached health.
+- User-facing README now explains `[ADOPTED]`/`[PRESERVED]`, the distinction between Sync result and health status, and the separate active skill, linked skill, and agent counts.
+- Regression coverage: `test_gemini_environment_ownership_health_reads_schema_v2_columns`; updated the no-sync-history expectation to Ready because a missing last-sync record is informational and no ownership fault exists.
+- Verification across component runs: 227 passed, 0 failed — launcher 19, local state 16, settings 56, catalog 6, repository/skill 45, Sync 35, Antigravity adapter 1, status/doctor 15, uninstall 16, Home 4, lifecycle/plugins 14. `bash -n` and targeted `git diff --check` passed. The first aggregate run stopped at the outdated no-sync-history expectation; after correcting it, all remaining suites passed in component runs.
+- Delivery boundary: synchronize only `haws.sh` and `README.md` to `main`; keep `tests/cli/status_doctor_test.sh` and this Handoff on `dev`. Leave the user's existing `secondbrain/WORKFLOW.md` edit untouched and unstaged.
+- Delivery complete: `origin/main` contains the user-facing `haws.sh` and README fix; `origin/dev` contains the same user-facing change plus the regression test and Handoff updates. The E-drive checkout is clean on `main` at the same head as `origin/main`. The dev worktree is on `dev` and synced to `origin/dev`; the pre-existing `secondbrain/WORKFLOW.md` edit remains unstaged and uncommitted.
+- Live E-drive Sync after promotion exited 0 with `[PASS] HAWS synchronization completed` and `Overall: Ready`. Sources: 15 up to date, 1 skipped, 0 failed, 0 blocked, 0 timeouts. It reported 120 active skills / 146 catalog skills and 240 links across Gemini and Codex; 10 agent integration items are counted separately. Brain Auto Update was paused only for this run to prevent a private Second Brain remote write, then `settings.tsv` was restored byte-for-byte to Skills/Brain/Sync all On.
+- Verified `frontend-ui-engineering` exists at `C:\Users\Boom\.agents\skills\frontend-ui-engineering\SKILL.md`; its skill metadata is present in the current Codex skill list. This is separate from the false Gemini ownership health warning.
+
+## Windows Agent Profile Link Verification — 2026-10-23
+
+- Device diagnosis: the five Antigravity `agent.md` files exactly matched `agents/*.md` and were listed in `.haws_manifest`, but the device ownership ledger had no corresponding agent rows after the migration marker completed. This caused `[PRESERVED]` even though the files were HAWS-generated.
+- The first local adoption was not a valid repair: Git Bash `ln -s` returned success while leaving regular copies, and Sync reported `[LINKED]` without checking the filesystem type. That repair also exposed duplicate ownership rows when the same path changed record kind. The state was not considered fixed.
+- Root-cause fix: `safe_link_file` verifies a symbolic link with `-L` and its exact target, verifies hard links with `-ef`, and otherwise records a copied file as `generated-file` and reports `[COPIED]`. If an earlier Sync recorded an exact source copy as a symlink or hard link, Sync reclassifies it only when the recorded source matches and its bytes exactly match that source. `ownership_record` replaces any existing record for the same group and path, even when the ownership kind changes.
+- Regression tests: simulate a link command that exits successfully but creates a regular file, and recover an exact copy previously recorded as a symlink; both assert truthful `[COPIED]` output and one ownership row. Scope the tests' fake PATH to each run so it cannot replace Windows `cmd.exe` in later junction fixtures.
+- Verification on Windows Git Bash: the full `tests/cli/run.sh` passed **228 checks, 0 failed** before the final stale-record recovery case was added. After that final code and regression test, `tests/cli/repository_skill_test.sh` passed **47/47**, including both new profile-link regressions and the ten junction/worktree cases; `bash -n haws.sh` and `git diff --check` passed. The only full-run test failures were reproduced as a fake-PATH leak from the new test; all affected cases then passed in the full run after scoping PATH.
+- User-facing files: `haws.sh` and `README.md` must be synchronized to both branches. The tests and this Handoff stay on `dev`. Preserve the existing edit to `secondbrain/WORKFLOW.md`; never stage it.
+- Delivery at the 2026-10-23 checkpoint: `beb10c4` was the `dev` delivery commit; user-facing `haws.sh` and `README.md` were on `main` at `1e4221b`. The two files matched across branches. Tests and this Handoff remained dev-only.
+- Live E-drive Sync after promotion exited 0 with `[PASS] HAWS synchronization completed` and `Overall: Ready`. Sources: 15 up to date, 1 skipped, 0 failed, 0 blocked, 0 timeouts. It reported 120 active skills / 146 catalog skills and 240 Codex links; 10 agent integrations are counted separately. All five Antigravity profiles reported `[COPIED]`, matching their actual regular-file type; each is byte-identical to its source and has exactly one `generated-file` ownership row. No Antigravity agent was `[PRESERVED]`.
+- Brain Auto Update was turned off only during that Sync to avoid writing to the connected personal Second Brain remote; `.haws/state/settings.tsv` was restored and byte-compared to its original contents. Skills and Brain Auto Update both read `on` afterward.
+- Worktree state at that 2026-10-23 checkpoint: the E-drive checkout was clean on `main` at `1e4221b`; the `dev` worktree was at `beb10c4`. A later Handoff-only commit advanced `dev` to `a3704c243a6f0a45e8b69285effd8f0d74d6a81c` before the 2026-10-24 task. The pre-existing `secondbrain/WORKFLOW.md` edit remains user-owned and must stay unstaged and uncommitted.
+
+## Native Agent Hardlink Ownership Repair — 2026-10-24
+
+- Confirmed root cause: `safe_link_file` reclassified any non-symlink regular destination as `generated-file` when its bytes matched the recorded source. A valid hardlink met that test before the existing `-ef` hardlink retention check, so Sync reported `[REPAIRED]` and removed/recreated the destination.
+- Fix: stale-link recovery now requires the destination not to share filesystem identity with its source. Exact ordinary copies with matching source ownership and bytes still recover as `generated-file`; valid hardlinks reach the existing keep path. Link creation and the `[COPIED]` fallback are unchanged.
+- Regression coverage: the existing false-success link-command test remains; stale copies recorded as either `symlink` or `hardlink` still reclassify; a new valid-hardlink test checks `src -ef dest` before and after Sync, one `hardlink` ownership row, and no `[REPAIRED]`, `[LINKED]`, `[HARDLINK]`, or `[COPIED]` report.
+- Verification on Windows Git Bash 5.3.15: `tests/cli/repository_skill_test.sh` passed **49/49**. The final `tests/cli/run.sh` passed **231 checks, 0 failures**: launcher/menu 19, local state 16, settings 56, catalog 6, repository/skill 49, Sync 35, Antigravity adapter 1, status/doctor 15, uninstall 16, Home 4, lifecycle/plugins E2E 14. `bash -n haws.sh` and `git diff --check` passed.
+- Branch delivery: product-code commit `578c74d69f40aac4076b482b4c836df025854cd1` is on `dev`; the same `haws.sh` fix was promoted to `main` as `70c3dbce12d91b1f0649b10f9a0ff4f45c44ffb9`. After the full suite passed, both branches were pushed. `origin/main` is at `70c3dbce12d91b1f0649b10f9a0ff4f45c44ffb9`; `origin/dev` includes the runtime fix, dev-only tests, and this Handoff. `haws.sh` and `README.md` match across branches; README is unchanged. The current `dev` tip is a later development-only test/Handoff commit above the product-code commit; read `git rev-parse origin/dev` for its exact SHA and do not report the product-code SHA as the current `dev` HEAD.
+- Preserve the pre-existing user edit to `secondbrain/WORKFLOW.md`; it is not part of this change and must remain unstaged and uncommitted.
+- [Unverified] macOS and Linux were not run. Hardlink identity was exercised on Windows Git Bash; fallback was exercised through simulated link-command failure, not through a real platform where link creation is unavailable.

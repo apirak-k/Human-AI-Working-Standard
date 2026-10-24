@@ -38,7 +38,10 @@ assert_file_contains() {
 }
 
 create_fixture() {
-    FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/haws-batch1.XXXXXX")"
+    local temp_root="${TMPDIR:-/tmp}"
+    temp_root="${temp_root%/}"
+    [ -n "${temp_root}" ] || temp_root="/"
+    FIXTURE_ROOT="$(mktemp -d "${temp_root%/}/haws-batch1.XXXXXX")"
     FIXTURE_HOME="${FIXTURE_ROOT}/home"
     FIXTURE_PROJECT="${FIXTURE_ROOT}/project"
     mkdir -p "${FIXTURE_HOME}" \
