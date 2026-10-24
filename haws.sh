@@ -2394,6 +2394,43 @@ source_candidate_validate() {
     [ "${found_candidate}" -eq 1 ]
 }
 
+_sync_changed_path_belongs_to_active_skill() {
+    local source_id="${1:-}" changed_path="${2:-}" catalog_data
+    local skill_source logical_id display_name description entrypoint active skill_dir
+    local slash_count skill_depth best_depth=-1 best_active=0
+    catalog_data="${HAWS_CATALOG_SKILLS_CACHE:-}"
+    if [ -z "${catalog_data}" ]; then
+        catalog_data="$(catalog_skills 2>/dev/null || true)"
+    fi
+    while IFS=$'\t' read -r skill_source logical_id display_name description entrypoint active ||
+        [ -n "${skill_source:-}" ]; do
+        [ "${skill_source:-}" = "${source_id}" ] && [ -n "${entrypoint:-}" ] || continue
+        skill_dir="${entrypoint%/*}"
+        [ "${skill_dir}" = "${entrypoint}" ] && skill_dir=""
+        if [ -z "${skill_dir}" ]; then
+            # A root-level skill owns source files except clear repository metadata.
+            case "${changed_path}" in
+                README*|CHANGELOG*|.github/*) continue ;;
+            esac
+            skill_depth=0
+        else
+            case "${changed_path}" in
+                "${skill_dir}/"*) ;;
+                *) continue ;;
+            esac
+            slash_count="${skill_dir//[^\/]/}"
+            skill_depth=$((${#slash_count} + 1))
+        fi
+        if [ "${skill_depth}" -gt "${best_depth}" ]; then
+            best_depth="${skill_depth}"
+            best_active="${active:-0}"
+        elif [ "${skill_depth}" -eq "${best_depth}" ] && [ "${active:-0}" = 1 ]; then
+            best_active=1
+        fi
+    done <<< "${catalog_data}"
+    [ "${best_depth}" -ge 0 ] && [ "${best_active}" = 1 ]
+}
+
 _sync_root_preflight() {
     local repo="$(_catalog_repo_dir)" status
     git -C "${repo}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 4
@@ -2465,7 +2502,7 @@ _sync_prefetch_all() {
 sync_target() {
     local target="${1:-}" source_dir source_path candidate_ref candidate_revision
     local preflight_status fetch_status current final timeout_seconds activation_status=0
-    local fetch_remote=origin fetch_source=HEAD current_branch
+    local fetch_remote=origin fetch_source=HEAD current_branch changed_paths_file
     [ -n "${target}" ] || return 2
     local auto_update_flag="${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-${AUTO_UPDATE:-on}}}"
     if [ "${auto_update_flag}" != on ]; then
@@ -2610,14 +2647,40 @@ sync_target() {
         if [ "${target}" = haws ]; then
             git -C "${source_dir}" merge --ff-only "${candidate_revision}" >/dev/null 2>&1 || activation_status=$?
         else
-            local changed_path skill_structure_changed=0
+            local changed_path skill_structure_changed=0 active_skill_content_changed=0
+            changed_paths_file="$(mktemp "${TMPDIR:-/tmp}/haws-sync-changed-paths.XXXXXX")" || {
+                _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+                sync_result_write "${target}" failed "${candidate_revision}" \
+                    "changed paths could not be inspected" || return 1
+                _sync_legacy_echo "${target}: failed (changed paths could not be inspected)"
+                return 1
+            }
+            if ! git -C "${source_dir}" diff --no-renames --name-only -z \
+                "${current}" "${candidate_revision}" >"${changed_paths_file}" 2>/dev/null; then
+                rm -f -- "${changed_paths_file}"
+                _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+                sync_result_write "${target}" failed "${candidate_revision}" \
+                    "changed paths could not be inspected" || return 1
+                _sync_legacy_echo "${target}: failed (changed paths could not be inspected)"
+                return 1
+            fi
             while IFS= read -r -d '' changed_path; do
                 case "${changed_path##*/}" in
-                    SKILL.md|skill.md) skill_structure_changed=1; break ;;
+                    SKILL.md|skill.md)
+                        if _catalog_skill_is_eligible "${changed_path}"; then
+                            skill_structure_changed=1
+                            break
+                        fi
+                        ;;
                 esac
-            done < <(git -C "${source_dir}" diff --name-only -z \
-                "${current}" "${candidate_revision}" 2>/dev/null || true)
-            if [ "${skill_structure_changed}" -eq 0 ]; then
+                if _sync_changed_path_belongs_to_active_skill "${target}" "${changed_path}"; then
+                    active_skill_content_changed=1
+                    break
+                fi
+            done < "${changed_paths_file}"
+            rm -f -- "${changed_paths_file}"
+            if [ "${skill_structure_changed}" -eq 0 ] &&
+                [ "${active_skill_content_changed}" -eq 0 ]; then
                 _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
                 sync_result_write "${target}" up-to-date "${current}" "active skills unchanged" || return 1
                 _sync_legacy_echo "${target}: up-to-date"

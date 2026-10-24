@@ -146,6 +146,18 @@ advance_source() {
     git -C "${seed}" rev-parse HEAD
 }
 
+sync_test_commit_source_file() {
+    local name="$1" path="$2" content="$3" message
+    local seed="${FIXTURE_ROOT}/seed-${name}"
+    message="${4:-update ${path}}"
+    mkdir -p "${seed}/$(dirname "${path}")" || return 1
+    printf '%s\n' "${content}" > "${seed}/${path}" || return 1
+    git -C "${seed}" add -- "${path}" || return 1
+    git -C "${seed}" commit -q -m "${message}" || return 1
+    git -C "${seed}" push -q origin main || return 1
+    git -C "${seed}" rev-parse HEAD
+}
+
 delete_source_entrypoint() {
     local name="$1"
     local seed="${FIXTURE_ROOT}/seed-${name}"
@@ -981,8 +993,11 @@ test_path_scoped_diff_skips_checkout_when_active_skills_unchanged() {
     local old_head
     old_head="$(source_head partial)" || return 1
     printf 'remote non-skill change\n' > "${seed}/README.md"
-    git -C "${seed}" add README.md
-    git -C "${seed}" commit -q -m "update docs only"
+    printf 'release notes\n' > "${seed}/CHANGELOG.md"
+    mkdir -p "${seed}/.github/workflows"
+    printf 'name: checks\n' > "${seed}/.github/workflows/checks.yml"
+    git -C "${seed}" add README.md CHANGELOG.md .github/workflows/checks.yml
+    git -C "${seed}" commit -q -m "update source docs only"
     git -C "${seed}" push -q origin main || return 1
     local new_head
     new_head="$(git -C "${seed}" rev-parse HEAD)" || return 1
@@ -995,6 +1010,196 @@ test_path_scoped_diff_skips_checkout_when_active_skills_unchanged() {
     [ "$(source_head partial)" != "${new_head}" ] || return 1
     assert_record "partial::skills/packs/partial" up-to-date || return 1
     grep -F "active skills unchanged" "${FIXTURE_REPO}/.haws/state/sync-state.tsv" >/dev/null
+}
+
+test_active_root_skill_supporting_update_and_repeat_sync() {
+    add_source root-support
+    local old_head new_head expected_skills expected_identity ownership_before
+    write_settings on
+    source_haws || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || return 1
+    old_head="$(source_head root-support)" || return 1
+    HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)" || return 1
+    export HAWS_CATALOG_SKILLS_CACHE
+    expected_skills="$(catalog_skills | awk 'NF { count++ } END { print count+0 }')" || return 1
+    expected_identity="$(catalog_skills | awk -F '\t' '$1 == "root-support::skills/packs/root-support" { print $2 }')" || return 1
+    ownership_before="$(ownership_list skills)" || return 1
+
+    new_head="$(sync_test_commit_source_file root-support scripts/run.sh 'echo updated')" || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "${old_head}" != "${new_head}" ] || return 1
+    [ "$(source_head root-support)" = "${new_head}" ] || return 1
+    grep -Fx 'echo updated' "${FIXTURE_REPO}/skills/packs/root-support/scripts/run.sh" >/dev/null || return 1
+    assert_record "root-support::skills/packs/root-support" updated || return 1
+    [ "$(catalog_skills | awk -F '\t' '$1 == "root-support::skills/packs/root-support" { print $2 }')" = "${expected_identity}" ] || return 1
+    [ "$(catalog_skills | awk 'NF { count++ } END { print count+0 }')" -eq "${expected_skills}" ] || return 1
+    [ "$(ownership_list skills)" = "${ownership_before}" ] || return 1
+
+    sync_run >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "$(source_head root-support)" = "${new_head}" ] || return 1
+    [ "$(catalog_skills | awk 'NF { count++ } END { print count+0 }')" -eq "${expected_skills}" ] || return 1
+    [ "$(ownership_list skills)" = "${ownership_before}" ] || return 1
+    assert_record "root-support::skills/packs/root-support" up-to-date || return 1
+    ! grep -F '[REPAIRED]' "${OUTPUT_FILE}" >/dev/null
+}
+
+test_active_nested_skill_reference_update_advances_source() {
+    add_source nested-reference
+    local seed="${FIXTURE_ROOT}/seed-nested-reference"
+    local source_id="nested-reference::skills/packs/nested-reference"
+    local entrypoint="skills/engineering/api-guide/SKILL.md"
+    local reference="skills/engineering/api-guide/references/api.md"
+    local old_head new_head expected_identity ownership_before
+    mkdir -p "${seed}/skills/engineering/api-guide/references" || return 1
+    printf '%s\n' '---' 'name: api-guide' 'description: Nested skill.' '---' \
+        > "${seed}/${entrypoint}"
+    printf 'initial reference\n' > "${seed}/${reference}"
+    git -C "${seed}" add -- skills/engineering/api-guide || return 1
+    git -C "${seed}" commit -q -m 'add nested skill fixture' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    write_settings on
+    source_haws || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || return 1
+
+    HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)" || return 1
+    export HAWS_CATALOG_SKILLS_CACHE
+    printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | awk -F '\t' -v source_id="${source_id}" \
+        -v entrypoint="${entrypoint}" \
+        '$1 == source_id && $5 == entrypoint && $6 == 1 { found=1 } END { exit found ? 0 : 1 }' || return 1
+    expected_identity="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | awk -F '\t' \
+        -v source_id="${source_id}" '$1 == source_id { print $2 }')" || return 1
+    ownership_before="$(ownership_list skills)" || return 1
+    old_head="$(source_head nested-reference)" || return 1
+    new_head="$(sync_test_commit_source_file nested-reference "${reference}" 'updated reference')" || return 1
+
+    sync_run >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "${old_head}" != "${new_head}" ] || return 1
+    [ "$(source_head nested-reference)" = "${new_head}" ] || return 1
+    grep -Fx 'updated reference' "${FIXTURE_REPO}/skills/packs/nested-reference/${reference}" >/dev/null || return 1
+    [ "$(catalog_skills | awk -F '\t' -v source_id="${source_id}" '$1 == source_id { print $2 }')" = "${expected_identity}" ] || return 1
+    [ "$(ownership_list skills)" = "${ownership_before}" ] || return 1
+    assert_record "${source_id}" updated
+}
+
+test_disabled_skill_structure_updates_and_reclassifies_same_sync() {
+    add_source disabled-structure
+    local seed="${FIXTURE_ROOT}/seed-disabled-structure"
+    local source_id="disabled-structure::skills/packs/disabled-structure"
+    local entrypoint="skills/disabled-beta/SKILL.md"
+    local old_head add_head remove_head kind rows
+    mkdir -p "${seed}/skills/disabled-beta" || return 1
+    printf '%s\n' '---' 'name: disabled-beta' 'description: Disabled fixture.' '---' \
+        > "${seed}/${entrypoint}"
+    git -C "${seed}" add -- skills/disabled-beta || return 1
+    git -C "${seed}" commit -q -m 'add disabled skill structure' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    add_head="$(git -C "${seed}" rev-parse HEAD)" || return 1
+    mkdir -p "${FIXTURE_REPO}/.haws/state" || return 1
+    printf 'disabled-beta\n' > "${FIXTURE_REPO}/.haws/state/skills.disabled"
+    write_settings on
+    source_haws || return 1
+    old_head="$(source_head disabled-structure)" || return 1
+
+    sync_run >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "$(source_head disabled-structure)" = "${add_head}" ] || return 1
+    rows="$(catalog_skills)" || return 1
+    printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        -v entrypoint="${entrypoint}" \
+        '$1 == source_id && $5 == entrypoint && $6 == 0 { found=1 } END { exit found ? 0 : 1 }' || return 1
+    kind="$(catalog_source_kind "${source_id}")" || return 1
+    [ "${kind}" = PACK ] || return 1
+
+    git -C "${seed}" rm -q -- "${entrypoint}" || return 1
+    git -C "${seed}" commit -q -m 'remove disabled skill structure' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    remove_head="$(git -C "${seed}" rev-parse HEAD)" || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "${remove_head}" != "${add_head}" ] && [ "${old_head}" != "${remove_head}" ] || return 1
+    [ "$(source_head disabled-structure)" = "${remove_head}" ] || return 1
+    kind="$(catalog_source_kind "${source_id}")" || return 1
+    [ "${kind}" = SINGLE ] || return 1
+    rows="$(catalog_skills)" || return 1
+    [ "$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id && $6 == 1 { count++ } END { print count+0 }')" -eq 1 ] || return 1
+    assert_record "${source_id}" updated
+}
+
+test_disabled_skill_supporting_file_change_stays_skipped() {
+    add_source disabled-support
+    local seed="${FIXTURE_ROOT}/seed-disabled-support"
+    local source_id="disabled-support::skills/packs/disabled-support"
+    local entrypoint="skills/disabled-beta/SKILL.md"
+    local support_file="skills/disabled-beta/references/notes.md"
+    local old_head new_head
+    mkdir -p "${seed}/skills/disabled-beta/references" || return 1
+    printf '%s\n' '---' 'name: disabled-beta' 'description: Disabled fixture.' '---' \
+        > "${seed}/${entrypoint}"
+    printf 'initial notes\n' > "${seed}/${support_file}"
+    git -C "${seed}" add -- skills/disabled-beta || return 1
+    git -C "${seed}" commit -q -m 'add disabled skill fixture' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    mkdir -p "${FIXTURE_REPO}/.haws/state" || return 1
+    printf 'disabled-beta\n' > "${FIXTURE_REPO}/.haws/state/skills.disabled"
+    write_settings on
+    source_haws || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || return 1
+    HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)" || return 1
+    export HAWS_CATALOG_SKILLS_CACHE
+    printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | awk -F '\t' -v entrypoint="${entrypoint}" \
+        '$5 == entrypoint && $6 == 0 { found=1 } END { exit found ? 0 : 1 }' || return 1
+
+    old_head="$(source_head disabled-support)" || return 1
+    new_head="$(sync_test_commit_source_file disabled-support "${support_file}" 'changed disabled notes')" || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "${old_head}" != "${new_head}" ] || return 1
+    [ "$(source_head disabled-support)" = "${old_head}" ] || return 1
+    assert_record "${source_id}" up-to-date || return 1
+    grep -F 'active skills unchanged' "${FIXTURE_REPO}/.haws/state/sync-state.tsv" >/dev/null
+}
+
+test_source_diff_failure_fails_safely() {
+    add_source diff-failure
+    local old_head new_head status=0
+    old_head="$(source_head diff-failure)" || return 1
+    new_head="$(sync_test_commit_source_file diff-failure README.md 'docs update')" || return 1
+    write_settings on
+    source_haws || return 1
+
+    git() {
+        if [ "${1:-}" = -C ] && [ "${3:-}" = diff ]; then
+            return 42
+        fi
+        command git "$@"
+    }
+    if sync_run >"${OUTPUT_FILE}" 2>&1; then
+        status=0
+    else
+        status=$?
+    fi
+    unset -f git
+
+    [ "${new_head}" != "${old_head}" ] && [ "${status}" -ne 0 ] || return 1
+    [ "$(source_head diff-failure)" = "${old_head}" ] || return 1
+    grep -F 'changed paths could not be inspected' "${OUTPUT_FILE}" >/dev/null || return 1
+    assert_record "diff-failure::skills/packs/diff-failure" failed
 }
 
 test_lock_releases_after_success_and_failure() {
@@ -1294,6 +1499,11 @@ else
     run_test test_haws_update_adds_submodule_source_and_links_it_in_same_sync
     run_test test_second_sync_is_idempotent_for_materialized_multiskill_pack
     run_test test_path_scoped_diff_skips_checkout_when_active_skills_unchanged
+    run_test test_active_root_skill_supporting_update_and_repeat_sync
+    run_test test_active_nested_skill_reference_update_advances_source
+    run_test test_disabled_skill_structure_updates_and_reclassifies_same_sync
+    run_test test_disabled_skill_supporting_file_change_stays_skipped
+    run_test test_source_diff_failure_fails_safely
     run_test test_lock_releases_after_success_and_failure
     run_test test_lock_releases_after_interrupt
 fi

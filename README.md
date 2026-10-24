@@ -110,7 +110,14 @@ personal user data separate:
 - **External skill updates:** Indexed external skill sources are refreshed in
   the ignored device-local cache under `${HAWS_STATE_DIR}/skill-sources/`.
   The parent repository's gitlink is not changed by this refresh, and HAWS
-  does not automatically stage, commit, or push the root repository.
+  does not automatically stage, commit, or push the root repository. A source
+  revision is activated when an eligible `SKILL.md` or `skill.md` changes, or
+  when a file in an active skill's directory changes. For nested skills, the
+  most specific cataloged skill directory owns a changed file; changes to
+  supporting files in a disabled skill directory alone are skipped. Changes
+  limited to root `README*`, `CHANGELOG*`, or `.github/` files remain skipped,
+  including when a skill entrypoint is at the source root. Other files in a
+  root-level skill source count as its supporting content.
 - **Link ownership:** A stale link is re-bound only when its recorded link
   type and target verify. For a pre-v2 five-field skill record, Sync checks the
   exact link path, link type, and current target before repairing it, then
