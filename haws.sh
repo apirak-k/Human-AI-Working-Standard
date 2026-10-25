@@ -3194,8 +3194,17 @@ _sync_interrupt() {
 
 sync_run() {
     local target_count=0 target row source_id status=0 restart_requested=0
+    local resume_after_update=0 resume_counts="${HAWS_SYNC_RESUME_COUNTS:-0,0,0,0,0,0}"
+    if [ "${HAWS_SELF_UPDATE_REEXEC:-0}" = 1 ] &&
+        [ "${HAWS_SYNC_RESUME_AFTER_UPDATE:-0}" = 1 ]; then
+        resume_after_update=1
+        if [[ ! "${resume_counts}" =~ ^[0-9]+(,[0-9]+){5}$ ]]; then
+            echo "[ERROR] Sync restart state is invalid; run Sync again." >&2
+            return 1
+        fi
+    fi
     unset HAWS_SYNC_HAWS_UPDATED
-    echo "  [*] Preparing synchronization..."
+    [ "${resume_after_update}" -eq 1 ] || echo "  [*] Preparing synchronization..."
     if [ "${1:-}" = --recover-lock ]; then
         sync_lock_release --recover
         return $?
@@ -3235,25 +3244,34 @@ sync_run() {
     fi
 
     HAWS_SYNC_PRESENTATION=1
-    SYNC_SUMMARY_UPDATED=0
-    SYNC_SUMMARY_UP_TO_DATE=0
-    SYNC_SUMMARY_SKIPPED=0
-    SYNC_SUMMARY_BLOCKED=0
-    SYNC_SUMMARY_FAILED=0
-    SYNC_SUMMARY_TIMEOUT=0
-    echo "OPTIONS"
-    printf '  Second Brain Remote  : %s\n' "$(_second_brain_status_label)"
-    printf '  Auto Update (Skills) : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}")"
-    if [ -n "$(_second_brain_remote_url)" ]; then
-        printf '  Auto Update (Brain)  : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_BRAIN:-on}")"
+    if [ "${resume_after_update}" -eq 1 ]; then
+        IFS=',' read -r SYNC_SUMMARY_UPDATED SYNC_SUMMARY_UP_TO_DATE \
+            SYNC_SUMMARY_SKIPPED SYNC_SUMMARY_BLOCKED SYNC_SUMMARY_FAILED \
+            SYNC_SUMMARY_TIMEOUT <<< "${resume_counts}"
+    else
+        SYNC_SUMMARY_UPDATED=0
+        SYNC_SUMMARY_UP_TO_DATE=0
+        SYNC_SUMMARY_SKIPPED=0
+        SYNC_SUMMARY_BLOCKED=0
+        SYNC_SUMMARY_FAILED=0
+        SYNC_SUMMARY_TIMEOUT=0
     fi
-    echo ""
+    if [ "${resume_after_update}" -ne 1 ]; then
+        echo "OPTIONS"
+        printf '  Second Brain Remote  : %s\n' "$(_second_brain_status_label)"
+        printf '  Auto Update (Skills) : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}")"
+        if [ -n "$(_second_brain_remote_url)" ]; then
+            printf '  Auto Update (Brain)  : %s\n' "$(_haws_toggle_label "${HAWS_AUTO_UPDATE_BRAIN:-on}")"
+        fi
+        echo ""
+    fi
     local -a cached_source_ids=()
     while IFS=$'\t' read -r source_id _ _ _ || [ -n "${source_id:-}" ]; do
         [ -n "${source_id:-}" ] && cached_source_ids+=("${source_id}")
     done < <(catalog_sources 2>/dev/null || true)
 
-    printf '  %-28s %-18s %s\n' "TARGET" "RESULT" "DETAIL"
+    [ "${resume_after_update}" -eq 1 ] ||
+        printf '  %-28s %-18s %s\n' "TARGET" "RESULT" "DETAIL"
     if [ "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}" != on ]; then
         local skipped_repo_count=${#cached_source_ids[@]}
         if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
@@ -3271,7 +3289,8 @@ sync_run() {
     [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || caller_had_cache=0
     [ "${caller_had_cache}" -eq 1 ] || export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
     if [ "${HAWS_AUTO_UPDATE_SKILLS:-${HAWS_AUTO_UPDATE:-on}}" = on ]; then
-        if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
+        if [ "${resume_after_update}" -ne 1 ] &&
+            git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
             target_count=$((target_count + 1))
             sync_target haws || status=1
             [ "${HAWS_SYNC_HAWS_UPDATED:-0}" = 1 ] && restart_requested=1
@@ -3323,6 +3342,16 @@ sync_run() {
     fi
     HAWS_SYNC_LOCK_ACQUIRED=0
     trap - EXIT INT TERM
+    HAWS_SYNC_PRESENTATION=0
+    unset HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
+    if [ "${restart_requested}" -eq 1 ] && [ "${status}" -eq 0 ] &&
+        [ "${HAWS_DIRECT_EXECUTION:-0}" -eq 1 ] &&
+        [ "${HAWS_SELF_UPDATE_REEXEC:-0}" != 1 ]; then
+        # Resume the displayed target table after loading the updated runtime.
+        export HAWS_SYNC_RESUME_AFTER_UPDATE=1
+        export HAWS_SYNC_RESUME_COUNTS="${SYNC_SUMMARY_UPDATED},${SYNC_SUMMARY_UP_TO_DATE},${SYNC_SUMMARY_SKIPPED},${SYNC_SUMMARY_BLOCKED},${SYNC_SUMMARY_FAILED},${SYNC_SUMMARY_TIMEOUT}"
+        return 75
+    fi
     echo ""
     echo "SUMMARY"
     printf '  %-14s: %s\n' "Updated" "${SYNC_SUMMARY_UPDATED}"
@@ -3331,8 +3360,6 @@ sync_run() {
     printf '  %-14s: %s\n' "Blocked" "${SYNC_SUMMARY_BLOCKED}"
     printf '  %-14s: %s\n' "Failed" "${SYNC_SUMMARY_FAILED}"
     printf '  %-14s: %s\n' "Timeout" "${SYNC_SUMMARY_TIMEOUT}"
-    HAWS_SYNC_PRESENTATION=0
-    unset HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
     if [ "${restart_requested}" -eq 1 ] && [ "${status}" -eq 0 ] &&
         [ "${HAWS_DIRECT_EXECUTION:-0}" -eq 1 ]; then
         return 75
@@ -3342,6 +3369,11 @@ sync_run() {
 
 _run_sync_impl() {
     local CLEAN_UNMANAGED=false
+    local sync_resume_after_update=0
+    if [ "${HAWS_SELF_UPDATE_REEXEC:-0}" = 1 ] &&
+        [ "${HAWS_SYNC_RESUME_AFTER_UPDATE:-0}" = 1 ]; then
+        sync_resume_after_update=1
+    fi
     for opt in "$@"; do
         [ "$opt" = "--clean" ] && CLEAN_UNMANAGED=true
     done
@@ -3360,14 +3392,17 @@ _run_sync_impl() {
     local run_sync_had_cache=1
     [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] || run_sync_had_cache=0
     if [ "${run_sync_had_cache}" -eq 0 ]; then
-        echo "  [*] Initializing sync environment, please wait..."
+        [ "${sync_resume_after_update}" -eq 1 ] ||
+            echo "  [*] Initializing sync environment, please wait..."
         export HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills 2>/dev/null || true)"
     fi
 
-    echo "============================================================="
-    echo "                         HAWS SYNC"
-    echo "============================================================="
-    echo ""
+    if [ "${sync_resume_after_update}" -ne 1 ]; then
+        echo "============================================================="
+        echo "                         HAWS SYNC"
+        echo "============================================================="
+        echo ""
+    fi
     local sync_status=0
     local HAWS_LEGACY_INTEGRATION_MIGRATION=0
     local HAWS_LEGACY_POINTER_RECOVERY=0
@@ -3401,7 +3436,8 @@ _run_sync_impl() {
             HAWS_LEGACY_INTEGRATION_MIGRATION_FROM_LEDGER_UPGRADE=1
         fi
     fi
-    echo "[*] Step 1: Preparing local state and synchronizing sources"
+    [ "${sync_resume_after_update}" -eq 1 ] ||
+        echo "[*] Step 1: Preparing local state and synchronizing sources"
     sync_run "$@" || sync_status=$?
     [ "${sync_status}" -ne 75 ] || return 75
     if [ "${sync_status}" -eq 0 ]; then
@@ -4517,6 +4553,7 @@ run_sync() {
     fi
     rm -f -- "${HOME}/.haws_manifest.tmp" 2>/dev/null || true
     unset HAWS_CATALOG_SKILLS_CACHE HAWS_SYNC_PREFETCH_DONE 2>/dev/null || true
+    unset HAWS_SYNC_RESUME_AFTER_UPDATE HAWS_SYNC_RESUME_COUNTS 2>/dev/null || true
     return "${sync_status}"
 }
 
