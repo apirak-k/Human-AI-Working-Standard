@@ -210,6 +210,16 @@ _health_collect() {
     if load_disabled_skills; then :; else skills_status=$?; fi
     _catalog_prepare_source_snapshot || return 1
 
+    # Cleanliness is needed to trust the Health disk cache, not to render the
+    # skill catalog. Keep these per-source Git probes on explicit Health paths.
+    if _health_skill_sources_clean; then
+        HAWS_CATALOG_SKILLS_DIRTY=0
+    else
+        HAWS_CATALOG_SKILLS_DIRTY=1
+        _catalog_clear_skill_snapshot
+    fi
+    export HAWS_CATALOG_SKILLS_DIRTY
+
     current_fp="$(_health_fingerprint)"
     [[ "${current_fp}" != *'|uncacheable' ]] || health_cacheable=0
     if [ "$force_deep" -eq 0 ]; then
@@ -649,6 +659,106 @@ extract_skill_desc() {
     fi
     [ ${#sdesc} -gt 60 ] && sdesc="${sdesc:0:57}..."
     echo "$sdesc"
+}
+
+_catalog_extract_skill_metadata() {
+    local sfile="$1" name_var="${2:-}" desc_var="${3:-}"
+    local sname="" sdesc="" line line_trim val fallback_before_frontmatter=""
+    local fallback_body="" name_matched=0 in_fm=0 fm_count=0 capturing_multiline=0 read_status
+    if [ -f "${sfile}" ]; then
+        while true; do
+            line=""
+            if IFS= read -r line <&3; then
+                read_status=0
+            else
+                read_status=$?
+                [ -n "${line}" ] || break
+            fi
+
+            if [ "${read_status}" -eq 0 ] && [ "${name_matched}" -eq 0 ] &&
+                [[ "${line}" =~ ^[[:space:]]*name:[[:space:]]*[\"\']?([^\"\'#]+)[\"\']? ]]; then
+                sname="${BASH_REMATCH[1]}"
+                sname="${sname%"${sname##*[![:space:]]}"}"
+                name_matched=1
+            fi
+
+            line_trim="${line}"
+            line_trim="${line_trim#"${line_trim%%[![:space:]]*}"}"
+            line_trim="${line_trim%"${line_trim##*[![:space:]]}"}"
+            if [ "${line_trim}" = "---" ]; then
+                if [ "${fm_count}" -eq 0 ]; then
+                    fm_count=1
+                    in_fm=1
+                    [ "${read_status}" -eq 0 ] || break
+                    continue
+                elif [ "${in_fm}" -eq 1 ]; then
+                    fm_count=2
+                    in_fm=0
+                    [ "${read_status}" -eq 0 ] || break
+                    continue
+                fi
+                fm_count=$((fm_count + 1))
+                [ "${read_status}" -eq 0 ] || break
+                continue
+            fi
+
+            if [ "${in_fm}" -eq 1 ] && [ -z "${sdesc}" ]; then
+                if [ "${capturing_multiline}" -eq 1 ]; then
+                    if [[ "${line}" =~ ^[[:space:]]+([^#].*) ]]; then
+                        sdesc="${BASH_REMATCH[1]}"
+                    else
+                        capturing_multiline=0
+                    fi
+                fi
+                if [ -z "${sdesc}" ] &&
+                    [[ "${line}" =~ ^[[:space:]]*description:[[:space:]]*(.*) ]]; then
+                    val="${BASH_REMATCH[1]}"
+                    val="${val#\"}"
+                    val="${val%\"}"
+                    val="${val#\'}"
+                    val="${val%\'}"
+                    val="${val%$'\r'}"
+                    val="${val#"${val%%[![:space:]]*}"}"
+                    val="${val%"${val##*[![:space:]]}"}"
+                    if [ "${val}" = ">" ] || [ "${val}" = "|" ] || [ -z "${val}" ]; then
+                        capturing_multiline=1
+                    else
+                        sdesc="${val}"
+                    fi
+                fi
+            elif [ "${fm_count}" -eq 0 ] && [ -z "${fallback_before_frontmatter}" ] &&
+                [[ ! "${line_trim}" =~ ^# ]] && [ -n "${line_trim}" ]; then
+                fallback_before_frontmatter="${line_trim}"
+            elif [ "${fm_count}" -ge 2 ] && [ -z "${fallback_body}" ] &&
+                [[ ! "${line_trim}" =~ ^# ]] && [ -n "${line_trim}" ]; then
+                fallback_body="${line_trim}"
+            fi
+
+            [ "${read_status}" -eq 0 ] || break
+            [ -n "${sname}" ] && [ -n "${sdesc}" ] && break
+        done 3< "${sfile}"
+    fi
+    if [ -z "${sname}" ]; then
+        sname="$(basename "$(dirname "${sfile}")")"
+    fi
+    if [ -z "${sdesc}" ]; then
+        if [ -n "${fallback_before_frontmatter}" ]; then
+            sdesc="${fallback_before_frontmatter}"
+        elif [ "${fm_count}" -ge 2 ]; then
+            sdesc="${fallback_body}"
+        fi
+    fi
+    [ "${#sdesc}" -gt 60 ] && sdesc="${sdesc:0:57}..."
+    if [ -n "${name_var}" ]; then
+        printf -v "${name_var}" '%s' "${sname}"
+    else
+        printf '%s\n' "${sname}"
+    fi
+    if [ -n "${desc_var}" ]; then
+        printf -v "${desc_var}" '%s' "${sdesc}"
+    else
+        printf '%s\n' "${sdesc}"
+    fi
 }
 
 _haws_state_dir() {
@@ -1347,8 +1457,75 @@ _catalog_source_id() {
 
 _catalog_source_url() {
     local name="$1"
+    if [ "${HAWS_CATALOG_SUBMODULE_SNAPSHOT_READY:-0}" = 1 ]; then
+        if [[ -v HAWS_CATALOG_SUBMODULE_URL_CACHE["${name}"] ]]; then
+            printf '%s\n' "${HAWS_CATALOG_SUBMODULE_URL_CACHE["${name}"]}"
+        else
+            printf '%s\n' -
+        fi
+        return 0
+    fi
     git -C "$(_catalog_repo_dir)" config --file "$(_catalog_gitmodules)" \
         --get "submodule.${name}.url" 2>/dev/null || printf '%s\n' -
+}
+
+_catalog_refresh_submodule_snapshot() {
+    local repo gitmodules record key name path value index_rows index_fields source_path
+    local -a gitlink_paths=()
+    repo="$(_catalog_repo_dir)"
+    gitmodules="$(_catalog_gitmodules)"
+    _catalog_clear_submodule_snapshot
+
+    if [ -f "${gitmodules}" ]; then
+        while IFS= read -r -d '' record; do
+            key="${record%%$'\n'*}"
+            value="${record#*$'\n'}"
+            case "${key}" in
+                submodule.*.path)
+                    name="${key#submodule.}"
+                    name="${name%.path}"
+                    path="${value#./}"
+                    if [[ ! -v HAWS_CATALOG_SUBMODULE_PATH_CACHE["${name}"] ]]; then
+                        HAWS_CATALOG_SUBMODULE_NAMES_CACHE+=("${name}")
+                    fi
+                    HAWS_CATALOG_SUBMODULE_PATH_CACHE["${name}"]="${path}"
+                    ;;
+            esac
+        done < <(git -C "${repo}" config --null --file "${gitmodules}" \
+            --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
+        while IFS= read -r -d '' record; do
+            key="${record%%$'\n'*}"
+            value="${record#*$'\n'}"
+            case "${key}" in
+                submodule.*.url)
+                    name="${key#submodule.}"
+                    name="${name%.url}"
+                    HAWS_CATALOG_SUBMODULE_URL_CACHE["${name}"]="${value}"
+                    ;;
+            esac
+        done < <(git -C "${repo}" config --null --file "${gitmodules}" \
+            --get-regexp '^submodule\..*\.url$' 2>/dev/null || true)
+    fi
+    HAWS_CATALOG_SUBMODULE_SNAPSHOT_READY=1
+
+    for name in "${HAWS_CATALOG_SUBMODULE_NAMES_CACHE[@]}"; do
+        path="${HAWS_CATALOG_SUBMODULE_PATH_CACHE["${name}"]}"
+        _haws_source_path_safe "${path}" || continue
+        HAWS_CATALOG_SOURCE_GITLINK_SNAPSHOT_PATHS["${path}"]=1
+        gitlink_paths+=("${path}")
+    done
+    if [ "${#gitlink_paths[@]}" -eq 0 ]; then
+        HAWS_CATALOG_GITLINK_SNAPSHOT_READY=1
+        return 0
+    fi
+    index_rows="$(git -C "${repo}" ls-files --stage -- "${gitlink_paths[@]}" 2>/dev/null)" || return 0
+    while IFS=$'\t' read -r index_fields source_path || [ -n "${index_fields:-}" ]; do
+        [ -n "${index_fields:-}" ] && [ -n "${source_path:-}" ] || continue
+        if [ "${index_fields%% *}" = 160000 ]; then
+            HAWS_CATALOG_SOURCE_GITLINK_CACHE["${source_path}"]=1
+        fi
+    done <<< "${index_rows}"
+    HAWS_CATALOG_GITLINK_SNAPSHOT_READY=1
 }
 
 _haws_device_source_root() {
@@ -1373,6 +1550,7 @@ _catalog_external_skill_url_valid() {
 
 _haws_source_path_safe() {
     local source_path="${1:-}"
+    [[ "${source_path}" != *[[:cntrl:]]* ]] || return 1
     case "${source_path}" in
         ''|.|..|/*|[A-Za-z]:[\\/]*|../*|*/../*|*/..|./*|*/./*|*/.) return 1 ;;
     esac
@@ -1382,6 +1560,11 @@ _haws_source_path_safe() {
 _catalog_source_is_gitlink() {
     local source_path="${1:-}"
     _haws_source_path_safe "${source_path}" || return 1
+    if [ "${HAWS_CATALOG_GITLINK_SNAPSHOT_READY:-0}" = 1 ] &&
+        [[ -v HAWS_CATALOG_SOURCE_GITLINK_SNAPSHOT_PATHS["${source_path}"] ]]; then
+        [[ -v HAWS_CATALOG_SOURCE_GITLINK_CACHE["${source_path}"] ]]
+        return $?
+    fi
     git -C "$(_catalog_repo_dir)" ls-files --stage -- "${source_path}" 2>/dev/null |
         awk '$1 == "160000" { found = 1 } END { exit found ? 0 : 1 }'
 }
@@ -1456,22 +1639,42 @@ _catalog_submodule_cache_dir() {
 }
 
 declare -gA HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE=()
+declare -gA HAWS_CATALOG_RUNTIME_SOURCE_REVISION_CACHE=()
+declare -gA HAWS_CATALOG_SUBMODULE_PATH_CACHE=()
+declare -gA HAWS_CATALOG_SUBMODULE_URL_CACHE=()
+declare -ga HAWS_CATALOG_SUBMODULE_NAMES_CACHE=()
+declare -gA HAWS_CATALOG_SOURCE_GITLINK_CACHE=()
+declare -gA HAWS_CATALOG_SOURCE_GITLINK_SNAPSHOT_PATHS=()
+declare -g HAWS_CATALOG_SUBMODULE_SNAPSHOT_READY=0
+declare -g HAWS_CATALOG_GITLINK_SNAPSHOT_READY=0
+
+_catalog_clear_submodule_snapshot() {
+    HAWS_CATALOG_SUBMODULE_PATH_CACHE=()
+    HAWS_CATALOG_SUBMODULE_URL_CACHE=()
+    HAWS_CATALOG_SUBMODULE_NAMES_CACHE=()
+    HAWS_CATALOG_SOURCE_GITLINK_CACHE=()
+    HAWS_CATALOG_SOURCE_GITLINK_SNAPSHOT_PATHS=()
+    HAWS_CATALOG_SUBMODULE_SNAPSHOT_READY=0
+    HAWS_CATALOG_GITLINK_SNAPSHOT_READY=0
+}
 
 _catalog_invalidate_source_catalog() {
     unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
         HAWS_CATALOG_SOURCE_CONFIG_FP HAWS_CATALOG_SKILL_STATE_FP \
-        HAWS_CATALOG_SKILLS_DIRTY HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH \
+        HAWS_CATALOG_SKILLS_DIRTY HAWS_SETTINGS_SOURCE_SNAPSHOT_READY \
         HAWS_HEALTH_CACHE_FP HAWS_HEALTH_CACHE_FINDINGS \
         HAWS_HEALTH_CACHE_ACTIVE HAWS_HEALTH_CACHE_TOTAL \
         HAWS_HEALTH_FINDINGS HAWS_HEALTH_SKILLS_ACTIVE HAWS_HEALTH_SKILLS_TOTAL
     HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE=()
+    HAWS_CATALOG_RUNTIME_SOURCE_REVISION_CACHE=()
+    _catalog_clear_submodule_snapshot
     if [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]]; then
         HAWS_CATALOG_SOURCE_KIND_CACHE=()
     fi
 }
 
 _catalog_runtime_source_dir() {
-    local source_path="${1:-}" out_var="${2:-}" device_dir _resolved_source_dir repo
+    local source_path="${1:-}" out_var="${2:-}" device_dir _resolved_source_dir repo device_revision
     _haws_source_path_safe "${source_path}" || return 1
     if [[ -v HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE["${source_path}"] ]]; then
         _resolved_source_dir="${HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE["${source_path}"]}"
@@ -1482,9 +1685,10 @@ _catalog_runtime_source_dir() {
         fi
         if [ -z "${_resolved_source_dir:-}" ] && _catalog_source_is_gitlink "${source_path}"; then
             device_dir="$(_catalog_device_source_dir "${source_path}" 2>/dev/null || true)"
-            if [ -n "${device_dir}" ] &&
-                git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            if [ -n "${device_dir}" ] && [ -e "${device_dir}/.git" ] &&
+                _catalog_probe_source_revision "${device_dir}" device_revision; then
                 _resolved_source_dir="${device_dir}"
+                HAWS_CATALOG_RUNTIME_SOURCE_REVISION_CACHE["${source_path}"]="${device_revision}"
             fi
         fi
         if [ -z "${_resolved_source_dir:-}" ]; then
@@ -1554,14 +1758,38 @@ _haws_prepare_device_source() {
     return 0
 }
 
+_catalog_probe_source_revision() {
+    local source_dir="${1:-}" out_var="${2:-}" repository_info repository_root revision
+    local physical_source_dir physical_repository_root
+    [ -d "${source_dir}" ] && [ -e "${source_dir}/.git" ] || return 1
+    repository_info="$(git -C "${source_dir}" rev-parse --show-toplevel --verify HEAD 2>/dev/null)" ||
+        return 1
+    repository_root="${repository_info%%$'\n'*}"
+    revision="${repository_info#*$'\n'}"
+    [ -n "${repository_root}" ] && [ -n "${revision}" ] &&
+        [ "${repository_info}" != "${repository_root}" ] || return 1
+    physical_source_dir="$(cd "${source_dir}" 2>/dev/null && pwd -P)" || return 1
+    physical_repository_root="$(cd "${repository_root}" 2>/dev/null && pwd -P)" || return 1
+    [ "${physical_source_dir}" = "${physical_repository_root}" ] || return 1
+    if [ -n "${out_var}" ]; then
+        printf -v "${out_var}" '%s' "${revision}"
+    else
+        printf '%s\n' "${revision}"
+    fi
+}
+
 _catalog_source_revision() {
     local path="$1" out_var="${2:-}" source_dir="${3:-}"
     local _resolved_revision repo
     if [ -z "${source_dir}" ]; then
         _catalog_runtime_source_dir "${path}" source_dir || return 1
     fi
-    if [ -e "${source_dir}/.git" ]; then
-        _resolved_revision="$(git -C "${source_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
+    if [[ -v HAWS_CATALOG_RUNTIME_SOURCE_REVISION_CACHE["${path}"] ]] &&
+        [[ -v HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE["${path}"] ]] &&
+        [ "${HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE["${path}"]}" = "${source_dir}" ]; then
+        _resolved_revision="${HAWS_CATALOG_RUNTIME_SOURCE_REVISION_CACHE["${path}"]}"
+    elif [ -e "${source_dir}/.git" ]; then
+        _catalog_probe_source_revision "${source_dir}" _resolved_revision || _resolved_revision=""
     else
         repo="$(_catalog_repo_dir)"
         if [ -e "${repo}/.git" ]; then
@@ -1589,28 +1817,18 @@ catalog_sources() {
         return 0
     fi
     local repo="$(_catalog_repo_dir)"
-    local gitmodules="$(_catalog_gitmodules)"
     local record key name path source_id url revision registry source_dir rows=""
-    if [ -f "${gitmodules}" ]; then
-        while IFS= read -r -d '' record; do
-            key="${record%%$'\n'*}"
-            path="${record#*$'\n'}"
-            case "${key}" in
-                submodule.*.path)
-                    name="${key#submodule.}"
-                    name="${name%.path}"
-                    path="${path#./}"
-                    _haws_source_path_safe "${path}" || continue
-                    source_id="$(_catalog_source_id "${name}" "${path}")"
-                    url="$(_catalog_source_url "${name}")"
-                    _catalog_runtime_source_dir "${path}" source_dir || source_dir="${repo}/${path}"
-                    _catalog_source_revision "${path}" revision "${source_dir}"
-                    rows+="${source_id}"$'\t'"${path}"$'\t'"${url}"$'\t'"${revision}"$'\n'
-                    ;;
-            esac
-        done < <(git -C "${repo}" config --null --file "${gitmodules}" \
-            --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
-    fi
+    [ "${HAWS_CATALOG_SUBMODULE_SNAPSHOT_READY:-0}" = 1 ] ||
+        _catalog_refresh_submodule_snapshot || return 1
+    for name in "${HAWS_CATALOG_SUBMODULE_NAMES_CACHE[@]}"; do
+        path="${HAWS_CATALOG_SUBMODULE_PATH_CACHE["${name}"]}"
+        _haws_source_path_safe "${path}" || continue
+        source_id="$(_catalog_source_id "${name}" "${path}")"
+        url="$(_catalog_source_url "${name}")"
+        _catalog_runtime_source_dir "${path}" source_dir || source_dir="${repo}/${path}"
+        _catalog_source_revision "${path}" revision "${source_dir}"
+        rows+="${source_id}"$'\t'"${path}"$'\t'"${url}"$'\t'"${revision}"$'\n'
+    done
     registry="$(_catalog_device_source_registry)"
     if [ -f "${registry}" ]; then
         while IFS=$'\t' read -r name path url || [ -n "${name:-}" ]; do
@@ -1698,12 +1916,15 @@ _catalog_clear_skill_snapshot() {
 }
 
 _catalog_refresh_source_snapshot() {
+    unset HAWS_SETTINGS_SOURCE_SNAPSHOT_READY
     local old_rows="${HAWS_CATALOG_SOURCES_CACHE:-}" old_config="${HAWS_CATALOG_SOURCE_CONFIG_FP:-}"
-    local old_skill_state="${HAWS_CATALOG_SKILL_STATE_FP:-}" old_dirty="${HAWS_CATALOG_SKILLS_DIRTY:-0}"
+    local old_skill_state="${HAWS_CATALOG_SKILL_STATE_FP:-}"
     local new_config new_skill_state current_rows="" source_changed=0
     local source_id source_path source_url source_revision source_dir revision
     new_config="$(_catalog_source_config_fingerprint)" || return 1
     HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE=()
+    HAWS_CATALOG_RUNTIME_SOURCE_REVISION_CACHE=()
+    _catalog_refresh_submodule_snapshot || return 1
 
     if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ] || [ "${new_config}" != "${old_config}" ]; then
         unset HAWS_CATALOG_SOURCES_CACHE
@@ -1730,24 +1951,12 @@ _catalog_refresh_source_snapshot() {
         _catalog_clear_skill_snapshot
     fi
     HAWS_CATALOG_SKILL_STATE_FP="${new_skill_state}"
-
-    if _health_skill_sources_clean; then
-        HAWS_CATALOG_SKILLS_DIRTY=0
-    else
-        HAWS_CATALOG_SKILLS_DIRTY=1
-        _catalog_clear_skill_snapshot
-    fi
+    HAWS_CATALOG_SKILLS_DIRTY=1
     export HAWS_CATALOG_SKILL_STATE_FP HAWS_CATALOG_SKILLS_DIRTY
-    HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH=1
 }
 
 _catalog_prepare_source_snapshot() {
-    if [ "${HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH:-0}" = 1 ]; then
-        unset HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
-        return 0
-    fi
     _catalog_refresh_source_snapshot || return 1
-    unset HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
 }
 
 declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
@@ -1885,7 +2094,7 @@ catalog_skills() {
             [ -s "${skill_file}" ] || continue
             _catalog_skill_is_eligible "${skill_file}" || continue
             entrypoint="${skill_file#${source_dir}/}"
-            display_name="$(extract_skill_name "${skill_file}")"
+            _catalog_extract_skill_metadata "${skill_file}" display_name description
             [ -n "${display_name}" ] || continue
             case "${display_name}" in
                 pi-planning-with-files|planning-with-files-v*|design-taste-frontend-v1)
@@ -1897,7 +2106,6 @@ catalog_skills() {
             display_name="${display_name//$'\t'/ }"
             display_name="${display_name//$'\n'/ }"
             logical_id="${source_id}::${display_name}"
-            description="$(extract_skill_desc "${skill_file}")"
             [ -n "${description}" ] || description="${display_name}"
             description="${description//$'\t'/ }"
             description="${description//$'\n'/ }"
@@ -6492,6 +6700,53 @@ _settings_list_without() {
     done <<< "${list}"
 }
 
+_settings_capture_source_draft_from_snapshot() {
+    local current_sources="$(printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE:-}" | cut -f1)"
+    local previous_persist="${HAWS_PERSIST_SOURCES:-}"
+    local previous_draft="${HAWS_DRAFT_SOURCES:-}"
+    local source_id rebased_sources
+
+    if [ "${HAWS_DRAFT_SOURCES_LOADED:-0}" != 1 ]; then
+        HAWS_PERSIST_SOURCES="${current_sources}"
+        HAWS_DRAFT_SOURCES="${current_sources}"
+    else
+        # Keep explicit draft additions and removals while adopting source changes
+        # made by another process since this draft was opened.
+        rebased_sources="${current_sources}"
+        while IFS= read -r source_id || [ -n "${source_id}" ]; do
+            [ -n "${source_id}" ] || continue
+            if ! _settings_list_contains "${previous_draft}" "${source_id}"; then
+                rebased_sources="$(_settings_list_without "${rebased_sources}" "${source_id}")"
+            fi
+        done <<< "${previous_persist}"
+        while IFS= read -r source_id || [ -n "${source_id}" ]; do
+            [ -n "${source_id}" ] || continue
+            if ! _settings_list_contains "${previous_persist}" "${source_id}" && \
+                ! _settings_list_contains "${current_sources}" "${source_id}" && \
+                ! _settings_list_contains "${rebased_sources}" "${source_id}"; then
+                rebased_sources+="${source_id}"$'\n'
+            fi
+        done <<< "${previous_draft}"
+        HAWS_PERSIST_SOURCES="${current_sources}"
+        HAWS_DRAFT_SOURCES="${rebased_sources}"
+    fi
+
+    HAWS_DRAFT_SOURCES_LOADED=1
+    HAWS_SETTINGS_SOURCE_SNAPSHOT_READY=1
+    export HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES HAWS_DRAFT_SOURCES_LOADED \
+        HAWS_SETTINGS_SOURCE_SNAPSHOT_READY
+}
+
+_settings_prepare_source_draft() {
+    [ "${HAWS_SETTINGS_SOURCE_SNAPSHOT_READY:-0}" = 1 ] && return 0
+    echo "  [*] Loading repository sources, please wait..."
+    _catalog_prepare_source_snapshot || return 1
+    # A catalog request must include current tracked, untracked and ignored
+    # entrypoints. Health's cleanliness checks are separate and can stay lazy.
+    _catalog_clear_skill_snapshot
+    _settings_capture_source_draft_from_snapshot
+}
+
 _settings_source_path_taken() {
     local wanted="$1"
     local row source_id path url revision
@@ -6506,6 +6761,7 @@ _settings_source_path_taken() {
 settings_draft_add_source() {
     local url="${1:-}"
     local identity existing existing_identity destination
+    _settings_prepare_source_draft || return 1
     echo "  [*] Validating repository source, please wait..."
     catalog_validate_url "${url}" || {
         echo "Invalid GitHub repository URL: ${url}"
@@ -6544,6 +6800,7 @@ settings_draft_add_source() {
 
 settings_draft_remove_source() {
     local wanted="${1:-}"
+    _settings_prepare_source_draft || return 1
     local current="${HAWS_DRAFT_SOURCES:-}"
     if _settings_list_contains "${current}" "${wanted}"; then
         HAWS_DRAFT_SOURCES="$(_settings_list_without "${current}" "${wanted}")"
@@ -6572,15 +6829,49 @@ settings_draft_remove_source() {
 }
 
 _settings_ensure_skill_draft() {
-    [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && return 0
+    if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ] && \
+        [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] && \
+        [ "${HAWS_SETTINGS_SOURCE_SNAPSHOT_READY:-0}" = 1 ]; then
+        return 0
+    fi
     load_disabled_skills
     if [ -z "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
-        HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)"
+        HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)" || return 1
         export HAWS_CATALOG_SKILLS_CACHE
     fi
-    HAWS_DRAFT_SKILLS="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | awk -F '\t' '$6 == 1 {print $2}')"
+
+    local current_active current_ids rebased skill_id
+    current_active="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | \
+        awk -F '\t' '$6 == 1 {print $2}')"
+    current_ids="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | \
+        awk -F '\t' 'NF >= 2 {print $2}')"
+    if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" != 1 ]; then
+        HAWS_DRAFT_SKILLS="${current_active}"
+    else
+        local previous_persist="${HAWS_PERSIST_SKILLS:-}"
+        local previous_draft="${HAWS_DRAFT_SKILLS:-}"
+        rebased="${current_active}"
+
+        # Keep explicit draft removals and additions while adopting upstream
+        # skills added or removed since this draft was first opened.
+        while IFS= read -r skill_id || [ -n "${skill_id}" ]; do
+            [ -n "${skill_id}" ] || continue
+            if ! _settings_list_contains "${previous_draft}" "${skill_id}"; then
+                rebased="$(_settings_list_without "${rebased}" "${skill_id}")"
+            fi
+        done <<< "${previous_persist}"
+        while IFS= read -r skill_id || [ -n "${skill_id}" ]; do
+            [ -n "${skill_id}" ] || continue
+            if ! _settings_list_contains "${previous_persist}" "${skill_id}" && \
+                _settings_list_contains "${current_ids}" "${skill_id}" && \
+                ! _settings_list_contains "${rebased}" "${skill_id}"; then
+                rebased+="${skill_id}"$'\n'
+            fi
+        done <<< "${previous_draft}"
+        HAWS_DRAFT_SKILLS="${rebased}"
+    fi
+    HAWS_PERSIST_SKILLS="${current_active}"
     HAWS_DRAFT_SKILLS_LOADED=1
-    HAWS_PERSIST_SKILLS="${HAWS_DRAFT_SKILLS}"
     export HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
 }
 
@@ -6615,20 +6906,21 @@ settings_draft_load() {
     HAWS_DRAFT_ENVIRONMENTS="${HAWS_PERSIST_ENVIRONMENTS}"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=0
     HAWS_DRAFT_PLAN=""
-    echo "  [*] Loading repository sources, please wait..."
-    _catalog_refresh_source_snapshot || return 1
-    HAWS_PERSIST_SOURCES="$(printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}" | cut -f1)"
-    HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES}"
+    HAWS_PERSIST_SOURCES=""
+    HAWS_DRAFT_SOURCES=""
+    HAWS_DRAFT_SOURCES_LOADED=0
     HAWS_DRAFT_ADDED_REPOSITORIES=""
     HAWS_DRAFT_ADDED_PATHS=""
     HAWS_DRAFT_SKILLS=""
     HAWS_DRAFT_SKILLS_LOADED=0
+    unset HAWS_SETTINGS_SOURCE_SNAPSHOT_READY
     export HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_AUTO_UPDATE_SKILLS HAWS_PERSIST_AUTO_UPDATE_BRAIN \
         HAWS_PERSIST_BRAIN_REMOTE_URL HAWS_DRAFT_BRAIN_ACTION HAWS_DRAFT_BRAIN_URL \
         HAWS_PERSIST_ENVIRONMENTS \
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
         HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN
     export HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
+        HAWS_DRAFT_SOURCES_LOADED \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED
 }
@@ -6644,6 +6936,7 @@ settings_draft_discard() {
         HAWS_DRAFT_AUTO_UPDATE HAWS_DRAFT_AUTO_UPDATE_SKILLS HAWS_DRAFT_AUTO_UPDATE_BRAIN \
         HAWS_DRAFT_ENVIRONMENTS HAWS_DRAFT_ENVIRONMENTS_TOUCHED HAWS_DRAFT_PLAN \
         HAWS_PERSIST_SOURCES HAWS_DRAFT_SOURCES \
+        HAWS_DRAFT_SOURCES_LOADED HAWS_SETTINGS_SOURCE_SNAPSHOT_READY \
         HAWS_DRAFT_ADDED_REPOSITORIES HAWS_DRAFT_ADDED_PATHS \
         HAWS_PERSIST_SKILLS HAWS_DRAFT_SKILLS HAWS_DRAFT_SKILLS_LOADED \
         HAWS_PLAN_KIND HAWS_PLAN_CHANGED HAWS_PLAN_FILE
@@ -6667,6 +6960,7 @@ _settings_draft_is_dirty() {
 }
 
 _settings_draft_set_defaults() {
+    _settings_prepare_source_draft || return 1
     HAWS_DRAFT_AUTO_UPDATE="on"
     HAWS_DRAFT_AUTO_UPDATE_SKILLS="on"
     HAWS_DRAFT_AUTO_UPDATE_BRAIN="on"
@@ -6821,7 +7115,7 @@ settings_environments_page() {
 }
 
 settings_skills_page() {
-    _catalog_prepare_source_snapshot || return 1
+    _settings_prepare_source_draft || return 1
     local skills_cached=0
     [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] && skills_cached=1
     if [ "${skills_cached}" -eq 0 ]; then
@@ -6996,6 +7290,7 @@ settings_skills_page() {
 }
 
 _settings_repository_remove_page() {
+    _settings_prepare_source_draft || return 1
     if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
         echo "  [*] Loading repository sources, please wait..."
         HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
@@ -7079,6 +7374,7 @@ _settings_repository_remove_page() {
 }
 
 settings_repositories_page() {
+    _settings_prepare_source_draft || return 1
     local url
     while true; do
         if ! interactive_menu menu "Repositories|Manage repository sources in the current draft." \
@@ -7155,43 +7451,13 @@ settings_auto_update_page() {
 }
 
 settings_page() {
-    if [ "${HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH:-0}" = 1 ] &&
-        { [ -n "${HAWS_HEALTH_SKILLS_TOTAL:-}" ] || [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; }; then
-        unset HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
-    elif [ -n "${HAWS_HEALTH_SKILLS_TOTAL:-}" ] || [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
-        _catalog_refresh_source_snapshot || return 1
-        unset HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
-    fi
+    unset HAWS_SETTINGS_SOURCE_SNAPSHOT_READY
     local environment_count=0
     local environment
     while IFS= read -r environment; do
         [ -n "${environment}" ] && environment_count=$((environment_count + 1))
     done <<< "${HAWS_DRAFT_ENVIRONMENTS:-}"
-    local skills_total=0 skills_active=0
-    if [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] && [ -n "${HAWS_CATALOG_SKILLS_CACHE}" ]; then
-        skills_total="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | grep -c $'\t' || true)"
-        if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
-            skills_active="$(printf '%s\n' "${HAWS_DRAFT_SKILLS:-}" | grep -c . || true)"
-        else
-            skills_active="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | awk -F $'\t' '$6 == "1" { count++ } END { print count+0 }')"
-        fi
-    elif [ -n "${HAWS_HEALTH_SKILLS_TOTAL:-}" ] && [ "${HAWS_HEALTH_SKILLS_TOTAL}" -gt 0 ]; then
-        skills_total="${HAWS_HEALTH_SKILLS_TOTAL}"
-        if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
-            skills_active="$(printf '%s\n' "${HAWS_DRAFT_SKILLS:-}" | grep -c . || true)"
-        else
-            skills_active="${HAWS_HEALTH_SKILLS_ACTIVE:-0}"
-        fi
-    else
-        _health_collect
-        skills_total="${HAWS_HEALTH_SKILLS_TOTAL:-0}"
-        if [ "${HAWS_DRAFT_SKILLS_LOADED:-0}" = 1 ]; then
-            skills_active="$(printf '%s\n' "${HAWS_DRAFT_SKILLS:-}" | grep -c . || true)"
-        else
-            skills_active="${HAWS_HEALTH_SKILLS_ACTIVE:-0}"
-        fi
-    fi
-    local skills_detail="Active ${skills_active}/${skills_total}"
+    local skills_detail="Open to view active skills"
     local auto_update_detail
     if [ -n "$(_settings_draft_second_brain_remote)" ]; then
         auto_update_detail="(Skills: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_SKILLS:-${HAWS_DRAFT_AUTO_UPDATE:-on}}"), Brain: $(_haws_toggle_label "${HAWS_DRAFT_AUTO_UPDATE_BRAIN:-on}"))"
@@ -7262,6 +7528,16 @@ settings_page() {
 }
 
 settings_plan_build() {
+    _settings_prepare_source_draft || return 1
+    local skills_was_cached=1
+    if [ -z "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        skills_was_cached=0
+        echo "  [*] Loading current skills catalog, please wait..."
+    fi
+    _settings_ensure_skill_draft || return 1
+    if [ "${skills_was_cached}" -eq 0 ]; then
+        echo "  [✓] Skills catalog ready."
+    fi
     local state="$(_haws_state_dir)"
     local plan="${state}/settings.plan"
     local temporary="${state}/settings.plan.stage.$$"
@@ -7334,15 +7610,16 @@ settings_plan_build() {
 }
 
 settings_preview() {
-    _catalog_prepare_source_snapshot || return 1
+    _settings_prepare_source_draft || return 1
     local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}|Review the draft; Install or Update applies the approved plan."
     [ "${HAWS_PLAN_CHANGED:-1}" -eq 0 ] || title+="|1"
-    local skills_was_loaded="${HAWS_DRAFT_SKILLS_LOADED:-0}"
-    if [ "${skills_was_loaded}" != 1 ]; then
+    local skills_was_cached=0
+    [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] && skills_was_cached=1
+    if [ "${skills_was_cached}" -eq 0 ]; then
         echo "  [*] Loading skills catalog, please wait..."
     fi
     _settings_ensure_skill_draft || return 1
-    if [ "${skills_was_loaded}" != 1 ]; then
+    if [ "${skills_was_cached}" -eq 0 ]; then
         echo "  [✓] Skills catalog ready."
     fi
     echo ""
@@ -7398,7 +7675,13 @@ settings_preview() {
         preview_source_kinds["${source_id}"]="${source_kind}"
     done < <(_catalog_skill_sources)
 
-    skill_rows="$(catalog_skills)"
+    if [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        skill_rows="${HAWS_CATALOG_SKILLS_CACHE}"
+    else
+        HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)" || return 1
+        export HAWS_CATALOG_SKILLS_CACHE
+        skill_rows="${HAWS_CATALOG_SKILLS_CACHE}"
+    fi
     while IFS=$'\t' read -r skill_source_id skill_id skill_display skill_description entrypoint active || [ -n "${skill_id}" ]; do
         [ -n "${skill_id}" ] || continue
         preview_source_counts["${skill_source_id}"]=$(( ${preview_source_counts["${skill_source_id}"]:-0} + 1 ))
@@ -8125,7 +8408,7 @@ settings_verify_plan() {
         done <<< "${skill_rows}"
     fi
 
-    unset HAWS_CATALOG_SOURCES_CACHE
+    _catalog_invalidate_source_catalog
     while IFS=$'\t' read -r action key value rest || [ -n "${action:-}" ]; do
         [ -n "${action:-}" ] || continue
         case "${action}" in
