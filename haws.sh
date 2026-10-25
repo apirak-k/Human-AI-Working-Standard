@@ -122,11 +122,37 @@ health_classify() {
     fi
 }
 
+_health_skill_sources_clean() {
+    local row source_id source_path source_url source_revision source_dir prefix status ignored
+    while IFS=$'\t' read -r source_id source_path source_url source_revision _ ||
+        [ -n "${source_id:-}" ]; do
+        [ -n "${source_id:-}" ] || continue
+        if [ "${source_url}" = local ]; then
+            source_dir="$(_catalog_repo_dir)"
+            prefix="${source_path}/"
+        else
+            _catalog_runtime_source_dir "${source_path}" source_dir || return 1
+            prefix=""
+        fi
+        [ -d "${source_dir}" ] || continue
+        status="$(git -C "${source_dir}" status --porcelain=v1 \
+            --untracked-files=all -- \
+            "${prefix}SKILL.md" "${prefix}skill.md" \
+            ":(glob)${prefix}**/SKILL.md" ":(glob)${prefix}**/skill.md" 2>/dev/null)" || return 1
+        [ -z "${status}" ] || return 1
+        ignored="$(git -C "${source_dir}" ls-files --others --ignored --exclude-standard -- \
+            "${prefix}SKILL.md" "${prefix}skill.md" \
+            ":(glob)${prefix}**/SKILL.md" ":(glob)${prefix}**/skill.md" 2>/dev/null)" || return 1
+        [ -z "${ignored}" ] || return 1
+    done <<< "$( _catalog_skill_sources )"
+    return 0
+}
+
 _health_fingerprint() {
     local repo state
     repo="$(_health_repo)"
     state="$(_health_state)"
-    local git_head hooks_cfg state_stamp="" env_stamp="" config_file source_fp skill_fp
+    local git_head hooks_cfg state_stamp="" env_stamp="" config_file source_rows source_fp
     git_head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)"
     hooks_cfg="$(git -C "$repo" config --get core.hooksPath 2>/dev/null || true)"
     for config_file in \
@@ -158,10 +184,12 @@ _health_fingerprint() {
             fi
         done < <(awk -F $'\t' '$1 == "environments" && NF == 6 && $6 == "schema=2" {print $3}' "$state/ownership.tsv" 2>/dev/null)
     fi
-    source_fp="$(catalog_sources 2>/dev/null | cksum | awk '{print $1":"$2}')"
-    skill_fp="$(catalog_skills 2>/dev/null | cksum | awk '{print $1":"$2}')"
-    printf '%s|%s|%s|%s|%s|%s\n' \
-        "$git_head" "$hooks_cfg" "$state_stamp" "$env_stamp" "$source_fp" "$skill_fp"
+    source_rows="${HAWS_CATALOG_SOURCES_CACHE:-}"
+    source_fp="$(printf '%s\n%s\n' "${HAWS_CATALOG_SOURCE_CONFIG_FP:-}" \
+        "${source_rows}" | cksum | awk '{print $1":"$2}')"
+    [ "${HAWS_CATALOG_SKILLS_DIRTY:-0}" -eq 0 ] || source_fp+="|uncacheable"
+    printf '%s|%s|%s|%s|%s\n' \
+        "$git_head" "$hooks_cfg" "$state_stamp" "$env_stamp" "$source_fp"
 }
 
 _health_collect() {
@@ -170,7 +198,7 @@ _health_collect() {
         [ "$arg" = "--deep" ] && force_deep=1
     done
 
-    local repo state cache_file current_fp cached_fp repo_hash
+    local repo state cache_file current_fp cached_fp repo_hash health_cacheable=1
     repo="$(_health_repo)"
     state="$(_health_state)"
     repo_hash="$(printf '%s' "$repo" | cksum 2>/dev/null | awk '{print $1}')"
@@ -180,16 +208,20 @@ _health_collect() {
     if settings_load; then :; else settings_status=$?; fi
     if disabled_environments_load; then :; else environments_status=$?; fi
     if load_disabled_skills; then :; else skills_status=$?; fi
+    _catalog_prepare_source_snapshot || return 1
 
+    current_fp="$(_health_fingerprint)"
+    [[ "${current_fp}" != *'|uncacheable' ]] || health_cacheable=0
     if [ "$force_deep" -eq 0 ]; then
-        current_fp="$(_health_fingerprint)"
-        if [ -n "${HAWS_HEALTH_CACHE_FP:-}" ] && [ "${HAWS_HEALTH_CACHE_FP}" = "${current_fp}" ] && [ -n "${HAWS_HEALTH_CACHE_FINDINGS:-}" ]; then
+        if [ "${health_cacheable}" -eq 1 ] && [ -n "${HAWS_HEALTH_CACHE_FP:-}" ] &&
+            [ "${HAWS_HEALTH_CACHE_FP}" = "${current_fp}" ] &&
+            [ -n "${HAWS_HEALTH_CACHE_FINDINGS:-}" ]; then
             HAWS_HEALTH_FINDINGS="${HAWS_HEALTH_CACHE_FINDINGS}"
             HAWS_HEALTH_SKILLS_ACTIVE="${HAWS_HEALTH_CACHE_ACTIVE:-0}"
             HAWS_HEALTH_SKILLS_TOTAL="${HAWS_HEALTH_CACHE_TOTAL:-0}"
             return 0
         fi
-        if [ -f "$cache_file" ]; then
+        if [ "${health_cacheable}" -eq 1 ] && [ -f "$cache_file" ]; then
             cached_fp="$(head -n 1 "$cache_file" 2>/dev/null || true)"
             if [ -n "$cached_fp" ] && [ "$cached_fp" = "#FP:${current_fp}" ]; then
                 local counts_line
@@ -252,15 +284,16 @@ _health_collect() {
     done < <(ownership_list environments)
 
     local source_rows=0
-    local source_id source_path source_url source_revision
-    local -A health_source_paths=()
+    local source_id source_path source_url source_revision source_dir
+    local -A health_source_dirs=()
     while IFS=$'\t' read -r source_id source_path source_url source_revision _ ||
         [ -n "$source_id" ]; do
         [ -n "$source_id" ] || continue
-        health_source_paths["$source_id"]="$source_path"
+        _catalog_runtime_source_dir "${source_path}" source_dir || source_dir=""
+        health_source_dirs["$source_id"]="${source_dir}"
         [ "$source_url" = local ] && continue
         source_rows=1
-        if [ -d "$(_catalog_runtime_source_dir "$source_path")" ]; then
+        if [ -d "${source_dir}" ]; then
             _health_add Ready Sources "$source_id available at $source_path ($source_revision)"
         else
             _health_add Attention Sources "$source_id missing at $source_path"
@@ -271,9 +304,13 @@ _health_collect() {
 
     HAWS_HEALTH_SKILLS_ACTIVE=0
     HAWS_HEALTH_SKILLS_TOTAL=0
+    if [ -z "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)" || return 1
+        export HAWS_CATALOG_SKILLS_CACHE
+    fi
     local skill_rows=0
     local logical_id display description skill_source entrypoint active
-    local skill_source_path
+    local skill_source_dir
     while IFS=$'\t' read -r skill_source logical_id display description entrypoint active _ ||
         [ -n "$logical_id" ]; do
         [ -n "$logical_id" ] || continue
@@ -281,27 +318,32 @@ _health_collect() {
         [ "$active" = 1 ] || continue
         HAWS_HEALTH_SKILLS_ACTIVE=$((HAWS_HEALTH_SKILLS_ACTIVE + 1))
         skill_rows=1
-        skill_source_path="${health_source_paths["$skill_source"]:-}"
-        if [ -n "$skill_source_path" ] &&
-            [ -s "$(_catalog_runtime_source_dir "$skill_source_path")/$entrypoint" ]; then
+        skill_source_dir="${health_source_dirs["$skill_source"]:-}"
+        if [ -n "$skill_source_dir" ] &&
+            [ -s "$skill_source_dir/$entrypoint" ]; then
             _health_add Ready Skills "$display entrypoint is present"
         else
             _health_add Blocked Skills "$display entrypoint is missing"
         fi
-    done < <(catalog_skills)
+    done <<< "${HAWS_CATALOG_SKILLS_CACHE}"
     [ "$skill_rows" -eq 1 ] ||
         _health_add Ready Skills "no active skills"
 
-    HAWS_HEALTH_CACHE_FP="${current_fp:-$(_health_fingerprint)}"
-    HAWS_HEALTH_CACHE_FINDINGS="${HAWS_HEALTH_FINDINGS}"
-    HAWS_HEALTH_CACHE_ACTIVE="${HAWS_HEALTH_SKILLS_ACTIVE}"
-    HAWS_HEALTH_CACHE_TOTAL="${HAWS_HEALTH_SKILLS_TOTAL}"
+    if [ "${health_cacheable}" -eq 1 ]; then
+        HAWS_HEALTH_CACHE_FP="${current_fp}"
+        HAWS_HEALTH_CACHE_FINDINGS="${HAWS_HEALTH_FINDINGS}"
+        HAWS_HEALTH_CACHE_ACTIVE="${HAWS_HEALTH_SKILLS_ACTIVE}"
+        HAWS_HEALTH_CACHE_TOTAL="${HAWS_HEALTH_SKILLS_TOTAL}"
 
-    {
-        printf '#FP:%s\n' "$HAWS_HEALTH_CACHE_FP"
-        printf '#COUNTS\t%s\t%s\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
-        printf '%s\n' "$HAWS_HEALTH_FINDINGS"
-    } > "$cache_file" 2>/dev/null || true
+        {
+            printf '#FP:%s\n' "$HAWS_HEALTH_CACHE_FP"
+            printf '#COUNTS\t%s\t%s\n' "$HAWS_HEALTH_SKILLS_ACTIVE" "$HAWS_HEALTH_SKILLS_TOTAL"
+            printf '%s\n' "$HAWS_HEALTH_FINDINGS"
+        } > "$cache_file" 2>/dev/null || true
+    else
+        unset HAWS_HEALTH_CACHE_FP HAWS_HEALTH_CACHE_FINDINGS \
+            HAWS_HEALTH_CACHE_ACTIVE HAWS_HEALTH_CACHE_TOTAL
+    fi
 
     return 0
 }
@@ -1413,32 +1455,49 @@ _catalog_submodule_cache_dir() {
     esac
 }
 
+declare -gA HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE=()
+
 _catalog_invalidate_source_catalog() {
-    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
+        HAWS_CATALOG_SOURCE_CONFIG_FP HAWS_CATALOG_SKILL_STATE_FP \
+        HAWS_CATALOG_SKILLS_DIRTY HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH \
+        HAWS_HEALTH_CACHE_FP HAWS_HEALTH_CACHE_FINDINGS \
+        HAWS_HEALTH_CACHE_ACTIVE HAWS_HEALTH_CACHE_TOTAL \
+        HAWS_HEALTH_FINDINGS HAWS_HEALTH_SKILLS_ACTIVE HAWS_HEALTH_SKILLS_TOTAL
+    HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE=()
     if [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]]; then
         HAWS_CATALOG_SOURCE_KIND_CACHE=()
     fi
 }
 
 _catalog_runtime_source_dir() {
-    local source_path="${1:-}" device_dir
-    local repo="$(_catalog_repo_dir)"
-    if _catalog_device_source_is_registered "${source_path}"; then
-        device_dir="$(_catalog_device_source_dir "${source_path}" 2>/dev/null || true)"
-        [ -n "${device_dir}" ] && {
-            printf '%s\n' "${device_dir}"
-            return 0
-        }
-    fi
-    if _catalog_source_is_gitlink "${source_path}"; then
-        device_dir="$(_catalog_device_source_dir "${source_path}" 2>/dev/null || true)"
-        if [ -n "${device_dir}" ] &&
-            git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-            printf '%s\n' "${device_dir}"
-            return 0
+    local source_path="${1:-}" out_var="${2:-}" device_dir _resolved_source_dir repo
+    _haws_source_path_safe "${source_path}" || return 1
+    if [[ -v HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE["${source_path}"] ]]; then
+        _resolved_source_dir="${HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE["${source_path}"]}"
+    else
+        if _catalog_device_source_is_registered "${source_path}"; then
+            device_dir="$(_catalog_device_source_dir "${source_path}" 2>/dev/null || true)"
+            [ -n "${device_dir}" ] && _resolved_source_dir="${device_dir}"
         fi
+        if [ -z "${_resolved_source_dir:-}" ] && _catalog_source_is_gitlink "${source_path}"; then
+            device_dir="$(_catalog_device_source_dir "${source_path}" 2>/dev/null || true)"
+            if [ -n "${device_dir}" ] &&
+                git -C "${device_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                _resolved_source_dir="${device_dir}"
+            fi
+        fi
+        if [ -z "${_resolved_source_dir:-}" ]; then
+            repo="$(_catalog_repo_dir)"
+            _resolved_source_dir="${repo}/${source_path}"
+        fi
+        HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE["${source_path}"]="${_resolved_source_dir}"
     fi
-    printf '%s/%s\n' "${repo}" "${source_path}"
+    if [ -n "${out_var}" ]; then
+        printf -v "${out_var}" '%s' "${_resolved_source_dir}"
+    else
+        printf '%s\n' "${_resolved_source_dir}"
+    fi
 }
 
 _haws_prepare_device_source() {
@@ -1496,27 +1555,42 @@ _haws_prepare_device_source() {
 }
 
 _catalog_source_revision() {
-    local path="$1"
-    local repo="$(_catalog_repo_dir)"
-    local source_dir
-    source_dir="$(_catalog_runtime_source_dir "${path}")"
+    local path="$1" out_var="${2:-}" source_dir="${3:-}"
+    local _resolved_revision repo
+    if [ -z "${source_dir}" ]; then
+        _catalog_runtime_source_dir "${path}" source_dir || return 1
+    fi
     if [ -e "${source_dir}/.git" ]; then
-        git -C "${source_dir}" rev-parse --verify HEAD 2>/dev/null && return 0
+        _resolved_revision="$(git -C "${source_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
+    else
+        repo="$(_catalog_repo_dir)"
+        if [ -e "${repo}/.git" ]; then
+            _resolved_revision="$(git -C "${repo}" rev-parse --verify "HEAD:${path}" 2>/dev/null || true)"
+        else
+            _resolved_revision=uninitialized
+        fi
     fi
-    if [ -e "${repo}/.git" ]; then
-        git -C "${repo}" rev-parse --verify "HEAD:${path}" 2>/dev/null && return 0
+    [ -n "${_resolved_revision}" ] || _resolved_revision=uninitialized
+    if [ -n "${out_var}" ]; then
+        printf -v "${out_var}" '%s' "${_resolved_revision}"
+    else
+        printf '%s\n' "${_resolved_revision}"
     fi
-    printf '%s\n' uninitialized
 }
 
 catalog_sources() {
+    local out_var="${1:-}"
     if [ -n "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
-        [ -n "${HAWS_CATALOG_SOURCES_CACHE}" ] && printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}"
+        if [ -n "${out_var}" ]; then
+            printf -v "${out_var}" '%s' "${HAWS_CATALOG_SOURCES_CACHE}"
+        elif [ -n "${HAWS_CATALOG_SOURCES_CACHE}" ]; then
+            printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}"
+        fi
         return 0
     fi
     local repo="$(_catalog_repo_dir)"
     local gitmodules="$(_catalog_gitmodules)"
-    local record key name path source_id url revision registry
+    local record key name path source_id url revision registry source_dir rows=""
     if [ -f "${gitmodules}" ]; then
         while IFS= read -r -d '' record; do
             key="${record%%$'\n'*}"
@@ -1526,11 +1600,12 @@ catalog_sources() {
                     name="${key#submodule.}"
                     name="${name%.path}"
                     path="${path#./}"
+                    _haws_source_path_safe "${path}" || continue
                     source_id="$(_catalog_source_id "${name}" "${path}")"
                     url="$(_catalog_source_url "${name}")"
-                    revision="$(_catalog_source_revision "${path}")"
-                    printf '%s\t%s\t%s\t%s\n' \
-                        "${source_id}" "${path}" "${url}" "${revision}"
+                    _catalog_runtime_source_dir "${path}" source_dir || source_dir="${repo}/${path}"
+                    _catalog_source_revision "${path}" revision "${source_dir}"
+                    rows+="${source_id}"$'\t'"${path}"$'\t'"${url}"$'\t'"${revision}"$'\n'
                     ;;
             esac
         done < <(git -C "${repo}" config --null --file "${gitmodules}" \
@@ -1546,10 +1621,16 @@ catalog_sources() {
             [ "${path##*/}" = "${name}" ] || continue
             _catalog_external_skill_url_valid "${url:-}" || continue
             source_id="$(_catalog_device_source_id "${name}" "${path}")"
-            revision="$(_catalog_source_revision "${path}")"
-            printf '%s\t%s\t%s\t%s\n' \
-                "${source_id}" "${path}" "${url}" "${revision}"
+            _catalog_runtime_source_dir "${path}" source_dir || source_dir="${repo}/${path}"
+            _catalog_source_revision "${path}" revision "${source_dir}"
+            rows+="${source_id}"$'\t'"${path}"$'\t'"${url}"$'\t'"${revision}"$'\n'
         done < "${registry}"
+    fi
+    rows="${rows%$'\n'}"
+    if [ -n "${out_var}" ]; then
+        printf -v "${out_var}" '%s' "${rows}"
+    elif [ -n "${rows}" ]; then
+        printf '%s\n' "${rows}"
     fi
 }
 
@@ -1578,34 +1659,148 @@ _catalog_source_fields() {
     return 1
 }
 
+_catalog_source_config_fingerprint() {
+    local repo="$( _catalog_repo_dir)" file result=""
+    result="$(git -C "${repo}" rev-parse HEAD 2>/dev/null || true)|"
+    for file in "$(_catalog_gitmodules)" "$(_catalog_device_source_registry)"; do
+        if [ -f "${file}" ]; then
+            result+="${file}:$(_haws_sha256 "${file}");"
+        else
+            result+="${file}:missing;"
+        fi
+    done
+    printf '%s\n' "${result}"
+}
+
+_catalog_skill_state_fingerprint() {
+    local file result="" state="$(_haws_state_dir)"
+    for file in \
+        "$state/skills.disabled" \
+        "$SCRIPT_DIR/skills/skills.disabled" \
+        "$SCRIPT_DIR/skills.disabled" \
+        "$SCRIPT_DIR/config/skills.disabled"; do
+        if [ -f "${file}" ]; then
+            result+="${file}:$(_haws_sha256 "${file}");"
+        else
+            result+="${file}:missing;"
+        fi
+    done
+    printf '%s\n' "${result}"
+}
+
+_catalog_clear_skill_snapshot() {
+    unset HAWS_CATALOG_SKILLS_CACHE HAWS_HEALTH_CACHE_FP \
+        HAWS_HEALTH_CACHE_FINDINGS HAWS_HEALTH_CACHE_ACTIVE HAWS_HEALTH_CACHE_TOTAL \
+        HAWS_HEALTH_FINDINGS HAWS_HEALTH_SKILLS_ACTIVE HAWS_HEALTH_SKILLS_TOTAL
+    if [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]]; then
+        HAWS_CATALOG_SOURCE_KIND_CACHE=()
+    fi
+}
+
+_catalog_refresh_source_snapshot() {
+    local old_rows="${HAWS_CATALOG_SOURCES_CACHE:-}" old_config="${HAWS_CATALOG_SOURCE_CONFIG_FP:-}"
+    local old_skill_state="${HAWS_CATALOG_SKILL_STATE_FP:-}" old_dirty="${HAWS_CATALOG_SKILLS_DIRTY:-0}"
+    local new_config new_skill_state current_rows="" source_changed=0
+    local source_id source_path source_url source_revision source_dir revision
+    new_config="$(_catalog_source_config_fingerprint)" || return 1
+    HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE=()
+
+    if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ] || [ "${new_config}" != "${old_config}" ]; then
+        unset HAWS_CATALOG_SOURCES_CACHE
+        catalog_sources current_rows || return 1
+    else
+        while IFS=$'\t' read -r source_id source_path source_url source_revision _ ||
+            [ -n "${source_id:-}" ]; do
+            [ -n "${source_id:-}" ] || continue
+            _catalog_runtime_source_dir "${source_path}" source_dir || source_dir=""
+            _catalog_source_revision "${source_path}" revision "${source_dir}" || revision=uninitialized
+            current_rows+="${source_id}"$'\t'"${source_path}"$'\t'"${source_url}"$'\t'"${revision}"$'\n'
+        done <<< "${old_rows}"
+        current_rows="${current_rows%$'\n'}"
+    fi
+
+    [ "${new_config}" = "${old_config}" ] && [ "${current_rows}" = "${old_rows}" ] || source_changed=1
+    HAWS_CATALOG_SOURCES_CACHE="${current_rows}"
+    HAWS_CATALOG_SOURCE_CONFIG_FP="${new_config}"
+    export HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SOURCE_CONFIG_FP
+    [ "${source_changed}" -eq 0 ] || _catalog_clear_skill_snapshot
+
+    new_skill_state="$(_catalog_skill_state_fingerprint)" || return 1
+    if [ "${new_skill_state}" != "${old_skill_state}" ]; then
+        _catalog_clear_skill_snapshot
+    fi
+    HAWS_CATALOG_SKILL_STATE_FP="${new_skill_state}"
+
+    if _health_skill_sources_clean; then
+        HAWS_CATALOG_SKILLS_DIRTY=0
+    else
+        HAWS_CATALOG_SKILLS_DIRTY=1
+        _catalog_clear_skill_snapshot
+    fi
+    export HAWS_CATALOG_SKILL_STATE_FP HAWS_CATALOG_SKILLS_DIRTY
+    HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH=1
+}
+
+_catalog_prepare_source_snapshot() {
+    if [ "${HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH:-0}" = 1 ]; then
+        unset HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
+        return 0
+    fi
+    _catalog_refresh_source_snapshot || return 1
+    unset HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
+}
+
 declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
+
+_catalog_build_source_kind_cache() {
+    local row source_id source_path source_url source_revision
+    local row_source row_logical row_display row_description row_entrypoint row_active
+    local count kind
+    local -A source_counts=()
+    while IFS=$'\t' read -r source_id source_path source_url source_revision _ ||
+        [ -n "${source_id:-}" ]; do
+        [ -n "${source_id:-}" ] || continue
+        source_counts["${source_id}"]=0
+    done <<< "$( _catalog_skill_sources )"
+    while IFS=$'\t' read -r row_source row_logical row_display row_description \
+        row_entrypoint row_active _ || [ -n "${row_logical:-}" ]; do
+        [ -n "${row_logical:-}" ] || continue
+        if [[ -v source_counts["${row_source}"] ]]; then
+            source_counts["${row_source}"]=$((source_counts["${row_source}"] + 1))
+        fi
+    done <<< "${HAWS_CATALOG_SKILLS_CACHE:-}"
+    HAWS_CATALOG_SOURCE_KIND_CACHE=()
+    for source_id in "${!source_counts[@]}"; do
+        count="${source_counts["${source_id}"]}"
+        if [ "${count}" -eq 1 ]; then
+            kind=SINGLE
+        elif [ "${count}" -gt 1 ]; then
+            kind=PACK
+        else
+            kind=UNVERIFIED
+        fi
+        HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
+    done
+}
 
 catalog_source_kind() {
     local source_id="${1:-}"
     local out_var="${2:-}"
-    local skill_rows skill_count kind
+    local kind
     [ -n "${source_id}" ] || return 1
     [[ "$(declare -p HAWS_CATALOG_SOURCE_KIND_CACHE 2>/dev/null)" =~ "declare -A" ]] || declare -gA HAWS_CATALOG_SOURCE_KIND_CACHE=()
-    if [[ -v HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"] ]]; then
-        kind="${HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]}"
-        if [ -n "${out_var}" ]; then
-            printf -v "${out_var}" '%s' "${kind}"
-        else
-            printf '%s\n' "${kind}"
-        fi
-        return 0
+    if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
+        _catalog_refresh_source_snapshot || return 1
     fi
-    _catalog_source_fields "${source_id}" >/dev/null || return 1
-    skill_rows="$(catalog_skills baseline "${source_id}")"
-    skill_count="$(printf '%s\n' "${skill_rows}" | awk 'NF { count++ } END { print count + 0 }')"
-    if [ "${skill_count}" -eq 1 ]; then
-        kind="SINGLE"
-    elif [ "${skill_count}" -gt 1 ]; then
-        kind="PACK"
-    else
-        kind="UNVERIFIED"
+    if [ -z "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        HAWS_CATALOG_SKILLS_CACHE="$(catalog_skills)" || return 1
+        export HAWS_CATALOG_SKILLS_CACHE
     fi
-    HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]="${kind}"
+    if [[ ! -v HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"] ]]; then
+        _catalog_build_source_kind_cache || return 1
+    fi
+    [[ -v HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"] ]] || return 1
+    kind="${HAWS_CATALOG_SOURCE_KIND_CACHE["${source_id}"]}"
     if [ -n "${out_var}" ]; then
         printf -v "${out_var}" '%s' "${kind}"
     else
@@ -1613,14 +1808,14 @@ catalog_source_kind() {
     fi
 }
 
-_catalog_is_disabled() {
-    local skill_id="$1"
-    local display_name="$2"
-    local entrypoint="$3"
-    local source_mode="${4:-effective}"
-    local file line
-    local state_file="$(_skills_disabled_state_file)"
+declare -gA HAWS_CATALOG_DISABLED_SKILL_KEYS=()
+declare -g HAWS_CATALOG_DISABLED_SKILL_KEYS_MODE=""
+
+_catalog_load_disabled_skill_keys() {
+    local source_mode="${1:-effective}"
+    local file line state_file="$(_skills_disabled_state_file)"
     local files=()
+    HAWS_CATALOG_DISABLED_SKILL_KEYS=()
     if [ "${source_mode}" != baseline ] && [ -f "${state_file}" ]; then
         files=("${state_file}")
     else
@@ -1637,12 +1832,19 @@ _catalog_is_disabled() {
             line="${line%%#*}"
             line="${line#${line%%[![:space:]]*}}"
             line="${line%${line##*[![:space:]]}}"
-            case "${line}" in
-                "${skill_id}"|"${display_name}"|"${entrypoint}")
-                    return 0
-                    ;;
-            esac
+            [ -n "${line}" ] && HAWS_CATALOG_DISABLED_SKILL_KEYS["${line}"]=1
         done < "${file}"
+    done
+    HAWS_CATALOG_DISABLED_SKILL_KEYS_MODE="${source_mode}"
+}
+
+_catalog_is_disabled() {
+    local skill_id="$1" display_name="$2" entrypoint="$3"
+    local source_mode="${4:-effective}" key
+    [ "${HAWS_CATALOG_DISABLED_SKILL_KEYS_MODE:-}" = "${source_mode}" ] || \
+        _catalog_load_disabled_skill_keys "${source_mode}"
+    for key in "${skill_id}" "${display_name}" "${entrypoint}"; do
+        [[ -v HAWS_CATALOG_DISABLED_SKILL_KEYS["${key}"] ]] && return 0
     done
     return 1
 }
@@ -1668,6 +1870,7 @@ catalog_skills() {
         [ -n "${HAWS_CATALOG_SKILLS_CACHE}" ] && printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}"
         return 0
     fi
+    _catalog_load_disabled_skill_keys "${disabled_mode}"
     local row source_id path url revision source_dir skill_file entrypoint
     local logical_id display_name description active
     local -A seen_names=()
@@ -1675,7 +1878,7 @@ catalog_skills() {
         [ -n "${row}" ] || continue
         IFS=$'\t' read -r source_id path url revision <<< "${row}"
         [ -z "${source_filter}" ] || [ "${source_id}" = "${source_filter}" ] || continue
-        source_dir="$(_catalog_runtime_source_dir "${path}")"
+        _catalog_runtime_source_dir "${path}" source_dir || continue
         [ -d "${source_dir}" ] || continue
         seen_names=()
         while IFS= read -r -d '' skill_file; do
@@ -6412,10 +6615,8 @@ settings_draft_load() {
     HAWS_DRAFT_ENVIRONMENTS="${HAWS_PERSIST_ENVIRONMENTS}"
     HAWS_DRAFT_ENVIRONMENTS_TOUCHED=0
     HAWS_DRAFT_PLAN=""
-    if [ -z "${HAWS_CATALOG_SOURCES_CACHE+x}" ]; then
-        HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
-        export HAWS_CATALOG_SOURCES_CACHE
-    fi
+    echo "  [*] Loading repository sources, please wait..."
+    _catalog_refresh_source_snapshot || return 1
     HAWS_PERSIST_SOURCES="$(printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}" | cut -f1)"
     HAWS_DRAFT_SOURCES="${HAWS_PERSIST_SOURCES}"
     HAWS_DRAFT_ADDED_REPOSITORIES=""
@@ -6620,6 +6821,7 @@ settings_environments_page() {
 }
 
 settings_skills_page() {
+    _catalog_prepare_source_snapshot || return 1
     local skills_cached=0
     [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ] && skills_cached=1
     if [ "${skills_cached}" -eq 0 ]; then
@@ -6953,6 +7155,13 @@ settings_auto_update_page() {
 }
 
 settings_page() {
+    if [ "${HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH:-0}" = 1 ] &&
+        { [ -n "${HAWS_HEALTH_SKILLS_TOTAL:-}" ] || [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; }; then
+        unset HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
+    elif [ -n "${HAWS_HEALTH_SKILLS_TOTAL:-}" ] || [ -n "${HAWS_CATALOG_SKILLS_CACHE+x}" ]; then
+        _catalog_refresh_source_snapshot || return 1
+        unset HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
+    fi
     local environment_count=0
     local environment
     while IFS= read -r environment; do
@@ -7125,6 +7334,7 @@ settings_plan_build() {
 }
 
 settings_preview() {
+    _catalog_prepare_source_snapshot || return 1
     local title="HAWS — Preview ${HAWS_PLAN_KIND:-Install}|Review the draft; Install or Update applies the approved plan."
     [ "${HAWS_PLAN_CHANGED:-1}" -eq 0 ] || title+="|1"
     local skills_was_loaded="${HAWS_DRAFT_SKILLS_LOADED:-0}"
@@ -8102,8 +8312,6 @@ settings_apply_final() {
 settings_flow_run() {
     local start="${1:-settings}"
     local result
-    local HAWS_CATALOG_SOURCES_CACHE
-    unset HAWS_CATALOG_SOURCES_CACHE
     while true; do
         if [ "${start}" = settings ]; then
             if settings_page; then
