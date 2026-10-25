@@ -65,12 +65,20 @@ EOF
     TRACE_SOURCE_BUILDS="${TEST_ROOT}/traces/source-builds.txt"
     TRACE_RUNTIME_DIR="${TEST_ROOT}/traces/runtime-dirs.txt"
     TRACE_DISABLED_LOADS="${TEST_ROOT}/traces/disabled-loads.txt"
+    TRACE_SOURCE_SNAPSHOTS="${TEST_ROOT}/traces/source-snapshots.txt"
+    TRACE_HEALTH_COLLECTS="${TEST_ROOT}/traces/health-collects.txt"
+    TRACE_HEALTH_FINGERPRINTS="${TEST_ROOT}/traces/health-fingerprints.txt"
+    TRACE_HEALTH_CLEAN_CHECKS="${TEST_ROOT}/traces/health-clean-checks.txt"
     TRACE_GIT="${TEST_ROOT}/traces/git.txt"
     : > "${TRACE_CATALOG}"
     : > "${TRACE_FIND}"
     : > "${TRACE_SOURCE_BUILDS}"
     : > "${TRACE_RUNTIME_DIR}"
     : > "${TRACE_DISABLED_LOADS}"
+    : > "${TRACE_SOURCE_SNAPSHOTS}"
+    : > "${TRACE_HEALTH_COLLECTS}"
+    : > "${TRACE_HEALTH_FINGERPRINTS}"
+    : > "${TRACE_HEALTH_CLEAN_CHECKS}"
     : > "${TRACE_GIT}"
 
     unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
@@ -178,6 +186,14 @@ git() {
         kind=gitlink-index
     elif [[ "${joined}" == *"rev-parse --show-toplevel --verify HEAD"* ]]; then
         kind=source-root-head
+    elif [[ "${joined}" == *" status --porcelain=v1"* ]]; then
+        kind=source-status
+    elif [[ "${joined}" == *" ls-files --others --ignored --exclude-standard"* ]]; then
+        kind=ignored-entrypoint-check
+    elif [[ "${joined}" == *"rev-parse HEAD"* ]]; then
+        kind=source-revision
+    elif [[ "${joined}" == *"rev-parse --verify HEAD"* ]]; then
+        kind=source-revision
     elif [[ "${joined}" == *"rev-parse --is-inside-work-tree"* ]]; then
         kind=inside-work-tree
     fi
@@ -211,6 +227,30 @@ fi
 _catalog_load_disabled_skill_keys() {
     printf 'load\n' >> "${TRACE_DISABLED_LOADS}"
     _catalog_load_disabled_skill_keys_original "$@"
+}
+eval "$(declare -f _catalog_refresh_source_snapshot | sed '1s/^_catalog_refresh_source_snapshot/_catalog_refresh_source_snapshot_original/')"
+_catalog_refresh_source_snapshot() {
+    printf 'refresh\n' >> "${TRACE_SOURCE_SNAPSHOTS}"
+    _catalog_refresh_source_snapshot_original "$@"
+}
+eval "$(declare -f _health_collect | sed '1s/^_health_collect/_health_collect_original/')"
+_health_collect() {
+    printf 'collect\n' >> "${TRACE_HEALTH_COLLECTS}"
+    _health_collect_original "$@"
+}
+eval "$(declare -f _health_fingerprint | sed '1s/^_health_fingerprint/_health_fingerprint_original/')"
+_health_fingerprint() {
+    printf 'fingerprint\n' >> "${TRACE_HEALTH_FINGERPRINTS}"
+    _health_fingerprint_original "$@"
+}
+eval "$(declare -f _health_skill_sources_clean | sed '1s/^_health_skill_sources_clean/_health_skill_sources_clean_original/')"
+_health_skill_sources_clean() {
+    printf 'clean\n' >> "${TRACE_HEALTH_CLEAN_CHECKS}"
+    _health_skill_sources_clean_original "$@"
+}
+
+trace_line_count() {
+    awk 'END { print NR + 0 }' "$1"
 }
 
 test_content_based_classification() {
@@ -387,6 +427,109 @@ EOF
     done
 }
 
+test_settings_entry_does_not_run_catalog_or_health_work() {
+    new_fixture
+    local source_dir i
+    for i in 1 2 3; do
+        source_dir="$(register_local_source "settings-${i}" "skills/packs/settings-${i}")"
+        write_skill "${source_dir}" skills/main "Settings ${i} Skill" "settings startup fixture ${i}"
+        commit_source "${source_dir}"
+    done
+
+    : > "${TRACE_CATALOG}"
+    : > "${TRACE_FIND}"
+    : > "${TRACE_SOURCE_BUILDS}"
+    : > "${TRACE_RUNTIME_DIR}"
+    : > "${TRACE_SOURCE_SNAPSHOTS}"
+    : > "${TRACE_HEALTH_COLLECTS}"
+    : > "${TRACE_HEALTH_FINGERPRINTS}"
+    : > "${TRACE_HEALTH_CLEAN_CHECKS}"
+    : > "${TRACE_GIT}"
+    settings_draft_load
+
+    local menu_calls=0 flow_status=0
+    interactive_menu() {
+        case "${2:-}" in
+            'HAWS Settings|'*) menu_calls=$((menu_calls + 1)); return 1 ;;
+            *) return 1 ;;
+        esac
+    }
+    if settings_flow_run settings > "${TEST_ROOT}/settings.out" 2>&1; then
+        flow_status=0
+    else
+        flow_status=$?
+    fi
+    unset -f interactive_menu
+    [ "${flow_status}" -le 1 ] || fail "Settings flow returned unexpected status ${flow_status}"
+
+    assert_eq 1 "${menu_calls}" 'bare Settings opens the page once'
+    assert_eq 0 "$(catalog_call_count)" 'bare Settings does not build the skill catalog'
+    assert_eq 0 "$(find_call_count)" 'bare Settings does not scan skill directories'
+    assert_eq 0 "$(source_materialization_count)" 'bare Settings does not enumerate repository sources'
+    assert_eq 0 "$(trace_line_count "${TRACE_SOURCE_SNAPSHOTS}")" 'bare Settings does not refresh source snapshots'
+    assert_eq 0 "$(trace_line_count "${TRACE_HEALTH_COLLECTS}")" 'bare Settings does not collect deep Health diagnostics'
+    assert_eq 0 "$(trace_line_count "${TRACE_HEALTH_FINGERPRINTS}")" 'bare Settings does not fingerprint Health state'
+    assert_eq 0 "$(trace_line_count "${TRACE_HEALTH_CLEAN_CHECKS}")" 'bare Settings does not inspect source cleanliness'
+    assert_eq 0 "$(git_trace_count source-status)" 'bare Settings does not run per-source status checks'
+    assert_eq 0 "$(git_trace_count ignored-entrypoint-check)" 'bare Settings does not inspect ignored skill entrypoints'
+    assert_eq 0 "$(git_trace_count source-revision)" 'bare Settings does not probe source revisions'
+    assert_eq 0 "$(trace_line_count "${TRACE_RUNTIME_DIR}")" 'bare Settings does not resolve runtime source directories'
+}
+
+test_settings_source_draft_rebases_external_adds_and_removals() {
+    new_fixture
+    local source_a source_b id_a id_b page_status=0
+    source_a="$(register_source source-a skills/packs/source-a)"
+    source_b="$(register_source source-b skills/packs/source-b)"
+    id_a="$(source_id source-a skills/packs/source-a)"
+    id_b="$(source_id source-b skills/packs/source-b)"
+
+    settings_draft_load
+    _settings_prepare_source_draft
+    register_source source-c skills/packs/source-c >/dev/null
+
+    interactive_menu() { return 1; }
+    settings_page > "${TEST_ROOT}/settings.out" 2>&1 || page_status=$?
+    [ "${page_status}" -le 1 ] || fail "Settings page returned unexpected status ${page_status}"
+    unset -f interactive_menu
+    settings_plan_build
+    assert_eq 3 "$(printf '%s\n' "${HAWS_PERSIST_SOURCES}" | awk 'NF {n++} END {print n+0}')" \
+        'fresh Apply state includes sources added after the draft was opened'
+    assert_eq 3 "$(printf '%s\n' "${HAWS_DRAFT_SOURCES}" | awk 'NF {n++} END {print n+0}')" \
+        'an untouched source draft adopts external source additions'
+    assert_contains "${HAWS_DRAFT_SOURCES}" "${id_b}" \
+        'external source additions remain enabled in the source draft'
+    assert_eq 0 "$(grep -cF 'remove-source' "${HAWS_PLAN_FILE}" || true)" \
+        'external source additions are not misplanned as removals'
+
+    settings_draft_load
+    _settings_prepare_source_draft
+    settings_draft_remove_source "${id_a}"
+    awk -F '\t' '$1 != "source-b" {print}' "$(_catalog_device_source_registry)" \
+        > "${TEST_ROOT}/registry.next"
+    mv -- "${TEST_ROOT}/registry.next" "$(_catalog_device_source_registry)"
+    page_status=0
+    interactive_menu() { return 1; }
+    settings_page > "${TEST_ROOT}/settings.out" 2>&1 || page_status=$?
+    [ "${page_status}" -le 1 ] || fail "Settings page returned unexpected status ${page_status}"
+    unset -f interactive_menu
+    settings_plan_build
+    assert_eq 2 "$(printf '%s\n' "${HAWS_PERSIST_SOURCES}" | awk 'NF {n++} END {print n+0}')" \
+        'fresh Apply state drops sources removed externally after the draft was opened'
+    assert_eq 1 "$(printf '%s\n' "${HAWS_DRAFT_SOURCES}" | awk 'NF {n++} END {print n+0}')" \
+        'explicit source removals remain applied when the draft is rebased'
+    assert_contains "$(cat "${HAWS_PLAN_FILE}")" "remove-source" \
+        'an explicit source removal remains in the Apply plan after rebase'
+    assert_eq 1 "$(grep -cF 'remove-source' "${HAWS_PLAN_FILE}" || true)" \
+        'externally removed sources do not create duplicate removal actions'
+    assert_contains "${HAWS_PERSIST_SOURCES}" "${id_a}" \
+        'the remaining registered source stays in the fresh baseline'
+    if _settings_list_contains "${HAWS_PERSIST_SOURCES}" "${id_b}"; then
+        fail 'an externally removed source remained in the fresh baseline'
+    fi
+    [ -n "${source_a}" ] && [ -n "${source_b}" ]
+}
+
 test_settings_builds_one_catalog_snapshot() {
     new_fixture
     local dirs=() ids=() i source_path source_dir support_file
@@ -434,13 +577,120 @@ test_settings_builds_one_catalog_snapshot() {
     unset -f interactive_menu
     [ "${flow_status}" -le 1 ] || fail "Settings flow returned unexpected status ${flow_status}"
     assert_eq 2 "${settings_page_count}" 'Settings flow visited Active Skills and returned to Settings'
-    assert_eq 1 "$(catalog_call_count)" 'one Settings entry performs one complete catalog build'
+    assert_eq 1 "$(catalog_call_count)" 'opening Active Skills builds one complete catalog snapshot'
     assert_eq 0 "$(filtered_catalog_call_count)" 'Settings classification performs no source-filtered catalog builds'
     assert_eq 5 "$(find_call_count)" 'one complete catalog build scans each registered source once'
-    assert_eq 1 "$(source_materialization_count)" 'one Settings entry materializes its source list once'
+    assert_eq 1 "$(source_materialization_count)" 'opening Active Skills materializes its source list once'
     local built_sources
     built_sources="$(awk -F '\t' 'NR == 1 {print $2}' "${TRACE_CATALOG}")"
     assert_eq '' "${built_sources}" 'Settings catalog build is not filtered to a single source'
+}
+
+test_active_skills_refreshes_source_changes_made_after_draft_load() {
+    new_fixture
+    local source_dir source_id current_revision classification page_status=0
+    source_dir="$(register_source fresh-skills skills/packs/fresh-skills)"
+    source_id="$(source_id fresh-skills skills/packs/fresh-skills)"
+    write_skill "${source_dir}" skills/one 'First Fresh Skill' 'initial Settings catalog view'
+    commit_source "${source_dir}" 'initial skill'
+
+    settings_draft_load
+    assert_eq 0 "${HAWS_DRAFT_SOURCES_LOADED}" 'Settings draft leaves source rows unloaded until a source view is needed'
+    write_skill "${source_dir}" skills/two 'Second Fresh Skill' 'source changed after Settings draft load'
+    commit_source "${source_dir}" 'add skill after Settings draft load'
+    current_revision="$(git -C "${source_dir}" rev-parse HEAD)"
+
+    : > "${TRACE_CATALOG}"
+    : > "${TRACE_FIND}"
+    : > "${TRACE_SOURCE_SNAPSHOTS}"
+    : > "${TRACE_HEALTH_CLEAN_CHECKS}"
+    : > "${TRACE_GIT}"
+    interactive_menu() { return 1; }
+    settings_skills_page > "${TEST_ROOT}/skills.out" 2>&1 || page_status=$?
+    unset -f interactive_menu
+    [ "${page_status}" -le 1 ] || fail "Active Skills returned unexpected status ${page_status}"
+
+    assert_eq 1 "$(catalog_call_count)" 'Active Skills builds one fresh catalog after the source advances'
+    assert_eq 1 "$(find_call_count)" 'fresh Active Skills scans the changed source once'
+    assert_eq 2 "$(source_count_in_rows "${HAWS_CATALOG_SKILLS_CACHE}" "${source_id}")" \
+        'fresh Active Skills includes the new upstream skill'
+    catalog_source_kind "${source_id}" classification
+    assert_eq PACK "${classification}" 'fresh Active Skills reclassifies the updated source as PACK'
+    assert_eq "${current_revision}" "$(printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}" | \
+        awk -F '\t' -v id="${source_id}" '$1 == id {print $4}')" \
+        'fresh Active Skills stores the current source revision'
+    assert_eq 0 "$(trace_line_count "${TRACE_HEALTH_CLEAN_CHECKS}")" \
+        'Active Skills does not run the Health cleanliness scan'
+    assert_eq 0 "$(git_trace_count source-status)" \
+        'Active Skills does not run per-source cleanliness checks'
+    assert_eq 0 "$(git_trace_count ignored-entrypoint-check)" \
+        'Active Skills does not check ignored entrypoints'
+
+    : > "${TRACE_SOURCE_SNAPSHOTS}"
+    : > "${TRACE_SOURCE_BUILDS}"
+    : > "${TRACE_CATALOG}"
+    : > "${TRACE_FIND}"
+    : > "${TRACE_GIT}"
+    page_status=0
+    settings_skills_page > "${TEST_ROOT}/skills-warm.out" 2>&1 || page_status=$?
+    [ "${page_status}" -le 1 ] || fail "warm Active Skills returned unexpected status ${page_status}"
+    assert_eq 0 "$(trace_line_count "${TRACE_SOURCE_SNAPSHOTS}")" \
+        'warm Active Skills reuses the current Settings draft source snapshot'
+    assert_eq 0 "$(source_materialization_count)" \
+        'warm Active Skills does not rematerialize an unchanged source list'
+    assert_eq 0 "$(catalog_call_count)" 'warm Active Skills reuses its catalog snapshot'
+    assert_eq 0 "$(find_call_count)" 'warm Active Skills does not rescan unchanged skill trees'
+    assert_eq 0 "$(git_trace_count source-status)" 'warm Active Skills skips repeated cleanliness checks'
+    assert_eq 0 "$(git_trace_count ignored-entrypoint-check)" \
+        'warm Active Skills skips repeated ignored-entrypoint checks'
+}
+
+test_apply_plan_rebases_skill_draft_after_external_catalog_change() {
+    new_fixture
+    local source_dir source_id previous_id added_id page_status=0 current_revision
+    source_dir="$(register_local_source plan-rebase skills/packs/plan-rebase)"
+    source_id="$(source_id plan-rebase skills/packs/plan-rebase)"
+    write_skill "${source_dir}" skills/one 'Existing Draft Skill' 'initial catalog row'
+    commit_source "${source_dir}" 'initial source skill'
+
+    settings_draft_load
+    _settings_prepare_source_draft
+    _settings_ensure_skill_draft
+    previous_id="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | \
+        awk -F '\t' -v source_id="${source_id}" '$1 == source_id {print $2}')"
+    assert_contains "${HAWS_DRAFT_SKILLS}" "${previous_id}" \
+        'skill draft starts from the active catalog state'
+
+    # Preserve an explicit user disable while the source changes in another process.
+    HAWS_DRAFT_SKILLS=""
+    interactive_menu() { return 1; }
+    settings_page > "${TEST_ROOT}/settings.out" 2>&1 || page_status=$?
+    unset -f interactive_menu
+    [ "${page_status}" -le 1 ] || fail "Settings page returned unexpected status ${page_status}"
+    write_skill "${source_dir}" skills/two 'Added Draft Skill' 'new external catalog row'
+    commit_source "${source_dir}" 'add source skill after draft load'
+    current_revision="$(git -C "${source_dir}" rev-parse HEAD)"
+
+    : > "${TRACE_SOURCE_SNAPSHOTS}"
+    : > "${TRACE_CATALOG}"
+    : > "${TRACE_FIND}"
+    settings_plan_build
+    added_id="$(printf '%s\n' "${HAWS_CATALOG_SKILLS_CACHE}" | \
+        awk -F '\t' -v source_id="${source_id}" '$1 == source_id && $3 == "Added Draft Skill" {print $2}')"
+    assert_contains "${HAWS_DRAFT_SKILLS}" "${added_id}" \
+        'fresh Apply plan includes a skill added after draft load'
+    if _settings_list_contains "${HAWS_DRAFT_SKILLS}" "${previous_id}"; then
+        fail 'fresh Apply plan discarded the explicit disable of an existing skill'
+    fi
+    assert_contains "${HAWS_PERSIST_SKILLS}" "${previous_id}" \
+        'fresh skill baseline includes the existing source skill'
+    assert_contains "${HAWS_PERSIST_SKILLS}" "${added_id}" \
+        'fresh skill baseline includes the external addition'
+    assert_eq "${current_revision}" "$(printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}" | \
+        awk -F '\t' -v id="${source_id}" '$1 == id {print $4}')" \
+        'Apply plan records the current external source revision'
+    assert_eq 1 "$(catalog_call_count)" 'Apply plan builds one fresh catalog for its source snapshot'
+    assert_eq 1 "$(find_call_count)" 'Apply plan scans the changed source once'
 }
 
 test_health_disk_cache_fast_path() {
@@ -452,13 +702,22 @@ test_health_disk_cache_fast_path() {
     HAWS_CATALOG_SOURCES_CACHE="$(catalog_sources)"
     : > "${TRACE_CATALOG}"
     : > "${TRACE_FIND}"
+    : > "${TRACE_HEALTH_CLEAN_CHECKS}"
+    : > "${TRACE_GIT}"
     _health_collect
     assert_eq 1 "${HAWS_HEALTH_SKILLS_TOTAL}" 'initial Health collection counts fixture skill'
     assert_eq 1 "$(catalog_call_count)" 'Health cache miss builds one complete catalog snapshot'
     assert_eq 1 "$(find_call_count)" 'Health cache miss scans the one registered source once'
+    assert_eq 1 "$(trace_line_count "${TRACE_HEALTH_CLEAN_CHECKS}")" \
+        'deep Health performs its source-cleanliness validation'
+    assert_eq 1 "$(git_trace_count source-status)" 'deep Health checks tracked skill cleanliness'
+    assert_eq 1 "$(git_trace_count ignored-entrypoint-check)" \
+        'deep Health checks for ignored skill entrypoints'
 
     : > "${TRACE_CATALOG}"
     : > "${TRACE_FIND}"
+    : > "${TRACE_HEALTH_CLEAN_CHECKS}"
+    : > "${TRACE_GIT}"
     unset HAWS_CATALOG_SKILLS_CACHE
     unset HAWS_HEALTH_CACHE_FP HAWS_HEALTH_CACHE_FINDINGS
     unset HAWS_HEALTH_CACHE_ACTIVE HAWS_HEALTH_CACHE_TOTAL
@@ -466,6 +725,11 @@ test_health_disk_cache_fast_path() {
     assert_eq 0 "$(catalog_call_count)" 'valid disk Health cache fast path does not build the catalog'
     assert_eq 0 "$(find_call_count)" 'valid disk Health cache fast path performs no skill-file scans'
     assert_eq 1 "${HAWS_HEALTH_SKILLS_TOTAL}" 'valid disk Health cache restores stored skill count'
+    assert_eq 1 "$(trace_line_count "${TRACE_HEALTH_CLEAN_CHECKS}")" \
+        'cached Health still validates source cleanliness before trusting the disk result'
+    assert_eq 1 "$(git_trace_count source-status)" 'cached Health checks tracked skill cleanliness'
+    assert_eq 1 "$(git_trace_count ignored-entrypoint-check)" \
+        'cached Health checks for ignored skill entrypoints'
 }
 
 test_preview_reuses_the_built_catalog_snapshot() {
@@ -479,10 +743,20 @@ test_preview_reuses_the_built_catalog_snapshot() {
     HAWS_DRAFT_SKILLS_LOADED=0
     HAWS_PLAN_KIND=Install
     HAWS_PLAN_CHANGED=1
+    : > "${TRACE_CATALOG}"
+    : > "${TRACE_FIND}"
+    : > "${TRACE_SOURCE_BUILDS}"
+    : > "${TRACE_SOURCE_SNAPSHOTS}"
+    : > "${TRACE_HEALTH_CLEAN_CHECKS}"
+    settings_plan_build
+    assert_eq 1 "$(catalog_call_count)" 'Apply plan construction builds one current catalog snapshot'
+    assert_eq 1 "$(find_call_count)" 'Apply plan construction scans each source once'
 
     : > "${TRACE_CATALOG}"
     : > "${TRACE_FIND}"
     : > "${TRACE_SOURCE_BUILDS}"
+    : > "${TRACE_SOURCE_SNAPSHOTS}"
+    : > "${TRACE_HEALTH_CLEAN_CHECKS}"
     interactive_menu() { return 1; }
     if settings_preview > "${TEST_ROOT}/preview.out" 2>&1; then
         preview_status=0
@@ -492,10 +766,14 @@ test_preview_reuses_the_built_catalog_snapshot() {
     unset -f interactive_menu
 
     assert_eq 2 "${preview_status}" 'Preview cancel returns to the prior draft flow'
-    assert_eq 1 "$(catalog_call_count)" 'Preview reads the cached complete catalog snapshot once'
+    assert_eq 0 "$(catalog_call_count)" 'Preview reuses the catalog built with its Apply plan'
     assert_eq 0 "$(filtered_catalog_call_count)" 'Preview performs no source-filtered catalog build'
     assert_eq 0 "$(find_call_count)" 'Preview performs no additional skill-file scans'
     assert_eq 0 "$(source_materialization_count)" 'Preview performs no additional source-list materialization'
+    assert_eq 0 "$(trace_line_count "${TRACE_SOURCE_SNAPSHOTS}")" \
+        'Preview reuses the source snapshot refreshed during plan construction'
+    assert_eq 0 "$(trace_line_count "${TRACE_HEALTH_CLEAN_CHECKS}")" \
+        'Preview does not repeat source-cleanliness checks after plan construction'
 }
 
 test_process_a_refreshes_source_revision_after_process_b_sync() {
@@ -785,7 +1063,11 @@ EOF
 test_content_based_classification
 test_source_snapshot_batches_gitlink_and_root_revision_checks
 test_combined_skill_metadata_extraction_matches_existing_helpers
+test_settings_entry_does_not_run_catalog_or_health_work
+test_settings_source_draft_rebases_external_adds_and_removals
 test_settings_builds_one_catalog_snapshot
+test_active_skills_refreshes_source_changes_made_after_draft_load
+test_apply_plan_rebases_skill_draft_after_external_catalog_change
 test_health_disk_cache_fast_path
 test_preview_reuses_the_built_catalog_snapshot
 test_process_a_refreshes_source_revision_after_process_b_sync

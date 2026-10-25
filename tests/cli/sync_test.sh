@@ -1095,6 +1095,129 @@ test_active_nested_skill_reference_update_advances_source() {
     assert_record "${source_id}" updated
 }
 
+test_all_disabled_source_skips_structure_change_then_reconciles_after_reenable() {
+    local name="all-disabled-lifecycle"
+    add_source "${name}" || return 1
+    local seed="${FIXTURE_ROOT}/seed-${name}"
+    local source_id="${name}::skills/packs/${name}"
+    local disabled_file="${FIXTURE_REPO}/.haws/state/skills.disabled"
+    local pack_head single_head old_remote_head rows disabled_ids kind
+    local total active links
+
+    git -C "${seed}" rm -q -- SKILL.md || return 1
+    mkdir -p "${seed}/skills/alpha-before" "${seed}/skills/beta-before" || return 1
+    printf '%s\n' '---' 'name: alpha-before' 'description: Initial pack skill.' '---' \
+        > "${seed}/skills/alpha-before/SKILL.md"
+    printf '%s\n' '---' 'name: beta-before' 'description: Initial pack skill.' '---' \
+        > "${seed}/skills/beta-before/SKILL.md"
+    git -C "${seed}" add -A || return 1
+    git -C "${seed}" commit -q -m 'change source structure to a pack' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    pack_head="$(git -C "${seed}" rev-parse HEAD)" || return 1
+
+    write_settings on
+    mkdir -p "${FIXTURE_HOME}/.claude" "${FIXTURE_REPO}/.haws/state" || return 1
+    source_haws || return 1
+    run_sync_process sync || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    [ "$(source_head "${name}")" = "${pack_head}" ] || return 1
+    rows="$(catalog_skills)" || return 1
+    total="$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id { count++ } END { print count+0 }')" || return 1
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id && $6 == 1 { count++ } END { print count+0 }')" || return 1
+    kind="$(catalog_source_kind "${source_id}")" || return 1
+    [ "${total}" -eq 2 ] && [ "${active}" -eq 2 ] && [ "${kind}" = PACK ] || return 1
+
+    disabled_ids="$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id { print $2 }')" || return 1
+    [ "$(printf '%s\n' "${disabled_ids}" | awk 'NF { count++ } END { print count+0 }')" -eq 2 ] || return 1
+    printf '%s\n' "${disabled_ids}" > "${disabled_file}" || return 1
+    old_remote_head="$(source_remote_head "${name}")" || return 1
+
+    # While every local skill is disabled, upstream removes the old entrypoints
+    # and replaces the PACK with a new root-level SINGLE skill.
+    git -C "${seed}" rm -qr -- skills || return 1
+    printf '%s\n' '---' 'name: recovered-single' 'description: Replacement skill.' '---' \
+        > "${seed}/SKILL.md"
+    git -C "${seed}" add -A || return 1
+    git -C "${seed}" commit -q -m 'change source structure to a single skill' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    single_head="$(git -C "${seed}" rev-parse HEAD)" || return 1
+
+    run_sync_process sync || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -F 'source has no active skills' "${OUTPUT_FILE}" >/dev/null || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -E 'Failed[[:space:]]*:[[:space:]]*0' "${OUTPUT_FILE}" >/dev/null || return 1
+    assert_record "${source_id}" skipped || return 1
+    [ "$(source_head "${name}")" = "${pack_head}" ] || return 1
+    [ "$(source_remote_head "${name}")" = "${old_remote_head}" ] || return 1
+
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
+        HAWS_CATALOG_SOURCE_CONFIG_FP HAWS_CATALOG_SKILL_STATE_FP \
+        HAWS_CATALOG_SKILLS_DIRTY HAWS_CATALOG_SOURCE_KIND_CACHE \
+        HAWS_CATALOG_DISABLED_SKILL_KEYS_MODE
+    HAWS_CATALOG_DISABLED_SKILL_KEYS=()
+    rows="$(catalog_skills)" || return 1
+    total="$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id { count++ } END { print count+0 }')" || return 1
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id && $6 == 1 { count++ } END { print count+0 }')" || return 1
+    kind="$(catalog_source_kind "${source_id}")" || return 1
+    [ "${total}" -eq 2 ] && [ "${active}" -eq 0 ] && [ "${kind}" = PACK ] || return 1
+
+    # Re-enable using the local PACK state, then let Sync reconcile upstream.
+    : > "${disabled_file}" || return 1
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
+        HAWS_CATALOG_SOURCE_CONFIG_FP HAWS_CATALOG_SKILL_STATE_FP \
+        HAWS_CATALOG_SKILLS_DIRTY HAWS_CATALOG_SOURCE_KIND_CACHE \
+        HAWS_CATALOG_DISABLED_SKILL_KEYS_MODE
+    HAWS_CATALOG_DISABLED_SKILL_KEYS=()
+    rows="$(catalog_skills)" || return 1
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id && $6 == 1 { count++ } END { print count+0 }')" || return 1
+    [ "${active}" -eq 2 ] || return 1
+
+    run_sync_process sync || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -E 'Failed[[:space:]]*:[[:space:]]*0' "${OUTPUT_FILE}" >/dev/null || return 1
+    assert_record "${source_id}" updated || return 1
+    [ "$(source_head "${name}")" = "${single_head}" ] || return 1
+    [ ! -e "${FIXTURE_REPO}/skills/packs/${name}/skills/alpha-before/SKILL.md" ] || return 1
+    [ ! -e "${FIXTURE_REPO}/skills/packs/${name}/skills/beta-before/SKILL.md" ] || return 1
+
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
+        HAWS_CATALOG_SOURCE_CONFIG_FP HAWS_CATALOG_SKILL_STATE_FP \
+        HAWS_CATALOG_SKILLS_DIRTY HAWS_CATALOG_SOURCE_KIND_CACHE \
+        HAWS_CATALOG_DISABLED_SKILL_KEYS_MODE
+    HAWS_CATALOG_DISABLED_SKILL_KEYS=()
+    rows="$(catalog_skills)" || return 1
+    total="$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id { count++ } END { print count+0 }')" || return 1
+    active="$(printf '%s\n' "${rows}" | awk -F '\t' -v source_id="${source_id}" \
+        '$1 == source_id && $6 == 1 { count++ } END { print count+0 }')" || return 1
+    kind="$(catalog_source_kind "${source_id}")" || return 1
+    links="$(find "${FIXTURE_HOME}/.claude/skills" -mindepth 1 -maxdepth 1 -type l -print 2>/dev/null | \
+        wc -l | tr -d '[:space:]')"
+    [ "${total}" -eq 1 ] && [ "${active}" -eq 1 ] && [ "${kind}" = SINGLE ] && \
+        [ "${links}" -eq 1 ] || return 1
+    [ -L "${FIXTURE_HOME}/.claude/skills/recovered-single" ] && \
+        [ -f "${FIXTURE_HOME}/.claude/skills/recovered-single/SKILL.md" ] || return 1
+    ! [ -e "${FIXTURE_HOME}/.claude/skills/alpha-before" ] && \
+        ! [ -L "${FIXTURE_HOME}/.claude/skills/alpha-before" ] && \
+        ! [ -e "${FIXTURE_HOME}/.claude/skills/beta-before" ] && \
+        ! [ -L "${FIXTURE_HOME}/.claude/skills/beta-before" ]
+}
+
 test_disabled_skill_structure_updates_and_reclassifies_same_sync() {
     add_source disabled-structure
     local seed="${FIXTURE_ROOT}/seed-disabled-structure"
@@ -1507,6 +1630,7 @@ else
     run_test test_active_root_skill_supporting_update_and_repeat_sync
     run_test test_active_nested_skill_reference_update_advances_source
     run_test test_disabled_skill_structure_updates_and_reclassifies_same_sync
+    run_test test_all_disabled_source_skips_structure_change_then_reconciles_after_reenable
     run_test test_disabled_skill_supporting_file_change_stays_skipped
     run_test test_source_diff_failure_fails_safely
     run_test test_lock_releases_after_success_and_failure

@@ -157,7 +157,8 @@ test_customize_setup_reaches_lifecycle_neutral_settings() {
     assert_output_contains 'Apply' || return 1
     assert_output_not_contains 'Discard Changes|Return without saving' || return 1
     assert_output_contains 'Existing repository sources' || return 1
-    assert_output_contains 'Active 1/1' || return 1
+    assert_output_contains 'Open to view active skills' || return 1
+    assert_output_not_contains 'Active 1/1' || return 1
     assert_output_contains 'Accept the draft for preview' || return 1
     assert_output_not_contains 'HAWS Settings — First Install'
 }
@@ -445,7 +446,7 @@ test_settings_apply_reaches_preview_without_persisting() {
     run_haws_input "${input}" || return 1
     assert_output_contains 'HAWS Settings' || return 1
     assert_output_contains 'HAWS — Preview Install' || return 1
-    assert_output_contains '[*] Loading skills catalog, please wait...' || return 1
+    assert_output_contains '[*] Loading current skills catalog, please wait...' || return 1
     assert_output_contains '[✓] Skills catalog ready.' || return 1
     assert_output_contains 'Install' || return 1
     assert_file_not_exists "${FIXTURE_PROJECT}/.haws/state/settings.tsv" || return 1
@@ -914,9 +915,10 @@ test_settings_auto_update_toggle_alignment_equal_columns() {
 test_settings_skills_shows_disabled_count_when_skills_disabled() {
     echo "demo-one" > "${FIXTURE_PROJECT}/skills.disabled"
     local down=$'\033[B'
-    run_haws_input "${down}\nq" || return 1
-    assert_output_contains 'Active 0/1' || return 1
-    assert_output_not_contains 'Active 1/1' || return 1
+    run_haws_input "${down}\n${down}\nq" || return 1
+    assert_output_contains 'Configure Active Skills' || return 1
+    assert_output_contains 'Active:   0 /   1 skills' || return 1
+    assert_output_not_contains 'Active:   1 /   1 skills' || return 1
 }
 
 test_settings_auto_update_second_brain_local_only_prompts_guided_menu() {
