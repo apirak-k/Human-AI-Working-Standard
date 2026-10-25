@@ -402,10 +402,15 @@ test_run_sync_reuses_runtime_source_cache_for_step4() {
     local calls_file="${FIXTURE_ROOT}/runtime-source-calls"
     printf '0\n' > "${calls_file}"
     _catalog_runtime_source_dir() {
-        local requested="${1:-}" calls
+        local requested="${1:-}" out_var="${2:-}" calls resolved
         calls="$(<"${calls_file}")"
         printf '%s\n' "$((calls + 1))" > "${calls_file}"
-        printf '%s/%s\n' "$(_catalog_repo_dir)" "${requested}"
+        resolved="$(_catalog_repo_dir)/${requested}"
+        if [ -n "${out_var}" ]; then
+            printf -v "${out_var}" '%s' "${resolved}"
+        else
+            printf '%s\n' "${resolved}"
+        fi
     }
 
     local status=0
