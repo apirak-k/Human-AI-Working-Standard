@@ -190,6 +190,37 @@ assert_record() {
         "${file}"
 }
 
+assert_single_sync_presentation() {
+    local expected_source="${1:-}" expected_brain="${2:-}"
+    local haws_line source_line brain_line summary_line sync_summary_count
+    [ "$(grep -Ec '^[[:space:]]+HAWS SYNC$' "${OUTPUT_FILE}" || true)" -eq 1 ] || return 1
+    [ "$(grep -xc 'OPTIONS' "${OUTPUT_FILE}" || true)" -eq 1 ] || return 1
+    [ "$(grep -Ec '^  TARGET[[:space:]]+RESULT[[:space:]]+DETAIL$' "${OUTPUT_FILE}" || true)" -eq 1 ] || return 1
+    sync_summary_count="$(awk '
+        /^[[:space:]]+HAWS SYNC$/ { in_sync=1 }
+        in_sync && /^SUMMARY$/ { count++ }
+        in_sync && /^\[(PASS|WARN)\] Sources are synchronized or safely unchanged|^\[WARN\] Source synchronization completed with target issues/ { in_sync=0 }
+        END { print count+0 }
+    ' "${OUTPUT_FILE}")"
+    [ "${sync_summary_count}" -eq 1 ] || return 1
+
+    haws_line="$(grep -nE '^  haws[[:space:]]+\[PASS\] Updated' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    summary_line="$(grep -nFx 'SUMMARY' "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+    [ -n "${haws_line}" ] && [ -n "${summary_line}" ] &&
+        [ "${haws_line}" -lt "${summary_line}" ] || return 1
+    if [ -n "${expected_source}" ]; then
+        source_line="$(grep -nE "^  ${expected_source}[[:space:]]" "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+        [ -n "${source_line}" ] && [ "${haws_line}" -lt "${source_line}" ] &&
+            [ "${source_line}" -lt "${summary_line}" ] || return 1
+    fi
+    if [ -n "${expected_brain}" ]; then
+        brain_line="$(grep -nE "^  ${expected_brain}[[:space:]]" "${OUTPUT_FILE}" | head -n 1 | cut -d: -f1)"
+        [ -n "${source_line}" ] && [ -n "${brain_line}" ] &&
+            [ "${source_line}" -lt "${brain_line}" ] &&
+            [ "${brain_line}" -lt "${summary_line}" ] || return 1
+    fi
+}
+
 run_sync_process() {
     local -a args=("$@")
     [ "${#args[@]}" -gt 0 ] || args=(sync)
@@ -239,7 +270,11 @@ device_source_dir() {
 prepare_haws_remote() {
     local bare="${FIXTURE_ROOT}/haws.git"
     local updater="${FIXTURE_ROOT}/haws-updater"
-    printf '%s\n' '.haws/' > "${FIXTURE_REPO}/.gitignore"
+    if [ ! -f "${FIXTURE_REPO}/.gitignore" ]; then
+        printf '%s\n' '.haws/' > "${FIXTURE_REPO}/.gitignore"
+    elif ! grep -Fxq '.haws/' "${FIXTURE_REPO}/.gitignore"; then
+        printf '%s\n' '.haws/' >> "${FIXTURE_REPO}/.gitignore"
+    fi
     git -C "${FIXTURE_REPO}" checkout -q -b main
     git -C "${FIXTURE_REPO}" config user.name HAWS-Test
     git -C "${FIXTURE_REPO}" config user.email test@example.invalid
@@ -1497,12 +1532,18 @@ test_haws_self_update_reexecutes_new_runtime_once_and_preserves_args() {
     grep -F 'HAWS_RUNTIME_B' "${OUTPUT_FILE}" >/dev/null || return 1
     grep -F 'HAWS_CLEAN_ARGUMENT_PRESERVED' "${OUTPUT_FILE}" >/dev/null || return 1
     grep -F '[PASS] HAWS synchronization completed' "${OUTPUT_FILE}" >/dev/null || return 1
+    [ "$(grep -Fc 'HAWS_RUNTIME_B' "${OUTPUT_FILE}" || true)" -eq 1 ] || return 1
+    assert_single_sync_presentation || return 1
     [ ! -d "${FIXTURE_REPO}/.haws/state/sync.lock" ]
 }
 
 test_haws_update_adds_submodule_source_and_links_it_in_same_sync() {
     local name="new-haws-pack" updater expected source_dir rows active links
-    write_settings on
+    printf '%s\n' '.haws/' 'secondbrain/' > "${FIXTURE_REPO}/.gitignore"
+    add_second_brain || return 1
+    mkdir -p "${FIXTURE_REPO}/.haws/state"
+    printf 'schema_version\t1\nsecond_brain\ton\nauto_update\ton\nauto_update_brain\ton\n' \
+        > "${FIXTURE_REPO}/.haws/state/settings.tsv"
     mkdir -p "${FIXTURE_HOME}/.claude"
     updater="$(prepare_haws_remote)" || return 1
     add_remote_submodule_pack "${updater}" "${name}" 2 || return 1
@@ -1515,6 +1556,11 @@ test_haws_update_adds_submodule_source_and_links_it_in_same_sync() {
     }
     [ "$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" = "${expected}" ] || return 1
     grep -F 'HAWS_RUNTIME_B' "${OUTPUT_FILE}" >/dev/null || return 1
+    [ "$(grep -Fc 'HAWS_RUNTIME_B' "${OUTPUT_FILE}" || true)" -eq 1 ] || return 1
+    assert_single_sync_presentation "${name}" secondbrain || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
     ! grep -F 'source has no active skills' "${OUTPUT_FILE}" >/dev/null || return 1
     source_dir="$(device_source_dir "${name}")"
     [ -d "${source_dir}" ] || return 1
