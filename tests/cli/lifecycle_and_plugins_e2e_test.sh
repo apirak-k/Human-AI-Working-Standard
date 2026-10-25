@@ -341,8 +341,17 @@ test_google_antigravity_gemini_sync_and_native_config() {
 
     # 4. Assert legacy / broken Antigravity canonical agents are migrated and repaired
     # Simulate a stale broken symlink for backend-engineer and an unowned file for tester
+    local stale_link_created=0 stale_link_target="${FIXTURE_ROOT}/stale-backend-engineer.md"
     rm -f "${agents_dir}/backend-engineer/agent.md"
-    ln -s "/nonexistent/old/path/agents/backend-engineer.md" "${agents_dir}/backend-engineer/agent.md"
+    printf 'stale backend-engineer profile\n' > "${stale_link_target}"
+    if ln -s "${stale_link_target}" "${agents_dir}/backend-engineer/agent.md" 2>/dev/null &&
+        [ -L "${agents_dir}/backend-engineer/agent.md" ]; then
+        rm -f "${stale_link_target}"
+        stale_link_created=1
+    else
+        rm -f "${agents_dir}/backend-engineer/agent.md" "${stale_link_target}"
+        echo '[SKIP] This host cannot create a dangling symlink fixture; stale-link repair assertion skipped.'
+    fi
     rm -f "${agents_dir}/tester/agent.md"
     printf "legacy tester content\n" > "${agents_dir}/tester/agent.md"
 
@@ -357,7 +366,11 @@ test_google_antigravity_gemini_sync_and_native_config() {
 
     # Run sync again
     run_haws sync || return 1
-    assert_output_contains '[REPAIRED] Antigravity Agent [backend-engineer]: stale legacy link replaced' || return 1
+    if [ "${stale_link_created}" -eq 1 ]; then
+        assert_output_contains '[REPAIRED] Antigravity Agent [backend-engineer]: stale legacy link replaced' || return 1
+    elif ! grep -Eq '\[(HARDLINK|COPIED)\] Antigravity Agent \[backend-engineer\]:' "${OUTPUT_FILE}"; then
+        fail "Expected HAWS to recreate the absent backend-engineer profile safely"
+    fi
     assert_output_contains '[MIGRATED] Antigravity Agent [tester]: legacy HAWS agent replaced with current version' || return 1
 
     # Verify canonical agents now link to current canonical sources

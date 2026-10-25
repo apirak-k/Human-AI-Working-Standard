@@ -38,6 +38,7 @@ new_fixture() {
     if [ -n "${TEST_ROOT}" ]; then
         cleanup
     fi
+    TRACE_GIT=""
     TEST_ROOT="$(mktemp -d "${ORIGINAL_TMPDIR%/}/haws-catalog-test.XXXXXX")"
     export HOME="${TEST_ROOT}/home"
     export TMPDIR="${TEST_ROOT}/tmp"
@@ -64,19 +65,23 @@ EOF
     TRACE_SOURCE_BUILDS="${TEST_ROOT}/traces/source-builds.txt"
     TRACE_RUNTIME_DIR="${TEST_ROOT}/traces/runtime-dirs.txt"
     TRACE_DISABLED_LOADS="${TEST_ROOT}/traces/disabled-loads.txt"
+    TRACE_GIT="${TEST_ROOT}/traces/git.txt"
     : > "${TRACE_CATALOG}"
     : > "${TRACE_FIND}"
     : > "${TRACE_SOURCE_BUILDS}"
     : > "${TRACE_RUNTIME_DIR}"
     : > "${TRACE_DISABLED_LOADS}"
+    : > "${TRACE_GIT}"
 
     unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
         HAWS_CATALOG_SOURCE_CONFIG_FP HAWS_CATALOG_SKILL_STATE_FP \
-        HAWS_CATALOG_SKILLS_DIRTY HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH
+        HAWS_CATALOG_SKILLS_DIRTY
     unset HAWS_HEALTH_CACHE_FP HAWS_HEALTH_CACHE_FINDINGS
     unset HAWS_HEALTH_CACHE_ACTIVE HAWS_HEALTH_CACHE_TOTAL
     HAWS_CATALOG_SOURCE_KIND_CACHE=()
     HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE=()
+    HAWS_CATALOG_RUNTIME_SOURCE_REVISION_CACHE=()
+    _catalog_clear_submodule_snapshot
     HAWS_HEALTH_FINDINGS=""
     HAWS_DRAFT_SKILLS_LOADED=0
     DISABLED_SKILLS=()
@@ -130,6 +135,10 @@ source_id() {
     _catalog_device_source_id "$1" "$2"
 }
 
+git_trace_count() {
+    awk -F '\t' -v kind="$1" '$1 == kind { count++ } END { print count + 0 }' "${TRACE_GIT}"
+}
+
 catalog_call_count() {
     awk 'END { print NR + 0 }' "${TRACE_CATALOG}"
 }
@@ -157,6 +166,24 @@ source_count_in_rows() {
 # substitutions used by the Settings and Health paths.
 export HAWS_SOURCE_ONLY=1
 source "${TEST_REPO_ROOT}/haws.sh"
+git() {
+    local joined="$*" kind=other
+    if [[ "${joined}" == *"config --null --file"* && "${joined}" == *"--get-regexp"* ]]; then
+        if [[ "${joined}" == *".path$"* ]]; then
+            kind=submodule-path-config
+        elif [[ "${joined}" == *".url$"* ]]; then
+            kind=submodule-url-config
+        fi
+    elif [[ "${joined}" == *"ls-files --stage"* ]]; then
+        kind=gitlink-index
+    elif [[ "${joined}" == *"rev-parse --show-toplevel --verify HEAD"* ]]; then
+        kind=source-root-head
+    elif [[ "${joined}" == *"rev-parse --is-inside-work-tree"* ]]; then
+        kind=inside-work-tree
+    fi
+    printf '%s\t%s\n' "${kind}" "${joined}" >> "${TRACE_GIT:-/dev/null}"
+    command git "$@"
+}
 eval "$(declare -f catalog_skills | sed '1s/^catalog_skills/_catalog_skills_original/')"
 catalog_skills() {
     printf '%s\t%s\n' "${1:-effective}" "${2:-}" >> "${TRACE_CATALOG}"
@@ -249,6 +276,115 @@ test_content_based_classification() {
     assert_eq 0 "$(printf '%s\n' "${rows}" | awk -F '\t' -v id="${many_id}::First Skill" '$2 == id && $6 == 1 {n++} END {print n+0}')" \
         'disabled state marks one pack member inactive'
     assert_eq 0 "$(catalog_call_count)" 'source classification reuses the already built complete snapshot'
+}
+
+test_source_snapshot_batches_gitlink_and_root_revision_checks() {
+    new_fixture
+    local i name path source_dir revision source_rows source_id
+    for i in 1 2 3 4; do
+        name="snapshot-${i}"
+        path="skills/packs/${name}"
+        source_dir="${HAWS_STATE_DIR}/skill-sources/${path}"
+        mkdir -p "${source_dir}"
+        if [ "${i}" -le 3 ]; then
+            git init -q -b main "${source_dir}"
+            printf 'name: Snapshot %s\n' "${i}" > "${source_dir}/SKILL.md"
+            git -C "${source_dir}" add SKILL.md
+            git -C "${source_dir}" commit -q -m "source ${i}"
+            revision="$(git -C "${source_dir}" rev-parse HEAD)"
+            git -C "${HAWS_REPO_DIR}" update-index --add --cacheinfo "160000,${revision},${path}"
+        fi
+        git -C "${HAWS_REPO_DIR}" config --file .gitmodules "submodule.${name}.path" "${path}"
+        git -C "${HAWS_REPO_DIR}" config --file .gitmodules "submodule.${name}.url" "https://example.invalid/${name}.git"
+    done
+
+    unset HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SOURCE_CONFIG_FP
+    HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE=()
+    : > "${TRACE_GIT}"
+    source_rows="$(catalog_sources)"
+    assert_eq 4 "$(printf '%s\n' "${source_rows}" | awk 'NF { count++ } END { print count + 0 }')" \
+        'submodule snapshot retains every configured source row'
+    assert_eq 1 "$(git_trace_count gitlink-index)" \
+        'submodule index membership is validated with one batched Git query'
+    assert_eq 1 "$(git_trace_count submodule-path-config)" \
+        'submodule paths are read with one Git config query'
+    assert_eq 1 "$(git_trace_count submodule-url-config)" \
+        'submodule URLs are read with one Git config query'
+    assert_eq 3 "$(git_trace_count source-root-head)" \
+        'each checked out gitlink combines repository-root and HEAD validation'
+    assert_eq 0 "$(git_trace_count inside-work-tree)" \
+        'source resolution does not run a second inside-work-tree probe'
+    source_id='snapshot-4::skills/packs/snapshot-4'
+    assert_contains "${source_rows}" "${source_id}" \
+        'a configured source absent from the current index remains represented safely'
+    assert_contains "${source_rows}" "${source_id}"$'\t'"skills/packs/snapshot-4"$'\t'"https://example.invalid/snapshot-4.git"$'\t'uninitialized \
+        'an unindexed source does not resolve to its device-local directory'
+}
+
+test_combined_skill_metadata_extraction_matches_existing_helpers() {
+    new_fixture
+    local metadata_dir="${TEST_ROOT}/metadata" file case_name old_name old_desc combined_name combined_desc
+    local -a files=()
+    mkdir -p "${metadata_dir}/quoted" "${metadata_dir}/multiline" \
+        "${metadata_dir}/body-fallback" "${metadata_dir}/no-frontmatter" \
+        "${metadata_dir}/one-delimiter" "${metadata_dir}/name-fallback"
+
+    cat > "${metadata_dir}/quoted/SKILL.md" <<'EOF'
+---
+name: "Quoted Skill" # trailing comment
+description: 'quoted description'
+---
+EOF
+    cat > "${metadata_dir}/multiline/SKILL.md" <<'EOF'
+---
+name: Multiline Skill
+description: >
+  first multiline description
+  second continuation
+---
+EOF
+    cat > "${metadata_dir}/body-fallback/SKILL.md" <<'EOF'
+---
+name: Body Fallback Skill
+category: test
+---
+# Heading
+First body description.
+EOF
+    cat > "${metadata_dir}/no-frontmatter/SKILL.md" <<'EOF'
+name: No Frontmatter Skill
+# Heading
+Body content.
+EOF
+    cat > "${metadata_dir}/one-delimiter/SKILL.md" <<'EOF'
+---
+name: One Delimiter Skill
+No description field
+EOF
+    cat > "${metadata_dir}/name-fallback/SKILL.md" <<'EOF'
+---
+description: Description without an explicit name
+---
+EOF
+    files=(
+        "${metadata_dir}/quoted/SKILL.md"
+        "${metadata_dir}/multiline/SKILL.md"
+        "${metadata_dir}/body-fallback/SKILL.md"
+        "${metadata_dir}/no-frontmatter/SKILL.md"
+        "${metadata_dir}/one-delimiter/SKILL.md"
+        "${metadata_dir}/name-fallback/SKILL.md"
+    )
+    for file in "${files[@]}"; do
+        case_name="${file%/SKILL.md}"
+        case_name="${case_name##*/}"
+        old_name="$(extract_skill_name "${file}")"
+        old_desc="$(extract_skill_desc "${file}")"
+        _catalog_extract_skill_metadata "${file}" combined_name combined_desc
+        assert_eq "${old_name}" "${combined_name}" \
+            "single-pass metadata preserves name for ${case_name}"
+        assert_eq "${old_desc}" "${combined_desc}" \
+            "single-pass metadata preserves description for ${case_name}"
+    done
 }
 
 test_settings_builds_one_catalog_snapshot() {
@@ -396,6 +532,51 @@ test_process_a_refreshes_source_revision_after_process_b_sync() {
     assert_eq PACK "${classification}" 'process A refreshes source kind after process B advances source HEAD'
     assert_eq 1 "$(catalog_call_count)" 'cross-process source revision change rebuilds one complete catalog'
     assert_eq 1 "$(find_call_count)" 'cross-process source revision change scans the source once'
+}
+
+test_settings_draft_snapshot_refreshes_before_health_after_external_source_advance() {
+    new_fixture
+    local source_path='skills/packs/cross-process-health'
+    local source="$(source_id cross-process-health "${source_path}")"
+    local source_dir bare author new_revision classification cached_revision
+    source_dir="$(register_source cross-process-health "${source_path}")"
+    write_skill "${source_dir}" skills/one 'First Health Race Skill' 'initial health race revision'
+    commit_source "${source_dir}" 'initial health race revision'
+
+    _health_collect
+    assert_eq 1 "${HAWS_HEALTH_SKILLS_TOTAL}" 'process A starts with one Health skill'
+    catalog_source_kind "${source}" classification
+    assert_eq SINGLE "${classification}" 'process A caches initial SINGLE classification'
+
+    settings_draft_load
+    assert_eq '' "${HAWS_CATALOG_SOURCE_SNAPSHOT_FRESH:-}" \
+        'Settings draft does not grant later readers stale snapshot reuse'
+
+    bare="${TEST_ROOT}/remotes/cross-process-health.git"
+    author="${TEST_ROOT}/authors/cross-process-health"
+    git clone -q --bare "${source_dir}" "${bare}"
+    git clone -q "${bare}" "${author}"
+    write_skill "${author}" skills/two 'Second Health Race Skill' 'updated health race revision'
+    git -C "${author}" add -A
+    git -C "${author}" commit -q -m 'add second health race skill'
+    git -C "${author}" push -q origin main
+    new_revision="$(git --git-dir="${bare}" rev-parse refs/heads/main)"
+
+    # Process B advances the shared source after Settings cached its snapshot.
+    bash -c 'git -C "$1" fetch -q "$2" main && git -C "$1" checkout --quiet --detach "$3"' \
+        bash "${source_dir}" "${bare}" "${new_revision}"
+
+    : > "${TRACE_CATALOG}"
+    : > "${TRACE_FIND}"
+    _health_collect
+    assert_eq 2 "${HAWS_HEALTH_SKILLS_TOTAL}" \
+        'Health refreshes after process B advances a source following Settings draft load'
+    catalog_source_kind "${source}" classification
+    assert_eq PACK "${classification}" 'Health refresh updates classification to PACK'
+    cached_revision="$(printf '%s\n' "${HAWS_CATALOG_SOURCES_CACHE}" | awk -F '\t' -v id="${source}" '$1 == id {print $4}')"
+    assert_eq "${new_revision}" "${cached_revision}" 'Health refresh stores the advanced source revision'
+    assert_eq 1 "$(catalog_call_count)" 'Health refresh rebuilds one complete catalog snapshot'
+    assert_eq 1 "$(find_call_count)" 'Health refresh scans the changed source once'
 }
 
 test_runtime_source_resolution_scales_with_sources() {
@@ -602,10 +783,13 @@ EOF
 }
 
 test_content_based_classification
+test_source_snapshot_batches_gitlink_and_root_revision_checks
+test_combined_skill_metadata_extraction_matches_existing_helpers
 test_settings_builds_one_catalog_snapshot
 test_health_disk_cache_fast_path
 test_preview_reuses_the_built_catalog_snapshot
 test_process_a_refreshes_source_revision_after_process_b_sync
+test_settings_draft_snapshot_refreshes_before_health_after_external_source_advance
 test_runtime_source_resolution_scales_with_sources
 test_cached_runtime_source_mapping_skips_repo_resolution
 test_health_cache_invalidation
