@@ -1033,11 +1033,26 @@ _second_brain_dir() {
     printf '%s/secondbrain\n' "${SCRIPT_DIR}"
 }
 
+_second_brain_safe_git_environment() {
+    [ -z "${GIT_DIR+x}${GIT_WORK_TREE+x}${GIT_COMMON_DIR+x}${GIT_INDEX_FILE+x}${GIT_OBJECT_DIRECTORY+x}${GIT_ALTERNATE_OBJECT_DIRECTORIES+x}" ]
+}
+
+_second_brain_is_root() {
+    local brain_dir="$1" root actual git_dir expected_git_dir
+    _second_brain_safe_git_environment || return 1
+    [ -d "${brain_dir}/.git" ] && [ ! -L "${brain_dir}/.git" ] || return 1
+    root="$(git -C "${brain_dir}" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    root="$(cd -- "${root}" && pwd -P)" || return 1
+    actual="$(cd -- "${brain_dir}" && pwd -P)" || return 1
+    git_dir="$(git -C "${brain_dir}" rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+    git_dir="$(cd -- "${git_dir}" && pwd -P)" || return 1
+    expected_git_dir="$(cd -- "${brain_dir}/.git" && pwd -P)" || return 1
+    [ "${root}" = "${actual}" ] && [ "${git_dir}" = "${expected_git_dir}" ]
+}
+
 _second_brain_remote_url() {
     local brain_dir="$(_second_brain_dir)"
-    if [ ! -d "${brain_dir}/.git" ] && [ ! -f "${brain_dir}/.git" ]; then
-        return 0
-    fi
+    _second_brain_is_root "${brain_dir}" || return 0
     git -C "${brain_dir}" remote get-url origin 2>/dev/null || true
 }
 
@@ -3138,7 +3153,7 @@ sync_second_brain_target() {
         _sync_legacy_echo "secondbrain: skipped (auto update disabled)"
         return 0
     fi
-    [ -d "${brain_dir}/.git" ] || {
+    _second_brain_is_root "${brain_dir}" || {
         sync_result_write secondbrain failed - "Second Brain checkout is unavailable" || return 1
         _sync_legacy_echo "secondbrain: failed (checkout is unavailable)"
         return 1
@@ -5220,6 +5235,10 @@ _second_brain_connect_transaction() {
     local parent base stage_prefix stage candidate baseline backup
     local original_exists=0
 
+    if ! _second_brain_safe_git_environment; then
+        echo "  [ERROR] Git repository environment overrides prevent safe Second Brain connection." >&2
+        return 1
+    fi
     if [ -L "${brain_dir}" ]; then
         echo "  [ERROR] Second Brain checkout is a linked directory; refusing transactional connect." >&2
         return 1
@@ -5272,6 +5291,10 @@ _second_brain_connect_transaction() {
             git -C "${candidate}" init -b main --quiet 2>/dev/null ||
                 git -C "${candidate}" init --quiet || exit 1
         fi
+        _second_brain_is_root "${candidate}" || {
+            echo "  [ERROR] Second Brain checkout is not independently rooted." >&2
+            exit 1
+        }
         previous_origin="$(git -C "${candidate}" remote get-url origin 2>/dev/null || true)"
         if [ -n "${previous_origin}" ]; then
             git -C "${candidate}" remote set-url origin "${repo_url}" || exit 1
@@ -5327,7 +5350,7 @@ _second_brain_connect_transaction() {
 
 _second_brain_publish() {
     local brain_dir="$1" remote remote_head current confirm preview_status push_remote remote_refs latest_refs
-    [ -d "${brain_dir}/.git" ] || { echo "  [ERROR] Second Brain checkout is unavailable." >&2; return 1; }
+    _second_brain_is_root "${brain_dir}" || { echo "  [ERROR] Second Brain checkout is unavailable or not independently rooted." >&2; return 1; }
     if [ -L "${brain_dir}" ] || [ -L "${brain_dir}/.git" ]; then
         echo "  [ERROR] Linked Second Brain checkouts cannot be published transactionally." >&2
         return 1
@@ -5372,6 +5395,11 @@ _second_brain_publish() {
         ! cp -a "${brain_dir}/." "${baseline}/" ||
         ! cp -a "${baseline}/." "${candidate}/"; then
         echo "  [ERROR] Could not snapshot Second Brain for publication." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if ! _second_brain_is_root "${candidate}"; then
+        echo "  [ERROR] Publication snapshot is not independently rooted." >&2
         rm -rf -- "${stage}"
         return 1
     fi
@@ -5493,7 +5521,7 @@ run_user() {
 
     if [ "${action}" = status ]; then
         local current_remote
-        current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
+        current_remote="$(_second_brain_remote_url)"
         echo "============================================================="
         echo "                 HAWS Second Brain Status"
         echo "============================================================="
@@ -5519,6 +5547,10 @@ run_user() {
         disconnect)
             local confirm="${1:-}"
             local current_remote
+            _second_brain_is_root "${brain_dir}" || {
+                echo "  [ERROR] Second Brain checkout is unavailable or not independently rooted." >&2
+                return 1
+            }
             current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
             if [ -z "${current_remote}" ]; then
                 echo "  Second Brain is currently in Local-Only mode (not connected)."

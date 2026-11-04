@@ -108,12 +108,89 @@ test_disconnect() (
     mkdir -p "${SCRIPT_DIR}/secondbrain"
     for doc in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do printf 'default\n' > "${SCRIPT_DIR}/secondbrain/${doc}"; done
     printf 'private\n' > "${SCRIPT_DIR}/secondbrain/private.txt"
-    run_user disconnect --yes > "${tmp}/disconnect/out"
+    if run_user disconnect --yes > "${tmp}/disconnect/out" 2>&1; then return 1; fi
     [ ! -e "${SCRIPT_DIR}/secondbrain/.git" ] || return 1
     [ "$(cat "${SCRIPT_DIR}/secondbrain/private.txt")" = private ] || return 1
 )
+parent_fixture() {
+    SCRIPT_DIR="${tmp}/$1/app"
+    mkdir -p "${SCRIPT_DIR}/secondbrain"
+    git init -q -b main "${SCRIPT_DIR}" || return 1
+    git -C "${SCRIPT_DIR}" config user.name Test
+    git -C "${SCRIPT_DIR}" config user.email test@example.invalid
+    printf 'parent tracked\n' > "${SCRIPT_DIR}/tracked.txt"
+    git -C "${SCRIPT_DIR}" add tracked.txt
+    git -C "${SCRIPT_DIR}" commit -qm initial
+    git init --bare -q "${tmp}/$1/remote.git"
+    git -C "${SCRIPT_DIR}" remote add origin "${tmp}/$1/remote.git"
+    printf 'personal note\n' > "${SCRIPT_DIR}/secondbrain/private.txt"
+}
+test_parent_disconnect_refused() (
+    parent_fixture parent_disconnect || return 1
+    local head index before
+    head="$(git -C "${SCRIPT_DIR}" rev-parse HEAD)"
+    index="$(git -C "${SCRIPT_DIR}" write-tree)"
+    before="$(git -C "${SCRIPT_DIR}" status --porcelain -uall)"
+    if run_user disconnect --yes > "${tmp}/parent_disconnect/out" 2>&1; then return 1; fi
+    [ "$(git -C "${SCRIPT_DIR}" remote get-url origin)" = "${tmp}/parent_disconnect/remote.git" ] || return 1
+    [ "$(git -C "${SCRIPT_DIR}" rev-parse HEAD)" = "${head}" ] || return 1
+    [ "$(git -C "${SCRIPT_DIR}" write-tree)" = "${index}" ] || return 1
+    [ "$(git -C "${SCRIPT_DIR}" status --porcelain -uall)" = "${before}" ] || return 1
+    [ "$(cat "${SCRIPT_DIR}/secondbrain/private.txt")" = 'personal note' ]
+)
+test_parent_status_is_local_only() (
+    parent_fixture parent_status || return 1
+    run_user status > "${tmp}/parent_status/out" || return 1
+    grep -F '[LOCAL-ONLY' "${tmp}/parent_status/out" >/dev/null || return 1
+    [ "$(git -C "${SCRIPT_DIR}" remote get-url origin)" = "${tmp}/parent_status/remote.git" ]
+)
+test_inherited_git_dir_refused() (
+    parent_fixture inherited_git || return 1
+    git init -q -b main "${SCRIPT_DIR}/secondbrain" || return 1
+    if GIT_DIR="${SCRIPT_DIR}/.git" GIT_WORK_TREE="${SCRIPT_DIR}/secondbrain" run_user disconnect --yes > "${tmp}/inherited_git/out" 2>&1; then return 1; fi
+    [ "$(git -C "${SCRIPT_DIR}" remote get-url origin)" = "${tmp}/inherited_git/remote.git" ] || return 1
+    [ "$(cat "${SCRIPT_DIR}/secondbrain/private.txt")" = 'personal note' ]
+)
+test_original_git_dir_publish_refused() (
+    fixture original_git || return 1
+    printf 'private\n' > "${SCRIPT_DIR}/secondbrain/private.txt"
+    local head index
+    head="$(git -C "${SCRIPT_DIR}/secondbrain" rev-parse HEAD)"
+    index="$(git -C "${SCRIPT_DIR}/secondbrain" write-tree)"
+    if printf 'y\n' | GIT_DIR="${SCRIPT_DIR}/secondbrain/.git" GIT_WORK_TREE="${SCRIPT_DIR}/secondbrain" run_user sync > "${tmp}/original_git/out" 2>&1; then return 1; fi
+    [ "$(git -C "${SCRIPT_DIR}/secondbrain" rev-parse HEAD)" = "${head}" ] || return 1
+    [ "$(git -C "${SCRIPT_DIR}/secondbrain" write-tree)" = "${index}" ] || return 1
+    [ "$(git --git-dir="${tmp}/original_git/remote.git" rev-parse main)" = "${head}" ] || return 1
+    [ "$(cat "${SCRIPT_DIR}/secondbrain/private.txt")" = private ]
+)
+test_connect_git_environment_overrides_refused() (
+    parent_fixture connect_env || return 1
+    local name
+    for name in GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES; do
+        (
+            export "${name}=${SCRIPT_DIR}/.git"
+            if run_user connect "${tmp}/connect_env/remote.git" > "${tmp}/connect_env/out" 2>&1; then exit 1; fi
+        ) || return 1
+        [ ! -e "${SCRIPT_DIR}/secondbrain/.git" ] || return 1
+        [ "$(git -C "${SCRIPT_DIR}" remote get-url origin)" = "${tmp}/connect_env/remote.git" ] || return 1
+        [ "$(cat "${SCRIPT_DIR}/secondbrain/private.txt")" = 'personal note' ] || return 1
+    done
+)
+test_candidate_worktree_redirection_refused() (
+    fixture candidate_worktree || return 1
+    git -C "${SCRIPT_DIR}/secondbrain" config core.worktree "${SCRIPT_DIR}/secondbrain" || return 1
+    printf 'private\n' > "${SCRIPT_DIR}/secondbrain/private.txt"
+    local head index
+    head="$(git -C "${SCRIPT_DIR}/secondbrain" rev-parse HEAD)"
+    index="$(git -C "${SCRIPT_DIR}/secondbrain" write-tree)"
+    if printf 'y\n' | run_user sync > "${tmp}/candidate_worktree/out" 2>&1; then return 1; fi
+    [ "$(git -C "${SCRIPT_DIR}/secondbrain" rev-parse HEAD)" = "${head}" ] || return 1
+    [ "$(git -C "${SCRIPT_DIR}/secondbrain" write-tree)" = "${index}" ] || return 1
+    [ "$(git --git-dir="${tmp}/candidate_worktree/remote.git" rev-parse main)" = "${head}" ] || return 1
+    [ "$(cat "${SCRIPT_DIR}/secondbrain/private.txt")" = private ]
+)
 failed=0
-for test in test_pushurl test_nonmain test_content_race test_head_changes_before_snapshot test_symlink_race test_rename_preview test_disconnect; do
+for test in test_pushurl test_nonmain test_content_race test_head_changes_before_snapshot test_symlink_race test_rename_preview test_disconnect test_parent_disconnect_refused test_parent_status_is_local_only test_inherited_git_dir_refused test_original_git_dir_publish_refused test_connect_git_environment_overrides_refused test_candidate_worktree_redirection_refused; do
     if "${test}"; then echo "PASS ${test}"; else echo "FAIL ${test}"; failed=$((failed + 1)); fi
 done
 [ "${failed}" -eq 0 ]
