@@ -5278,6 +5278,9 @@ _second_brain_connect_transaction() {
         else
             git -C "${candidate}" remote add origin "${repo_url}" || exit 1
         fi
+        if git -C "${candidate}" config --get-all remote.origin.pushurl >/dev/null 2>&1; then
+            git -C "${candidate}" config --unset-all remote.origin.pushurl || exit 1
+        fi
         if ! git -C "${candidate}" ls-remote origin >/dev/null 2>&1 ||
             ! git -C "${candidate}" fetch origin --quiet 2>/dev/null; then
             echo "  [ERROR] Failed to connect to ${repo_url}." >&2
@@ -5323,7 +5326,7 @@ _second_brain_connect_transaction() {
 }
 
 _second_brain_publish() {
-    local brain_dir="$1" remote remote_head current confirm preview_status
+    local brain_dir="$1" remote remote_head current confirm preview_status push_remote remote_refs latest_refs
     [ -d "${brain_dir}/.git" ] || { echo "  [ERROR] Second Brain checkout is unavailable." >&2; return 1; }
     if [ -L "${brain_dir}" ] || [ -L "${brain_dir}/.git" ]; then
         echo "  [ERROR] Linked Second Brain checkouts cannot be published transactionally." >&2
@@ -5331,15 +5334,24 @@ _second_brain_publish() {
     fi
     remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || true)"
     [ -n "${remote}" ] || { echo "  [i] Second Brain is Local-Only."; return 0; }
+    push_remote="$(git -C "${brain_dir}" remote get-url --push --all origin 2>/dev/null)" || return 1
+    if [ "${push_remote}" != "${remote}" ]; then
+        echo "  [ERROR] Push destination differs from the connected remote; publication refused." >&2
+        return 1
+    fi
     echo "  [*] Syncing Second Brain, please wait..."
     [ "$(git -C "${brain_dir}" symbolic-ref --short HEAD 2>/dev/null)" = main ] || {
         echo "  [ERROR] Publication requires the main branch." >&2; return 1;
     }
     current="$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
-    remote_head="$(git -C "${brain_dir}" ls-remote origin refs/heads/main 2>/dev/null)" || {
-        echo "  [ERROR] Could not inspect remote main." >&2; return 1;
+    remote_refs="$(git -C "${brain_dir}" ls-remote --heads origin 2>/dev/null)" || {
+        echo "  [ERROR] Could not inspect remote branches." >&2; return 1;
     }
-    remote_head="${remote_head%%[[:space:]]*}"
+    remote_head="$(printf '%s\n' "${remote_refs}" | awk '$2 == "refs/heads/main" {print $1}')"
+    if [ -z "${remote_head}" ] && [ -n "${remote_refs}" ]; then
+        echo "  [ERROR] Remote has history on another branch; publication refused." >&2
+        return 1
+    fi
     if [ -n "${remote_head}" ]; then
         git -C "${brain_dir}" fetch --quiet origin main || return 1
         [ "$(git -C "${brain_dir}" rev-parse FETCH_HEAD)" = "${remote_head}" ] || {
@@ -5350,27 +5362,6 @@ _second_brain_publish() {
             return 1
         fi
     fi
-    echo "  Files to publish (committed and pending changes):"
-    if [ -n "${remote_head}" ]; then
-        git -C "${brain_dir}" log -m --format= --name-only "${remote_head}..HEAD" | LC_ALL=C sort -u
-    elif [ -n "${current}" ]; then
-        git -C "${brain_dir}" log -m --format= --name-only HEAD | LC_ALL=C sort -u
-    fi
-    preview_status="$(git -C "${brain_dir}" status --short --untracked-files=all)" || return 1
-    printf '%s\n' "${preview_status}"
-    read -r -p "Publish these changes to ${remote}? [y/N]: " confirm || return 1
-    [[ "${confirm}" =~ ^[Yy]$ ]] || { echo "  [Aborted] Publication cancelled."; return 1; }
-    if [ "$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)" != "${current}" ] ||
-        [ "$(git -C "${brain_dir}" status --short --untracked-files=all)" != "${preview_status}" ]; then
-        echo "  [ERROR] Local changes differ from the preview; publication refused." >&2
-        return 1
-    fi
-    local latest_remote
-    latest_remote="$(git -C "${brain_dir}" ls-remote origin refs/heads/main 2>/dev/null)" || return 1
-    latest_remote="${latest_remote%%[[:space:]]*}"
-    [ "${latest_remote}" = "${remote_head}" ] || {
-        echo "  [ERROR] Remote changed after preview; publication refused." >&2; return 1;
-    }
     local parent stage candidate baseline backup revision
     parent="$(dirname "${brain_dir}")"
     stage="$(mktemp -d "${parent}/.secondbrain.haws-publish.XXXXXX")" || return 1
@@ -5381,6 +5372,41 @@ _second_brain_publish() {
         ! cp -a "${brain_dir}/." "${baseline}/" ||
         ! cp -a "${baseline}/." "${candidate}/"; then
         echo "  [ERROR] Could not snapshot Second Brain for publication." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if [ "$(git -C "${candidate}" rev-parse --verify HEAD 2>/dev/null || true)" != "${current}" ] ||
+        [ "$(git -C "${candidate}" remote get-url --push --all origin 2>/dev/null)" != "${remote}" ]; then
+        echo "  [ERROR] Local checkout changed during inspection; publication refused." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    echo "  Files to publish (committed and pending changes):"
+    if [ -n "${remote_head}" ]; then
+        git -C "${candidate}" log -m --no-renames --format= --name-only "${remote_head}..HEAD" | LC_ALL=C sort -u
+    elif [ -n "${current}" ]; then
+        git -C "${candidate}" log -m --no-renames --format= --name-only HEAD | LC_ALL=C sort -u
+    fi
+    preview_status="$(git -C "${candidate}" status --short --untracked-files=all)" || { rm -rf -- "${stage}"; return 1; }
+    printf '%s\n' "${preview_status}"
+    if ! read -r -p "Publish these changes to ${remote}? [y/N]: " confirm ||
+        [[ ! "${confirm}" =~ ^[Yy]$ ]]; then
+        echo "  [Aborted] Publication cancelled."
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1 ||
+        ! git diff --no-index --quiet -- "${brain_dir}" "${baseline}" 2>/dev/null; then
+        echo "  [ERROR] Local changes differ from the preview; publication refused." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    latest_refs="$(git -C "${brain_dir}" ls-remote --heads origin 2>/dev/null)" || {
+        rm -rf -- "${stage}"; return 1;
+    }
+    if [ "${latest_refs}" != "${remote_refs}" ] ||
+        [ "$(git -C "${brain_dir}" remote get-url --push --all origin 2>/dev/null)" != "${remote}" ]; then
+        echo "  [ERROR] Remote changed after preview; publication refused." >&2
         rm -rf -- "${stage}"
         return 1
     fi
@@ -5396,7 +5422,8 @@ _second_brain_publish() {
         fi
     fi
     revision="$(git -C "${candidate}" rev-parse HEAD)" || { rm -rf -- "${stage}"; return 1; }
-    if ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1; then
+    if ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1 ||
+        ! git diff --no-index --quiet -- "${brain_dir}" "${baseline}" 2>/dev/null; then
         echo "  [ERROR] Local Second Brain changed during publication; publication refused." >&2
         rm -rf -- "${stage}"
         return 1
@@ -5406,7 +5433,8 @@ _second_brain_publish() {
         rm -rf -- "${stage}"
         return 1
     fi
-    if ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1; then
+    if ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1 ||
+        ! git diff --no-index --quiet -- "${brain_dir}" "${baseline}" 2>/dev/null; then
         echo "  [PARTIAL] Published ${revision}, but local Second Brain changed; checkout was not replaced." >&2
         rm -rf -- "${stage}"
         return 1
@@ -5482,32 +5510,6 @@ run_user() {
             echo "Hint          : Run './haws.sh user connect <url>' to enable cross-device cloud sync."
         fi
         return 0
-    fi
-
-    mkdir -p "${brain_dir}"
-
-    if [ ! -d "${brain_dir}/.git" ]; then
-        git -C "${brain_dir}" init -b main --quiet 2>/dev/null || git -C "${brain_dir}" init --quiet
-        git -C "${brain_dir}" config user.name "HAWS User" 2>/dev/null || true
-        git -C "${brain_dir}" config user.email "user@haws.local" 2>/dev/null || true
-        _second_brain_bootstrap_missing "${brain_dir}" || return 1
-        git -C "${brain_dir}" add . 2>/dev/null || true
-        git -C "${brain_dir}" commit -m "Initialize second brain" --quiet 2>/dev/null || true
-    else
-        local need_commit=0
-        for name in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
-            [ -f "${brain_dir}/${name}" ] || need_commit=1
-        done
-        _second_brain_bootstrap_missing "${brain_dir}" || return 1
-        if [ "${need_commit}" -eq 1 ]; then
-            git -C "${brain_dir}" add . 2>/dev/null || true
-            git -C "${brain_dir}" commit -m "feat(brain): provision default workflow for upgrade compatibility" --quiet 2>/dev/null || true
-        fi
-    fi
-
-    if ! _second_brain_ensure_identity "${brain_dir}"; then
-        echo "  [ERROR] Could not configure a local Git identity for Second Brain." >&2
-        return 1
     fi
 
     case "${action}" in
