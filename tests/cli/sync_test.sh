@@ -808,32 +808,30 @@ test_dirty_source_is_blocked_while_clean_source_continues() {
     assert_record "${safe_target}" updated
 }
 
-test_second_brain_syncs_local_changes() {
+test_second_brain_dirty_sync_is_refused() {
     add_second_brain
     printf '%s\n' 'local preference' >> "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md"
     mkdir -p "${FIXTURE_REPO}/.haws/state"
     printf 'schema_version\t1\nsecond_brain\ton\nauto_update\toff\nauto_update_brain\ton\n' \
         > "${FIXTURE_REPO}/.haws/state/settings.tsv"
     source_haws || return 1
-    sync_run >"${OUTPUT_FILE}" 2>&1
-    [ "$?" -eq 0 ] || return 1
-    assert_record secondbrain updated || return 1
-    git --git-dir="${FIXTURE_ROOT}/secondbrain.git" show main:USER_PREFERENCES.md \
-        | grep -F 'local preference' >/dev/null || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 && return 1
+    assert_record secondbrain failed || return 1
+    ! git --git-dir="${FIXTURE_ROOT}/secondbrain.git" show main:USER_PREFERENCES.md | grep -F 'local preference' >/dev/null || return 1
+    grep -F 'local preference' "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md" >/dev/null || return 1
 }
 
-test_second_brain_syncs_local_changes_with_auto_update_on() {
+test_second_brain_dirty_sync_is_refused_with_auto_update_on() {
     add_second_brain
     printf '%s\n' 'local preference' >> "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md"
     mkdir -p "${FIXTURE_REPO}/.haws/state"
     printf 'schema_version\t1\nsecond_brain\ton\nauto_update\ton\nauto_update_brain\ton\n' \
         > "${FIXTURE_REPO}/.haws/state/settings.tsv"
     source_haws || return 1
-    sync_run >"${OUTPUT_FILE}" 2>&1
-    [ "$?" -eq 0 ] || return 1
-    assert_record secondbrain updated || return 1
-    git --git-dir="${FIXTURE_ROOT}/secondbrain.git" show main:USER_PREFERENCES.md \
-        | grep -F 'local preference' >/dev/null || return 1
+    sync_run >"${OUTPUT_FILE}" 2>&1 && return 1
+    assert_record secondbrain failed || return 1
+    ! git --git-dir="${FIXTURE_ROOT}/secondbrain.git" show main:USER_PREFERENCES.md | grep -F 'local preference' >/dev/null || return 1
+    grep -F 'local preference' "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md" >/dev/null || return 1
 }
 
 test_second_brain_push_failure_is_reported() {
@@ -846,7 +844,7 @@ test_second_brain_push_failure_is_reported() {
 
     source_haws || return 1
     local status=0
-    if run_user sync >"${OUTPUT_FILE}" 2>&1; then
+    if printf "y\n" | run_user sync >"${OUTPUT_FILE}" 2>&1; then
         status=0
     else
         status=$?
@@ -1652,8 +1650,8 @@ else
     run_test test_haws_sync_treats_remote_ancestor_as_up_to_date
     run_test test_up_to_date_requires_measured_head_equality
     run_test test_dirty_source_is_blocked_while_clean_source_continues
-    run_test test_second_brain_syncs_local_changes
-    run_test test_second_brain_syncs_local_changes_with_auto_update_on
+    run_test test_second_brain_dirty_sync_is_refused
+    run_test test_second_brain_dirty_sync_is_refused_with_auto_update_on
     run_test test_second_brain_push_failure_is_reported
     run_test test_candidate_accepts_moved_and_removed_skill_entrypoints
     run_test test_missing_candidate_entrypoint_does_not_fall_back_to_old_content

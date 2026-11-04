@@ -3132,7 +3132,7 @@ sync_target() {
 
 sync_second_brain_target() {
     local brain_dir="${SCRIPT_DIR}/secondbrain"
-    local current remote_head final before timeout_seconds
+    local current final before
     if [ "${HAWS_AUTO_UPDATE_BRAIN:-on}" != on ]; then
         sync_result_write secondbrain skipped - "Auto Update is disabled" || return 1
         _sync_legacy_echo "secondbrain: skipped (auto update disabled)"
@@ -3148,29 +3148,16 @@ sync_second_brain_target() {
         _sync_legacy_echo "secondbrain: skipped (local-only)"
         return 0
     }
-    if ! git -C "${brain_dir}" status --porcelain --untracked-files=all >/dev/null 2>&1; then
-        sync_result_write secondbrain failed - "Second Brain checkout could not be inspected" || return 1
-        _sync_legacy_echo "secondbrain: failed (checkout could not be inspected)"
+    local dirty
+    dirty="$(git -C "${brain_dir}" status --porcelain --untracked-files=all)" || return 1
+    if [ -n "${dirty}" ]; then
+        sync_result_write secondbrain failed - "Second Brain has local changes" || return 1
+        _sync_legacy_echo "secondbrain: failed (local changes)"
         return 1
     fi
     current="$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
-    timeout_seconds="$(_sync_timeout_seconds)"
-    if run_with_deadline "${timeout_seconds}" run_user sync; then
-        :
-    else
-        local sync_status=$?
-        sync_result_write secondbrain failed - "user sync hook failed" || return 1
-        _sync_legacy_echo "secondbrain: failed (hook returned ${sync_status})"
-        return "${sync_status}"
-    fi
-    remote_head="$(git -C "${brain_dir}" ls-remote origin -h HEAD 2>/dev/null | awk '{print $1}')"
-    if [ -n "${remote_head}" ] && [ "${current}" = "${remote_head}" ]; then
-        sync_result_write secondbrain up-to-date "${current}" "already at latest remote commit" || return 1
-        _sync_legacy_echo "secondbrain: up-to-date (${current})"
-        return 0
-    fi
     before="${current}"
-    if ! git -C "${brain_dir}" pull --ff-only origin HEAD >/dev/null 2>&1; then
+    if ! run_with_deadline "$(_sync_timeout_seconds)" git -C "${brain_dir}" pull --ff-only origin main >/dev/null 2>&1; then
         sync_result_write secondbrain failed - "fast-forward pull failed" || return 1
         _sync_legacy_echo "secondbrain: failed (fast-forward pull failed)"
         return 1
@@ -5190,236 +5177,6 @@ run_kit() {
     esac
 }
 
-symmetrical_merge_secondbrain() {
-    local brain_dir="$1"
-    local py_brain_dir="$1"
-    local py_bin=""
-    local staged_status
-    for candidate in python3 python3.11 python3.12 py python; do
-        if command -v "${candidate}" &>/dev/null && "${candidate}" -c "import sys" &>/dev/null; then
-            py_bin="${candidate}"
-            break
-        fi
-    done
-    if [ -z "${py_bin}" ]; then
-        echo "  [ERROR] Python is required to merge Second Brain content." >&2
-        return 1
-    fi
-    if command -v cygpath &>/dev/null; then
-        py_brain_dir="$(cygpath -w "${brain_dir}")"
-    fi
-
-    # 1. Commit any local working changes first
-    if ! git -C "${brain_dir}" add .; then
-        echo "  [ERROR] Failed to stage local Second Brain changes." >&2
-        return 1
-    fi
-    if git -C "${brain_dir}" diff --cached --quiet; then
-        :
-    else
-        staged_status=$?
-        if [ "${staged_status}" -ne 1 ] ||
-            ! git -C "${brain_dir}" commit -m "chore(brain): pre-merge local snapshot" --quiet; then
-            echo "  [ERROR] Failed to commit the local Second Brain snapshot." >&2
-            return 1
-        fi
-    fi
-
-    # 2. Reconcile Git commit graphs with -s ours to establish common ancestor
-    if ! git -C "${brain_dir}" merge origin/main --allow-unrelated-histories -s ours --no-edit -m "chore(brain): symmetrical merge and deduplication"; then
-        echo "  [ERROR] Failed to reconcile Second Brain histories." >&2
-        return 1
-    fi
-
-    # 3. Run content deduplication and transaction sorting
-    if ! "${py_bin}" -c '
-import os, sys, re, subprocess
-
-def run_merge(brain_dir):
-    def get_git_file(ref, filepath):
-        cmd = ["git", "-C", brain_dir, "show", ref + ":" + filepath]
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, err = p.communicate()
-        if p.returncode != 0:
-            detail = err.decode("utf-8", errors="replace").strip()
-            raise RuntimeError("Could not read " + ref + ":" + filepath + ": " + detail)
-        return out.decode("utf-8")
-
-    def read_local(filepath):
-        p = os.path.join(brain_dir, filepath)
-        if os.path.isfile(p):
-            with open(p, "rb") as f:
-                c = f.read()
-                try: return c.decode("utf-8")
-                except: return c
-        return ""
-
-    def merge_anti(local_txt, remote_txt):
-        def extract_items(txt):
-            items = {}
-            curr_key = None
-            curr_lines = []
-            curr_date = "2026-01-01"
-            for line in txt.splitlines():
-                m = re.match(r"^\s*-\s*\*\*\[Learned\s+(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?)\]\*\*:\s*(`[^`]+`)(.*)", line)
-                if m:
-                    if curr_key: items[curr_key] = (curr_date, "\n".join(curr_lines).strip())
-                    curr_date = m.group(1)
-                    curr_key = m.group(2).strip()
-                    curr_lines = [line]
-                elif curr_key and (line.startswith("  ") or line.startswith("\t")):
-                    curr_lines.append(line)
-                elif curr_key and not line.strip(): pass
-                else:
-                    if curr_key:
-                        items[curr_key] = (curr_date, "\n".join(curr_lines).strip())
-                        curr_key = None
-                        curr_lines = []
-            if curr_key: items[curr_key] = (curr_date, "\n".join(curr_lines).strip())
-            return items
-
-        l_items = extract_items(local_txt)
-        r_items = extract_items(remote_txt)
-        all_keys = set(l_items.keys()) | set(r_items.keys())
-        merged = []
-        for k in all_keys:
-            if k in l_items and k in r_items:
-                ld, lc = l_items[k]
-                rd, rc = r_items[k]
-                chosen = lc if len(lc) >= len(rc) else rc
-                merged.append((max(ld, rd), chosen))
-            elif k in l_items: merged.append(l_items[k])
-            else: merged.append(r_items[k])
-
-        merged.sort(key=lambda x: x[0], reverse=True)
-        hdr = (
-            "# Anti-Patterns & Failure Modes (Second Brain)\n\n"
-            "This document records operational anti-patterns and concrete failure modes observed in agent sessions. All AI agents must actively avoid these behaviors across all sessions, projects, and tools.\n\n"
-            "---\n\n"
-            "## Operational Anti-Patterns\n"
-        )
-        return hdr + "\n" + "\n".join([item[1] for item in merged]) + "\n"
-
-    def merge_pref(local_txt, remote_txt):
-        def parse_secs(txt):
-            secs = {}
-            curr = "Introduction"
-            secs[curr] = []
-            for line in txt.splitlines():
-                m = re.match(r"^(##\s+.*)", line)
-                if m:
-                    curr = m.group(1).strip()
-                    secs.setdefault(curr, [])
-                else: secs[curr].append(line)
-            return secs
-
-        l_secs = parse_secs(local_txt)
-        r_secs = parse_secs(remote_txt)
-        ordered = ["Introduction", "## 1. Interaction & Communication Style", "## 2. Engineering & Architectural Conventions", "## 3. Tool & Command Conventions"]
-        for s in list(l_secs.keys()) + list(r_secs.keys()):
-            if s not in ordered: ordered.append(s)
-
-        out = []
-        for s in ordered:
-            if s != "Introduction": out.append("\n---\n\n" + s)
-            l_lines = l_secs.get(s, [])
-            r_lines = r_secs.get(s, [])
-
-            def get_bullets(lines):
-                bul = {}
-                hdr = []
-                cur_k = None
-                cur_lines = []
-                for l in lines:
-                    m = re.match(r"^\s*-\s*\*\*([^*]+)\*\*:\s*(.*)", l)
-                    if m:
-                        if cur_k: bul[cur_k] = "\n".join(cur_lines).strip()
-                        cur_k = m.group(1).strip()
-                        cur_lines = [l]
-                    elif cur_k and (l.startswith("  ") or l.startswith("\t")): cur_lines.append(l)
-                    elif cur_k and not l.strip(): pass
-                    else:
-                        if cur_k:
-                            bul[cur_k] = "\n".join(cur_lines).strip()
-                            cur_k = None
-                            cur_lines = []
-                        if l.strip() and not l.startswith("---") and not l.startswith("#"): hdr.append(l)
-                if cur_k: bul[cur_k] = "\n".join(cur_lines).strip()
-                return hdr, bul
-
-            l_h, l_b = get_bullets(l_lines)
-            r_h, r_b = get_bullets(r_lines)
-            seen_h = set()
-            for line in l_h + r_h:
-                sline = line.strip()
-                if sline:
-                    if "This document records the user" in sline:
-                        continue
-                    if sline not in seen_h:
-                        seen_h.add(sline)
-                        out.append(line)
-
-            all_keys = []
-            for k in list(r_b.keys()) + list(l_b.keys()):
-                if k not in all_keys: all_keys.append(k)
-
-            for k in all_keys:
-                if k in l_b and k in r_b:
-                    chosen = l_b[k] if len(l_b[k]) > len(r_b[k]) else r_b[k]
-                    out.append(chosen)
-                elif k in l_b: out.append(l_b[k])
-                else: out.append(r_b[k])
-
-        hdr = (
-            "# User Preferences & Style Guide (Second Brain)\n\n"
-            "This document records the user'\''s permanent preferences, communication style, and architectural conventions. All AI agents must adhere to these preferences across all sessions, projects, and tools.\n"
-        )
-        return hdr + "\n" + "\n".join(out).strip() + "\n"
-
-    def merge_generic(local_txt, remote_txt):
-        if not local_txt: return remote_txt
-        if not remote_txt: return local_txt
-        return local_txt if len(local_txt) >= len(remote_txt) else remote_txt
-
-    l_anti = read_local("ANTI_PATTERNS.md")
-    r_anti = get_git_file("origin/main", "ANTI_PATTERNS.md")
-    if l_anti or r_anti:
-        m_anti = merge_anti(l_anti, r_anti)
-        with open(os.path.join(brain_dir, "ANTI_PATTERNS.md"), "wb") as f:
-            f.write(m_anti.encode("utf-8"))
-
-    l_pref = read_local("USER_PREFERENCES.md")
-    r_pref = get_git_file("origin/main", "USER_PREFERENCES.md")
-    if l_pref or r_pref:
-        m_pref = merge_pref(l_pref, r_pref)
-        with open(os.path.join(brain_dir, "USER_PREFERENCES.md"), "wb") as f:
-            f.write(m_pref.encode("utf-8"))
-
-    l_work = read_local("WORKFLOW.md")
-    r_work = get_git_file("origin/main", "WORKFLOW.md")
-    if l_work or r_work:
-        m_work = merge_generic(l_work, r_work)
-        with open(os.path.join(brain_dir, "WORKFLOW.md"), "wb") as f:
-            f.write(m_work.encode("utf-8"))
-
-run_merge(sys.argv[1])
-' "${py_brain_dir}"; then
-        echo "  [ERROR] Failed to merge Second Brain documents; do not push the incomplete result." >&2
-        return 1
-    fi
-
-    # 4. Stage and commit the clean merged files
-    if ! git -C "${brain_dir}" add .; then
-        echo "  [ERROR] Failed to stage merged Second Brain documents." >&2
-        return 1
-    fi
-    if ! git -C "${brain_dir}" commit --amend --no-edit &&
-        ! git -C "${brain_dir}" commit -m "chore(brain): symmetrical merge and deduplication" --quiet; then
-        echo "  [ERROR] Failed to commit merged Second Brain documents." >&2
-        return 1
-    fi
-}
-
 _second_brain_bootstrap_missing() {
     local brain_dir="$1"
     local name
@@ -5457,17 +5214,11 @@ _second_brain_connect_cleanup_stage() {
     esac
 }
 
-_second_brain_connect_report_partial_push() {
-    local revision="$1"
-    echo "  [PARTIAL] Remote push succeeded at commit ${revision}, but the local Second Brain checkout was not activated." >&2
-    echo "  [ACTION] Retry Connect to activate the pushed checkout; if it still fails, fetch ${revision} from the target remote used for this Connect." >&2
-}
-
 _second_brain_connect_transaction() {
     local brain_dir="$1"
     local repo_url="$2"
     local parent base stage_prefix stage candidate baseline backup
-    local original_exists=0 pushed_revision
+    local original_exists=0
 
     if [ -L "${brain_dir}" ]; then
         echo "  [ERROR] Second Brain checkout is a linked directory; refusing transactional connect." >&2
@@ -5516,81 +5267,48 @@ _second_brain_connect_transaction() {
     echo "============================================================="
     echo "  [*] Connecting Second Brain in a disposable transaction..."
     if ! (
-        local need_commit=0 name previous_origin
+        local previous_origin
         if [ ! -d "${candidate}/.git" ]; then
             git -C "${candidate}" init -b main --quiet 2>/dev/null ||
                 git -C "${candidate}" init --quiet || exit 1
-            need_commit=1
-        elif ! git -C "${candidate}" rev-parse --verify HEAD >/dev/null 2>&1; then
-            need_commit=1
         fi
-        for name in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
-            [ -f "${candidate}/${name}" ] || need_commit=1
-        done
-        _second_brain_bootstrap_missing "${candidate}" || exit 1
-        _second_brain_ensure_identity "${candidate}" || {
-            echo "  [ERROR] Could not configure a local Git identity for Second Brain." >&2
-            exit 1
-        }
-        if [ "${need_commit}" -eq 1 ]; then
-            git -C "${candidate}" add . || exit 1
-            git -C "${candidate}" commit -m "Initialize second brain" --quiet || exit 1
-        fi
-
         previous_origin="$(git -C "${candidate}" remote get-url origin 2>/dev/null || true)"
         if [ -n "${previous_origin}" ]; then
             git -C "${candidate}" remote set-url origin "${repo_url}" || exit 1
         else
             git -C "${candidate}" remote add origin "${repo_url}" || exit 1
         fi
-
-        echo "  [*] Testing remote connection..."
-        if git -C "${candidate}" fetch origin main --quiet 2>/dev/null; then
-            echo "  [*] Remote repo has existing history. Performing Symmetrical Merge..."
-            symmetrical_merge_secondbrain "${candidate}" || exit 1
-            if ! git -C "${candidate}" push -u origin main --quiet 2>/dev/null; then
-                echo "  [ERROR] Failed to push merged updates to ${repo_url}."
-                exit 1
-            fi
-            echo "  [✓] Second brain synced and connected to ${repo_url}"
-        else
-            echo "  [*] Remote is fresh or initial push. Publishing local brain..."
-            if ! git -C "${candidate}" push -u origin main --quiet 2>/dev/null; then
-                echo "  [ERROR] Failed to connect or push to ${repo_url}."
-                echo "  [INFO] Please check URL, network, or GitHub SSH/Token authentication."
-                exit 1
-            fi
-            echo "  [✓] Local second brain pushed to cloud ${repo_url}"
+        if ! git -C "${candidate}" ls-remote origin >/dev/null 2>&1 ||
+            ! git -C "${candidate}" fetch origin --quiet 2>/dev/null; then
+            echo "  [ERROR] Failed to connect to ${repo_url}." >&2
+            exit 1
         fi
+        echo "  [✓] Second Brain remote connected; local notes were not published."
+
     ); then
         _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
         return 1
     fi
-    pushed_revision="$(git -C "${candidate}" rev-parse HEAD 2>/dev/null || printf unknown)"
 
     if [ "${original_exists}" -eq 1 ]; then
         if [ ! -d "${brain_dir}" ] || ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1; then
             echo "  [ERROR] Local Second Brain changed during connect; keeping the current checkout untouched." >&2
-            _second_brain_connect_report_partial_push "${pushed_revision}"
             _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
             return 1
         fi
         if ! mv -- "${brain_dir}" "${backup}"; then
             echo "  [ERROR] Could not preserve the original Second Brain checkout for activation." >&2
-            _second_brain_connect_report_partial_push "${pushed_revision}"
             _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
             return 1
         fi
     elif [ -e "${brain_dir}" ] || [ -L "${brain_dir}" ]; then
         echo "  [ERROR] A Second Brain checkout appeared during connect; leaving it untouched." >&2
-        _second_brain_connect_report_partial_push "${pushed_revision}"
         _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || true
         return 1
     fi
 
     if ! mv -- "${candidate}" "${brain_dir}"; then
         echo "  [ERROR] Could not activate the connected Second Brain checkout." >&2
-        _second_brain_connect_report_partial_push "${pushed_revision}"
         if [ "${original_exists}" -eq 1 ] && ! mv -- "${backup}" "${brain_dir}"; then
             echo "  [CRITICAL] Could not restore the original Second Brain checkout from ${backup}." >&2
             echo "  [CRITICAL] Preserved the recoverable original at ${backup}; manual recovery is required." >&2
@@ -5602,6 +5320,113 @@ _second_brain_connect_transaction() {
     _second_brain_connect_cleanup_stage "${stage}" "${stage_prefix}" || \
         echo "  [WARN] Connected successfully but could not remove temporary Second Brain snapshots."
     return 0
+}
+
+_second_brain_publish() {
+    local brain_dir="$1" remote remote_head current confirm preview_status
+    [ -d "${brain_dir}/.git" ] || { echo "  [ERROR] Second Brain checkout is unavailable." >&2; return 1; }
+    if [ -L "${brain_dir}" ] || [ -L "${brain_dir}/.git" ]; then
+        echo "  [ERROR] Linked Second Brain checkouts cannot be published transactionally." >&2
+        return 1
+    fi
+    remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || true)"
+    [ -n "${remote}" ] || { echo "  [i] Second Brain is Local-Only."; return 0; }
+    echo "  [*] Syncing Second Brain, please wait..."
+    [ "$(git -C "${brain_dir}" symbolic-ref --short HEAD 2>/dev/null)" = main ] || {
+        echo "  [ERROR] Publication requires the main branch." >&2; return 1;
+    }
+    current="$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)"
+    remote_head="$(git -C "${brain_dir}" ls-remote origin refs/heads/main 2>/dev/null)" || {
+        echo "  [ERROR] Could not inspect remote main." >&2; return 1;
+    }
+    remote_head="${remote_head%%[[:space:]]*}"
+    if [ -n "${remote_head}" ]; then
+        git -C "${brain_dir}" fetch --quiet origin main || return 1
+        [ "$(git -C "${brain_dir}" rev-parse FETCH_HEAD)" = "${remote_head}" ] || {
+            echo "  [ERROR] Remote changed during inspection; publication refused." >&2; return 1;
+        }
+        if [ -z "${current}" ] || ! git -C "${brain_dir}" merge-base --is-ancestor "${remote_head}" "${current}"; then
+            echo "  [ERROR] Remote history is not an ancestor of local HEAD; publication refused." >&2
+            return 1
+        fi
+    fi
+    echo "  Files to publish (committed and pending changes):"
+    if [ -n "${remote_head}" ]; then
+        git -C "${brain_dir}" log -m --format= --name-only "${remote_head}..HEAD" | LC_ALL=C sort -u
+    elif [ -n "${current}" ]; then
+        git -C "${brain_dir}" log -m --format= --name-only HEAD | LC_ALL=C sort -u
+    fi
+    preview_status="$(git -C "${brain_dir}" status --short --untracked-files=all)" || return 1
+    printf '%s\n' "${preview_status}"
+    read -r -p "Publish these changes to ${remote}? [y/N]: " confirm || return 1
+    [[ "${confirm}" =~ ^[Yy]$ ]] || { echo "  [Aborted] Publication cancelled."; return 1; }
+    if [ "$(git -C "${brain_dir}" rev-parse --verify HEAD 2>/dev/null || true)" != "${current}" ] ||
+        [ "$(git -C "${brain_dir}" status --short --untracked-files=all)" != "${preview_status}" ]; then
+        echo "  [ERROR] Local changes differ from the preview; publication refused." >&2
+        return 1
+    fi
+    local latest_remote
+    latest_remote="$(git -C "${brain_dir}" ls-remote origin refs/heads/main 2>/dev/null)" || return 1
+    latest_remote="${latest_remote%%[[:space:]]*}"
+    [ "${latest_remote}" = "${remote_head}" ] || {
+        echo "  [ERROR] Remote changed after preview; publication refused." >&2; return 1;
+    }
+    local parent stage candidate baseline backup revision
+    parent="$(dirname "${brain_dir}")"
+    stage="$(mktemp -d "${parent}/.secondbrain.haws-publish.XXXXXX")" || return 1
+    candidate="${stage}/candidate"
+    baseline="${stage}/baseline"
+    backup="${stage}/original"
+    if ! mkdir -p "${candidate}" "${baseline}" ||
+        ! cp -a "${brain_dir}/." "${baseline}/" ||
+        ! cp -a "${baseline}/." "${candidate}/"; then
+        echo "  [ERROR] Could not snapshot Second Brain for publication." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if ! _second_brain_ensure_identity "${candidate}" ||
+        ! git -C "${candidate}" add -A; then
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if ! git -C "${candidate}" diff --cached --quiet; then
+        if ! git -C "${candidate}" commit -m "chore(brain): sync local updates" --quiet; then
+            rm -rf -- "${stage}"
+            return 1
+        fi
+    fi
+    revision="$(git -C "${candidate}" rev-parse HEAD)" || { rm -rf -- "${stage}"; return 1; }
+    if ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1; then
+        echo "  [ERROR] Local Second Brain changed during publication; publication refused." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if ! git -C "${candidate}" push origin main --quiet; then
+        echo "  [ERROR] Failed to push Second Brain." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if ! diff -qr -- "${brain_dir}" "${baseline}" >/dev/null 2>&1; then
+        echo "  [PARTIAL] Published ${revision}, but local Second Brain changed; checkout was not replaced." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if ! mv -- "${brain_dir}" "${backup}"; then
+        echo "  [PARTIAL] Published ${revision}, but could not activate the local checkout." >&2
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    if ! mv -- "${candidate}" "${brain_dir}"; then
+        echo "  [PARTIAL] Published ${revision}, but could not activate the local checkout." >&2
+        if ! mv -- "${backup}" "${brain_dir}"; then
+            echo "  [CRITICAL] Original checkout preserved at ${backup}." >&2
+            return 1
+        fi
+        rm -rf -- "${stage}"
+        return 1
+    fi
+    rm -rf -- "${stage}" || echo "  [WARN] Could not remove publication snapshots." >&2
+    echo "  [✓] Second Brain in sync."
 }
 
 run_user() {
@@ -5631,6 +5456,32 @@ run_user() {
         fi
         _second_brain_connect_transaction "${brain_dir}" "${repo_url}"
         return $?
+    fi
+
+    if [ "${action}" = sync ]; then
+        _second_brain_publish "${brain_dir}"
+        return $?
+    fi
+
+    if [ "${action}" = status ]; then
+        local current_remote
+        current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
+        echo "============================================================="
+        echo "                 HAWS Second Brain Status"
+        echo "============================================================="
+        if [ -n "${current_remote}" ]; then
+            echo "Mode          : [ONLINE / CONNECTED]"
+            echo "Remote URL    : ${current_remote}"
+            local commit_count
+            commit_count="$(git -C "${brain_dir}" rev-list --count HEAD 2>/dev/null || echo 0)"
+            echo "Total Commits : ${commit_count}"
+        else
+            echo "Mode          : [LOCAL-ONLY (Zero Cloud Telemetry)]"
+            echo "Path          : ${brain_dir}"
+            echo "Status        : [SAFE & CONFINED TO THIS MACHINE]"
+            echo "Hint          : Run './haws.sh user connect <url>' to enable cross-device cloud sync."
+        fi
+        return 0
     fi
 
     mkdir -p "${brain_dir}"
@@ -5686,60 +5537,6 @@ run_user() {
                 echo "  [✓] Successfully disconnected. Local-Only mode active."
             else
                 echo "  [Aborted] Cloud connection preserved."
-            fi
-            ;;
-        sync)
-            local current_remote
-            current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
-            if [ -n "${current_remote}" ]; then
-                echo "  [*] Syncing Second Brain, please wait..."
-                echo "      Remote: ${current_remote}"
-                if ! git -C "${brain_dir}" add . 2>/dev/null; then
-                    echo "  [ERROR] Failed to stage Second Brain changes."
-                    return 1
-                fi
-                if ! git -C "${brain_dir}" diff --cached --quiet --exit-code 2>/dev/null; then
-                    if ! git -C "${brain_dir}" commit -m "chore(brain): auto-sync local updates" --quiet 2>/dev/null; then
-                        echo "  [ERROR] Failed to commit Second Brain changes."
-                        return 1
-                    fi
-                fi
-                if ! git -C "${brain_dir}" pull --rebase origin main --quiet 2>/dev/null; then
-                    echo "  [*] Symmetrical reconciliation required..."
-                    git -C "${brain_dir}" rebase --abort 2>/dev/null || true
-                    if ! git -C "${brain_dir}" fetch origin main --quiet 2>/dev/null; then
-                        echo "  [ERROR] Failed to fetch Second Brain remote history."
-                        return 1
-                    fi
-                    symmetrical_merge_secondbrain "${brain_dir}" || return 1
-                fi
-                if ! git -C "${brain_dir}" push origin main --quiet 2>/dev/null; then
-                    echo "  [ERROR] Failed to push Second Brain to ${current_remote}."
-                    echo "          Check remote access and repository permissions."
-                    return 1
-                fi
-                echo "  [✓] Second Brain in sync."
-            else
-                echo "  [i] Second Brain is Local-Only. (Connect cloud anytime via './haws.sh user connect <url>')"
-            fi
-            ;;
-        status)
-            local current_remote
-            current_remote="$(git -C "${brain_dir}" remote get-url origin 2>/dev/null || echo "")"
-            echo "============================================================="
-            echo "                 HAWS Second Brain Status"
-            echo "============================================================="
-            if [ -n "${current_remote}" ]; then
-                echo "Mode          : [ONLINE / CONNECTED]"
-                echo "Remote URL    : ${current_remote}"
-                local commit_count
-                commit_count="$(git -C "${brain_dir}" rev-list --count HEAD 2>/dev/null || echo 0)"
-                echo "Total Commits : ${commit_count}"
-            else
-                echo "Mode          : [LOCAL-ONLY (Zero Cloud Telemetry)]"
-                echo "Path          : ${brain_dir}"
-                echo "Status        : [SAFE & CONFINED TO THIS MACHINE]"
-                echo "Hint          : Run './haws.sh user connect <url>' to enable cross-device cloud sync."
             fi
             ;;
         *)

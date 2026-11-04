@@ -225,7 +225,7 @@ test_failed_second_brain_reconnect_restores_previous_origin() {
 
     git() {
         local args=" $* "
-        if [[ "${args}" == *" push "* ]]; then
+        if [[ "${args}" == *" ls-remote "* ]]; then
             echo 'forced push failure' >&2
             return 1
         fi
@@ -236,11 +236,11 @@ test_failed_second_brain_reconnect_restores_previous_origin() {
     unset -f git
 
     [ "${connect_status}" -ne 0 ] || return 1
-    assert_output_contains 'Failed to connect or push' || return 1
+    assert_output_contains 'Failed to connect' || return 1
     [ "$(git -C "${brain}" remote get-url origin)" = "${previous_remote}" ]
 }
 
-test_second_brain_push_failure_restores_local_state_after_successful_merge() {
+test_second_brain_connect_preserves_local_changes_and_remote() {
     seed_second_brain_with_remote || return 1
     local brain="${FIXTURE_PROJECT}/secondbrain"
     local previous_remote target_remote target_work
@@ -269,7 +269,6 @@ test_second_brain_push_failure_restores_local_state_after_successful_merge() {
         git -C "${brain}" status --porcelain=v1 -uall || return 1
         git -C "${brain}" diff --cached --binary | sha256sum || return 1
         git -C "${brain}" diff --binary | sha256sum || return 1
-        git -C "${brain}" remote get-url origin || return 1
         find "${brain}" -path "${brain}/.git" -prune -o -type f -print0 |
             sort -z | xargs -0 sha256sum || return 1
     }
@@ -278,20 +277,11 @@ test_second_brain_push_failure_restores_local_state_after_successful_merge() {
     before="$(second_brain_snapshot)" || return 1
     target_url="file://${target_remote}"
     source_haws || return 1
-    git() {
-        local args=" $* "
-        if [[ "${args}" == *" push -u origin main "* ]]; then
-            echo 'forced final push failure after fetch and merge' >&2
-            return 1
-        fi
-        command git "$@"
-    }
     run_user connect "${target_url}" >"${OUTPUT_FILE}" 2>&1 || connect_status=$?
-    unset -f git
     after="$(second_brain_snapshot)" || return 1
 
-    [ "${connect_status}" -ne 0 ] || return 1
-    assert_output_contains 'Failed to push merged updates' || return 1
+    [ "${connect_status}" -eq 0 ] || return 1
+    [ "$(git -C "${brain}" remote get-url origin)" = "${target_url}" ] || return 1
     if [ "${before}" != "${after}" ]; then
         echo 'Second Brain connect changed local HEAD/index/worktree/origin despite final push failure.'
         echo '--- before ---'
@@ -304,7 +294,7 @@ test_second_brain_push_failure_restores_local_state_after_successful_merge() {
     [ "$(git --git-dir="${target_remote}" rev-parse refs/heads/main)" = "${target_head_before}" ]
 }
 
-test_second_brain_activation_failure_reports_pushed_commit() {
+test_second_brain_activation_failure_keeps_remote_empty() {
     seed_local_second_brain_defaults || return 1
     local brain="${FIXTURE_PROJECT}/secondbrain"
     local target_remote connect_status=0 reported_revision remote_revision
@@ -324,12 +314,8 @@ test_second_brain_activation_failure_reports_pushed_commit() {
     unset -f mv
 
     [ "${connect_status}" -ne 0 ] || return 1
-    assert_output_contains '[PARTIAL] Remote push succeeded at commit' || return 1
-    assert_output_contains 'target remote used for this Connect' || return 1
-    reported_revision="$(sed -n 's/.*Remote push succeeded at commit \([0-9a-f][0-9a-f]*\),.*/\1/p' "${OUTPUT_FILE}")"
-    [ -n "${reported_revision}" ] || return 1
-    remote_revision="$(git --git-dir="${target_remote}" rev-parse refs/heads/main)" || return 1
-    [ "${remote_revision}" = "${reported_revision}" ] || return 1
+    assert_output_contains 'Could not activate' || return 1
+    ! git --git-dir="${target_remote}" rev-parse --verify refs/heads/main >/dev/null 2>&1 || return 1
     [ ! -d "${brain}/.git" ] && [ -f "${brain}/WORKFLOW.md" ]
 }
 
@@ -346,8 +332,8 @@ test_second_brain_connect_final_apply_is_hermetic_and_persists_remote() {
     settings_plan_build || return 1
     settings_apply_final >"${OUTPUT_FILE}" 2>&1 || return 1
     [ "$(git -C "${FIXTURE_PROJECT}/secondbrain" remote get-url origin)" = "${remote}" ] || return 1
-    git --git-dir="${FIXTURE_ROOT}/secondbrain-final-apply.git" \
-        rev-parse --verify refs/heads/main >/dev/null || return 1
+    ! git --git-dir="${FIXTURE_ROOT}/secondbrain-final-apply.git" \
+        rev-parse --verify refs/heads/main >/dev/null 2>&1 || return 1
     assert_file_contains "${FIXTURE_PROJECT}/.haws/state/install.complete" 'schema=1'
 }
 
@@ -968,8 +954,8 @@ run_test test_second_brain_local_only_cancel_preserves_local_only_mode
 run_test test_second_brain_connected_detail_schedules_disconnect_without_mutation
 run_test test_second_brain_connect_is_only_scheduled_in_settings_draft
 run_test test_failed_second_brain_reconnect_restores_previous_origin
-run_test test_second_brain_push_failure_restores_local_state_after_successful_merge
-run_test test_second_brain_activation_failure_reports_pushed_commit
+run_test test_second_brain_connect_preserves_local_changes_and_remote
+run_test test_second_brain_activation_failure_keeps_remote_empty
 run_test test_second_brain_connect_final_apply_is_hermetic_and_persists_remote
 run_test test_settings_repositories_route_keeps_old_actions
 run_test test_settings_skills_route_keeps_old_single_pack_labels
