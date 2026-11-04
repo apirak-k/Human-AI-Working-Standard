@@ -87,11 +87,12 @@
 - Release outputs are `haws-windows.zip`, `haws-macos.tar.gz`, and `haws-linux.tar.gz`, each with a SHA-256 manifest.
 - Release workflow runs only for version tags; build/test workflow also runs on pull requests and development branches.
 
-- [ ] Add package-layout and checksum tests using fixture binaries.
-- [ ] Run the packaging test and confirm it fails before the packager exists.
-- [ ] Build each binary with explicit `GOOS` and `GOARCH`, then assemble exactly three OS packages.
-- [ ] Verify archive paths, launcher permissions, CPU binaries, and checksums.
-- [ ] Add CI that runs Go tests and builds/tests artifacts on native OS runners where available; cross-build remaining CPU targets.
+- [x] Add package-layout and checksum tests using fixture binaries.
+- [x] Run the packaging test and confirm it fails before the packager exists.
+- [x] Build each binary with explicit `GOOS` and `GOARCH`, then assemble exactly three OS packages.
+- [x] Verify archive paths, launcher permissions, CPU binaries, and checksums. The actual macOS/arm64 package was extracted and run locally.
+- [x] Add CI for native OS tests and artifact smoke tests, with cross-builds for all six OS/CPU targets.
+- [ ] Observe the GitHub Actions workflow on this branch; native Windows and Linux runtime checks remain pending until it runs.
 - [ ] Commit as `build: package HAWS for three operating systems`.
 
 ### Task 4: Release update and rollback

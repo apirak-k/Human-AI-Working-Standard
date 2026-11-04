@@ -76,6 +76,10 @@ its own.
   default entry point changes only after Go and package parity checks pass.
 - Build both `amd64` and `arm64` variants into each OS package where supported;
   a small OS launcher chooses the correct binary.
+- Put release payloads under `haws-go/<os>/` when extracted into a checkout.
+  This prevents the new `haws.sh` and `haws.bat` launchers from replacing the
+  existing root launchers. Include an archive README that explains this
+  compatibility-stage install layout and delegation behavior.
 - Install and update Go-managed app versions alongside the existing HAWS
   checkout. Do not replace the checkout or move its state during the initial
   migration; the existing directory remains a usable fallback.
@@ -103,6 +107,9 @@ its own.
 
 - Keep the compatibility bridge until release packaging and the installed
   source/data boundary have been verified with fixtures.
+- Release archives are overlays for an existing HAWS checkout, not standalone
+  replacements yet: the Go compatibility runner still delegates to that
+  checkout. The archive layout preserves its legacy launchers and state.
 - Select archive formats and release workflow triggers that are simple to
   validate on all three operating systems.
 - Do not claim any OS/CPU pair supported until its built artifact has been

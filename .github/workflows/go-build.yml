@@ -1,0 +1,147 @@
+name: Go Build and Package
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - 'codex/**'
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Release version to embed; omitted for a CI build.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Test Go code
+        run: go test ./...
+      - name: Vet Go code
+        run: go vet ./...
+      - name: Test Unix launchers
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash tests/go/launchers_test.sh
+      - name: Test Windows launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/windows/go-launcher.test.ps1
+      - name: Build and run native executable (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/haws" ./cmd/haws
+          "$RUNNER_TEMP/haws" --version
+      - name: Build and run native executable (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = Join-Path $env:RUNNER_TEMP 'haws.exe'
+          go build -trimpath -o $binary ./cmd/haws
+          & $binary --version
+      - name: Run legacy regression suite
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash tests/cli/run.sh
+
+  package:
+    name: Build the three release packages
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Test package assembly
+        run: bash tests/go/package_release_test.sh
+      - name: Build release packages
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -z "$RELEASE_VERSION" ]]; then
+            RELEASE_VERSION="ci-${GITHUB_RUN_NUMBER}"
+          fi
+          bash scripts/package-release.sh "$RELEASE_VERSION" "$RUNNER_TEMP/haws-release"
+      - name: Upload release packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: haws-release-packages
+          path: ${{ runner.temp }}/haws-release/haws-*
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke-packages:
+    name: Run packaged binary (${{ matrix.os }})
+    needs: package
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@v8
+        with:
+          name: haws-release-packages
+          path: ${{ runner.temp }}/haws-release
+      - name: Verify and run Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'haws-release'
+          $archive = Join-Path $root 'haws-windows.zip'
+          $manifest = Get-Content (Join-Path $root 'haws-windows.zip.sha256') -Raw
+          $expected = ($manifest -split '\s+')[0]
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $expected.ToLowerInvariant()) { throw 'Windows package SHA-256 mismatch.' }
+          $package = Join-Path $env:RUNNER_TEMP 'haws-windows-package'
+          Expand-Archive -LiteralPath $archive -DestinationPath $package
+          $output = & (Join-Path $package 'haws-go\windows\haws.bat') --version 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not $output.Contains('HAWS ')) { throw "Windows package smoke test failed: $output" }
+      - name: Verify and run Unix package
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          root="$RUNNER_TEMP/haws-release"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            archive="$root/haws-macos.tar.gz"
+            manifest="$archive.sha256"
+            package="$RUNNER_TEMP/haws-macos-package"
+            launcher=haws-go/macos/haws.command
+          else
+            archive="$root/haws-linux.tar.gz"
+            manifest="$archive.sha256"
+            package="$RUNNER_TEMP/haws-linux-package"
+            launcher=haws-go/linux/haws.sh
+          fi
+          (cd "$root" && shasum -a 256 -c "$(basename "$manifest")")
+          mkdir -p "$package"
+          tar -xzf "$archive" -C "$package"
+          output="$("$package/$launcher" --version)"
+          [[ "$output" == HAWS\ * ]]

@@ -1,0 +1,38 @@
+name: Publish HAWS Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      version: ${{ github.ref_name }}
+
+  publish:
+    name: Publish verified release assets
+    needs: verify-and-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified packages
+        uses: actions/download-artifact@v8
+        with:
+          name: haws-release-packages
+          path: ${{ runner.temp }}/haws-release
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          "$RUNNER_TEMP"/haws-release/haws-*
+          --verify-tag
+          --generate-notes
