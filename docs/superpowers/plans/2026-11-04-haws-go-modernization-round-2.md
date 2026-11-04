@@ -35,15 +35,15 @@ Continue the additive Go migration while preserving the existing HAWS experience
 
 ### Task 1: Preserve unowned AI agent files
 
-**Files:** `haws.sh`; `tests/cli/repository_skill_test.sh` (and the suite runner only if needed).
+**Files:** `haws.sh`; `tests/cli/repository_skill_test.sh`; `tests/cli/lifecycle_and_plugins_e2e_test.sh`.
 
 **Acceptance criteria:**
-- An unowned regular file, symlink, or directory at an official AI agent destination remains unchanged after Sync.
+- An unowned regular file, symlink (including dangling links), or directory at an official AI agent destination remains unchanged after Sync.
 - Exact legacy ownership adoption still works when the current file/link is provably HAWS-owned.
 - Changed owned files remain preserved by fingerprint checks.
 - A regression test fails against the Round 1 behavior and passes with the fix.
 
-**Verification:** focused agent-link tests, relevant CLI suite, shell syntax, `git diff --check`.
+**Verification:** focused agent-link and lifecycle tests, full CLI suite, shell syntax, `git diff --check`.
 
 ### Task 2: Make Second Brain synchronization lossless and non-publishing by default
 
@@ -51,9 +51,10 @@ Continue the additive Go migration while preserving the existing HAWS experience
 
 **Acceptance criteria:**
 - Normal HAWS Sync and Second Brain connect do not stage arbitrary files or push personal content.
-- Remote updates apply only through a safe path; dirty or diverged local state is preserved and reported without destructive merge fallback.
+- Normal HAWS Sync uses a pull-only, fast-forward path; dirty or diverged local state is preserved and reported without destructive merge fallback.
+- Second Brain connect records/fetches the remote but does not merge or publish user content as a side effect.
 - No reconciliation path reconstructs documents from partial extracts or selects a document side by length.
-- Any user-initiated publish path previews exact files and requires explicit confirmation before staging/committing/pushing.
+- A separate explicit `user sync` publish step previews exact files and requires confirmation before staging/committing/pushing; if histories diverge, it stops with local and remote data intact.
 - Tests use temporary Git fixtures only and verify unchanged HEAD/index/worktree/origin on refusal or conflict.
 
 **Verification:** `tests/test-secondbrain-merge.sh`, focused Settings/Sync suites, full CLI suite, shell syntax.
