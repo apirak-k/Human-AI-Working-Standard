@@ -14,7 +14,7 @@ output="$2"
 case "$version" in ''|*[!A-Za-z0-9._+-]*) fail "invalid version string: $version" ;; esac
 [[ -n "$output" ]] || fail 'output directory is required'
 
-for tool in go tar zip; do command -v "$tool" >/dev/null 2>&1 || fail "required packaging tool not found: $tool"; done
+for tool in go git tar zip; do command -v "$tool" >/dev/null 2>&1 || fail "required packaging tool not found: $tool"; done
 for launcher in launchers/windows/haws.bat launchers/macos/haws.command launchers/linux/haws.sh; do
 	[[ -f "$ROOT/$launcher" ]] || fail "launcher source is missing: $launcher"
 done
@@ -57,7 +57,12 @@ runtime_files=(
  skills/skills.disabled skills/custom/README.md skills/custom/keyboard-layout-fixer/SKILL.md
  skills/custom/keyboard-layout-fixer/scripts/layout_fixer.mjs
 )
+# Gitlinks are pinned by the release commit; no submodule checkout is needed.
+git -C "$ROOT" ls-tree -r HEAD | awk '$1 == "160000" && $2 == "commit" { print $4 "\t" $3 }' > "$stage/source-revisions.tsv"
+[[ -s "$stage/source-revisions.tsv" ]] || fail 'release commit has no pinned source revisions'
 for os in windows macos linux; do
+ mkdir -p "$stage/$os/runtime"
+ cp "$stage/source-revisions.tsv" "$stage/$os/runtime/source-revisions.tsv"
  for file in "${runtime_files[@]}"; do
   [[ -f "$ROOT/$file" && ! -L "$ROOT/$file" ]] || fail "runtime source missing or symlinked: $file"
   mkdir -p "$stage/$os/runtime/$(dirname "$file")"
@@ -81,7 +86,8 @@ write_package_metadata() {
 	cat > "$readme" <<EOF
 HAWS Go compatibility package for $os
 
-Extract this package anywhere and start the included launcher. The runtime/
+Extract this package anywhere and run the included launcher with setup for the
+first-time setup (for example, ./haws.command setup). The runtime/
 directory contains HAWS resources and neutral Second Brain seeds. Persistent
 personal state and Second Brain documents are created in the sibling data/
 directory; retain data/ when removing or replacing a package. The manifest
@@ -90,7 +96,7 @@ EOF
  {
   printf '{\n  "schema_version": 1,\n  "version": "%s",\n  "platform": "%s",\n  "files": {\n' "$version" "$os"
   local relative first=1
-  for relative in README.txt "$launcher" "bin/$os-amd64/haws$extension" "bin/$os-arm64/haws$extension" "${runtime_files[@]/#/runtime/}"; do
+  for relative in README.txt "$launcher" "bin/$os-amd64/haws$extension" "bin/$os-arm64/haws$extension" "${runtime_files[@]/#/runtime/}" runtime/source-revisions.tsv; do
    if [[ $first -eq 0 ]]; then printf ',\n'; fi
    printf '    "%s": "%s"' "$relative" "$(package_sha256 "$dir/$relative")"
    first=0

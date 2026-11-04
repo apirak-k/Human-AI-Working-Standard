@@ -35,7 +35,7 @@ func Run(ctx context.Context, root string, action tui.Action, stdin io.Reader, s
 
 func validAction(action tui.Action) bool {
 	switch action {
-	case "sync", "settings", "doctor", "uninstall":
+	case "setup", "sync", "settings", "doctor", "uninstall":
 		return true
 	default:
 		return false

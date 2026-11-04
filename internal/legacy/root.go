@@ -8,6 +8,24 @@ import (
 
 func FindRoot() (string, error) {
 	if root := os.Getenv("HAWS_ROOT"); root != "" {
+		absolute, err := filepath.Abs(root)
+		if err != nil {
+			return "", err
+		}
+		if isPackageLauncher(absolute) {
+			runtimeRoot, err := validateRoot(filepath.Join(absolute, "runtime"))
+			if err != nil {
+				return "", err
+			}
+			return preparePackageRoot(runtimeRoot)
+		}
+		if filepath.Base(absolute) == "runtime" && isPackageLauncher(filepath.Dir(absolute)) {
+			runtimeRoot, err := validateRoot(absolute)
+			if err != nil {
+				return "", err
+			}
+			return preparePackageRoot(runtimeRoot)
+		}
 		return validateRoot(root)
 	}
 	cwd, err := os.Getwd()
@@ -96,24 +114,32 @@ func preparePackageRoot(root string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("read Second Brain seed: %w", err)
 		}
-		file, err := os.OpenFile(filepath.Join(brain, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if os.IsExist(err) {
-			continue
-		}
-		if err != nil {
-			return "", fmt.Errorf("create Second Brain seed: %w", err)
-		}
-		_, writeErr := file.Write(contents)
-		closeErr := file.Close()
-		if writeErr != nil {
-			return "", writeErr
-		}
-		if closeErr != nil {
-			return "", closeErr
+		if err := writeSeed(filepath.Join(brain, name), contents); err != nil {
+			return "", err
 		}
 	}
 	if err := os.Setenv("HAWS_SECOND_BRAIN_DIR", brain); err != nil {
 		return "", err
 	}
 	return root, nil
+}
+
+// Publish a complete seed only if the user has not already created it.
+func writeSeed(destination string, contents []byte) error {
+	file, err := os.CreateTemp(filepath.Dir(destination), ".haws-seed-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(contents); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Link(file.Name(), destination); err != nil && !os.IsExist(err) {
+		return err
+	}
+	return nil
 }

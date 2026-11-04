@@ -25,7 +25,7 @@ const (
 // RuntimeFiles is the bounded set of immutable resources shipped with a package.
 // Mutable data is kept in the separate data directory.
 var RuntimeFiles = []string{
-	"haws.sh", "haws.bat", ".gitmodules",
+	"haws.sh", "haws.bat", ".gitmodules", "source-revisions.tsv",
 	"secondbrain/ANTI_PATTERNS.md", "secondbrain/USER_PREFERENCES.md", "secondbrain/WORKFLOW.md",
 	"core/HAWS.md", "core/WORK_INSTRUCTIONS.md",
 	"agents/backend-engineer.md", "agents/frontend-engineer.md", "agents/organizer.md", "agents/researcher.md", "agents/tester.md",

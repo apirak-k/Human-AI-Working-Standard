@@ -46,7 +46,7 @@ func TestRunHomeIgnoresInvalidChoice(t *testing.T) {
 	if called {
 		t.Fatal("invalid choice dispatched an action")
 	}
-	if !strings.Contains(out.String(), "Choose 1, 2, 3, 4, or q") {
+	if !strings.Contains(out.String(), "Choose 1, 2, 3, 4, 5, or q") {
 		t.Fatalf("invalid choice was not explained: %q", out.String())
 	}
 }
@@ -79,5 +79,16 @@ func TestRunHomeShowsActionFailureAndReturnsToMenu(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Action failed: fixture failure") {
 		t.Fatalf("action failure was not shown: %q", out.String())
+	}
+}
+
+func TestHomeOffersSetup(t *testing.T) {
+	var output strings.Builder
+	var actions []Action
+	if err := Run(strings.NewReader("5\nq\n"), &output, func(action Action) error { actions = append(actions, action); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 1 || actions[0] != ActionSetup {
+		t.Fatalf("setup actions = %v", actions)
 	}
 }

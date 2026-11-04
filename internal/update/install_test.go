@@ -172,7 +172,7 @@ func makePackageArchive(t *testing.T, entries []archiveEntryFixture) []byte {
 	return buffer.Bytes()
 }
 
-func releaseArchiveFixture(t *testing.T, version string, binaries map[string][]byte) []byte {
+func releaseArchiveFixture(t *testing.T, version string, binaries map[string][]byte, extra ...archiveEntryFixture) []byte {
 	t.Helper()
 	root := packageRootForTest(t)
 	platform := packageOSForTest()
@@ -215,7 +215,7 @@ func releaseArchiveFixture(t *testing.T, version string, binaries map[string][]b
 		})
 	}
 	_ = version
-	return makePackageArchive(t, entries)
+	return makePackageArchive(t, append(entries, extra...))
 }
 
 func newAppRoot(t *testing.T, binaries map[string][]byte) string {
@@ -435,5 +435,50 @@ func TestReleaseArchiveAcceptsPackagedRuntimeResources(t *testing.T) {
 	}
 	if err := acceptPackageFile(spec, t.TempDir(), prefix+"/runtime/.haws/state/settings", []byte("state"), map[string]bool{}); err == nil {
 		t.Fatal("personal state accepted")
+	}
+}
+
+func TestRuntimeCompatibilityRejectsChangedOrMissingResources(t *testing.T) {
+	root, stage := t.TempDir(), t.TempDir()
+	for _, dir := range []string{root, stage} {
+		if err := os.MkdirAll(filepath.Join(dir, "runtime"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "runtime", "haws.sh"), []byte("original"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := verifyRuntimeCompatibility(root, stage); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, "runtime", "haws.sh"), []byte("changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRuntimeCompatibility(root, stage); err == nil {
+		t.Fatal("changed runtime accepted")
+	}
+	if err := os.RemoveAll(filepath.Join(stage, "runtime")); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRuntimeCompatibility(root, stage); err == nil {
+		t.Fatal("missing runtime accepted")
+	}
+}
+
+func TestInstallRejectsRuntimeMismatchWithoutActivating(t *testing.T) {
+	binaries := buildFixtureBinaries(t, "v1.2.3")
+	root := newAppRoot(t, binaries)
+	if err := os.MkdirAll(filepath.Join(root, "runtime"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "runtime", "haws.sh"), []byte("installed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	archive := releaseArchiveFixture(t, "v1.2.3", binaries, archiveEntryFixture{name: "haws-go/" + packageOSForTest() + "/runtime/haws.sh", data: []byte("different"), mode: 0644})
+	if err := Install(root, "v1.2.3", archive); err == nil {
+		t.Fatal("changed runtime was accepted")
+	}
+	if got, err := ActiveVersion(root); err != nil || got != "base" {
+		t.Fatalf("active = %q, %v", got, err)
 	}
 }

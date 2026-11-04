@@ -11,6 +11,7 @@ import (
 type Action string
 
 const (
+	ActionSetup     Action = "setup"
 	ActionSync      Action = "sync"
 	ActionSettings  Action = "settings"
 	ActionDoctor    Action = "doctor"
@@ -22,6 +23,7 @@ const homeMenu = "HAWS — Human-AI Working Standard\n\n" +
 	"2) Settings\n" +
 	"3) Doctor\n" +
 	"4) Uninstall\n" +
+	"5) Setup\n" +
 	"q) Quit\n\n" +
 	"Select an action: "
 
@@ -53,10 +55,12 @@ func Run(in io.Reader, out io.Writer, runAction func(Action) error) error {
 			action = ActionDoctor
 		case "4", "uninstall":
 			action = ActionUninstall
+		case "5", "setup":
+			action = ActionSetup
 		case "q", "quit", "exit":
 			return nil
 		default:
-			if _, err := fmt.Fprintln(out, "Choose 1, 2, 3, 4, or q."); err != nil {
+			if _, err := fmt.Fprintln(out, "Choose 1, 2, 3, 4, 5, or q."); err != nil {
 				return err
 			}
 		}

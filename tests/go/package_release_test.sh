@@ -124,6 +124,7 @@ mkdir -p "$TMP/extracted" "$TMP/home"
 tar -xzf "$NATIVE_OUTPUT/$archive" -C "$TMP/extracted"
 native_root="$TMP/extracted/haws-go/$native_os"
 [[ -f "$native_root/runtime/haws.sh" ]] || fail 'extracted package is missing its runtime'
+[[ -s "$native_root/runtime/source-revisions.tsv" ]] || fail 'packaged pinned source revisions are missing'
 (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" doctor >"$TMP/doctor.log" 2>&1) || { cat "$TMP/doctor.log" >&2; fail 'extracted launcher could not run Doctor'; }
 rg -qi 'doctor|health' "$TMP/doctor.log" || fail 'Doctor action did not run'
 [[ -f "$native_root/data/secondbrain/WORKFLOW.md" ]] || fail 'persistent Second Brain seed was not initialized in data/'
@@ -152,6 +153,53 @@ for platform, archive in (("windows", "haws-windows.zip"), ("macos", "haws-macos
     assert "runtime/haws.sh" in actual
     assert not any(part in {".git", "tests", ".superpowers", "data"} for name in actual for part in pathlib.PurePosixPath(name).parts)
 PYTEST
+
+# Exercise first-time setup with a pinned local source from the extracted package.
+fixture_repo="$TMP/source-repo"
+git init -q "$fixture_repo"
+git -C "$fixture_repo" config user.name 'HAWS Test'
+git -C "$fixture_repo" config user.email test@example.invalid
+printf '%s\n' '---' 'name: local-fixture' 'description: fixture' '---' > "$fixture_repo/SKILL.md"
+git -C "$fixture_repo" add SKILL.md
+git -C "$fixture_repo" commit -qm fixture
+fixture_revision="$(git -C "$fixture_repo" rev-parse HEAD)"
+printf '[submodule "skills/packs/fixture"]\n\tpath = skills/packs/fixture\n\turl = %s\n' "$fixture_repo" > "$native_root/runtime/.gitmodules"
+printf 'skills/packs/fixture\t%s\n' "$fixture_revision" > "$native_root/runtime/source-revisions.tsv"
+# An existing unowned checkout must never be adopted or updated.
+unowned="$native_root/data/state/skill-sources/skills/packs/fixture"
+mkdir -p "$(dirname "$unowned")"
+git clone -q "$fixture_repo" "$unowned"
+echo private > "$unowned/personal-file"
+if env HOME="$TMP/home" HAWS_STATE_DIR="$native_root/data/state" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 HAWS_SOURCE_ONLY=1 bash -c '. "$1"; _haws_prepare_device_source "skills/packs/fixture::skills/packs/fixture"' _ "$native_root/runtime/haws.sh"; then
+ fail 'unowned checkout was accepted for materialization'
+fi
+[[ "$(cat "$unowned/personal-file")" == private ]] || fail 'unowned checkout was changed'
+rm -rf "$unowned"
+# Verify the initial checkout uses the release pin even if the remote moved.
+printf '%s\n' 'new supporting content' > "$fixture_repo/extra.txt"
+git -C "$fixture_repo" add extra.txt
+git -C "$fixture_repo" commit -qm 'fixture update'
+fixture_updated="$(git -C "$fixture_repo" rev-parse HEAD)"
+env HOME="$TMP/home" HAWS_STATE_DIR="$native_root/data/state" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 HAWS_SOURCE_ONLY=1 bash -c '. "$1"; _haws_prepare_device_source "skills/packs/fixture::skills/packs/fixture"' _ "$native_root/runtime/haws.sh" || fail 'could not materialize pinned source'
+[[ "$(git -C "$unowned" rev-parse HEAD)" == "$fixture_revision" ]] || fail 'initial source checkout did not use release pin'
+rm -rf "$unowned"
+rm "$unowned.haws-owned"
+echo keep > "$native_root/data/personal-note"
+if ! printf '\n\033[A\nq' | (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" CODEX_HOME="$TMP/home/.codex" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 "$native_root/$launcher" setup >"$TMP/setup.log" 2>&1); then
+ cat "$TMP/setup.log" >&2; fail 'extracted launcher setup failed'
+fi
+rg -q 'Installation state completed' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'first-time setup did not complete'; }
+source_dir="$native_root/data/state/skill-sources/skills/packs/fixture"
+[[ "$(git -C "$source_dir" rev-parse HEAD)" == "$fixture_updated" ]] || fail 'setup did not advance the local source'
+[[ -f "$source_dir/SKILL.md" ]] || fail 'materialized source is missing its skill'
+rg -q 'fixture +\[PASS\] Updated' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'setup did not synchronize the local source'; }
+[[ "$(cat "$native_root/data/personal-note")" == keep ]] || fail 'setup changed personal data'
+# Disable release network checks for the explicit launcher Sync; Setup above already
+# performs a source Sync against the local fixture with updates enabled.
+printf 'schema_version\t1\nauto_update_skills\toff\nauto_update_brain\toff\n' > "$native_root/data/state/settings.tsv"
+(cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" CODEX_HOME="$TMP/home/.codex" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 "$native_root/$launcher" sync >"$TMP/sync.log" 2>&1) || { cat "$TMP/sync.log" >&2; fail 'extracted launcher Sync failed'; }
+rg -q 'Sources are synchronized|Source synchronization' "$TMP/sync.log" || fail 'Sync action did not execute'
+[[ "$(cat "$native_root/data/personal-note")" == keep ]] || fail 'Sync changed personal data'
 
 # A repeat launch must preserve user edits.
 echo 'personal change' >> "$native_root/data/secondbrain/WORKFLOW.md"

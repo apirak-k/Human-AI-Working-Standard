@@ -46,3 +46,19 @@ func TestRunHomeRoutesSyncToLegacyAndReturnsToMenu(t *testing.T) {
 		t.Fatalf("Home TUI missing: %q", stdout.String())
 	}
 }
+
+func TestRunSetupRoutesToLegacySetup(t *testing.T) {
+	root := t.TempDir()
+	argsPath := filepath.Join(root, "args")
+	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte("#!/bin/sh\nprintf '%s' \"$1\" > '"+argsPath+"'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_ROOT", root)
+	var out, stderr bytes.Buffer
+	if code := run([]string{"setup"}, strings.NewReader(""), &out, &stderr); code != 0 {
+		t.Fatalf("setup failed: %d %s", code, stderr.String())
+	}
+	if data, err := os.ReadFile(argsPath); err != nil || string(data) != "setup" {
+		t.Fatalf("setup action: %q %v", data, err)
+	}
+}

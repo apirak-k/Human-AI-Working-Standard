@@ -132,6 +132,19 @@ func (i *Installer) Install(root, version string, archive []byte) error {
 		return fmt.Errorf("current HAWS version is not valid: %w", err)
 	}
 
+	// Validate runtime compatibility before either installing or reactivating a version.
+	checkDir, err := os.MkdirTemp("", "haws-runtime-check-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(checkDir)
+	if err := extractPackage(spec, archive, checkDir); err != nil {
+		return fmt.Errorf("validate release package: %w", err)
+	}
+	if err := verifyRuntimeCompatibility(root, checkDir); err != nil {
+		return err
+	}
+
 	archiveDigest := sha256.Sum256(archive)
 	archiveHash := hex.EncodeToString(archiveDigest[:])
 	versionDir := filepath.Join(root, "versions", version)
@@ -171,6 +184,9 @@ func (i *Installer) Install(root, version string, archive []byte) error {
 
 	if err := extractPackage(spec, archive, stageDir); err != nil {
 		return fmt.Errorf("validate release package: %w", err)
+	}
+	if err := os.RemoveAll(filepath.Join(stageDir, "runtime")); err != nil {
+		return err
 	}
 	binaryHashes, err := validateVersionBinaries(stageDir, spec)
 	if err != nil {
@@ -693,7 +709,11 @@ func acceptPackageFile(spec platformSpec, stageDir, name string, contents []byte
 			if len(contents) == 0 || len(contents) > maxControlFileBytes {
 				return fmt.Errorf("runtime file %q is empty or oversized", name)
 			}
-			return nil // Updates activate binaries only; the base runtime remains in place.
+			destination := filepath.Join(stageDir, "runtime", filepath.FromSlash(file))
+			if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+				return err
+			}
+			return os.WriteFile(destination, contents, 0600)
 		}
 	}
 
@@ -744,4 +764,54 @@ func requirePackageFiles(spec platformSpec, seen map[string]bool) error {
 
 func packagedRuntimeFiles() []string {
 	return ownership.RuntimeFiles
+}
+
+// Until runtime updates are transactional, reject any difference, including omissions.
+func verifyRuntimeCompatibility(root, stage string) error {
+	base, incoming := filepath.Join(root, "runtime"), filepath.Join(stage, "runtime")
+	snapshot := func(dir string) (map[string][32]byte, error) {
+		files := make(map[string][32]byte)
+		err := filepath.WalkDir(dir, func(name string, entry os.DirEntry, err error) error {
+			if errors.Is(err, os.ErrNotExist) && name == dir {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if !entry.Type().IsRegular() {
+				return fmt.Errorf("unsafe runtime entry %s", name)
+			}
+			rel, err := filepath.Rel(dir, name)
+			if err != nil {
+				return err
+			}
+			data, err := os.ReadFile(name)
+			if err != nil {
+				return err
+			}
+			files[rel] = sha256.Sum256(data)
+			return nil
+		})
+		return files, err
+	}
+	a, err := snapshot(base)
+	if err != nil {
+		return err
+	}
+	b, err := snapshot(incoming)
+	if err != nil {
+		return err
+	}
+	if len(a) != len(b) {
+		return errors.New("release runtime differs from installed runtime; update requires runtime transaction")
+	}
+	for name, hash := range a {
+		if other, ok := b[name]; !ok || other != hash {
+			return errors.New("release runtime differs from installed runtime; update requires runtime transaction")
+		}
+	}
+	return nil
 }

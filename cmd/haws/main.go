@@ -61,7 +61,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if len(args) > 1 {
-		fmt.Fprintln(stderr, "Usage: haws [sync|settings|doctor|uninstall|--version]")
+		fmt.Fprintln(stderr, "Usage: haws [setup|sync|settings|doctor|uninstall|--version]")
 		return 2
 	}
 	root, err := legacy.FindRoot()

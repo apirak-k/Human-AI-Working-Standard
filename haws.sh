@@ -1533,6 +1533,16 @@ _catalog_refresh_submodule_snapshot() {
         HAWS_CATALOG_GITLINK_SNAPSHOT_READY=1
         return 0
     fi
+    if [ -f "${repo}/source-revisions.tsv" ] && [ ! -e "${repo}/.git" ]; then
+        while IFS=$'\t' read -r source_path value; do
+            _haws_source_path_safe "${source_path}" || continue
+            [[ "${value}" =~ ^[0-9a-f]{40}$ ]] || continue
+            [[ -v HAWS_CATALOG_SOURCE_GITLINK_SNAPSHOT_PATHS["${source_path}"] ]] || continue
+            HAWS_CATALOG_SOURCE_GITLINK_CACHE["${source_path}"]=1
+        done < "${repo}/source-revisions.tsv"
+        HAWS_CATALOG_GITLINK_SNAPSHOT_READY=1
+        return 0
+    fi
     index_rows="$(git -C "${repo}" ls-files --stage -- "${gitlink_paths[@]}" 2>/dev/null)" || return 0
     while IFS=$'\t' read -r index_fields source_path || [ -n "${index_fields:-}" ]; do
         [ -n "${index_fields:-}" ] && [ -n "${source_path:-}" ] || continue
@@ -1578,6 +1588,10 @@ _catalog_source_is_gitlink() {
     if [ "${HAWS_CATALOG_GITLINK_SNAPSHOT_READY:-0}" = 1 ] &&
         [[ -v HAWS_CATALOG_SOURCE_GITLINK_SNAPSHOT_PATHS["${source_path}"] ]]; then
         [[ -v HAWS_CATALOG_SOURCE_GITLINK_CACHE["${source_path}"] ]]
+        return $?
+    fi
+    if [ -f "$(_catalog_repo_dir)/source-revisions.tsv" ] && [ ! -e "$(_catalog_repo_dir)/.git" ]; then
+        awk -F '\t' -v path="${source_path}" '$1 == path && $2 ~ /^[0-9a-f]+$/ && length($2) == 40 { found = 1 } END { exit found ? 0 : 1 }' "$(_catalog_repo_dir)/source-revisions.tsv"
         return $?
     fi
     git -C "$(_catalog_repo_dir)" ls-files --stage -- "${source_path}" 2>/dev/null |
@@ -1749,8 +1763,38 @@ _haws_prepare_device_source() {
     fi
     _catalog_source_is_gitlink "${source_path}" || return 0
     device_dir="$(_catalog_device_source_dir "${source_path}")" || return 1
-    _haws_git_directory_is_repository_root "${device_dir}" && return 0
     source_dir="${repo}/${source_path}"
+    if [ -f "${repo}/source-revisions.tsv" ] && [ ! -e "${repo}/.git" ]; then
+        local pinned owner_marker="${device_dir}.haws-owned"
+        if [ -e "${device_dir}" ] || [ -L "${device_dir}" ]; then
+            [ ! -L "${device_dir}" ] && [ -f "${owner_marker}" ] && [ ! -L "${owner_marker}" ] || return 1
+            [ "$(cat "${owner_marker}")" = "${source_url}" ] || return 1
+            _haws_git_directory_is_repository_root "${device_dir}" || return 1
+            [ "$(git -C "${device_dir}" remote get-url origin 2>/dev/null || true)" = "${source_url}" ] || return 1
+            return 0
+        fi
+        [ ! -e "${owner_marker}" ] && [ ! -L "${owner_marker}" ] || return 1
+        pinned="$(awk -F '\t' -v path="${source_path}" '$1 == path { print $2 }' "${repo}/source-revisions.tsv")"
+        [[ "${pinned}" =~ ^[0-9a-f]{40}$ ]] || return 1
+        _catalog_external_skill_url_valid "${source_url}" || return 1
+        [ ! -e "${device_dir}" ] && [ ! -L "${device_dir}" ] || return 1
+        mkdir -p "$(dirname "${device_dir}")" || return 1
+        mkdir "${device_dir}" || return 1
+        if ! git clone -q -- "${source_url}" "${device_dir}" ||
+            ! git -C "${device_dir}" checkout -q --detach "${pinned}"; then
+            rm -rf -- "${device_dir}"
+            return 1
+        fi
+        if ! (set -C; printf '%s\n' "${source_url}" > "${owner_marker}"); then
+            rm -rf -- "${device_dir}"
+            return 1
+        fi
+        unset 'HAWS_CATALOG_RUNTIME_SOURCE_DIR_CACHE["'"${source_path}"'"]' \
+              'HAWS_CATALOG_RUNTIME_SOURCE_REVISION_CACHE["'"${source_path}"'"]'
+        _haws_sync_note_source_materialization
+        return 0
+    fi
+    _haws_git_directory_is_repository_root "${device_dir}" && return 0
     if ! _haws_git_directory_is_repository_root "${source_dir}"; then
         if [ -L "${source_dir}" ] || { [ -e "${source_dir}" ] &&
             { [ ! -d "${source_dir}" ] || [ -n "$(find "${source_dir}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; }; }; then
@@ -8202,7 +8246,10 @@ settings_verify_plan() {
             source_path="${source_id#*::}"
             expected_active=0
             if _settings_list_contains "${HAWS_DRAFT_ADDED_PATHS:-}" "${source_path}" ||
-                _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}"; then
+                _settings_list_contains "${HAWS_DRAFT_SKILLS:-}" "${skill_id}" ||
+                { [ "${HAWS_PLAN_KIND:-}" = Install ] && [ -f "${SCRIPT_DIR}/source-revisions.tsv" ] &&
+                  _settings_list_contains "${HAWS_DRAFT_SOURCES:-}" "${source_id}" &&
+                  ! _settings_list_contains "${HAWS_PERSIST_SKILLS:-}" "${skill_id}"; }; then
                 expected_active=1
             fi
             if [ "${active}" != "${expected_active}" ]; then
