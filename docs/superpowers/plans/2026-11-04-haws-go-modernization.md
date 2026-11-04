@@ -64,7 +64,7 @@
 - Test: `tests/windows/go-launcher.test.ps1`
 
 **Interfaces:**
-- Each launcher invokes `bin/<os>-<arch>/haws[.exe]` relative to its own package directory.
+- Each launcher selects `bin/<os>-<arch>/haws[.exe]` relative to its own package directory, then asks the base Go binary to validate and resolve the active version before dispatching it. This keeps marker, manifest, checksum, and reparse-path validation in one shared implementation.
 - macOS/Linux map `arm64|aarch64` and `x86_64|amd64`; Windows maps `ARM64` and `AMD64` including `PROCESSOR_ARCHITEW6432`.
 
 - [x] Add hermetic launcher fixtures with fake architecture values and sentinel binaries.
@@ -93,7 +93,7 @@
 - [x] Verify archive paths, launcher permissions, CPU binaries, and checksums. The actual macOS/arm64 package was extracted and run locally.
 - [x] Add CI for native OS tests and artifact smoke tests, with cross-builds for all six OS/CPU targets.
 - [ ] Observe the GitHub Actions workflow on this branch; native Windows and Linux runtime checks remain pending until it runs.
-- [ ] Commit as `build: package HAWS for three operating systems`.
+- [x] Commit as `build: package HAWS for three operating systems` (`e4ddfc4`).
 
 ### Task 4: Release update and rollback
 
@@ -109,36 +109,40 @@
 - Install stages a version under the app directory, validates expected files, and atomically changes the active-version marker only after validation.
 - The previous version remains available for explicit rollback; failed stages leave the active marker unchanged.
 
-- [ ] Add `httptest` cases for HTTP failure, malformed metadata, checksum mismatch, and truncated downloads.
-- [ ] Add filesystem cases for invalid archive paths, incomplete package, failed activation, rollback, and repeated update.
-- [ ] Run the focused tests and confirm they fail before implementation.
-- [ ] Implement download, validation, staging, activation, and rollback with the standard library.
-- [ ] Run `go test ./...`, cross-build all six targets, and run the legacy regression suite.
-- [ ] Commit as `feat: update HAWS from verified releases with rollback`.
+- [x] Add `httptest` cases for HTTP failure, malformed metadata, checksum mismatch, and truncated downloads.
+- [x] Add filesystem cases for invalid archive paths, incomplete package, failed activation, rollback, and repeated update.
+- [x] Implement download, validation, staging, activation, and rollback with the standard library.
+- [x] Add active-binary resolution and verify installed manifests before launcher dispatch on all operating systems.
+- [x] Run focused tests, the complete Go suite, vet, and cross-builds for all six targets.
+- [x] Commit as part of the verified update/Sync/uninstall implementation stage.
 
 ### Task 5: One Sync flow and ownership-safe uninstall
 
 **Files:**
-- Modify: `internal/app/app.go`
+- Modify: `cmd/haws/main.go`
+- Create: `internal/app/sync.go`
+- Create: `internal/legacy/settings.go`
 - Create: `internal/ownership/manifest.go`
 - Create: `internal/uninstall/uninstall.go`
-- Modify: `haws.sh` only to add a components-only bridge needed by Go orchestration.
+- Test: `internal/app/sync_test.go`
+- Test: `internal/legacy/settings_test.go`
 - Test: `internal/ownership/manifest_test.go`
 - Test: `internal/uninstall/uninstall_test.go`
-- Test: `tests/cli/sync_test.sh`
+- Test: `internal/update/owned_test.go`
 
 **Interfaces:**
-- Go Sync checks/downloads/activates the HAWS release, then invokes existing component synchronization without allowing the legacy runtime to update HAWS from Git a second time.
-- App rollback restores the previous Go application version if release activation or the Go-managed phase fails.
+- Go Sync checks/downloads/activates the HAWS release, then invokes the existing full HAWS Sync exactly once; the legacy runtime remains responsible for checkout, skills, agents, AI integrations, and Second Brain behavior.
+- App rollback restores the previous Go application version if the existing Sync fails after a release activation.
 - Uninstall previews changes and removes only app files whose path, type, and recorded fingerprint still match; user state and all unowned or modified files are preserved.
+- All three launchers ask the base Go binary to resolve the active version; the Go validation rejects changed binaries and junction/reparse paths before a launcher starts the versioned binary.
 
-- [ ] Add regression tests for one Sync call, component-only delegation, failed release update, failed legacy component sync, and rollback.
-- [ ] Add uninstall tests for owned, unowned, modified, missing, symlink, and personal-state paths.
-- [ ] Run the new tests red before implementation.
-- [ ] Add the smallest legacy bridge that reuses existing component logic and skips only the duplicate root update.
-- [ ] Implement ownership-checked preview, apply, and rollback; never delete user state by default.
-- [ ] Run focused tests, `go test ./...`, the full HAWS suite, and cross-platform build/launcher checks.
-- [ ] Commit as `feat: add safe Sync and ownership-aware uninstall`.
+- [x] Add regression tests for one Sync call, failed release update, failed legacy Sync, and rollback.
+- [x] Add uninstall tests for owned, unowned, modified, missing, symlink/junction, running executable, and personal-state paths.
+- [x] Verify the new parent-path regression fails before the cleanup fix and passes after it.
+- [x] Keep the existing full Sync as the compatibility bridge; no change to `haws.sh` or component behavior was needed.
+- [x] Implement ownership-checked preview/apply and preserve user state by default.
+- [x] Run focused tests, `go test ./...`, the 403-check HAWS suite, vet, and package/launcher checks.
+- [x] Commit as part of the verified update/Sync/uninstall implementation stage.
 
 ### Task 6: Migration gate and final verification
 
@@ -146,8 +150,16 @@
 - Modify: `README.md` only after all package paths and supported platforms are verified.
 - Modify: `HANDOFF.md` with completed stages, test results, unresolved platform checks, and exact resume point.
 
-- [ ] Compare Go and legacy command coverage and confirm all legacy actions remain reachable.
-- [ ] Run full Go and Bash suites from the final tree and inspect `git diff --check`.
-- [ ] Execute each release artifact on a matching OS/CPU before declaring that target supported.
-- [ ] Keep the legacy runtime and old launchers in place until those host checks pass.
-- [ ] Do not push or merge; report the branch, commits, verified targets, incomplete targets, and next stage.
+- [x] Compare Go and legacy command coverage and confirm Sync, Settings, Doctor, and Uninstall remain reachable.
+- [x] Run full Go and Bash suites from the final tree and inspect `git diff --check`.
+- [ ] Execute each release artifact on a matching OS/CPU before declaring that target supported; only macOS/arm64 has been executed locally so far.
+- [x] Keep the legacy runtime and old launchers in place until those host checks pass.
+- [x] Do not push or merge; report the branch, commits, verified targets, incomplete targets, and next stage.
+
+## Current verification boundary
+
+- The native Go test, vet, Unix launcher, package assembly, and legacy HAWS suites pass on this macOS/arm64 host. The actual macOS package was built, checksum-verified, extracted, and run.
+- All six release binaries cross-build, and Windows test binaries cross-compile for amd64 and arm64. Cross-compilation does not verify Windows or Linux runtime behavior.
+- The Windows PowerShell launcher test now builds real Go fixtures and covers active-version selection and junction rejection, but it has not run in this Mac worktree. Linux runtime package smoke also remains pending until Linux CI runs.
+- GitHub Actions has not run for this branch. Do not advertise OS/CPU support beyond macOS/arm64 until the matching native artifact test completes.
+- An active Go version currently running during uninstall is preserved until it exits; ownership-verified cleanup is otherwise limited to the app package. Do not remove the legacy runtime yet.

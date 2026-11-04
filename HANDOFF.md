@@ -1,6 +1,16 @@
 # Development Handoff
 
-Updated: 2026-10-24
+Updated: 2026-11-04
+
+## HAWS Go Modernization — Initial Implementation Stage
+
+- Worktree: `/Users/bubu/.codex/worktrees/haws-delivery-main/Human-AI-Working-Standard`; branch `codex/go-modernization`, based on `origin/dev` at `fa235b31d06d44255382285171d61627c652bc4`. Local stage commits are `ee9e59b` (Go TUI/legacy bridge), `e10e699` (OS launchers), `e4ddfc4` (packages/CI), and `f8430a64aadb878908f50b043647bba180a238dc` (release updates, Sync, ownership-aware uninstall). The latest commit is local only; it has not been pushed or merged.
+- The Go Home TUI keeps Sync, Settings, Doctor, and Uninstall reachable. Settings and Doctor still delegate to the existing runtime. Sync checks GitHub Releases when auto-update is enabled, verifies the package/checksum, stages and activates a Go app version, then invokes the existing full `haws.sh sync` once. If that Sync fails after activation, the Go app marker rolls back to its previous version. `haws.sh` was not modified.
+- Go uninstall previews package changes and removes only files matching the package ownership manifest, and only after the existing full-uninstall completion marker changes. HAWS checkout and personal state remain preserved. Modified/unowned package files are retained. A Go version currently running is kept until it exits.
+- All three launchers select the package CPU directory and use the same Go active-version resolver. It verifies the installed version manifest and binaries before launching; the Windows test covers a junction in the version path. The release packager emits exactly three OS packages with SHA-256 sidecars. `README.md` and the legacy runtime remain unchanged until host verification reaches the migration gate.
+- Verification on this macOS/arm64 host: `go test ./...` passed all 7 packages; `go vet ./...` passed; `tests/cli/run.sh` passed **403 checks, 0 failures** (including the 155 catalog/performance checks); Unix launcher and package assembly tests passed; `git diff --check`, Go formatting, and shell syntax checks passed. The real packaging script cross-built all six OS/CPU targets, generated all three archives, and all three archive checksums verified. The extracted macOS/arm64 package ran and printed `HAWS ci-2026-11-04`. Windows Go test binaries cross-compiled for amd64 and arm64.
+- **[Unverified]** The Windows PowerShell launcher/junction test and Windows uninstall tests have not run on a Windows host. The Linux package has not run on Linux. GitHub Actions has not run because this branch has not been pushed. Cross-compilation is not runtime verification; only macOS/arm64 has been executed locally.
+- Next: run the committed branch through GitHub Actions or matching native Windows and Linux hosts; review the Windows resolver and junction tests there. Keep the legacy runtime until those checks and command-parity checks pass. Do not claim cross-platform support or promote the Go runtime to the default yet.
 
 ## Branch Contract
 
