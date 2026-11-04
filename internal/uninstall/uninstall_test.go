@@ -9,8 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
+
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/update"
 )
 
 type fixtureManifest struct {
@@ -199,8 +202,11 @@ func TestPreviewAndApplyRemoveOnlyVerifiedUpdaterFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Items()) != 2 {
+	if len(plan.Items()) != 3 {
 		t.Fatalf("preview items = %v", plan.Items())
+	}
+	if !strings.Contains(strings.Join(plan.Items(), "\n"), "installation directory (removed only if empty after verified cleanup)") {
+		t.Fatalf("empty-only installation directory cleanup missing from preview: %v", plan.Items())
 	}
 	result, err := Apply(plan)
 	if err != nil {
@@ -233,7 +239,7 @@ func TestApplyPreservesModifiedVersionAndUnownedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Items()) != 1 {
+	if len(plan.Items()) != 2 {
 		t.Fatalf("modified version entered removal plan: %v", plan.Items())
 	}
 	result, err := Apply(plan)
@@ -261,10 +267,10 @@ func TestApplyPreservesRunningVersionUntilProcessExits(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := Apply(plan)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, update.ErrRunningVersion) {
+		t.Fatalf("Apply() error = %v, want running-version limitation", err)
 	}
-	if len(result.Preserved) < 2 {
+	if len(result.Preserved) < 2 || !strings.Contains(strings.Join(result.Preserved, "\n"), "Go app version v1.2.3 (kept while the app is running)") {
 		t.Fatalf("running version was not preserved: %v", result.Preserved)
 	}
 	if _, err := os.Stat(paths[0]); err != nil {
@@ -308,7 +314,7 @@ func TestPreviewKeepsVersionTreesWithUnexpectedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Items()) != 1 {
+	if len(plan.Items()) != 2 {
 		t.Fatalf("unowned version tree entered removal plan: %v", plan.Items())
 	}
 	if _, err := Apply(plan); err != nil {
@@ -399,7 +405,7 @@ func TestPreviewAndApplyRemoveVerifiedBasePackageWithoutTouchingPersonalData(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Items()) != 6 {
+	if len(plan.Items()) != 7 {
 		t.Fatalf("base package preview items = %v", plan.Items())
 	}
 	result, err := Apply(plan)
@@ -414,8 +420,163 @@ func TestPreviewAndApplyRemoveVerifiedBasePackageWithoutTouchingPersonalData(t *
 			t.Fatalf("owned base package path remains at %s: %v", filename, err)
 		}
 	}
+	if _, err := os.Lstat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("empty owned installation directory remains: %v", err)
+	}
 	contents, err := os.ReadFile(personal)
 	if err != nil || string(contents) != "personal" {
 		t.Fatalf("personal data = %q, %v", contents, err)
+	}
+}
+
+func TestApplyPreservesInstallationRootContainingPersonalData(t *testing.T) {
+	root := t.TempDir()
+	files := makeOwnedBasePackage(t, root)
+	writeActiveMarker(t, root, "base")
+	personal := filepath.Join(root, "data", "secondbrain", "USER.md")
+	if err := os.MkdirAll(filepath.Dir(personal), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(personal, []byte("private note"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := Preview(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Apply(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(result.Preserved, "\n"), "installation directory (contains personal or unowned content)") {
+		t.Fatalf("preserved installation directory was not reported: %v", result.Preserved)
+	}
+	if got, err := os.ReadFile(personal); err != nil || string(got) != "private note" {
+		t.Fatalf("personal data = %q, %v", got, err)
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("installation directory was removed with user data inside: %v", err)
+	}
+	for _, filename := range append(files, filepath.Join(root, "package-manifest.json")) {
+		if _, err := os.Lstat(filename); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("verified HAWS package file remains at %s: %v", filename, err)
+		}
+	}
+}
+
+func TestApplyReturnsErrorForPermissionLimitedPackageCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce Unix directory write bits")
+	}
+	root := t.TempDir()
+	makeOwnedBasePackage(t, root)
+	writeActiveMarker(t, root, "base")
+	platform := runtime.GOOS
+	if platform == "darwin" {
+		platform = "macos"
+	}
+	archDirectory := filepath.Join(root, "bin", platform+"-amd64")
+	if err := os.Chmod(archDirectory, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(archDirectory, 0o700) }()
+
+	plan, err := Preview(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Apply(plan)
+	if err == nil {
+		t.Fatalf("Apply() returned nil error despite permission-limited cleanup: %#v", result)
+	}
+	if len(result.Preserved) == 0 {
+		t.Fatalf("remaining package files were not reported: %#v", result)
+	}
+}
+
+func TestApplyDoesNotRemoveReplacedInstallationDirectory(t *testing.T) {
+	root := t.TempDir()
+	files := makeOwnedBasePackage(t, root)
+	plan, err := Preview(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	backup := root + "-original"
+	defer func() { _ = os.RemoveAll(backup) }()
+	if err := os.Rename(root, backup); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Apply(plan)
+	if err == nil {
+		t.Fatalf("Apply() succeeded after installation directory replacement: %#v", result)
+	}
+	if info, statErr := os.Lstat(root); statErr != nil || !info.IsDir() {
+		t.Fatalf("replacement directory was removed: info=%v err=%v", info, statErr)
+	}
+	for _, filename := range files {
+		relative, relErr := filepath.Rel(root, filename)
+		if relErr != nil {
+			t.Fatal(relErr)
+		}
+		if _, statErr := os.Lstat(filepath.Join(backup, relative)); statErr != nil {
+			t.Fatalf("original package file was changed at %s: %v", relative, statErr)
+		}
+	}
+}
+
+func TestApplyRemovesExtractedPackageToEmpty(t *testing.T) {
+	root := os.Getenv("HAWS_TEST_UNINSTALL_EMPTY_PACKAGE")
+	if root == "" {
+		t.Skip("set by tests/go/package_release_test.sh for an extracted release archive")
+	}
+	plan, err := Preview(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Apply(plan)
+	if err != nil {
+		t.Fatalf("Apply(extracted package) error = %v; result=%#v", err, result)
+	}
+	if len(result.Preserved) != 0 {
+		t.Fatalf("empty extracted package left preserved items: %v", result.Preserved)
+	}
+	if _, err := os.Lstat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("empty extracted package directory remains: %v", err)
+	}
+}
+
+func TestApplyPreservesExtractedPackageData(t *testing.T) {
+	root := os.Getenv("HAWS_TEST_UNINSTALL_DATA_PACKAGE")
+	if root == "" {
+		t.Skip("set by tests/go/package_release_test.sh for an extracted release archive")
+	}
+	personal := filepath.Join(root, "data", "secondbrain", "personal.md")
+	if got, err := os.ReadFile(personal); err != nil || string(got) != "private package data\n" {
+		t.Fatalf("extracted personal data before cleanup = %q, %v", got, err)
+	}
+	plan, err := Preview(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Apply(plan)
+	if err != nil {
+		t.Fatalf("Apply(extracted package with data) error = %v; result=%#v", err, result)
+	}
+	if !strings.Contains(strings.Join(result.Preserved, "\n"), "installation directory (contains personal or unowned content)") {
+		t.Fatalf("preserved installation directory was not reported: %v", result.Preserved)
+	}
+	if got, err := os.ReadFile(personal); err != nil || string(got) != "private package data\n" {
+		t.Fatalf("extracted personal data after cleanup = %q, %v", got, err)
+	}
+	if _, err := os.Lstat(root); err != nil {
+		t.Fatalf("installation directory was removed with personal data present: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "package-manifest.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("verified package manifest remains after cleanup: %v", err)
 	}
 }

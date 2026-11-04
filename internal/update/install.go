@@ -97,7 +97,20 @@ func ActiveBinary(root, goos, goarch string) (string, error) {
 		return "", nil
 	}
 	if err := validateInstalledVersion(root, state.Active, spec); err != nil {
-		return "", fmt.Errorf("active HAWS app version is invalid: %w", err)
+		activeErr := err
+		if rollbackErr := (&Installer{platform: goos}).Rollback(root); rollbackErr != nil {
+			return "", fmt.Errorf("active HAWS app version is invalid: %v; recovery failed: %w", activeErr, rollbackErr)
+		}
+		state, err = readActiveState(root)
+		if err != nil {
+			return "", fmt.Errorf("read HAWS active version after recovery: %w", err)
+		}
+		if state.Active == baseVersion {
+			return "", nil
+		}
+		if err := validateInstalledVersion(root, state.Active, spec); err != nil {
+			return "", fmt.Errorf("recovered HAWS app version is invalid: %w", err)
+		}
 	}
 	return binaryPath(filepath.Join(root, "versions", state.Active), spec, goarch), nil
 }
@@ -244,11 +257,15 @@ func (i *Installer) Rollback(root string) error {
 	} else if err := validateInstalledVersion(root, state.Previous, spec); err != nil {
 		return fmt.Errorf("previous HAWS version is not valid: %w", err)
 	}
-	if state.Active != baseVersion {
-		if err := validateInstalledVersion(root, state.Active, spec); err != nil {
-			return fmt.Errorf("active HAWS version is not valid: %w", err)
-		}
+	current, err := readActiveState(root)
+	if err != nil {
+		return err
 	}
+	if current != state {
+		return errors.New("active HAWS version changed while rollback was being prepared")
+	}
+	// Only the target must be healthy. The current active version may be exactly
+	// the corrupt package that recovery is meant to move away from.
 	return i.activateState(root, activeState{Active: state.Previous, Previous: state.Active})
 }
 

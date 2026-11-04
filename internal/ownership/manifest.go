@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -21,6 +22,10 @@ const (
 	maxManifestSize = 16 << 10
 	maxPackageFile  = 64 << 20
 )
+
+// ErrRunningPackage reports that package files cannot be removed while the
+// base executable is the process currently running uninstall.
+var ErrRunningPackage = errors.New("HAWS base package executable is currently running")
 
 // RuntimeFiles is the bounded set of immutable resources shipped with a package.
 // Mutable data is kept in the separate data directory.
@@ -130,11 +135,12 @@ func RemovePackageFiles(root, goos string, expected Manifest, currentExecutable 
 			}
 			preserved = append(preserved, ManifestName+" (kept while the base application is running)")
 			sort.Strings(preserved)
-			return nil, preserved, nil
+			return nil, preserved, ErrRunningPackage
 		}
 	}
 	removed := make([]string, 0, len(statuses)+1)
 	preserved := make([]string, 0)
+	var failures []error
 	for _, status := range statuses {
 		switch status.State {
 		case "missing":
@@ -142,7 +148,10 @@ func RemovePackageFiles(root, goos string, expected Manifest, currentExecutable 
 		case "owned":
 			path := filepath.Join(root, filepath.FromSlash(status.Path))
 			if err := os.Remove(path); err != nil {
-				preserved = append(preserved, status.Path)
+				if !errors.Is(err, os.ErrNotExist) {
+					preserved = append(preserved, status.Path)
+					failures = append(failures, fmt.Errorf("remove owned HAWS package file %s: %w", status.Path, err))
+				}
 			} else {
 				removed = append(removed, status.Path)
 			}
@@ -150,7 +159,7 @@ func RemovePackageFiles(root, goos string, expected Manifest, currentExecutable 
 			preserved = append(preserved, status.Path)
 		}
 	}
-	for _, directory := range packageDirectories(goos) {
+	for _, directory := range packageDirectories(current) {
 		path := filepath.Join(root, filepath.FromSlash(directory))
 		info, statErr := os.Lstat(path)
 		if errors.Is(statErr, os.ErrNotExist) {
@@ -165,7 +174,20 @@ func RemovePackageFiles(root, goos string, expected Manifest, currentExecutable 
 			continue
 		}
 		if err := os.Remove(path); err != nil {
-			preserved = append(preserved, directory+" (contains unowned files)")
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			entries, readErr := os.ReadDir(path)
+			if readErr == nil && len(entries) > 0 {
+				preserved = append(preserved, directory+" (contains unowned files)")
+				continue
+			}
+			preserved = append(preserved, directory+" (could not remove)")
+			if readErr != nil {
+				failures = append(failures, fmt.Errorf("inspect owned HAWS package directory %s: %w", directory, readErr))
+			} else {
+				failures = append(failures, fmt.Errorf("remove empty HAWS package directory %s: %w", directory, err))
+			}
 		}
 	}
 	if len(preserved) == 0 {
@@ -174,8 +196,9 @@ func RemovePackageFiles(root, goos string, expected Manifest, currentExecutable 
 		if statErr == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
 			if removeErr := os.Remove(manifestPath); removeErr == nil {
 				removed = append(removed, ManifestName)
-			} else {
+			} else if !errors.Is(removeErr, os.ErrNotExist) {
 				preserved = append(preserved, ManifestName)
+				failures = append(failures, fmt.Errorf("remove HAWS package manifest: %w", removeErr))
 			}
 		} else if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 			preserved = append(preserved, ManifestName)
@@ -187,7 +210,7 @@ func RemovePackageFiles(root, goos string, expected Manifest, currentExecutable 
 	}
 	sort.Strings(removed)
 	sort.Strings(preserved)
-	return removed, preserved, nil
+	return removed, preserved, errors.Join(failures...)
 }
 
 func validateManifest(manifest Manifest, goos string) error {
@@ -265,9 +288,32 @@ func inspectFile(root, relative, expectedHash string) (string, error) {
 	return "owned", nil
 }
 
-func packageDirectories(goos string) []string {
-	platform, _, _, _ := packagePlatform(goos)
-	return []string{"bin/" + platform + "-amd64", "bin/" + platform + "-arm64", "bin"}
+func packageDirectories(manifest Manifest) []string {
+	seen := make(map[string]struct{})
+	for filename := range manifest.Files {
+		directory := path.Dir(filename)
+		for directory != "." && directory != "/" && directory != "" {
+			seen[directory] = struct{}{}
+			parent := path.Dir(directory)
+			if parent == directory {
+				break
+			}
+			directory = parent
+		}
+	}
+	directories := make([]string, 0, len(seen))
+	for directory := range seen {
+		directories = append(directories, directory)
+	}
+	sort.Slice(directories, func(i, j int) bool {
+		leftDepth := strings.Count(directories[i], "/")
+		rightDepth := strings.Count(directories[j], "/")
+		if leftDepth != rightDepth {
+			return leftDepth > rightDepth
+		}
+		return directories[i] < directories[j]
+	})
+	return directories
 }
 
 func packagePlatform(goos string) (string, string, string, error) {

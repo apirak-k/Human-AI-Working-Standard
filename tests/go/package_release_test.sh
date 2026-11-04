@@ -154,6 +154,24 @@ for platform, archive in (("windows", "haws-windows.zip"), ("macos", "haws-macos
     assert not any(part in {".git", "tests", ".superpowers", "data"} for name in actual for part in pathlib.PurePosixPath(name).parts)
 PYTEST
 
+# Exercise uninstall against actual extracted native archives. The first
+# fixture must remove an empty package root; the second must retain personal
+# data and its containing package directory while removing verified app files.
+uninstall_empty_parent="$TMP/uninstall-empty"
+uninstall_data_parent="$TMP/uninstall-data"
+mkdir -p "$uninstall_empty_parent" "$uninstall_data_parent"
+tar -xzf "$NATIVE_OUTPUT/$archive" -C "$uninstall_empty_parent"
+tar -xzf "$NATIVE_OUTPUT/$archive" -C "$uninstall_data_parent"
+uninstall_empty_root="$uninstall_empty_parent/haws-go/$native_os"
+uninstall_data_root="$uninstall_data_parent/haws-go/$native_os"
+mkdir -p "$uninstall_data_root/data/secondbrain"
+printf '%s\n' 'private package data' > "$uninstall_data_root/data/secondbrain/personal.md"
+HAWS_TEST_UNINSTALL_EMPTY_PACKAGE="$uninstall_empty_root" \
+HAWS_TEST_UNINSTALL_DATA_PACKAGE="$uninstall_data_root" \
+  go test ./internal/uninstall -run 'TestApply(RemovesExtractedPackageToEmpty|PreservesExtractedPackageData)$' -count=1 || {
+    fail 'extracted package uninstall/data-preservation checks failed'
+}
+
 # Exercise first-time setup with a pinned local source from the extracted package.
 fixture_repo="$TMP/source-repo"
 git init -q "$fixture_repo"

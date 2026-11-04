@@ -52,8 +52,11 @@ func (u Uninstaller) Run(ctx context.Context, root, appRoot string, stdin io.Rea
 	if err := u.Legacy(ctx, root, stdin, stdout, stderr); err != nil {
 		return err
 	}
-	if previewErr != nil || !newUninstallCompletion(before, snapshotUninstallCompletion(root)) {
+	if !newUninstallCompletion(before, snapshotUninstallCompletion(root)) {
 		return nil
+	}
+	if previewErr != nil {
+		return fmt.Errorf("HAWS integrations were uninstalled, but Go app files were preserved because cleanup could not be verified: %w", previewErr)
 	}
 	result, err := uninstall.Apply(plan)
 	for _, item := range result.Removed {
@@ -61,6 +64,11 @@ func (u Uninstaller) Run(ctx context.Context, root, appRoot string, stdin io.Rea
 	}
 	for _, item := range result.Preserved {
 		fmt.Fprintf(stdout, "[KEEP] Preserved %s.\n", item)
+	}
+	if len(result.Preserved) > 0 {
+		fmt.Fprintln(stdout, "[WARN] Package cleanup left the listed items in place; complete package removal did not occur.")
+	} else if err == nil && len(result.Removed) > 0 {
+		fmt.Fprintln(stdout, "[PASS] All verified HAWS package files were removed.")
 	}
 	return err
 }

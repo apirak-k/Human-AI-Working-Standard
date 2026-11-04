@@ -113,3 +113,32 @@ func TestUninstallerContinuesLegacyCleanupButPreservesMalformedGoMarker(t *testi
 		t.Fatalf("preservation warning missing from output: %q", output.String())
 	}
 }
+
+func TestUninstallerReportsUnverifiedPackageCleanupAfterLegacyCompletion(t *testing.T) {
+	root := t.TempDir()
+	appRoot := t.TempDir()
+	marker := filepath.Join(appRoot, "active-version")
+	if err := os.WriteFile(marker, []byte("user-owned content\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(root, ".haws", "state")
+	var output strings.Builder
+	uninstaller := Uninstaller{
+		Legacy: func(_ context.Context, _ string, _ io.Reader, _ io.Writer, _ io.Writer) error {
+			if err := os.MkdirAll(stateDir, 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(stateDir, "uninstalled"), []byte("complete\n"), 0o600)
+		},
+	}
+	err := uninstaller.Run(context.Background(), root, appRoot, strings.NewReader(""), &output, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "Go app files were preserved") {
+		t.Fatalf("Run() error = %v, want explicit unverified cleanup error", err)
+	}
+	if !strings.Contains(output.String(), "preserving package files") {
+		t.Fatalf("cleanup warning missing from output: %q", output.String())
+	}
+	if contents, readErr := os.ReadFile(marker); readErr != nil || string(contents) != "user-owned content\n" {
+		t.Fatalf("unowned active marker = %q, %v", contents, readErr)
+	}
+}

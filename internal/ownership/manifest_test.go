@@ -117,14 +117,110 @@ func TestRemovePackageFilesPreservesCurrentlyRunningBaseBinary(t *testing.T) {
 	platform, _, extension, _ := packagePlatform(runtime.GOOS)
 	current := filepath.Join(root, "bin", platform+"-"+runtime.GOARCH, "haws"+extension)
 	removed, preserved, err := RemovePackageFiles(root, runtime.GOOS, manifest, current)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrRunningPackage) {
+		t.Fatalf("RemovePackageFiles() error = %v, want ErrRunningPackage", err)
 	}
 	if len(removed) != 0 || len(preserved) == 0 {
 		t.Fatalf("running package removal = removed %v, preserved %v", removed, preserved)
 	}
 	if _, err := os.Stat(current); err != nil {
 		t.Fatalf("running binary was removed: %v", err)
+	}
+}
+
+func TestRemovePackageFilesReportsPermissionFailures(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce Unix directory write bits")
+	}
+	root := t.TempDir()
+	manifest := makePackage(t, root)
+	platform, _, _, _ := packagePlatform(runtime.GOOS)
+	archDirectory := filepath.Join(root, "bin", platform+"-amd64")
+	if err := os.Chmod(archDirectory, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(archDirectory, 0o700) }()
+
+	removed, preserved, err := RemovePackageFiles(root, runtime.GOOS, manifest, "")
+	if err == nil {
+		t.Fatalf("RemovePackageFiles() returned nil error; removed=%v preserved=%v", removed, preserved)
+	}
+	if len(preserved) == 0 {
+		t.Fatalf("permission failure was not reported: removed=%v", removed)
+	}
+}
+
+func TestRemovePackageFilesRemovesEmptyOwnedRuntimeDirectories(t *testing.T) {
+	root := t.TempDir()
+	manifest := makePackage(t, root)
+	runtimeFile := "runtime/core/HAWS.md"
+	runtimeContents := []byte("HAWS runtime fixture")
+	runtimePath := filepath.Join(root, filepath.FromSlash(runtimeFile))
+	if err := os.MkdirAll(filepath.Dir(runtimePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(runtimePath, runtimeContents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(runtimeContents)
+	manifest.Files[runtimeFile] = hex.EncodeToString(hash[:])
+	writeManifest(t, root, manifest)
+
+	removed, preserved, err := RemovePackageFiles(root, runtime.GOOS, manifest, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(removed, runtimeFile) {
+		t.Fatalf("runtime file not listed as removed: %v", removed)
+	}
+	if len(preserved) != 0 {
+		t.Fatalf("unexpected preserved paths: %v", preserved)
+	}
+	for _, directory := range []string{"runtime/core", "runtime"} {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(directory))); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("empty owned directory %s remains: %v", directory, err)
+		}
+	}
+}
+
+func TestRemovePackageFilesPreservesUnownedRuntimeAndDataContent(t *testing.T) {
+	root := t.TempDir()
+	manifest := makePackage(t, root)
+	runtimeFile := "runtime/core/HAWS.md"
+	runtimeContents := []byte("HAWS runtime fixture")
+	runtimePath := filepath.Join(root, filepath.FromSlash(runtimeFile))
+	if err := os.MkdirAll(filepath.Dir(runtimePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(runtimePath, runtimeContents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(runtimeContents)
+	manifest.Files[runtimeFile] = hex.EncodeToString(hash[:])
+	writeManifest(t, root, manifest)
+	if err := os.WriteFile(filepath.Join(root, "runtime", "core", "personal-note.md"), []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	personal := filepath.Join(root, "data", "secondbrain", "WORKFLOW.md")
+	if err := os.MkdirAll(filepath.Dir(personal), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(personal, []byte("personal brain"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, preserved, err := RemovePackageFiles(root, runtime.GOOS, manifest, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(preserved, "runtime/core (contains unowned files)") {
+		t.Fatalf("unowned runtime content was not reported: %v", preserved)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, "runtime", "core", "personal-note.md")); err != nil || string(got) != "keep" {
+		t.Fatalf("unowned runtime file = %q, %v", got, err)
+	}
+	if got, err := os.ReadFile(personal); err != nil || string(got) != "personal brain" {
+		t.Fatalf("personal data = %q, %v", got, err)
 	}
 }
 
