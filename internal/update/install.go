@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/ownership"
 	"io"
 	"os"
 	"path"
@@ -652,8 +653,19 @@ func allowedArchiveDirectory(spec platformSpec, name string) bool {
 		prefix + "/bin/" + spec.packageOS + "-amd64": {},
 		prefix + "/bin/" + spec.packageOS + "-arm64": {},
 	}
-	_, ok := allowed[name]
-	return ok
+	if _, ok := allowed[name]; ok {
+		return true
+	}
+	for _, file := range packagedRuntimeFiles() {
+		directory := path.Dir(prefix + "/runtime/" + file)
+		for directory != prefix && directory != "." {
+			if name == directory {
+				return true
+			}
+			directory = path.Dir(directory)
+		}
+	}
+	return false
 }
 
 func acceptPackageFile(spec platformSpec, stageDir, name string, contents []byte, seen map[string]bool) error {
@@ -674,6 +686,15 @@ func acceptPackageFile(spec platformSpec, stageDir, name string, contents []byte
 			return errors.New("package launcher is empty or oversized")
 		}
 		return nil
+	}
+
+	for _, file := range packagedRuntimeFiles() {
+		if name == prefix+"/runtime/"+file {
+			if len(contents) == 0 || len(contents) > maxControlFileBytes {
+				return fmt.Errorf("runtime file %q is empty or oversized", name)
+			}
+			return nil // Updates activate binaries only; the base runtime remains in place.
+		}
 	}
 
 	for _, arch := range []string{"amd64", "arm64"} {
@@ -719,4 +740,8 @@ func requirePackageFiles(spec platformSpec, seen map[string]bool) error {
 		}
 	}
 	return nil
+}
+
+func packagedRuntimeFiles() []string {
+	return ownership.RuntimeFiles
 }

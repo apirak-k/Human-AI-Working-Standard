@@ -1030,7 +1030,7 @@ migrate_legacy_skill_state() {
 }
 
 _second_brain_dir() {
-    printf '%s/secondbrain\n' "${SCRIPT_DIR}"
+    printf '%s\n' "${HAWS_SECOND_BRAIN_DIR:-${SCRIPT_DIR}/secondbrain}"
 }
 
 _second_brain_safe_git_environment() {
@@ -3146,7 +3146,7 @@ sync_target() {
 }
 
 sync_second_brain_target() {
-    local brain_dir="${SCRIPT_DIR}/secondbrain"
+    local brain_dir="$(_second_brain_dir)"
     local current final before
     if [ "${HAWS_AUTO_UPDATE_BRAIN:-on}" != on ]; then
         sync_result_write secondbrain skipped - "Auto Update is disabled" || return 1
@@ -3774,7 +3774,7 @@ _run_sync_impl() {
         pointer_content+="This environment operates under HAWS. Read and adhere to:\n"
         pointer_content+="- Core Standard: ${SOURCE_DIR}/core/HAWS.md\n"
         pointer_content+="- Work Instructions: ${SOURCE_DIR}/core/WORK_INSTRUCTIONS.md\n"
-        pointer_content+="- Second Brain documents: ${SOURCE_DIR}/secondbrain/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)\n"
+        pointer_content+="- Second Brain documents: $(_second_brain_dir)/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)\n"
         pointer_content+="- Subagent roles: ${SOURCE_DIR}/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.\n"
         pointer_content+="${marker_end}\n"
         pointer_hash="$(printf '%b' "${pointer_content}" | _haws_sha256_stream)" || return 1
@@ -4429,7 +4429,7 @@ EOF
     # Protect secondbrain user files from upstream framework pull clobbering
     if [ -d "${SCRIPT_DIR}/.git" ] || [ -f "${SCRIPT_DIR}/.git" ]; then
         for b_file in USER_PREFERENCES.md ANTI_PATTERNS.md WORKFLOW.md; do
-            if [ -f "${SCRIPT_DIR}/secondbrain/${b_file}" ]; then
+            if [ -f "$(_second_brain_dir)/${b_file}" ]; then
                 git -C "${SCRIPT_DIR}" update-index --skip-worktree "secondbrain/${b_file}" 2>/dev/null || true
             fi
         done
@@ -5489,7 +5489,7 @@ run_user() {
     local action="${1:-status}"
     shift || true
 
-    local brain_dir="${SCRIPT_DIR}/secondbrain"
+    local brain_dir="$(_second_brain_dir)"
     local repo_url=""
 
     # Validate a requested remote before creating or initializing the local

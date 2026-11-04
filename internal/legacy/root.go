@@ -15,6 +15,18 @@ func FindRoot() (string, error) {
 		return "", fmt.Errorf("find HAWS checkout from current directory: %w", err)
 	}
 	executable, _ := os.Executable()
+	// Prefer the runtime shipped with the executable over an unrelated cwd.
+	if executable != "" {
+		for dir := filepath.Dir(executable); ; dir = filepath.Dir(dir) {
+			candidate := filepath.Join(dir, "runtime")
+			if root, err := validateRoot(candidate); err == nil && isPackageLauncher(dir) {
+				return preparePackageRoot(root)
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
+	}
 	starts := []string{cwd}
 	if executable != "" {
 		starts = append(starts, filepath.Dir(executable))
@@ -26,7 +38,7 @@ func FindRoot() (string, error) {
 				break
 			}
 			seen[dir] = true
-			if fileInfo, err := os.Stat(filepath.Join(dir, "haws.sh")); err == nil && !fileInfo.IsDir() {
+			if fileInfo, err := os.Stat(filepath.Join(dir, "haws.sh")); err == nil && !fileInfo.IsDir() && !isPackageLauncher(dir) {
 				return dir, nil
 			}
 			parent := filepath.Dir(dir)
@@ -48,4 +60,60 @@ func validateRoot(root string) (string, error) {
 		return "", fmt.Errorf("HAWS root %q does not contain haws.sh", absolute)
 	}
 	return absolute, nil
+}
+
+// A package launcher named haws.sh is not the legacy shell runtime.
+func isPackageLauncher(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, "package-manifest.json"))
+	return err == nil && info.Mode().IsRegular()
+}
+
+// preparePackageRoot keeps mutable state outside the shipped runtime.
+func preparePackageRoot(root string) (string, error) {
+	packageDir := filepath.Dir(root)
+	ceiling := packageDir
+	if prior := os.Getenv("GIT_CEILING_DIRECTORIES"); prior != "" {
+		ceiling += string(os.PathListSeparator) + prior
+	}
+	if err := os.Setenv("GIT_CEILING_DIRECTORIES", ceiling); err != nil {
+		return "", err
+	}
+	data := filepath.Join(packageDir, "data")
+	if os.Getenv("HAWS_STATE_DIR") == "" {
+		if err := os.Setenv("HAWS_STATE_DIR", filepath.Join(data, "state")); err != nil {
+			return "", err
+		}
+	}
+	if os.Getenv("HAWS_SECOND_BRAIN_DIR") != "" {
+		return root, nil
+	}
+	brain := filepath.Join(data, "secondbrain")
+	if err := os.MkdirAll(brain, 0700); err != nil {
+		return "", fmt.Errorf("create Second Brain data directory: %w", err)
+	}
+	for _, name := range []string{"ANTI_PATTERNS.md", "USER_PREFERENCES.md", "WORKFLOW.md"} {
+		contents, err := os.ReadFile(filepath.Join(root, "secondbrain", name))
+		if err != nil {
+			return "", fmt.Errorf("read Second Brain seed: %w", err)
+		}
+		file, err := os.OpenFile(filepath.Join(brain, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if os.IsExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("create Second Brain seed: %w", err)
+		}
+		_, writeErr := file.Write(contents)
+		closeErr := file.Close()
+		if writeErr != nil {
+			return "", writeErr
+		}
+		if closeErr != nil {
+			return "", closeErr
+		}
+	}
+	if err := os.Setenv("HAWS_SECOND_BRAIN_DIR", brain); err != nil {
+		return "", err
+	}
+	return root, nil
 }

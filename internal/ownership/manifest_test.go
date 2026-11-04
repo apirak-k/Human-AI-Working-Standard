@@ -189,3 +189,18 @@ func contains(values []string, wanted string) bool {
 	}
 	return false
 }
+
+func TestManifestAllowsPackagedRuntimeButRejectsPersonalState(t *testing.T) {
+	root := t.TempDir()
+	manifest := makePackage(t, root)
+	manifest.Files["runtime/haws.sh"] = strings.Repeat("a", 64)
+	writeManifest(t, root, manifest)
+	if _, err := ReadManifest(root, runtime.GOOS); err != nil {
+		t.Fatalf("runtime manifest rejected: %v", err)
+	}
+	manifest.Files["runtime/.haws/state/settings"] = strings.Repeat("a", 64)
+	writeManifest(t, root, manifest)
+	if _, err := ReadManifest(root, runtime.GOOS); err == nil {
+		t.Fatal("personal state accepted as owned")
+	}
+}

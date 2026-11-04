@@ -45,6 +45,25 @@ cp "$ROOT/launchers/windows/haws.bat" "$stage/windows/haws.bat"
 cp "$ROOT/launchers/macos/haws.command" "$stage/macos/haws.command"
 cp "$ROOT/launchers/linux/haws.sh" "$stage/linux/haws.sh"
 chmod 755 "$stage/macos/haws.command" "$stage/linux/haws.sh"
+# Runtime files are intentionally listed individually: never copy a checkout wholesale.
+runtime_files=(
+ haws.sh haws.bat .gitmodules
+ core/HAWS.md core/WORK_INSTRUCTIONS.md
+ agents/backend-engineer.md agents/frontend-engineer.md agents/organizer.md agents/researcher.md agents/tester.md
+ templates/AGENTS.md templates/ARCHITECTURE.md templates/CONSTRAINTS.md templates/DESIGN.md templates/HANDOFF.md templates/PROJECT.md
+ ai-configs/claude/CLAUDE.md.template ai-configs/codex/AGENTS.override.md.template ai-configs/codex/agents.mjs
+ ai-configs/gemini/GEMINI.md.template ai-configs/gemini/skills-json.mjs
+ secondbrain/ANTI_PATTERNS.md secondbrain/USER_PREFERENCES.md secondbrain/WORKFLOW.md
+ skills/skills.disabled skills/custom/README.md skills/custom/keyboard-layout-fixer/SKILL.md
+ skills/custom/keyboard-layout-fixer/scripts/layout_fixer.mjs
+)
+for os in windows macos linux; do
+ for file in "${runtime_files[@]}"; do
+  [[ -f "$ROOT/$file" && ! -L "$ROOT/$file" ]] || fail "runtime source missing or symlinked: $file"
+  mkdir -p "$stage/$os/runtime/$(dirname "$file")"
+  cp "$ROOT/$file" "$stage/$os/runtime/$file"
+ done
+done
 mkdir -p "$stage/archive-root/haws-go"
 
 package_sha256() {
@@ -62,26 +81,22 @@ write_package_metadata() {
 	cat > "$readme" <<EOF
 HAWS Go compatibility package for $os
 
-Extract this package into the root of your existing HAWS checkout. Its files
-stay under haws-go/$os, leaving root haws.sh and haws.bat in place.
-
-Start the included launcher from haws-go/$os. This compatibility release
-delegates Settings, Doctor, and Uninstall to the existing checkout. Sync also
-checks for a verified Go app release before running the existing HAWS Sync.
+Extract this package anywhere and start the included launcher. The runtime/
+directory contains HAWS resources and neutral Second Brain seeds. Persistent
+personal state and Second Brain documents are created in the sibling data/
+directory; retain data/ when removing or replacing a package. The manifest
+records shipped files and never includes personal data.
 EOF
-	cat > "$dir/package-manifest.json" <<EOF
-{
-  "schema_version": 1,
-  "version": "$version",
-  "platform": "$os",
-  "files": {
-    "README.txt": "$(package_sha256 "$readme")",
-    "$launcher": "$(package_sha256 "$dir/$launcher")",
-    "bin/$os-amd64/haws$extension": "$(package_sha256 "$dir/bin/$os-amd64/haws$extension")",
-    "bin/$os-arm64/haws$extension": "$(package_sha256 "$dir/bin/$os-arm64/haws$extension")"
-  }
-}
-EOF
+ {
+  printf '{\n  "schema_version": 1,\n  "version": "%s",\n  "platform": "%s",\n  "files": {\n' "$version" "$os"
+  local relative first=1
+  for relative in README.txt "$launcher" "bin/$os-amd64/haws$extension" "bin/$os-arm64/haws$extension" "${runtime_files[@]/#/runtime/}"; do
+   if [[ $first -eq 0 ]]; then printf ',\n'; fi
+   printf '    "%s": "%s"' "$relative" "$(package_sha256 "$dir/$relative")"
+   first=0
+  done
+  printf '\n  }\n}\n'
+ } > "$dir/package-manifest.json"
 }
 
 build_target() {
@@ -108,8 +123,8 @@ cp -R "$stage/windows" "$stage/archive-root/haws-go/windows"
 cp -R "$stage/macos" "$stage/archive-root/haws-go/macos"
 cp -R "$stage/linux" "$stage/archive-root/haws-go/linux"
 (cd "$stage/archive-root" && zip -q -r -X "$stage/haws-windows.zip" haws-go/windows)
-tar -czf "$stage/haws-macos.tar.gz" -C "$stage/archive-root" haws-go/macos
-tar -czf "$stage/haws-linux.tar.gz" -C "$stage/archive-root" haws-go/linux
+COPYFILE_DISABLE=1 tar -czf "$stage/haws-macos.tar.gz" -C "$stage/archive-root" haws-go/macos
+COPYFILE_DISABLE=1 tar -czf "$stage/haws-linux.tar.gz" -C "$stage/archive-root" haws-go/linux
 
 write_checksum() {
 	local archive="$1"

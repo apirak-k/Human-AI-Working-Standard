@@ -22,6 +22,18 @@ const (
 	maxPackageFile  = 64 << 20
 )
 
+// RuntimeFiles is the bounded set of immutable resources shipped with a package.
+// Mutable data is kept in the separate data directory.
+var RuntimeFiles = []string{
+	"haws.sh", "haws.bat", ".gitmodules",
+	"secondbrain/ANTI_PATTERNS.md", "secondbrain/USER_PREFERENCES.md", "secondbrain/WORKFLOW.md",
+	"core/HAWS.md", "core/WORK_INSTRUCTIONS.md",
+	"agents/backend-engineer.md", "agents/frontend-engineer.md", "agents/organizer.md", "agents/researcher.md", "agents/tester.md",
+	"templates/AGENTS.md", "templates/ARCHITECTURE.md", "templates/CONSTRAINTS.md", "templates/DESIGN.md", "templates/HANDOFF.md", "templates/PROJECT.md",
+	"ai-configs/claude/CLAUDE.md.template", "ai-configs/codex/AGENTS.override.md.template", "ai-configs/codex/agents.mjs", "ai-configs/gemini/GEMINI.md.template", "ai-configs/gemini/skills-json.mjs",
+	"skills/skills.disabled", "skills/custom/README.md", "skills/custom/keyboard-layout-fixer/SKILL.md", "skills/custom/keyboard-layout-fixer/scripts/layout_fixer.mjs",
+}
+
 type Manifest struct {
 	SchemaVersion int               `json:"schema_version"`
 	Version       string            `json:"version"`
@@ -192,8 +204,16 @@ func validateManifest(manifest Manifest, goos string) error {
 		"bin/" + platform + "-amd64/haws" + extension: true,
 		"bin/" + platform + "-arm64/haws" + extension: true,
 	}
-	if len(manifest.Files) != len(expected) {
+	for _, file := range RuntimeFiles {
+		expected["runtime/"+file] = true
+	}
+	if len(manifest.Files) < 4 {
 		return errors.New("HAWS package manifest has an invalid file list")
+	}
+	for _, required := range []string{"README.txt", launcher, "bin/" + platform + "-amd64/haws" + extension, "bin/" + platform + "-arm64/haws" + extension} {
+		if _, ok := manifest.Files[required]; !ok {
+			return errors.New("HAWS package manifest is missing a required file")
+		}
 	}
 	for path, fingerprint := range manifest.Files {
 		if !expected[path] || !isSHA256Hex(fingerprint) {

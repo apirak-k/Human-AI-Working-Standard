@@ -112,6 +112,52 @@ for archive in haws-windows.zip haws-macos.tar.gz haws-linux.tar.gz; do
 	[[ "$want" == "$got" ]] || fail "checksum mismatch for $archive"
 done
 
+# Verify the extracted package can run an actual action with no checkout nearby.
+NATIVE_OUTPUT="$TMP/native-release"
+bash "$ROOT/scripts/package-release.sh" v9.8.7 "$NATIVE_OUTPUT" || fail 'native package build failed'
+case "$(uname -s)" in
+  Darwin) native_os=macos; launcher=haws.command; archive=haws-macos.tar.gz ;;
+  Linux) native_os=linux; launcher=haws.sh; archive=haws-linux.tar.gz ;;
+  *) fail 'native package test requires macOS or Linux' ;;
+esac
+mkdir -p "$TMP/extracted" "$TMP/home"
+tar -xzf "$NATIVE_OUTPUT/$archive" -C "$TMP/extracted"
+native_root="$TMP/extracted/haws-go/$native_os"
+[[ -f "$native_root/runtime/haws.sh" ]] || fail 'extracted package is missing its runtime'
+(cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" doctor >"$TMP/doctor.log" 2>&1) || { cat "$TMP/doctor.log" >&2; fail 'extracted launcher could not run Doctor'; }
+rg -qi 'doctor|health' "$TMP/doctor.log" || fail 'Doctor action did not run'
+[[ -f "$native_root/data/secondbrain/WORKFLOW.md" ]] || fail 'persistent Second Brain seed was not initialized in data/'
+[[ ! -d "$native_root/runtime/.haws" ]] || fail 'runtime contains writable state'
+
+
+# Inspect every actual archive and compare each shipped file to its manifest.
+python3 - "$NATIVE_OUTPUT" "$TMP/inspect" <<'PYTEST'
+import hashlib, json, pathlib, sys, tarfile, zipfile
+output, dest = map(pathlib.Path, sys.argv[1:])
+for platform, archive in (("windows", "haws-windows.zip"), ("macos", "haws-macos.tar.gz"), ("linux", "haws-linux.tar.gz")):
+    target = dest / platform
+    target.mkdir(parents=True)
+    if archive.endswith(".zip"):
+        with zipfile.ZipFile(output / archive) as source:
+            source.extractall(target)
+    else:
+        with tarfile.open(output / archive) as source:
+            source.extractall(target)
+    root = target / "haws-go" / platform
+    manifest = json.loads((root / "package-manifest.json").read_text())
+    actual = {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
+    assert actual == set(manifest["files"]) | {"package-manifest.json"}, (platform, actual ^ set(manifest["files"]))
+    for name, expected in manifest["files"].items():
+        assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected, (platform, name)
+    assert "runtime/haws.sh" in actual
+    assert not any(part in {".git", "tests", ".superpowers", "data"} for name in actual for part in pathlib.PurePosixPath(name).parts)
+PYTEST
+
+# A repeat launch must preserve user edits.
+echo 'personal change' >> "$native_root/data/secondbrain/WORKFLOW.md"
+(cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" doctor >"$TMP/doctor-repeat.log" 2>&1) || fail 'repeat Doctor failed'
+rg -q 'personal change' "$native_root/data/secondbrain/WORKFLOW.md" || fail 'repeat launch overwrote personal data'
+
 PROTECTED="$TMP/existing"
 mkdir -p "$PROTECTED"
 echo keep > "$PROTECTED/marker"

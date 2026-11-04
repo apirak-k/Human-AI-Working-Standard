@@ -426,3 +426,14 @@ func TestRollbackWithoutPreviousVersionFailsWithoutChangingBase(t *testing.T) {
 		t.Fatalf("active version after invalid rollback = %q, %v", got, err)
 	}
 }
+
+func TestReleaseArchiveAcceptsPackagedRuntimeResources(t *testing.T) {
+	spec := platformForRuntimeTest(t)
+	prefix := "haws-go/" + spec.packageOS
+	if err := acceptPackageFile(spec, t.TempDir(), prefix+"/runtime/haws.sh", []byte("runtime"), map[string]bool{}); err != nil {
+		t.Fatalf("runtime rejected: %v", err)
+	}
+	if err := acceptPackageFile(spec, t.TempDir(), prefix+"/runtime/.haws/state/settings", []byte("state"), map[string]bool{}); err == nil {
+		t.Fatal("personal state accepted")
+	}
+}
