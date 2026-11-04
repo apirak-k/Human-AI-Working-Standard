@@ -46,17 +46,43 @@ cp "$ROOT/launchers/macos/haws.command" "$stage/macos/haws.command"
 cp "$ROOT/launchers/linux/haws.sh" "$stage/linux/haws.sh"
 chmod 755 "$stage/macos/haws.command" "$stage/linux/haws.sh"
 mkdir -p "$stage/archive-root/haws-go"
-cat > "$stage/archive-root/README.txt" <<'EOF'
-HAWS Go compatibility launchers
 
-Extract this package into the root of your existing HAWS checkout. It creates
-the launcher and CPU-specific binaries under haws-go/<operating-system>/ so
-the existing root haws.sh and haws.bat launchers are left in place.
+package_sha256() {
+	if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+	elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+	else fail 'SHA-256 tool not found (need sha256sum or shasum)'
+	fi
+}
 
-Start the included launcher from haws-go/<operating-system>/. This first Go
-release delegates Sync, Settings, Doctor, and Uninstall to that existing HAWS
-checkout. The Go application and its update flow are being migrated in stages.
+write_package_metadata() {
+	local os="$1" launcher="$2" readme dir extension=""
+	dir="$stage/$os"
+	readme="$dir/README.txt"
+	if [[ "$os" == windows ]]; then extension=.exe; fi
+	cat > "$readme" <<EOF
+HAWS Go compatibility package for $os
+
+Extract this package into the root of your existing HAWS checkout. Its files
+stay under haws-go/$os, leaving root haws.sh and haws.bat in place.
+
+Start the included launcher from haws-go/$os. This compatibility release
+delegates Settings, Doctor, and Uninstall to the existing checkout. Sync also
+checks for a verified Go app release before running the existing HAWS Sync.
 EOF
+	cat > "$dir/package-manifest.json" <<EOF
+{
+  "schema_version": 1,
+  "version": "$version",
+  "platform": "$os",
+  "files": {
+    "README.txt": "$(package_sha256 "$readme")",
+    "$launcher": "$(package_sha256 "$dir/$launcher")",
+    "bin/$os-amd64/haws$extension": "$(package_sha256 "$dir/bin/$os-amd64/haws$extension")",
+    "bin/$os-arm64/haws$extension": "$(package_sha256 "$dir/bin/$os-arm64/haws$extension")"
+  }
+}
+EOF
+}
 
 build_target() {
 	local os="$1" goos="$1" arch="$2" extension=""
@@ -74,12 +100,16 @@ build_target macos arm64
 build_target linux amd64
 build_target linux arm64
 
+write_package_metadata windows haws.bat
+write_package_metadata macos haws.command
+write_package_metadata linux haws.sh
+
 cp -R "$stage/windows" "$stage/archive-root/haws-go/windows"
 cp -R "$stage/macos" "$stage/archive-root/haws-go/macos"
 cp -R "$stage/linux" "$stage/archive-root/haws-go/linux"
-(cd "$stage/archive-root" && zip -q -r -X "$stage/haws-windows.zip" README.txt haws-go/windows)
-tar -czf "$stage/haws-macos.tar.gz" -C "$stage/archive-root" README.txt haws-go/macos
-tar -czf "$stage/haws-linux.tar.gz" -C "$stage/archive-root" README.txt haws-go/linux
+(cd "$stage/archive-root" && zip -q -r -X "$stage/haws-windows.zip" haws-go/windows)
+tar -czf "$stage/haws-macos.tar.gz" -C "$stage/archive-root" haws-go/macos
+tar -czf "$stage/haws-linux.tar.gz" -C "$stage/archive-root" haws-go/linux
 
 write_checksum() {
 	local archive="$1"

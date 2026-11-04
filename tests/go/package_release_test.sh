@@ -68,14 +68,38 @@ for target in windows/amd64 windows/arm64 macos/amd64 macos/arm64 linux/amd64 li
 	case "$target" in windows/*) ext=.exe ;; *) ext= ;; esac
 	[[ -f "$OUTPUT/$os/bin/$os-$arch/haws$ext" ]] || fail "binary missing for $target"
 done
+for os in windows macos linux; do
+	[[ -f "$OUTPUT/$os/README.txt" ]] || fail "$os package README is missing"
+	[[ -f "$OUTPUT/$os/package-manifest.json" ]] || fail "$os package ownership manifest is missing"
+	manifest="$OUTPUT/$os/package-manifest.json"
+	case "$os" in
+		windows) launcher=haws.bat; extension=.exe ;;
+		macos) launcher=haws.command; extension= ;;
+		linux) launcher=haws.sh; extension= ;;
+	esac
+	for relative in "README.txt" "$launcher" "bin/$os-amd64/haws$extension" "bin/$os-arm64/haws$extension"; do
+		want="$(awk -F '"' -v key="$relative" '$2 == key { print $4 }' "$manifest")"
+		[[ -n "$want" ]] || fail "$os package manifest is missing $relative"
+		if command -v sha256sum >/dev/null 2>&1; then
+			got="$(sha256sum "$OUTPUT/$os/$relative" | awk '{print $1}')"
+		else
+			got="$(shasum -a 256 "$OUTPUT/$os/$relative" | awk '{print $1}')"
+		fi
+		[[ "$want" == "$got" ]] || fail "$os package manifest fingerprint differs for $relative"
+	done
+done
 
 unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^haws-go/windows/haws[.]bat$' || fail 'Windows archive is missing its launcher'
 windows_entries="$(unzip -Z1 "$OUTPUT/haws-windows.zip")"
 [[ "$windows_entries" == *haws-go/windows/bin/windows-arm64/haws.exe* ]] || { echo "$windows_entries" >&2; fail 'Windows archive is missing ARM64 binary'; }
-unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^README[.]txt$' || fail 'Windows archive is missing installation instructions'
+unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^haws-go/windows/README[.]txt$' || fail 'Windows archive is missing installation instructions'
+unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^haws-go/windows/package-manifest[.]json$' || fail 'Windows archive is missing its ownership manifest'
+if unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^README[.]txt$'; then fail 'Windows archive may overwrite a checkout-root README'; fi
 tar -tzf "$OUTPUT/haws-macos.tar.gz" | rg -q '^haws-go/macos/haws[.]command$' || fail 'macOS archive is missing its launcher'
+tar -tzf "$OUTPUT/haws-macos.tar.gz" | rg -q '^haws-go/macos/package-manifest[.]json$' || fail 'macOS archive is missing its ownership manifest'
 tar -tzf "$OUTPUT/haws-macos.tar.gz" | rg -q '^haws-go/macos/bin/macos-amd64/haws$' || fail 'macOS archive is missing AMD64 binary'
 tar -tzf "$OUTPUT/haws-linux.tar.gz" | rg -q '^haws-go/linux/bin/linux-arm64/haws$' || fail 'Linux archive is missing ARM64 binary'
+tar -tzf "$OUTPUT/haws-linux.tar.gz" | rg -q '^haws-go/linux/package-manifest[.]json$' || fail 'Linux archive is missing its ownership manifest'
 
 for archive in haws-windows.zip haws-macos.tar.gz haws-linux.tar.gz; do
 	[[ -f "$OUTPUT/$archive.sha256" ]] || fail "checksum manifest missing for $archive"
