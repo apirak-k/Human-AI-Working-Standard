@@ -947,6 +947,112 @@ test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail() {
         'Plugin copy of Ponytail.'
 }
 
+# Canonical names alone must never authorize overwriting an existing agent.
+run_sync_agent_ownership_case() {
+    local mode="$1"
+    init_superproject || return 1
+    mkdir -p "${FIXTURE_PROJECT}/agents" "${FIXTURE_PROJECT}/ai-configs/gemini" \
+        "${FIXTURE_HOME}/.claude/agents" \
+        "${FIXTURE_HOME}/.gemini/config/agents/backend-engineer" || return 1
+    cp "${PROJECT_ROOT}/agents/backend-engineer.md" \
+        "${FIXTURE_PROJECT}/agents/backend-engineer.md" || return 1
+    cp "${PROJECT_ROOT}/ai-configs/gemini/skills-json.mjs" \
+        "${FIXTURE_PROJECT}/ai-configs/gemini/skills-json.mjs" || return 1
+    write_sync_settings
+    source_haws || return 1
+    local source="${FIXTURE_PROJECT}/agents/backend-engineer.md"
+    local foreign="${FIXTURE_ROOT}/user-agent.md" target record
+    printf 'Personal agent instructions\n' > "${foreign}"
+    local -a targets=(
+        "${FIXTURE_HOME}/.claude/agents/backend-engineer.md"
+        "${FIXTURE_HOME}/.gemini/config/agents/backend-engineer/agent.md"
+    )
+    for target in "${targets[@]}"; do
+        case "${mode}" in
+            file|changed-file) cp "${foreign}" "${target}" || return 1 ;;
+            symlink|changed-symlink) ln -s "${foreign}" "${target}" || return 1 ;;
+            dangling) ln -s "${FIXTURE_ROOT}/missing-agent.md" "${target}" || return 1 ;;
+            directory)
+                mkdir "${target}" || return 1
+                cp "${foreign}" "${target}/user.md" || return 1 ;;
+            exact-copy|legacy-copy) cp "${source}" "${target}" || return 1 ;;
+            exact-link|legacy-link) ln -s "${source}" "${target}" || return 1 ;;
+            legacy-hardlink) ln "${source}" "${target}" || return 1 ;;
+        esac
+        case "${mode}" in
+            changed-file)
+                ownership_record agents generated-file "${target}" "${source}" \
+                    "$(_haws_sha256 "${source}")" || return 1 ;;
+            changed-symlink)
+                ownership_record agents symlink "${target}" "${source}" "${source}" || return 1 ;;
+        esac
+    done
+    case "${mode}" in
+        legacy-*)
+            printf 'installed\n' > "${HAWS_STATE_DIR}/install.complete"
+            printf 'agent:backend-engineer\n' > "${FIXTURE_HOME}/.haws_manifest" ;;
+    esac
+    local pass
+    for pass in 1 2; do
+        if ! run_sync >"${OUTPUT_FILE}" 2>&1; then
+            cat "${OUTPUT_FILE}"
+            return 1
+        fi
+        for target in "${targets[@]}"; do
+            case "${mode}" in
+                file|changed-file)
+                    [ -f "${target}" ] && [ ! -L "${target}" ] &&
+                        cmp -s -- "${foreign}" "${target}" || fail "${mode} changed: ${target}" || return 1 ;;
+                symlink|changed-symlink)
+                    [ -L "${target}" ] && [ "$(readlink "${target}")" = "${foreign}" ] ||
+                        fail "${mode} changed: ${target}" || return 1 ;;
+                dangling)
+                    [ -L "${target}" ] && [ "$(readlink "${target}")" = "${FIXTURE_ROOT}/missing-agent.md" ] ||
+                        fail "dangling link changed: ${target}" || return 1 ;;
+                directory)
+                    [ -d "${target}" ] && [ ! -L "${target}" ] &&
+                        cmp -s -- "${foreign}" "${target}/user.md" &&
+                        [ "$(find "${target}" -mindepth 1 | wc -l | tr -d ' ')" = 1 ] ||
+                        fail "directory changed: ${target}" || return 1 ;;
+                exact-copy)
+                    [ -f "${target}" ] && [ ! -L "${target}" ] &&
+                        cmp -s -- "${source}" "${target}" || return 1 ;;
+                exact-link)
+                    [ -L "${target}" ] && [ "$(readlink "${target}")" = "${source}" ] || return 1 ;;
+                legacy-*)
+                    record="$(ownership_record_for_path agents "${target}")" || return 1
+                    ownership_verify "${record}" || return 1
+                    cmp -s -- "${source}" "${target}" || return 1
+                    [ "${pass}" != 1 ] || assert_output_contains '[ADOPTED] Exact legacy' || return 1 ;;
+            esac
+            case "${mode}" in
+                legacy-*) ;;
+                changed-file)
+                    record="$(ownership_record_for_path agents "${target}")" || return 1
+                    [ "${record}" = "generated-file"$'\t'"${target}"$'\t'"${source}"$'\t'"$(_haws_sha256 "${source}")" ] || return 1 ;;
+                changed-symlink)
+                    record="$(ownership_record_for_path agents "${target}")" || return 1
+                    [ "${record}" = "symlink"$'\t'"${target}"$'\t'"${source}"$'\t'"${source}" ] || return 1 ;;
+                *)
+                    record="$(ownership_record_for_path agents "${target}" 2>/dev/null || true)"
+                    [ -z "${record}" ] || fail "unowned agent was adopted: ${target}" || return 1 ;;
+            esac
+        done
+    done
+}
+
+test_run_sync_preserves_unowned_agent_file() { run_sync_agent_ownership_case file; }
+test_run_sync_preserves_unowned_agent_symlink() { run_sync_agent_ownership_case symlink; }
+test_run_sync_preserves_unowned_agent_dangling_link() { run_sync_agent_ownership_case dangling; }
+test_run_sync_preserves_unowned_agent_directory() { run_sync_agent_ownership_case directory; }
+test_run_sync_preserves_unowned_exact_agent_copy() { run_sync_agent_ownership_case exact-copy; }
+test_run_sync_preserves_unowned_exact_agent_link() { run_sync_agent_ownership_case exact-link; }
+test_run_sync_adopts_exact_legacy_agent_copy() { run_sync_agent_ownership_case legacy-copy; }
+test_run_sync_adopts_exact_legacy_agent_link() { run_sync_agent_ownership_case legacy-link; }
+test_run_sync_adopts_exact_legacy_agent_hardlink() { run_sync_agent_ownership_case legacy-hardlink; }
+test_run_sync_preserves_changed_owned_agent_file() { run_sync_agent_ownership_case changed-file; }
+test_run_sync_preserves_changed_owned_agent_link() { run_sync_agent_ownership_case changed-symlink; }
+
 test_run_sync_copies_agent_when_link_command_does_not_create_link() {
     init_superproject || return 1
     mkdir -p "${FIXTURE_PROJECT}/agents" "${FIXTURE_HOME}/.gemini" || return 1
@@ -1679,6 +1785,17 @@ run_test test_run_sync_honors_source_aware_disabled_skill_without_legacy_scanner
 run_test test_direct_skills_route_uses_the_settings_catalog
 run_test test_run_sync_keeps_each_source_qualified_skill_in_state
 run_test test_run_sync_does_not_create_codex_link_for_plugin_owned_ponytail
+run_test test_run_sync_preserves_unowned_agent_file
+run_test test_run_sync_preserves_unowned_agent_symlink
+run_test test_run_sync_preserves_unowned_agent_dangling_link
+run_test test_run_sync_preserves_unowned_agent_directory
+run_test test_run_sync_preserves_unowned_exact_agent_copy
+run_test test_run_sync_preserves_unowned_exact_agent_link
+run_test test_run_sync_adopts_exact_legacy_agent_copy
+run_test test_run_sync_adopts_exact_legacy_agent_link
+run_test test_run_sync_adopts_exact_legacy_agent_hardlink
+run_test test_run_sync_preserves_changed_owned_agent_file
+run_test test_run_sync_preserves_changed_owned_agent_link
 run_test test_run_sync_copies_agent_when_link_command_does_not_create_link
 run_test test_run_sync_recovers_copy_mislabeled_as_link
 run_test test_run_sync_recovers_copy_mislabeled_as_hardlink
