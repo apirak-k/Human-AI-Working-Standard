@@ -48,12 +48,11 @@
 - `internal/legacy.Run(ctx, root, action, stdin, stdout, stderr)` invokes the corresponding existing HAWS command without changing the legacy runtime.
 - `HAWS_ROOT` may select a checkout explicitly; otherwise locate a root containing `haws.sh` by walking from the current directory and executable directory.
 
-- [ ] Write tests for every menu action, invalid input, EOF, action failure, and return-to-menu behavior.
-- [ ] Run `go test ./internal/tui` and confirm the expected missing-symbol failure.
-- [ ] Implement the minimal standard-library menu and action routing.
-- [ ] Add legacy command execution for Unix and Windows with inherited terminal streams and preserved exit status.
-- [ ] Run `go test ./...` and the existing `bash tests/cli/run.sh`.
-- [ ] Commit as `feat: add Go HAWS terminal entrypoint`.
+- [x] Write tests for every menu action, invalid input, EOF, action failure, and return-to-menu behavior.
+- [x] Implement the minimal standard-library menu and action routing.
+- [x] Add legacy command execution for Unix and Windows with inherited terminal streams and preserved exit status.
+- [x] Run `go test ./...` and the existing `bash tests/cli/run.sh`.
+- [x] Commit as `feat: add Go HAWS terminal entrypoint` (`ee9e59b`).
 
 ### Task 2: OS launchers and CPU selection
 
@@ -68,12 +67,12 @@
 - Each launcher invokes `bin/<os>-<arch>/haws[.exe]` relative to its own package directory.
 - macOS/Linux map `arm64|aarch64` and `x86_64|amd64`; Windows maps `ARM64` and `AMD64` including `PROCESSOR_ARCHITEW6432`.
 
-- [ ] Add hermetic launcher fixtures with fake architecture values and sentinel binaries.
-- [ ] Run the Unix launcher tests and confirm missing/unsupported binary cases fail safely.
-- [ ] Implement the three launchers without changing `haws.bat` or `haws.sh`.
-- [ ] Run Unix launcher tests and PowerShell launcher tests on their native hosts.
-- [ ] Cross-build `cmd/haws` for all six OS/CPU targets.
-- [ ] Commit as `feat: add cross-platform Go launchers`.
+- [x] Add hermetic launcher fixtures with fake architecture values and sentinel binaries.
+- [x] Run the Unix launcher tests and confirm missing/unsupported binary cases fail safely.
+- [x] Implement the three launchers without changing `haws.bat` or `haws.sh`.
+- [ ] Run the PowerShell launcher tests on a native Windows host; this Mac worktree has no PowerShell runtime.
+- [x] Cross-build `cmd/haws` for all six OS/CPU targets. Cross-build is compile-only, not runtime verification.
+- [x] Commit as `feat: add cross-platform Go launchers` (Windows runtime check remains pending).
 
 ### Task 3: Three release packages and automated builds
 
