@@ -120,3 +120,7 @@ finally {
     else { $env:GOARCH = $originalGoArch }
     Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# Several launcher checks above intentionally expect a nonzero native exit.
+# Return a successful script status after all assertions and cleanup pass.
+$global:LASTEXITCODE = 0
