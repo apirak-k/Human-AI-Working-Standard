@@ -162,6 +162,72 @@ func TestRunExecutesNativeHawsRootSyncTarget(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeRegisteredSourceSyncTarget(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitForNativeSync(t, root, "init", "-b", "main")
+	gitForNativeSync(t, root, "config", "user.email", "test@example.invalid")
+	gitForNativeSync(t, root, "config", "user.name", "Test")
+	const sourcePath = "skills/packs/demo"
+	sourceDir := filepath.Join(root, filepath.FromSlash(sourcePath))
+	if err := os.MkdirAll(sourceDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	gitForNativeSync(t, sourceDir, "init", "-b", "main")
+	gitForNativeSync(t, sourceDir, "config", "user.email", "test@example.invalid")
+	gitForNativeSync(t, sourceDir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte("---\nname: demo\ndescription: fixture\n---\n\nBaseline.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitForNativeSync(t, sourceDir, "add", "SKILL.md")
+	gitForNativeSync(t, sourceDir, "commit", "-m", "baseline")
+	remote := filepath.Join(t.TempDir(), "demo.git")
+	gitForNativeSync(t, filepath.Dir(remote), "init", "--bare", remote)
+	gitForNativeSync(t, sourceDir, "remote", "add", "origin", remote)
+	gitForNativeSync(t, sourceDir, "push", "-u", "origin", "main")
+	gitForNativeSync(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+	if err := os.WriteFile(filepath.Join(root, ".gitmodules"), []byte("[submodule \"demo\"]\n\tpath = "+sourcePath+"\n\turl = https://example.invalid/demo.git\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	seed := filepath.Join(t.TempDir(), "seed")
+	gitForNativeSync(t, filepath.Dir(seed), "clone", remote, seed)
+	gitForNativeSync(t, seed, "config", "user.email", "test@example.invalid")
+	gitForNativeSync(t, seed, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(seed, "SKILL.md"), []byte("---\nname: demo\ndescription: fixture\n---\n\nUpdated.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitForNativeSync(t, seed, "add", "SKILL.md")
+	gitForNativeSync(t, seed, "commit", "-m", "advance source")
+	gitForNativeSync(t, seed, "push", "origin", "main")
+	want := gitForNativeSync(t, seed, "rev-parse", "HEAD")
+
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_REPO_DIR", "")
+	t.Setenv("HAWS_STATE_DIR", filepath.Join(root, ".haws", "state"))
+	t.Setenv("HAWS_SYNC_CANDIDATE_REF", "refs/haws-sync/777-source")
+	t.Setenv("HAWS_SYNC_PREFETCH_DONE", "")
+	t.Setenv("HAWS_SYNC_TIMEOUT_SECONDS", "10")
+	t.Setenv("HAWS_PACKAGE_DIR", "")
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-target", "demo::" + sourcePath}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native source target exit = %d, stderr = %q", code, stderr.String())
+	}
+	if got, expected := stdout.String(), "updated\t"+want+"\tfinal HEAD equals candidate\n"; got != expected {
+		t.Fatalf("native source result = %q, want %q", got, expected)
+	}
+	if got := gitForNativeSync(t, sourceDir, "rev-parse", "HEAD"); got != want {
+		t.Fatalf("source HEAD = %s, want %s", got, want)
+	}
+	if got := gitForNativeSync(t, remote, "rev-parse", "refs/heads/main"); got != want {
+		t.Fatalf("source Sync changed upstream HEAD to %s, want %s", got, want)
+	}
+	if got := gitForNativeSync(t, sourceDir, "for-each-ref", "refs/haws-sync"); got != "" {
+		t.Fatalf("native source candidate ref leaked: %s", got)
+	}
+}
+
 func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".haws", "state")
@@ -180,6 +246,27 @@ func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	}
 	if got, want := stdout.String(), "skipped\t-\tAuto Update is disabled\n"; got != want {
 		t.Fatalf("native HAWS result = %q, want %q", got, want)
+	}
+}
+
+func TestRunSkipsNativeSourceSyncWhenDisabled(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, ".haws", "state")
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "settings.tsv"), []byte("schema_version\t1\nauto_update_skills\toff\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_REPO_DIR", "")
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-target", "demo::skills/packs/demo"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native source target exit = %d, stderr = %q", code, stderr.String())
+	}
+	if got, want := stdout.String(), "skipped\t-\tAuto Update is disabled\n"; got != want {
+		t.Fatalf("native source result = %q, want %q", got, want)
 	}
 }
 

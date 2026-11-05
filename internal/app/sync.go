@@ -33,8 +33,8 @@ type Syncer struct {
 	Legacy      legacySync
 }
 
-// Run performs the release-managed app update and then delegates the existing
-// HAWS Sync, which still owns repository sources, settings, and integrations.
+// Run performs the release-managed app update and then delegates HAWS Sync,
+// which still owns target orchestration, skill installation, and integrations.
 func (s Syncer) Run(ctx context.Context, root, appRoot string, updateEnabled bool, stdin io.Reader, stdout, stderr io.Writer) error {
 	if s.Legacy == nil {
 		return errors.New("HAWS legacy Sync is not configured")
@@ -189,10 +189,11 @@ func runLegacySyncWithBinary(ctx context.Context, root string, args []string, st
 		binary = resolved
 	}
 	if err := legacy.RunCommandWithEnv(ctx, root, args, stdin, stdout, stderr, map[string]string{
-		"HAWS_NATIVE_BRAIN_SYNC": "1",
-		"HAWS_NATIVE_ROOT_SYNC":  "1",
-		"HAWS_GO_HOST_BINARY":    binary,
-		"HAWS_SYNC_ROOT":         root,
+		"HAWS_NATIVE_BRAIN_SYNC":  "1",
+		"HAWS_NATIVE_ROOT_SYNC":   "1",
+		"HAWS_NATIVE_SOURCE_SYNC": "1",
+		"HAWS_GO_HOST_BINARY":     binary,
+		"HAWS_SYNC_ROOT":          root,
 	}); err != nil {
 		return err
 	}

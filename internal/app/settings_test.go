@@ -38,7 +38,7 @@ func settingsHostFixture(t *testing.T, pending bool, syncExit string) (string, s
 	script := "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$HAWS_CALL_LOG\"\n" +
 		"case \"$1\" in\n" +
 		"  settings|setup) exit 91;;\n" +
-		"  sync) printf '%s\\n' \"$HAWS_GO_HOST\" > \"$HAWS_HOST_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_ROOT_SYNC\" > \"$HAWS_ROOT_SYNC_LOG\"; exit \"${HAWS_TEST_SYNC_EXIT:-0}\";;\n" +
+		"  sync) printf '%s\\n' \"$HAWS_GO_HOST\" > \"$HAWS_HOST_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_ROOT_SYNC\" > \"$HAWS_ROOT_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_SOURCE_SYNC\" > \"$HAWS_SOURCE_SYNC_LOG\"; exit \"${HAWS_TEST_SYNC_EXIT:-0}\";;\n" +
 		"esac\n"
 	if runtime.GOOS == "windows" {
 		batch := "@echo off\r\necho(%1>>\"%HAWS_CALL_LOG%\"\r\n" +
@@ -46,6 +46,7 @@ func settingsHostFixture(t *testing.T, pending bool, syncExit string) (string, s
 			"if /I \"%1\"==\"setup\" exit /b 91\r\n" +
 			"if /I \"%1\"==\"sync\" echo %HAWS_GO_HOST% > \"%HAWS_HOST_LOG%\"\r\n" +
 			"if /I \"%1\"==\"sync\" echo %HAWS_NATIVE_ROOT_SYNC% > \"%HAWS_ROOT_SYNC_LOG%\"\r\n" +
+			"if /I \"%1\"==\"sync\" echo %HAWS_NATIVE_SOURCE_SYNC% > \"%HAWS_SOURCE_SYNC_LOG%\"\r\n" +
 			"if /I \"%1\"==\"sync\" exit /b %HAWS_TEST_SYNC_EXIT%\r\n"
 		if err := os.WriteFile(filepath.Join(root, "haws.bat"), []byte(batch), 0o600); err != nil {
 			t.Fatal(err)
@@ -70,6 +71,7 @@ func settingsHostFixture(t *testing.T, pending bool, syncExit string) (string, s
 	t.Setenv("HAWS_CALL_LOG", calls)
 	t.Setenv("HAWS_HOST_LOG", filepath.Join(root, "host.log"))
 	t.Setenv("HAWS_ROOT_SYNC_LOG", filepath.Join(root, "root-sync.log"))
+	t.Setenv("HAWS_SOURCE_SYNC_LOG", filepath.Join(root, "source-sync.log"))
 	t.Setenv("HAWS_TEST_SYNC_EXIT", syncExit)
 	return root, calls, applyResult
 }
@@ -95,6 +97,10 @@ func TestRunSettingsUsesOneGoHostedSyncWhenIntegrationIsPending(t *testing.T) {
 	rootSync, err := os.ReadFile(filepath.Join(root, "root-sync.log"))
 	if err != nil || strings.TrimSpace(strings.ReplaceAll(string(rootSync), "\r\n", "\n")) != "1" {
 		t.Fatalf("native root Sync marker = %q, %v; want 1", rootSync, err)
+	}
+	sourceSync, err := os.ReadFile(filepath.Join(root, "source-sync.log"))
+	if err != nil || strings.TrimSpace(strings.ReplaceAll(string(sourceSync), "\r\n", "\n")) != "1" {
+		t.Fatalf("native source Sync marker = %q, %v; want 1", sourceSync, err)
 	}
 	if !strings.Contains(stdout.String(), "authoritative Sync") {
 		t.Fatalf("Go-hosted Sync was not explained: %q", stdout.String())

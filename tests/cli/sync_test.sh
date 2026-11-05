@@ -42,7 +42,7 @@ cleanup_fixture() {
         HAWS_SYNC_PRESENTATION SYNC_SUMMARY_UPDATED \
         HAWS_PACKAGE_DIR \
         HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
-        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_ROOT_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
+        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
         HAWS_SYNC_CANDIDATE_REF HAWS_NATIVE_HELPER_LOG \
         GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
@@ -920,6 +920,32 @@ EOF
     grep -F 'haws' "${OUTPUT_FILE}" | grep -F '[PASS] Updated' >/dev/null
 }
 
+test_go_host_runs_native_registered_source_target_inside_existing_sync_presentation() {
+    local name="nativesource" target="nativesource::skills/packs/nativesource"
+    local helper="${FIXTURE_ROOT}/native-go-host"
+    local helper_log="${FIXTURE_ROOT}/native-go-host.log"
+    add_source "${name}"
+    write_settings on
+    cat > "${helper}" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
+printf '%s\n' "$HAWS_SYNC_CANDIDATE_REF" >> "$HAWS_NATIVE_HELPER_LOG"
+printf 'updated\t1111111111111111111111111111111111111111\tfinal HEAD equals candidate\n'
+EOF
+    chmod +x "${helper}"
+    source_haws || return 1
+    export HAWS_NATIVE_SOURCE_SYNC=1
+    export HAWS_GO_HOST_BINARY="${helper}"
+    export HAWS_NATIVE_HELPER_LOG="${helper_log}"
+    HAWS_SYNC_PRESENTATION=1
+    SYNC_SUMMARY_UPDATED=0
+    sync_target "${target}" >"${OUTPUT_FILE}" 2>&1 || return 1
+    grep -Fx -- "--haws-sync-target ${target}" "${helper_log}" >/dev/null || return 1
+    grep -E '^refs/haws-sync/[0-9]+-nativesource--skills-packs-nativesource$' "${helper_log}" >/dev/null || return 1
+    assert_record "${target}" updated || return 1
+    grep -F 'nativesource' "${OUTPUT_FILE}" | grep -F '[PASS] Updated' >/dev/null
+}
+
 test_second_brain_push_failure_is_reported() {
     add_second_brain
     printf '%s\n' 'local preference' >> "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md"
@@ -1741,6 +1767,7 @@ else
     run_test test_second_brain_dirty_sync_is_refused_with_auto_update_on
     run_test test_go_host_runs_native_second_brain_target_inside_existing_sync_presentation
     run_test test_go_host_runs_native_haws_target_and_preserves_restart_signal
+    run_test test_go_host_runs_native_registered_source_target_inside_existing_sync_presentation
     run_test test_second_brain_push_failure_is_reported
     run_test test_candidate_accepts_moved_and_removed_skill_entrypoints
     run_test test_missing_candidate_entrypoint_does_not_fall_back_to_old_content

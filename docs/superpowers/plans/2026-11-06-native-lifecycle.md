@@ -23,10 +23,9 @@ Implementation boundaries: `internal/settings` owns persisted configuration,
 catalog and configuration actions; `internal/tui` renders the draft flow;
 `internal/app/settings.go` applies approved changes and invokes the existing
 authoritative Sync once when integrations change. Settings edits stay in
-memory until confirmation. Component Sync remains explicitly legacy until
-its own parity migration passes. The Go-hosted Sync now migrates the Second
-Brain target natively while retaining the legacy orchestrator for the other
-targets.
+memory until confirmation. The Go-hosted Sync now migrates HAWS root, registered
+source repositories, and Second Brain targets natively while retaining the
+legacy orchestrator for skill installation, agents, integrations, and ordering.
 
 ## Priority 2 progress — Native Sync
 
@@ -38,12 +37,19 @@ targets.
   against concurrent connection changes, rejects dirty checkouts, and only
   fast-forwards `origin/main`. It uses the legacy Sync result row and state
   record.
-- [ ] Registered source repository updates, skills, agents, AI integrations,
-  and the remaining Sync orchestration.
+- [x] Registered source repository targets: Go validates the registered
+  checkout and candidate, blocks dirty sources, preserves local-ahead commits,
+  and only checks out a candidate when an enabled skill changes or an eligible
+  skill entrypoint changes. The existing shell host still prepares device
+  sources and records the result in its target table and Sync state.
+- [ ] Skill installation, agents, AI integrations, and the remaining Sync
+  orchestration.
 
 ## Remaining priorities, after Priority 1 parity
 
-- [ ] Native Sync of HAWS, sources, skills, agents and integrations.
+- [ ] Finish native Sync parity for skills, agents, integrations, and the
+  remaining orchestration (HAWS root, registered sources, and Second Brain are
+  now native targets).
 - [ ] AI client configuration parity and ownership preservation.
 - [ ] Shared CLI/MCP inventory, consumers, installation and safe removal.
 - [ ] Read-only Doctor and exact confirmed Repair.

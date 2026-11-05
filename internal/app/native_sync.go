@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"os"
 	"strconv"
 	"time"
@@ -12,11 +11,8 @@ import (
 
 // NativeSyncTarget runs one migrated Sync target while the legacy Sync host
 // retains its existing lock, ordering, and result presentation.
-// shortcut: only HAWS root and Second Brain are native, migrate other targets before removing the shell Sync host.
+// shortcut: only HAWS root, registered sources, and Second Brain are native; migrate skill and integration targets before removing the shell Sync host.
 func NativeSyncTarget(ctx context.Context, root, target string) (settings.SyncResult, error) {
-	if target != "secondbrain" && target != "haws" {
-		return settings.SyncResult{}, errors.New("unsupported native Sync target")
-	}
 	if target == "haws" && os.Getenv("HAWS_PACKAGE_DIR") != "" {
 		return settings.SyncResult{Status: "skipped", Revision: "-", Detail: "HAWS app update is managed by Go"}, nil
 	}
@@ -31,10 +27,16 @@ func NativeSyncTarget(ctx context.Context, root, target string) (settings.SyncRe
 		}
 		return settings.SyncHawsRoot(ctx, store.Root, syncTargetTimeout()), nil
 	}
-	if !state.Config.AutoUpdateBrain {
+	if target == "secondbrain" {
+		if !state.Config.AutoUpdateBrain {
+			return settings.SyncResult{Status: "skipped", Revision: "-", Detail: "Auto Update is disabled"}, nil
+		}
+		return settings.SyncBrain(ctx, settings.BrainDirectory(store.Root), syncTargetTimeout()), nil
+	}
+	if !state.Config.AutoUpdateSkills {
 		return settings.SyncResult{Status: "skipped", Revision: "-", Detail: "Auto Update is disabled"}, nil
 	}
-	return settings.SyncBrain(ctx, settings.BrainDirectory(store.Root), syncTargetTimeout()), nil
+	return settings.SyncSource(ctx, store, target, state.DisabledSkills, syncTargetTimeout()), nil
 }
 
 func syncTargetTimeout() time.Duration {

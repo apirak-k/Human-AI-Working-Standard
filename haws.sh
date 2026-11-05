@@ -3050,6 +3050,30 @@ sync_target() {
             return 1
         fi
         source_dir="$(_catalog_runtime_source_dir "${source_path}")"
+        if [ "${HAWS_NATIVE_SOURCE_SYNC:-0}" = 1 ]; then
+            local native_result native_status native_revision native_detail
+            candidate_ref="$(_sync_candidate_ref "${target}")"
+            if [ -n "${HAWS_GO_HOST_BINARY:-}" ] &&
+                native_result="$(HAWS_SYNC_CANDIDATE_REF="${candidate_ref}" \
+                    "${HAWS_GO_HOST_BINARY}" --haws-sync-target "${target}")"; then
+                IFS=$'\t' read -r native_status native_revision native_detail <<< "${native_result}"
+            else
+                native_status=failed
+                native_revision=-
+                native_detail="native source synchronization failed"
+            fi
+            _sync_candidate_cleanup "${source_dir}" "${candidate_ref}"
+            case "${native_status}" in
+                updated|up-to-date|skipped|blocked|failed) ;;
+                *) native_status=failed; native_revision=-; native_detail="native source returned an invalid result" ;;
+            esac
+            sync_result_write "${target}" "${native_status}" "${native_revision:--}" \
+                "${native_detail:-native source returned no detail}" || return 1
+            _sync_legacy_echo "${target}: ${native_status}"
+            [ "${native_status}" != updated ] || _catalog_invalidate_source_catalog
+            [ "${native_status}" != failed ] && [ "${native_status}" != blocked ] || return 1
+            return 0
+        fi
         if source_preflight "${target}"; then
             preflight_status=0
         else
