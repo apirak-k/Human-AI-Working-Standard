@@ -36,12 +36,9 @@ func Preview(root, currentExecutable string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	rootInfo, err := os.Lstat(root)
+	rootInfo, err := captureInstallRootIdentity(root)
 	if err != nil {
-		return Plan{}, fmt.Errorf("inspect HAWS installation directory: %w", err)
-	}
-	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-		return Plan{}, errors.New("HAWS installation directory is not a regular directory")
+		return Plan{}, err
 	}
 	marker, hasMarker, err := update.ActiveMarkerContents(root)
 	if err != nil {
@@ -237,15 +234,42 @@ func Apply(p Plan) (Summary, error) {
 	return result, errors.Join(failures...)
 }
 
-func verifyInstallRootIdentity(root string, expected os.FileInfo) error {
+func captureInstallRootIdentity(root string) (os.FileInfo, error) {
 	info, err := os.Lstat(root)
 	if err != nil {
-		return fmt.Errorf("inspect HAWS installation directory: %w", err)
+		return nil, fmt.Errorf("inspect HAWS installation directory: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return errors.New("HAWS installation path is not a regular directory")
+		return nil, errors.New("HAWS installation directory is not a regular directory")
 	}
-	if expected == nil || !os.SameFile(info, expected) {
+	handle, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open HAWS installation directory: %w", err)
+	}
+	identity, statErr := handle.Stat(".")
+	closeErr := handle.Close()
+	if statErr != nil {
+		return nil, fmt.Errorf("identify HAWS installation directory: %w", statErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close HAWS installation directory: %w", closeErr)
+	}
+	current, err := os.Lstat(root)
+	if err != nil {
+		return nil, fmt.Errorf("inspect HAWS installation directory: %w", err)
+	}
+	if current.Mode()&os.ModeSymlink != 0 || !current.IsDir() || !os.SameFile(identity, current) {
+		return nil, errors.New("HAWS installation directory changed during uninstall preview")
+	}
+	return identity, nil
+}
+
+func verifyInstallRootIdentity(root string, expected os.FileInfo) error {
+	current, err := captureInstallRootIdentity(root)
+	if err != nil {
+		return err
+	}
+	if expected == nil || !os.SameFile(current, expected) {
 		return errors.New("HAWS installation directory changed after uninstall preview")
 	}
 	resolved, err := filepath.EvalSymlinks(root)

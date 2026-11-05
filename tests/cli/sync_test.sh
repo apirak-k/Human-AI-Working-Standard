@@ -791,6 +791,8 @@ test_go_package_sync_does_not_update_legacy_haws_checkout() {
     git -C "${FIXTURE_REPO}" push -q -u origin main || return 1
     git --git-dir="${remote}" symbolic-ref HEAD refs/heads/main || return 1
     git clone -q "${remote}" "${seed}" || return 1
+    git -C "${seed}" config user.name HAWS-Test || return 1
+    git -C "${seed}" config user.email test@example.invalid || return 1
     printf '%s\n' '# newer legacy HAWS runtime' > "${seed}/haws.sh"
     git -C "${seed}" add haws.sh || return 1
     git -C "${seed}" commit -q -m 'advance legacy HAWS runtime' || return 1

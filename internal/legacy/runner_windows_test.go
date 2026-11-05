@@ -24,7 +24,7 @@ func TestRunPassesInputOutputAndExitStatusToLegacyRuntime(t *testing.T) {
 	t.Setenv("HAWS_TEST_ARGS", argsPath)
 	t.Setenv("HAWS_TEST_INPUT", inputPath)
 	t.Setenv("HAWS_TEST_HOST", hostPath)
-	batch := "@echo off\r\necho %1> \"%HAWS_TEST_ARGS%\"\r\necho %HAWS_GO_HOST%> \"%HAWS_TEST_HOST%\"\r\nset /p line=\r\necho %line%> \"%HAWS_TEST_INPUT%\"\r\necho child-output\r\necho child-error 1>&2\r\nexit /b 7\r\n"
+	batch := "@echo off\r\necho %1> \"%HAWS_TEST_ARGS%\"\r\necho %HAWS_GO_HOST% > \"%HAWS_TEST_HOST%\"\r\nset /p line=\r\necho %line%> \"%HAWS_TEST_INPUT%\"\r\necho child-output\r\necho child-error 1>&2\r\nexit /b 7\r\n"
 	if err := os.WriteFile(filepath.Join(root, "haws.bat"), []byte(batch), 0o600); err != nil {
 		t.Fatal(err)
 	}

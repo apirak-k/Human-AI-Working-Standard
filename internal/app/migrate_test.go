@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -46,11 +47,15 @@ func migrationFixture(t *testing.T) (string, string, string) {
 func TestRunMigrationPreviewsAndSavesReferenceAfterConfirmation(t *testing.T) {
 	packageRoot, legacyRoot, dataPaths := migrationFixture(t)
 	stateAndBrain := strings.Split(dataPaths, "\n")
+	preview, err := migration.BuildProfile(legacyRoot, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	var output bytes.Buffer
 	if err := RunMigration(packageRoot, []string{"--from", legacyRoot}, strings.NewReader("y\n"), &output, &output); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "No files will be copied, moved, or deleted") || !strings.Contains(output.String(), legacyRoot) {
+	if !strings.Contains(output.String(), "No files will be copied, moved, or deleted") || !strings.Contains(output.String(), strconv.Quote(preview.LegacyRoot)) {
 		t.Fatalf("migration preview omitted data safety or source path: %q", output.String())
 	}
 	profile, exists, err := migration.LoadPackageProfile(packageRoot)

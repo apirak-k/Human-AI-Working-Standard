@@ -2,6 +2,15 @@
 
 Updated: 2026-11-05
 
+## Go Modernization — CI Root-Cause Follow-up (2026-11-05)
+
+- This follow-up supersedes the earlier CI statement below. The checked remote `origin/dev` head before this change was `bda7035f0031046850fa1a741d8dc69dbfcb801e`; the active worktree is `codex/go-modernization` at that same commit. The separate local `dev` worktree contains unrelated uncommitted changes and was left untouched.
+- GitHub Actions run `42003201534` exposed concrete Windows test and uninstall identity failures, plus a macOS failure because the current Go host still calls the Bash 4.2+ legacy runtime (macOS system Bash is 3.2). The Windows uninstall defect came from comparing lazy `os.Lstat` file IDs after the install directory had been replaced. The fix captures identity through an open `os.Root` handle and revalidates against the current path before cleanup.
+- Fixed the Windows test/runtime fixture mismatches (`haws.bat` discovery, Windows command fixtures, CMD output-redirection parsing, quoted path comparison, and `.exe` archive expectations). The Windows ownership test now respects the OS behavior that an open directory root blocks renaming, while verifying owned-file removal and preservation of the external file. Fixed the isolated Git fixture by configuring its author identity.
+- Local macOS/arm64 verification with Go 1.27.3 and Bash 5.2 in `PATH`: `go test ./... -count=1`, `go vet ./...`, `bash tests/cli/run.sh` (421 checks), `bash tests/go/launchers_test.sh`, `bash tests/go/package_release_test.sh`, and the focused Go-package Sync regression all passed. The package test cross-builds all six OS/CPU targets and exercises the extracted package on macOS only.
+- **Not complete / not verified:** Setup, Sync, Settings, Doctor, Repair, and full Uninstall still delegate to Bash. Shared CLI/MCP management remains partial. The macOS GitHub job is expected to continue failing until the native-Go migration removes its Bash 4.2 runtime dependency. Native Windows/Linux lifecycle and extracted-package tests, and the post-fix GitHub Actions run, remain unverified. This incremental fix must not be described as completing the requested modernization.
+- No main change, merge, or release was made. Next: push this verified CI/safety fix to `origin/dev` for Windows runner verification, then continue the Go-native lifecycle and shared CLI/MCP work before calling the task complete.
+
 ## HAWS Modernization — Completion and final audit
 
 Updated: 2026-11-05

@@ -332,9 +332,14 @@ func TestRemoveOwnedPackageFileDoesNotFollowSwappedSymlinkAncestor(t *testing.T)
 		t.Fatal(err)
 	}
 	hash := sha256.Sum256(ownedContents)
+	swapBlocked := false
 
 	removed, state, err := removeOwnedPackageFileWithHook(root, "runtime/core/HAWS.md", hex.EncodeToString(hash[:]), func() {
 		if err := os.Rename(filepath.Join(root, "runtime"), filepath.Join(root, "runtime-original")); err != nil {
+			if runtime.GOOS == "windows" && errors.Is(err, os.ErrPermission) {
+				swapBlocked = true
+				return
+			}
 			t.Fatal(err)
 		}
 		if err := os.Symlink(external, filepath.Join(root, "runtime")); err != nil {
@@ -344,14 +349,23 @@ func TestRemoveOwnedPackageFileDoesNotFollowSwappedSymlinkAncestor(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed || state != "unowned" {
+	if swapBlocked {
+		if !removed || state != "missing" {
+			t.Fatalf("remove result = %t, %q; want owned file removal after Windows blocked the ancestor swap", removed, state)
+		}
+		if _, err := os.Lstat(ownedPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("owned file remains after blocked swap: %v", err)
+		}
+	} else if removed || state != "unowned" {
 		t.Fatalf("remove result = %t, %q; want preserved swapped ancestor", removed, state)
 	}
 	if got, err := os.ReadFile(externalPath); err != nil || string(got) != "user file" {
 		t.Fatalf("external user file = %q, %v", got, err)
 	}
-	if got, err := os.ReadFile(filepath.Join(root, "runtime-original", "core", "HAWS.md")); err != nil || string(got) != string(ownedContents) {
-		t.Fatalf("original package file = %q, %v", got, err)
+	if !swapBlocked {
+		if got, err := os.ReadFile(filepath.Join(root, "runtime-original", "core", "HAWS.md")); err != nil || string(got) != string(ownedContents) {
+			t.Fatalf("original package file = %q, %v", got, err)
+		}
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -33,7 +34,15 @@ func settingsHostFixture(t *testing.T, pending bool, syncExit string) (string, s
 		"  settings|setup) printf '%s\\n' \"$HAWS_GO_HOST\" > \"$HAWS_HOST_LOG\";;\n" +
 		"  sync) exit \"${HAWS_TEST_SYNC_EXIT:-0}\";;\n" +
 		"esac\n"
-	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
+	if runtime.GOOS == "windows" {
+		batch := "@echo off\r\necho %1 >> \"%HAWS_CALL_LOG%\"\r\n" +
+			"if /I \"%1\"==\"settings\" echo %HAWS_GO_HOST% > \"%HAWS_HOST_LOG%\"\r\n" +
+			"if /I \"%1\"==\"setup\" echo %HAWS_GO_HOST% > \"%HAWS_HOST_LOG%\"\r\n" +
+			"if /I \"%1\"==\"sync\" exit /b %HAWS_TEST_SYNC_EXIT%\r\n"
+		if err := os.WriteFile(filepath.Join(root, "haws.bat"), []byte(batch), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HAWS_ROOT", root)

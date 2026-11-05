@@ -80,11 +80,13 @@ func validateRoot(root string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve HAWS root %q: %w", root, err)
 	}
-	info, err := os.Stat(filepath.Join(absolute, "haws.sh"))
-	if err != nil || info.IsDir() {
-		return "", fmt.Errorf("HAWS root %q does not contain haws.sh", absolute)
+	for _, entrypoint := range []string{"haws.sh", "haws.bat"} {
+		info, err := os.Stat(filepath.Join(absolute, entrypoint))
+		if err == nil && !info.IsDir() {
+			return absolute, nil
+		}
 	}
-	return absolute, nil
+	return "", fmt.Errorf("HAWS root %q does not contain haws.sh or haws.bat", absolute)
 }
 
 // A package launcher named haws.sh is not the legacy shell runtime.

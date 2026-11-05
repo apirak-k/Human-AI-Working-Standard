@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,7 +18,14 @@ func repairFixture(t *testing.T) (string, string) {
 	root := t.TempDir()
 	logPath := filepath.Join(root, "calls.log")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$HAWS_CALL_LOG\"\ncase \"$1\" in\n  doctor) echo doctor-preview; exit \"${HAWS_TEST_DOCTOR_EXIT:-0}\";;\n  sync) echo sync-applied;;\nesac\n"
-	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
+	if runtime.GOOS == "windows" {
+		batch := "@echo off\r\necho %* >> \"%HAWS_CALL_LOG%\"\r\n" +
+			"if /I \"%1\"==\"doctor\" (echo doctor-preview & if not \"%HAWS_TEST_DOCTOR_EXIT%\"==\"\" exit /b %HAWS_TEST_DOCTOR_EXIT%)\r\n" +
+			"if /I \"%1\"==\"sync\" echo sync-applied\r\n"
+		if err := os.WriteFile(filepath.Join(root, "haws.bat"), []byte(batch), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	stateDir := filepath.Join(root, ".haws", "state")

@@ -371,6 +371,10 @@ func TestInstallFailureDuringActivationLeavesMarkerUnchanged(t *testing.T) {
 
 func TestInstallRejectsTraversalIncompleteAndSymlinkEntries(t *testing.T) {
 	binaries := buildFixtureBinaries(t, "v1.2.3")
+	binaryName := "haws"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
 	tests := []struct {
 		name    string
 		entries []archiveEntryFixture
@@ -388,12 +392,12 @@ func TestInstallRejectsTraversalIncompleteAndSymlinkEntries(t *testing.T) {
 		{
 			name: "symlink",
 			entries: []archiveEntryFixture{{
-				name:       "haws-go/" + packageOSForTest() + "/bin/" + packageOSForTest() + "-amd64/haws",
+				name:       "haws-go/" + packageOSForTest() + "/bin/" + packageOSForTest() + "-amd64/" + binaryName,
 				mode:       os.ModeSymlink | 0o777,
 				linkTarget: "../../../../outside",
 				typeFlag:   tar.TypeSymlink,
 			}},
-			wantErr: "unsupported entry type",
+			wantErr: "unsupported",
 		},
 		{
 			name: "missing architecture binary",
@@ -401,9 +405,9 @@ func TestInstallRejectsTraversalIncompleteAndSymlinkEntries(t *testing.T) {
 				{name: "haws-go/" + packageOSForTest() + "/README.txt", data: []byte("fixture"), mode: 0o644},
 				{name: "haws-go/" + packageOSForTest() + "/package-manifest.json", data: []byte("{}"), mode: 0o600},
 				{name: "haws-go/" + packageOSForTest() + "/" + packageLauncherForTest(), data: []byte("launcher"), mode: 0o755},
-				{name: "haws-go/" + packageOSForTest() + "/bin/" + packageOSForTest() + "-amd64/haws", data: []byte("binary"), mode: 0o755},
+				{name: "haws-go/" + packageOSForTest() + "/bin/" + packageOSForTest() + "-amd64/" + binaryName, data: []byte("binary"), mode: 0o755},
 			},
-			wantErr: "missing haws-go/",
+			wantErr: "release package is missing haws-go/",
 		},
 	}
 	for _, test := range tests {
