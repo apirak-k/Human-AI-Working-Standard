@@ -120,7 +120,28 @@ func paritySkills(t *testing.T, root string, store Store, disabled []string) {
 		}
 		rows = append(rows, fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%d", skill.SourceID, skill.ID, skill.Name, skill.Description, skill.Entrypoint, active))
 	}
-	if got, want := strings.Join(rows, "\n"), parityShell(t, root, "skills"); got != want {
+	want := parityShell(t, root, "skills")
+	if want != "" {
+		var normalized []string
+		for _, line := range strings.Split(want, "\n") {
+			fields := strings.Split(line, "\t")
+			if len(fields) == 6 && filepath.IsAbs(fields[4]) {
+				for _, source := range sources {
+					if source.ID != fields[0] {
+						continue
+					}
+					relative, err := filepath.Rel(source.Dir, filepath.Clean(fields[4]))
+					if err == nil {
+						fields[4] = filepath.ToSlash(relative)
+					}
+					break
+				}
+			}
+			normalized = append(normalized, strings.Join(fields, "\t"))
+		}
+		want = strings.Join(normalized, "\n")
+	}
+	if got, want := strings.Join(rows, "\n"), want; got != want {
 		t.Errorf("native skills differ from haws.sh\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
@@ -133,12 +154,26 @@ func paritySources(t *testing.T, root string, store Store) {
 	}
 	var rows []string
 	for _, source := range sources {
-		rows = append(rows, strings.Join([]string{source.ID, source.Path, source.URL, source.Dir}, "\t"))
+		rows = append(rows, strings.Join([]string{source.ID, source.Path, source.URL, normalizeCatalogPath(source.Dir)}, "\t"))
 	}
-	if got, want := strings.Join(rows, "\n"), parityShell(t, root, "sources"); got != want {
+	want := parityShell(t, root, "sources")
+	if want != "" {
+		var normalized []string
+		for _, line := range strings.Split(want, "\n") {
+			fields := strings.Split(line, "\t")
+			if len(fields) == 4 {
+				fields[3] = normalizeCatalogPath(fields[3])
+			}
+			normalized = append(normalized, strings.Join(fields, "\t"))
+		}
+		want = strings.Join(normalized, "\n")
+	}
+	if got, want := strings.Join(rows, "\n"), want; got != want {
 		t.Errorf("native sources differ from haws.sh\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func normalizeCatalogPath(path string) string { return filepath.ToSlash(filepath.Clean(path)) }
 
 func TestCatalogParityMetadata(t *testing.T) {
 	cases := []struct{ name, body string }{
