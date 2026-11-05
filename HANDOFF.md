@@ -2,6 +2,17 @@
 
 Updated: 2026-11-04
 
+## HAWS Go Modernization — Round 2 continuation
+
+Updated: 2026-11-05
+
+- Worktree: `/Users/bubu/.codex/worktrees/haws-delivery-main/Human-AI-Working-Standard`; branch `codex/go-modernization`; Task 4 implementation commit `69d519ef6fbc830e7425b6ea9d92ff2a144835b8`. This branch is local and has not been pushed or merged; `main` was not changed.
+- Round 2 Tasks 1–4 are complete. Task 4's final commit confines package file, directory, and manifest cleanup; captures the raw manifest fingerprint for preview/apply checks; and includes parent-swap and changed-manifest regressions. Independent review approved the scoped fix.
+- Task 4 verification on macOS/arm64: `go test ./...`, `go vet ./...`, package release/lifecycle tests, launcher tests, shell syntax, and `git diff --check` all exited 0. The package script cross-built six OS/CPU targets and verified three archives/checksums, extracted uninstall-to-empty, and data preservation.
+- Residual limitation: portable Go `os.Root.Remove` cannot atomically bind final-entry removal to an earlier file identity/content check. A concurrent writer can replace/modify the final entry in the narrow last-moment interval. Parent symlink swaps cannot redirect deletion outside the opened parent/root. Native Windows/Linux runtime behavior remains `[Unverified]`.
+- Temporary Go 1.27.3 toolchain is retained at `/tmp/haws-go-toolchain-1.27.3.yocCOn` for remaining Go verification; delete it after the final Go checks.
+- Next: Task 5, complete Go lifecycle and command routing. Preserve the one-action Sync contract, legacy command/exit compatibility, read-only Doctor, and explicit Repair preview/apply boundary. Continue on this branch only; no push, merge, release, or `main` changes.
+
 ## HAWS Go Modernization — Initial Implementation Stage
 
 - Worktree: `/Users/bubu/.codex/worktrees/haws-delivery-main/Human-AI-Working-Standard`; branch `codex/go-modernization`, based on `origin/dev` at `fa235b31d06d44255382285171d61627c652bc4`. Local stage commits are `ee9e59b` (Go TUI/legacy bridge), `e10e699` (OS launchers), `e4ddfc4` (packages/CI), and `f8430a64aadb878908f50b043647bba180a238dc` (release updates, Sync, ownership-aware uninstall). The latest commit is local only; it has not been pushed or merged.
