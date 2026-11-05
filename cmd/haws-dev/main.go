@@ -61,10 +61,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	if runtime.GOOS != "windows" {
 		path, err := supportedBash(os.Getenv("HOME"), os.Getenv("PATH"))
-		if err != nil {
-			return err
+		if err == nil {
+			os.Setenv("PATH", filepath.Dir(path)+string(os.PathListSeparator)+os.Getenv("PATH"))
 		}
-		os.Setenv("PATH", filepath.Dir(path)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
 
 	dataRoot := filepath.Join(sandboxRoot, "data")

@@ -269,11 +269,13 @@ env HOME="$TMP/home" HAWS_STATE_DIR="$native_root/data/state" HAWS_TEST_ALLOW_LO
 echo keep > "$native_root/data/personal-note"
 # Customize the first-run draft to keep update checks offline in this isolated
 # package fixture. The Go Sync still applies and reconciles the selected state.
-setup_input="$(printf '\033[B\n\033[B\033[B\033[B\033[B\n\nq\033[B\033[B\033[B\033[B\033[B\n\033[A\nq')"
+setup_input="$(printf '2\n5\n1\nq\n6\napply\n')"
+# Preserve the final newline after command substitution.
+setup_input+=$'\n'
 if ! printf '%s' "$setup_input" | (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" CODEX_HOME="$TMP/home/.codex" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 "$native_root/$launcher" setup >"$TMP/setup.log" 2>&1); then
  cat "$TMP/setup.log" >&2; fail 'extracted launcher setup failed'
 fi
-rg -q 'Settings saved; Go Home will run the authoritative Sync' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'first-time setup did not hand integration work to Go Sync'; }
+rg -q 'Settings saved; applying integration changes through one Go-hosted authoritative Sync' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'first-time setup did not hand integration work to Go Sync'; }
 rg -Fq $'integration\tcompleted' "$native_root/data/state/apply.result" || { cat "$TMP/setup.log" >&2; fail 'Go Sync did not complete the pending Settings integration'; }
 [[ "$(rg -c '\[PASS\] HAWS synchronization completed' "$TMP/setup.log")" == 1 ]] || { cat "$TMP/setup.log" >&2; fail 'Go-hosted Setup did not run exactly one Sync'; }
 source_dir="$native_root/data/state/skill-sources/skills/packs/fixture"

@@ -42,7 +42,7 @@ func TestRunHomeRoutesSyncToLegacyAndReturnsToMenu(t *testing.T) {
 	}
 }
 
-func TestRunSetupRoutesToLegacySetup(t *testing.T) {
+func TestRunSetupUsesNativeDraftWithoutLegacySetup(t *testing.T) {
 	root := t.TempDir()
 	argsPath := filepath.Join(root, "args")
 	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte("#!/bin/sh\nprintf '%s' \"$1\" > '"+argsPath+"'\n"), 0700); err != nil {
@@ -53,7 +53,10 @@ func TestRunSetupRoutesToLegacySetup(t *testing.T) {
 	if code := run([]string{"setup"}, strings.NewReader(""), &out, &stderr); code != 0 {
 		t.Fatalf("setup failed: %d %s", code, stderr.String())
 	}
-	if data, err := os.ReadFile(argsPath); err != nil || string(data) != "setup" {
-		t.Fatalf("setup action: %q %v", data, err)
+	if data, err := os.ReadFile(argsPath); !os.IsNotExist(err) {
+		t.Fatalf("native Setup called legacy runtime: %q %v", data, err)
+	}
+	if !strings.Contains(out.String(), "HAWS Setup") {
+		t.Fatal(out.String())
 	}
 }

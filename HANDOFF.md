@@ -1,5 +1,14 @@
 # Development Handoff
 
+## Native Setup and Settings — 2026-11-06
+
+- Live worktree: `/Users/bubu/.codex/worktrees/haws-delivery-main/Human-AI-Working-Standard`, branch `codex/go-modernization`, based on `origin/dev` at `f954ee08def9e11a7941b83657a342f2f41c4ebc`. The separate local `dev` worktree has unrelated edits and remains untouched. This delivery is authorized for `origin/dev`; `main` is unchanged.
+- Setup and Settings now use native Go state, catalog, repository and Second Brain actions, and an in-memory draft through the existing Go TUI. Save and repository/configuration actions occur only after the final confirmation. Existing TSV state and source-aware disabled-skill IDs are preserved. Reset respects the tracked Git index baseline for the legacy skill list without rewriting it before Apply.
+- Applies record approved steps and per-step progress, serialize through an apply lock, refuse stale drafts, preserve unfinished work for retry, and require explicit discard before replacing an interrupted plan. Settings-only changes on an existing install do not launch Bash. Integration changes still use exactly one Go-hosted authoritative component Sync backed by the legacy runtime; that migration remains open.
+- Local verification on macOS/arm64 with Go 1.27.3 and Bash 5.2: `go test ./... -count=1`, `go test -race ./internal/settings ./internal/app ./internal/tui -count=1`, `go vet ./...`, `bash tests/cli/run.sh` (420 checks), `bash tests/go/launchers_test.sh`, `bash tests/go/package_release_test.sh` (six OS/CPU builds and extracted macOS package lifecycle), `govulncheck` (no vulnerabilities), shell syntax checks, and `git diff --check` passed. The real `./scripts/dev-haws.sh setup` opened Setup in a fresh isolated sandbox; cancelling wrote no state files.
+- Native GitHub Actions verification is pending this dev push. Six-target cross-builds and extracted macOS execution do not verify native Windows/Linux execution. Do not describe the full lifecycle migration or release as complete.
+- Next: inspect the resulting `origin/dev` Actions run, then continue with native Sync for HAWS sources, skills, agents, and integrations. Doctor, Repair, shared CLI/MCP lifecycle, migration/uninstall parity, and native Windows/Linux acceptance remain open.
+
 Updated: 2026-11-05
 
 ## HAWS Go Modernization — Live Developer Entry Point (2026-11-05)

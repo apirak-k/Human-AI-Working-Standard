@@ -26,8 +26,8 @@ specific test, for example:
 If Go 1.26 or newer is already available, the launcher uses it. Otherwise it
 downloads the pinned Go 1.27.3 toolchain into the user's cache after checking
 the official SHA-256. It does not add Go to the system PATH or install it for
-other applications. On macOS, this transitional Go application also needs Bash
-4.2 or newer for actions that still use the legacy runtime; the launcher looks
+other applications. Setup and Settings editing run in Go. Applying integration
+changes still needs Git and Bash 4.2 or newer for component Sync. The launcher looks
 for `~/.local/bin/bash`, Homebrew Bash, and then Bash on `PATH`.
 
 ## Windows
@@ -60,8 +60,19 @@ Opening the app does not download all skill repositories. First-run Setup may
 fetch them through HAWS's normal source flow, using the sandbox checkout and
 without the user's Git credentials.
 
-This entry point makes the current transitional implementation testable; it
-does not make the app fully native. Setup, Settings, Doctor, Repair, Sync
-components, and Uninstall still call the legacy Bash runtime. The final Go
-application must remove that dependency. Windows and Linux execution of this
-development launcher remains `[Unverified]` until run on native systems.
+Setup and Settings now use native Go drafts, Preview, state persistence,
+repository configuration, and Second Brain connect/disconnect. The existing
+TSV formats and source-aware skill selections remain compatible with Bash.
+Updating only configuration on an installed system needs no Bash executable.
+When integration changes are required, Apply saves pending progress and runs
+one Go-hosted component Sync; that component runtime still uses Bash.
+
+If an apply was interrupted, Settings shows the approved plan and progress.
+Choose Retry to finish those approved actions, or explicitly discard the
+unfinished actions before editing a new draft. Personal files are retained.
+A failed first installation is never marked complete; successful Sync retry
+finishes its completion marker after all Settings actions have completed.
+
+Doctor, Repair, component Sync, client integration application, and full
+Uninstall remain legacy-backed. Native Windows/Linux execution is verified
+separately through CI; cross-compilation alone is not runtime acceptance.

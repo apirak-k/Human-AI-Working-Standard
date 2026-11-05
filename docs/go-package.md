@@ -2,7 +2,8 @@
 
 The Go application is being added beside the existing HAWS runtime. The package
 keeps the familiar HAWS behavior while Go owns the Home TUI, command routing,
-release-managed application updates, rollback, and package cleanup.
+release-managed application updates, rollback, package cleanup, and native
+Setup/Settings configuration.
 
 ## Distribution and files
 
@@ -27,8 +28,9 @@ need Go or a complete HAWS developer checkout.
 ## Current operation
 
 The Go Home TUI routes Setup, Settings, Sync, Doctor, Repair, Uninstall, and
-Migrate existing installation. Existing skill, agent, AI integration, and
-Second Brain operations still run through the included HAWS runtime. A Go Sync
+Migrate existing installation. Setup and Settings configuration run in Go.
+Skill and agent synchronization, client integration application, and Second
+Brain synchronization still use the included HAWS runtime. A Go Sync
 checks the configured release, validates the package's complete allowlisted
 runtime and both CPU binaries, stages them together under one version
 directory, and activates them with one version marker. It then runs one HAWS
@@ -97,7 +99,9 @@ supported as explicit per-process overrides.
 
 The package does not require a Go installation. Because component lifecycle
 operations still use the existing runtime, Git and Bash 4.2 or newer are
-required for Sync, setup, and integration work. Windows users need Git for
+required for component Sync and integration work. Setup/Settings drafts, saved
+configuration, repository registration, and Second Brain connection are native
+Go; confirmed integration changes still invoke the component runtime. Windows users need Git for
 Windows; macOS users need a newer Bash such as Homebrew Bash because the
 built-in Bash is 3.2. The shell runtime also uses standard POSIX tools such as
 `awk`, `sed`, `grep`, `find`, `sort`, and `cmp`. Node.js is optional for the

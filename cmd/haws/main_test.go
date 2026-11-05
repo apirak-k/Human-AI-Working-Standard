@@ -161,8 +161,11 @@ func TestRunStartsSetupOnFirstLaunchThenShowsHome(t *testing.T) {
 	if !strings.Contains(stdout.String(), "First launch detected") || !strings.Contains(stdout.String(), "HAWS — Human-AI Working Standard") {
 		t.Fatalf("first run did not go through Setup and then Home: %q", stdout.String())
 	}
-	if got := strings.TrimSpace(readFile(t, argsPath)); got != "setup" {
-		t.Fatalf("legacy actions = %q, want setup once", got)
+	if _, err := os.Stat(argsPath); !os.IsNotExist(err) {
+		t.Fatalf("native Setup invoked legacy runtime: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "HAWS Setup") {
+		t.Fatal("native Setup was not shown")
 	}
 }
 

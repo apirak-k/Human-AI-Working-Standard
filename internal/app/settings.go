@@ -6,72 +6,234 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"os/exec"
+	"os/signal"
 	"strings"
 
-	"github.com/apirak-k/Human-AI-Working-Standard/internal/legacy"
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/settings"
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/tui"
 )
 
-const maxApplyResultBytes = 1 << 20
-
-// RunSettings delegates the existing Setup or Settings flow, then completes
-// any integration work through the Go-owned Sync path exactly once.
+// RunSettings owns the configuration workflow natively. Component integration
+// remains the separately reported Sync migration boundary.
 func RunSettings(ctx context.Context, root string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if len(args) == 0 {
-		args = []string{"settings"}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if err := legacy.RunCommand(ctx, root, args, stdin, stdout, stderr); err != nil {
+	if len(args) > 1 {
+		return errors.New("Setup and Settings do not accept additional arguments")
+	}
+	handled, err := recoverSettings(ctx, root, stdin, stdout, stderr)
+	if err != nil || handled {
+		return err
+	}
+	draft, err := settings.NewDraft(ctx, root)
+	if err != nil {
+		return err
+	}
+	planBefore, resultBefore, err := draft.Store.ReadProgress()
+	if err != nil {
+		return err
+	}
+	setup := len(args) > 0 && (args[0] == "setup" || args[0] == "bootstrap")
+	accepted, err := tui.RunSettingsDraft(ctx, draft, stdin, stdout, setup)
+	if err != nil || !accepted {
+		return err
+	}
+	return draft.Store.WithApplyLock(func() error {
+		if err := sameSettingsProgress(draft.Store, planBefore, resultBefore); err != nil {
+			return err
+		}
+		if err := draft.Store.ValidateLoaded(draft.SavedState()); err != nil {
+			return err
+		}
+		applyContext, stop := signal.NotifyContext(ctx, os.Interrupt)
+		defer stop()
+		return applySettings(applyContext, root, draft, stdout, stderr)
+	})
+}
+
+func applySettings(ctx context.Context, root string, draft *settings.Draft, stdout, stderr io.Writer) error {
+	installed, err := draft.Store.InstallComplete()
+	if err != nil {
 		return err
 	}
 	pending, err := settingsIntegrationPending(root)
-	if err != nil || !pending {
+	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(stdout, "[INFO] Applying Settings through one Go-hosted authoritative Sync."); err != nil {
+	integration := draft.NeedsIntegration(installed) || pending
+	if installed && !draft.Dirty() && !pending {
+		_, err = fmt.Fprintln(stdout, "No settings have changed.")
 		return err
 	}
-	return RunSync(ctx, nil, strings.NewReader(""), stdout, stderr)
+	if err := draft.ValidateCatalog(ctx); err != nil {
+		return err
+	}
+	actions := draft.Repositories()
+	if len(actions) > 0 {
+		if err := draft.Store.PreflightRepositories(ctx, actions); err != nil {
+			return fmt.Errorf("Settings preflight failed; no settings changes applied: %w", err)
+		}
+	}
+	brainChanged := draft.BrainBefore != draft.BrainAfter
+	if brainChanged {
+		remote, err := settings.BrainRemote(ctx, settings.BrainDirectory(root))
+		if err != nil {
+			return err
+		}
+		if remote != draft.BrainBefore {
+			return errors.New("Second Brain remote changed; reload Settings before applying")
+		}
+		if draft.BrainAfter != "" {
+			if err := settings.ValidateBrainURL(draft.BrainAfter); err != nil {
+				return err
+			}
+		}
+	}
+	if integration {
+		if _, err := exec.LookPath("git"); err != nil {
+			return fmt.Errorf("Git is required before applying integrations: %w", err)
+		}
+	}
+	plan := settingsPlan(draft, integration)
+	completed := []string{"settings\tpending"}
+	for _, action := range actions {
+		completed = append(completed, action.Kind+"\tpending")
+	}
+	if brainChanged {
+		completed = append(completed, "brain\tpending")
+	}
+	if integration {
+		completed = append(completed, "integration\tpending")
+	}
+	persist := func() error { return draft.Store.WriteProgress(plan, strings.Join(completed, "\n")+"\n") }
+	if err := persist(); err != nil {
+		return err
+	}
+	saved := draft.SavedState()
+	if err := draft.Store.Save(saved); err != nil {
+		return err
+	}
+	if err := draft.Store.MigrateLegacySkillState(ctx, saved); err != nil {
+		return &SettingsApplyError{Step: "legacy skill-state migration", Err: err}
+	}
+	completed[0] = "settings\tcompleted"
+	if err := persist(); err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, "Completed: native Go settings")
+	for i, action := range actions {
+		if err := draft.Store.ApplyRepository(ctx, action); err != nil {
+			return &SettingsApplyError{Step: action.Kind, Err: err}
+		}
+		completed[i+1] = action.Kind + "\tcompleted"
+		if err := persist(); err != nil {
+			return err
+		}
+		fmt.Fprintln(stdout, "Completed:", action.Kind, action.Path)
+	}
+	if brainChanged {
+		path := settings.BrainDirectory(root)
+		if draft.BrainAfter == "" {
+			err = settings.DisconnectBrain(ctx, path, draft.BrainBefore)
+		} else {
+			err = settings.ConnectBrain(ctx, path, draft.BrainAfter)
+		}
+		if err != nil {
+			return &SettingsApplyError{Step: "Second Brain connection", Err: err}
+		}
+		completed[len(actions)+1] = "brain\tcompleted"
+		if err := persist(); err != nil {
+			return err
+		}
+		fmt.Fprintln(stdout, "Completed: native Go Second Brain configuration")
+	}
+	if integration {
+		if _, err := fmt.Fprintln(stdout, "[INFO] Settings saved; applying integration changes through one Go-hosted authoritative Sync (legacy component runtime)."); err != nil {
+			return err
+		}
+		if err := RunSync(ctx, nil, strings.NewReader(""), stdout, stderr); err != nil {
+			return &SettingsApplyError{Step: "integration (pending; retry Sync)", Err: err}
+		}
+	}
+	if err := draft.Store.CompleteInstall(); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, "[PASS] Native Go Settings apply verified.")
+	return err
 }
 
-func settingsApplyResultPath(root string) string {
-	stateDir := os.Getenv("HAWS_STATE_DIR")
-	if stateDir == "" {
-		stateDir = filepath.Join(root, ".haws", "state")
-	} else if !filepath.IsAbs(stateDir) {
-		stateDir = filepath.Join(root, stateDir)
-	}
-	return filepath.Join(stateDir, "apply.result")
+type SettingsApplyError struct {
+	Step string
+	Err  error
 }
 
-func readSettingsApplyResult(root string) (string, os.FileInfo, string, error) {
-	path := settingsApplyResultPath(root)
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return path, nil, "", nil
+func (e *SettingsApplyError) Error() string {
+	return fmt.Sprintf("Partial failure; settings were saved. Remaining: %s: %v", e.Step, e.Err)
+}
+func (e *SettingsApplyError) Unwrap() error { return e.Err }
+func (e *SettingsApplyError) ExitCode() int {
+	var child interface{ ExitCode() int }
+	if errors.As(e.Err, &child) && child.ExitCode() > 1 {
+		return child.ExitCode()
 	}
-	if err != nil {
-		return path, nil, "", fmt.Errorf("inspect HAWS Settings result: %w", err)
+	return 3
+}
+
+func settingsPlan(d *settings.Draft, integration bool) string {
+	toggle := func(on bool) string {
+		if on {
+			return "on"
+		}
+		return "off"
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maxApplyResultBytes {
-		return path, nil, "", errors.New("HAWS Settings result is not a bounded regular file")
+	var plan strings.Builder
+	fmt.Fprintf(&plan, "setting\tauto_update\t%s\nsetting\tauto_update_brain\t%s\n", toggle(d.State.Config.AutoUpdateSkills), toggle(d.State.Config.AutoUpdateBrain))
+	for _, client := range []string{"claude", "gemini", "codex"} {
+		enabled := true
+		for _, off := range d.State.DisabledEnvironments {
+			if off == client {
+				enabled = false
+			}
+		}
+		status := "disabled"
+		if enabled {
+			status = "enabled"
+		}
+		fmt.Fprintf(&plan, "environment\t%s\t%s\n", client, status)
 	}
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		return path, nil, "", fmt.Errorf("read HAWS Settings result: %w", err)
+	for _, action := range d.Repositories() {
+		value := action.URL
+		if action.Kind == "remove-source" {
+			value = action.ID
+		}
+		if action.Kind == "remove-source" {
+			fmt.Fprintf(&plan, "%s\tsources\t%s\t%s\t%s\n", action.Kind, value, action.Path, action.URL)
+		} else {
+			fmt.Fprintf(&plan, "%s\tsources\t%s\t%s\n", action.Kind, value, action.Path)
+		}
 	}
-	if int64(len(contents)) > maxApplyResultBytes {
-		return path, nil, "", errors.New("HAWS Settings result exceeds the size limit")
+	if d.BrainBefore != d.BrainAfter {
+		if d.BrainAfter == "" {
+			fmt.Fprintf(&plan, "brain-disconnect\tremote\t%s\n", d.BrainBefore)
+		} else {
+			fmt.Fprintf(&plan, "brain-connect\tremote\t%s\n", d.BrainAfter)
+		}
 	}
-	return path, info, string(contents), nil
+	if integration {
+		fmt.Fprintln(&plan, "integration\tupdate\tcomponent integration")
+	}
+	return plan.String()
 }
 
 func settingsIntegrationPending(root string) (bool, error) {
-	_, _, contents, err := readSettingsApplyResult(root)
+	_, contents, err := settings.NewStore(root).ReadProgress()
 	if err != nil {
 		return false, err
 	}
 	for _, line := range strings.Split(contents, "\n") {
-		if line == "integration\tpending" {
+		if strings.TrimSuffix(line, "\r") == "integration\tpending" {
 			return true, nil
 		}
 	}
@@ -79,44 +241,19 @@ func settingsIntegrationPending(root string) (bool, error) {
 }
 
 func completePendingSettingsIntegration(root string) error {
-	path, before, contents, err := readSettingsApplyResult(root)
-	if err != nil || before == nil {
+	store := settings.NewStore(root)
+	changed, err := store.CompleteIntegration()
+	if err != nil || !changed {
 		return err
 	}
-	lines := strings.Split(contents, "\n")
-	pending := false
-	for index, line := range lines {
-		if line == "integration\tpending" {
-			lines[index] = "integration\tcompleted"
-			pending = true
+	_, contents, err := store.ReadProgress()
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(contents, "\n") {
+		if strings.HasSuffix(strings.TrimSuffix(line, "\r"), "\tpending") {
+			return errors.New("component Sync completed, but Settings still has unfinished actions; reopen Settings to recover")
 		}
 	}
-	if !pending {
-		return nil
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".apply-result-*.tmp")
-	if err != nil {
-		return fmt.Errorf("stage HAWS Settings result: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if _, err := io.WriteString(temporary, strings.Join(lines, "\n")); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("write HAWS Settings result: %w", err)
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("sync HAWS Settings result: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close HAWS Settings result: %w", err)
-	}
-	after, err := os.Lstat(path)
-	if err != nil || !os.SameFile(before, after) || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
-		return errors.New("HAWS Settings result changed while Sync was completing")
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("complete HAWS Settings result: %w", err)
-	}
-	return nil
+	return store.CompleteInstall()
 }

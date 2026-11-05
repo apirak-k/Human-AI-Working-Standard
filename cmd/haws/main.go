@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/app"
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/legacy"
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/settings"
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/tui"
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/update"
 )
@@ -108,11 +109,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func setupAlreadyExists(root string) bool {
-	stateDir := os.Getenv("HAWS_STATE_DIR")
-	if stateDir == "" {
-		stateDir = filepath.Join(root, ".haws", "state")
-	} else if !filepath.IsAbs(stateDir) {
-		stateDir = filepath.Join(root, stateDir)
+	store := settings.NewStore(root)
+	stateDir := store.Dir
+	if info, err := os.Lstat(filepath.Join(stateDir, "uninstalled")); err == nil && info.Mode().IsRegular() && info.Size() > 0 {
+		return false
+	}
+	if _, result, err := store.ReadProgress(); err == nil && strings.Contains(result, "\tpending") {
+		info, err := os.Lstat(filepath.Join(stateDir, "install.complete"))
+		return err == nil && info.Mode().IsRegular() && info.Size() > 0
 	}
 	for _, name := range []string{"install.complete", "settings.tsv"} {
 		info, err := os.Lstat(filepath.Join(stateDir, name))
@@ -251,8 +255,16 @@ func actionExitCode(err error, stderr io.Writer) int {
 	if err == nil {
 		return 0
 	}
-	var exitErr *exec.ExitError
+	if errors.Is(err, context.Canceled) {
+		fmt.Fprintln(stderr, err)
+		return 130
+	}
+	var exitErr interface{ ExitCode() int }
 	if errors.As(err, &exitErr) {
+		var applyErr *app.SettingsApplyError
+		if errors.As(err, &applyErr) {
+			fmt.Fprintln(stderr, err)
+		}
 		return exitErr.ExitCode()
 	}
 	fmt.Fprintln(stderr, err)
