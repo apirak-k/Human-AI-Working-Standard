@@ -99,17 +99,19 @@ for os in windows macos linux; do
 	done
 done
 
-unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^haws-go/windows/haws[.]bat$' || fail 'Windows archive is missing its launcher'
-windows_entries="$(unzip -Z1 "$OUTPUT/haws-windows.zip")"
+windows_entries=$'\n'"$(unzip -Z1 "$OUTPUT/haws-windows.zip")"$'\n'
 [[ "$windows_entries" == *haws-go/windows/bin/windows-arm64/haws.exe* ]] || { echo "$windows_entries" >&2; fail 'Windows archive is missing ARM64 binary'; }
-unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^haws-go/windows/README[.]txt$' || fail 'Windows archive is missing installation instructions'
-unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^haws-go/windows/package-manifest[.]json$' || fail 'Windows archive is missing its ownership manifest'
-if unzip -Z1 "$OUTPUT/haws-windows.zip" | rg -q '^README[.]txt$'; then fail 'Windows archive may overwrite a checkout-root README'; fi
-tar -tzf "$OUTPUT/haws-macos.tar.gz" | rg -q '^haws-go/macos/haws[.]command$' || fail 'macOS archive is missing its launcher'
-tar -tzf "$OUTPUT/haws-macos.tar.gz" | rg -q '^haws-go/macos/package-manifest[.]json$' || fail 'macOS archive is missing its ownership manifest'
-tar -tzf "$OUTPUT/haws-macos.tar.gz" | rg -q '^haws-go/macos/bin/macos-amd64/haws$' || fail 'macOS archive is missing AMD64 binary'
-tar -tzf "$OUTPUT/haws-linux.tar.gz" | rg -q '^haws-go/linux/bin/linux-arm64/haws$' || fail 'Linux archive is missing ARM64 binary'
-tar -tzf "$OUTPUT/haws-linux.tar.gz" | rg -q '^haws-go/linux/package-manifest[.]json$' || fail 'Linux archive is missing its ownership manifest'
+[[ "$windows_entries" == *$'\nhaws-go/windows/haws.bat\n'* ]] || fail 'Windows archive is missing its launcher'
+[[ "$windows_entries" == *$'\nhaws-go/windows/README.txt\n'* ]] || fail 'Windows archive is missing installation instructions'
+[[ "$windows_entries" == *$'\nhaws-go/windows/package-manifest.json\n'* ]] || fail 'Windows archive is missing its ownership manifest'
+[[ "$windows_entries" != *$'\nREADME.txt\n'* ]] || fail 'Windows archive may overwrite a checkout-root README'
+macos_entries=$'\n'"$(tar -tzf "$OUTPUT/haws-macos.tar.gz")"$'\n'
+[[ "$macos_entries" == *$'\nhaws-go/macos/haws.command\n'* ]] || fail 'macOS archive is missing its launcher'
+[[ "$macos_entries" == *$'\nhaws-go/macos/package-manifest.json\n'* ]] || fail 'macOS archive is missing its ownership manifest'
+[[ "$macos_entries" == *$'\nhaws-go/macos/bin/macos-amd64/haws\n'* ]] || fail 'macOS archive is missing AMD64 binary'
+linux_entries=$'\n'"$(tar -tzf "$OUTPUT/haws-linux.tar.gz")"$'\n'
+[[ "$linux_entries" == *$'\nhaws-go/linux/bin/linux-arm64/haws\n'* ]] || fail 'Linux archive is missing ARM64 binary'
+[[ "$linux_entries" == *$'\nhaws-go/linux/package-manifest.json\n'* ]] || fail 'Linux archive is missing its ownership manifest'
 
 for archive in haws-windows.zip haws-macos.tar.gz haws-linux.tar.gz; do
 	[[ -f "$OUTPUT/$archive.sha256" ]] || fail "checksum manifest missing for $archive"
@@ -136,9 +138,9 @@ native_root="$TMP/extracted/haws-go/$native_os"
 [[ -f "$native_root/runtime/haws.sh" ]] || fail 'extracted package is missing its runtime'
 [[ -s "$native_root/runtime/source-revisions.tsv" ]] || fail 'packaged pinned source revisions are missing'
 (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" doctor >"$TMP/doctor.log" 2>&1) || { cat "$TMP/doctor.log" >&2; fail 'extracted launcher could not run Doctor'; }
-rg -qi 'doctor|health' "$TMP/doctor.log" || fail 'Doctor action did not run'
+grep -Eqi 'doctor|health' "$TMP/doctor.log" || fail 'Doctor action did not run'
 (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" status >"$TMP/status.log" 2>&1) || { cat "$TMP/status.log" >&2; fail 'extracted launcher could not run Status'; }
-rg -q 'HAWS Status' "$TMP/status.log" || fail 'Status action did not run through the extracted Go host'
+grep -Eq 'HAWS Status' "$TMP/status.log" || fail 'Status action did not run through the extracted Go host'
 [[ -f "$native_root/data/secondbrain/WORKFLOW.md" ]] || fail 'persistent Second Brain seed was not initialized in data/'
 [[ ! -d "$native_root/runtime/.haws" ]] || fail 'runtime contains writable state'
 
@@ -169,7 +171,7 @@ else
 	package_sync_state_existed=no
 fi
 (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" migrate --from "$legacy_root" --yes >"$TMP/migrate.log" 2>&1) || { cat "$TMP/migrate.log" >&2; fail 'extracted package could not configure legacy migration'; }
-rg -q 'No files will be copied, moved, or deleted' "$TMP/migrate.log" || fail 'migration did not show its non-destructive preview'
+grep -Eq 'No files will be copied, moved, or deleted' "$TMP/migrate.log" || fail 'migration did not show its non-destructive preview'
 [[ -f "$native_root/data/state/legacy-migration.json" ]] || fail 'migration reference was not saved inside package data'
 before_settings="$(file_sha256 "$legacy_root/.haws/state/settings.tsv")"
 before_source="$(file_sha256 "$legacy_root/.haws/state/skill-sources/skills/packs/sample/SKILL.md")"
@@ -275,24 +277,24 @@ setup_input+=$'\n'
 if ! printf '%s' "$setup_input" | (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" CODEX_HOME="$TMP/home/.codex" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 "$native_root/$launcher" setup >"$TMP/setup.log" 2>&1); then
  cat "$TMP/setup.log" >&2; fail 'extracted launcher setup failed'
 fi
-rg -q 'Settings saved; applying integration changes through one Go-hosted authoritative Sync' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'first-time setup did not hand integration work to Go Sync'; }
-rg -Fq $'integration\tcompleted' "$native_root/data/state/apply.result" || { cat "$TMP/setup.log" >&2; fail 'Go Sync did not complete the pending Settings integration'; }
-[[ "$(rg -c '\[PASS\] HAWS synchronization completed' "$TMP/setup.log")" == 1 ]] || { cat "$TMP/setup.log" >&2; fail 'Go-hosted Setup did not run exactly one Sync'; }
+grep -Eq 'Settings saved; applying integration changes through one Go-hosted authoritative Sync' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'first-time setup did not hand integration work to Go Sync'; }
+grep -Fq $'integration\tcompleted' "$native_root/data/state/apply.result" || { cat "$TMP/setup.log" >&2; fail 'Go Sync did not complete the pending Settings integration'; }
+[[ "$(grep -Ec '\[PASS\] HAWS synchronization completed' "$TMP/setup.log")" == 1 ]] || { cat "$TMP/setup.log" >&2; fail 'Go-hosted Setup did not run exactly one Sync'; }
 source_dir="$native_root/data/state/skill-sources/skills/packs/fixture"
 [[ "$(git -C "$source_dir" rev-parse HEAD)" == "$fixture_revision" ]] || fail 'Setup changed a source while source auto-update was disabled'
 [[ -f "$source_dir/SKILL.md" ]] || fail 'materialized source is missing its skill'
-rg -q 'Auto Update is disabled' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'Setup did not honor the offline update setting'; }
+grep -Eq 'Auto Update is disabled' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'Setup did not honor the offline update setting'; }
 [[ "$(cat "$native_root/data/personal-note")" == keep ]] || fail 'setup changed personal data'
 # Keep release and source network checks disabled for the explicit launcher Sync.
 printf 'schema_version\t1\nauto_update_skills\toff\nauto_update_brain\toff\n' > "$native_root/data/state/settings.tsv"
 (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" CODEX_HOME="$TMP/home/.codex" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 "$native_root/$launcher" sync >"$TMP/sync.log" 2>&1) || { cat "$TMP/sync.log" >&2; fail 'extracted launcher Sync failed'; }
-rg -q 'Sources are synchronized|Source synchronization' "$TMP/sync.log" || fail 'Sync action did not execute'
+grep -Eq 'Sources are synchronized|Source synchronization' "$TMP/sync.log" || fail 'Sync action did not execute'
 [[ "$(cat "$native_root/data/personal-note")" == keep ]] || fail 'Sync changed personal data'
 
 # A repeat launch must preserve user edits.
 echo 'personal change' >> "$native_root/data/secondbrain/WORKFLOW.md"
 (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" doctor >"$TMP/doctor-repeat.log" 2>&1) || fail 'repeat Doctor failed'
-rg -q 'personal change' "$native_root/data/secondbrain/WORKFLOW.md" || fail 'repeat launch overwrote personal data'
+grep -Eq 'personal change' "$native_root/data/secondbrain/WORKFLOW.md" || fail 'repeat launch overwrote personal data'
 
 PROTECTED="$TMP/existing"
 mkdir -p "$PROTECTED"
