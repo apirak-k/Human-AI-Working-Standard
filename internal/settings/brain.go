@@ -15,6 +15,8 @@ import (
 	"unicode"
 )
 
+type SyncResult struct{ Status, Revision, Detail string }
+
 func BrainDirectory(root string) string {
 	if dir := os.Getenv("HAWS_SECOND_BRAIN_DIR"); dir != "" {
 		if !filepath.IsAbs(dir) {
@@ -102,6 +104,71 @@ func BrainRemote(ctx context.Context, path string) (string, error) {
 		return "", err
 	}
 	return remote, nil
+}
+
+// SyncBrain fast-forwards a clean, independently owned Second Brain checkout.
+// It shares the connection lock so Settings cannot replace the checkout mid-sync.
+func SyncBrain(ctx context.Context, path string, timeout time.Duration) SyncResult {
+	fail := func(detail string) SyncResult { return SyncResult{Status: "failed", Revision: "-", Detail: detail} }
+	if err := safeSettingsGitEnvironment(); err != nil {
+		return fail("Git environment prevents safe synchronization")
+	}
+	if path == "" {
+		return fail("Second Brain checkout is unavailable")
+	}
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return fail("Second Brain checkout is unavailable")
+	}
+	if err := repositoryPathUnlinked(filepath.Dir(path), filepath.Base(path)); err != nil {
+		return fail("Second Brain checkout is unavailable")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fail("Second Brain checkout is unavailable")
+	}
+	lock := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".haws-brain-lock")
+	if err := os.Mkdir(lock, 0700); err != nil {
+		return fail("another Second Brain operation may be active")
+	}
+	defer os.Remove(lock)
+	if !independentBrain(ctx, path) {
+		return fail("Second Brain checkout is unavailable")
+	}
+	remote, err := BrainRemote(ctx, path)
+	if err != nil {
+		return fail("Second Brain checkout is unavailable")
+	}
+	if remote == "" {
+		return SyncResult{Status: "skipped", Revision: "-", Detail: "Second Brain is local-only"}
+	}
+	status, err := settingsGit(ctx, path, "status", "--porcelain", "--untracked-files=all")
+	if err != nil {
+		return fail("Second Brain preflight failed")
+	}
+	if status != "" {
+		return fail("Second Brain has local changes")
+	}
+	before, err := settingsGit(ctx, path, "rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return fail("Second Brain checkout is unavailable")
+	}
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	if _, err := settingsGit(ctx, path, "pull", "--ff-only", "origin", "main"); err != nil {
+		return fail("fast-forward pull failed")
+	}
+	after, err := settingsGit(ctx, path, "rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return fail("Second Brain checkout is unavailable")
+	}
+	if before == after {
+		return SyncResult{Status: "up-to-date", Revision: after, Detail: "no new commits on remote"}
+	}
+	return SyncResult{Status: "updated", Revision: before + ".." + after, Detail: "fast-forwarded from remote"}
 }
 
 func validBrainURL(url string) bool {

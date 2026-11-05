@@ -39,8 +39,10 @@ cleanup_fixture() {
     fi
     unset HAWS_REPO_DIR HAWS_STATE_DIR HAWS_SOURCE_ONLY HAWS_TEST_SYNC_DELAY \
         HAWS_AUTO_UPDATE AUTO_UPDATE HAWS_SECOND_BRAIN_ENABLED HAWS_SYNC_PREFETCH_DONE \
+        HAWS_SYNC_PRESENTATION SYNC_SUMMARY_UPDATED \
         HAWS_PACKAGE_DIR \
         HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
+        HAWS_NATIVE_BRAIN_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT HAWS_NATIVE_HELPER_LOG \
         GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
     FIXTURE_HOME=""
@@ -872,6 +874,27 @@ test_second_brain_dirty_sync_is_refused_with_auto_update_on() {
     grep -F 'local preference' "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md" >/dev/null || return 1
 }
 
+test_go_host_runs_native_second_brain_target_inside_existing_sync_presentation() {
+    local helper="${FIXTURE_ROOT}/native-go-host"
+    local helper_log="${FIXTURE_ROOT}/native-go-host.log"
+    cat > "${helper}" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
+printf 'updated\t1111111111111111111111111111111111111111..2222222222222222222222222222222222222222\tfast-forwarded from remote\n'
+EOF
+    chmod +x "${helper}"
+    source_haws || return 1
+    export HAWS_NATIVE_BRAIN_SYNC=1
+    export HAWS_GO_HOST_BINARY="${helper}"
+    export HAWS_NATIVE_HELPER_LOG="${helper_log}"
+    HAWS_SYNC_PRESENTATION=1
+    SYNC_SUMMARY_UPDATED=0
+    sync_second_brain_target >"${OUTPUT_FILE}" 2>&1 || return 1
+    grep -Fx -- '--haws-sync-target secondbrain' "${helper_log}" >/dev/null || return 1
+    assert_record secondbrain updated || return 1
+    grep -F 'secondbrain' "${OUTPUT_FILE}" | grep -F '[PASS] Updated' >/dev/null
+}
+
 test_second_brain_push_failure_is_reported() {
     add_second_brain
     printf '%s\n' 'local preference' >> "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md"
@@ -1691,6 +1714,7 @@ else
     run_test test_dirty_source_is_blocked_while_clean_source_continues
     run_test test_second_brain_dirty_sync_is_refused
     run_test test_second_brain_dirty_sync_is_refused_with_auto_update_on
+    run_test test_go_host_runs_native_second_brain_target_inside_existing_sync_presentation
     run_test test_second_brain_push_failure_is_reported
     run_test test_candidate_accepts_moved_and_removed_skill_entrypoints
     run_test test_missing_candidate_entrypoint_does_not_fall_back_to_old_content

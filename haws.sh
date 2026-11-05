@@ -3204,6 +3204,25 @@ sync_target() {
 sync_second_brain_target() {
     local brain_dir="$(_second_brain_dir)"
     local current final before
+    if [ "${HAWS_NATIVE_BRAIN_SYNC:-0}" = 1 ]; then
+        local native_result native_status native_revision native_detail
+        if [ -n "${HAWS_GO_HOST_BINARY:-}" ] &&
+            native_result="$("${HAWS_GO_HOST_BINARY}" --haws-sync-target secondbrain)"; then
+            IFS=$'\t' read -r native_status native_revision native_detail <<< "${native_result}"
+        else
+            native_status=failed
+            native_revision=-
+            native_detail="native Second Brain synchronization failed"
+        fi
+        case "${native_status}" in
+            updated|up-to-date|skipped|failed) ;;
+            *) native_status=failed; native_revision=-; native_detail="native Second Brain returned an invalid result" ;;
+        esac
+        sync_result_write secondbrain "${native_status}" "${native_revision:--}" "${native_detail:-native Second Brain returned no detail}" || return 1
+        _sync_legacy_echo "secondbrain: ${native_status}"
+        [ "${native_status}" != failed ] || return 1
+        return 0
+    fi
     if [ "${HAWS_AUTO_UPDATE_BRAIN:-on}" != on ]; then
         sync_result_write secondbrain skipped - "Auto Update is disabled" || return 1
         _sync_legacy_echo "secondbrain: skipped (auto update disabled)"

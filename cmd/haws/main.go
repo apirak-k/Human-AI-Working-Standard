@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -61,6 +62,25 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "HAWS %s\n", version)
 		return 0
 	}
+	if len(args) == 2 && args[0] == "--haws-sync-target" {
+		root := os.Getenv("HAWS_SYNC_ROOT")
+		if root == "" {
+			fmt.Fprintln(stderr, "native Sync target needs its HAWS root")
+			return 1
+		}
+		targetCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		result, err := app.NativeSyncTarget(targetCtx, root, args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if _, err := fmt.Fprintf(stdout, "%s\t%s\t%s\n", syncTargetField(result.Status), syncTargetField(result.Revision), syncTargetField(result.Detail)); err != nil {
+			fmt.Fprintln(stderr, "write native Sync target result:", err)
+			return 1
+		}
+		return 0
+	}
 	if len(args) > 0 && args[0] == "migrate" {
 		packageRoot, err := findPackageRootForRun()
 		if err != nil {
@@ -106,6 +126,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func syncTargetField(value string) string {
+	value = strings.NewReplacer("\t", " ", "\r", " ", "\n", " ").Replace(value)
+	if value == "" {
+		return "-"
+	}
+	return value
 }
 
 func setupAlreadyExists(root string) bool {

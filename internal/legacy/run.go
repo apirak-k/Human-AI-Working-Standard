@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/tui"
@@ -23,6 +24,11 @@ func Run(ctx context.Context, root string, action tui.Action, stdin io.Reader, s
 // RunCommand passes a supported legacy command and its arguments through the
 // Go host without returning to the legacy shell's Home menu.
 func RunCommand(ctx context.Context, root string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	return RunCommandWithEnv(ctx, root, args, stdin, stdout, stderr, nil)
+}
+
+// RunCommandWithEnv passes per-command environment values to the legacy host.
+func RunCommandWithEnv(ctx context.Context, root string, args []string, stdin io.Reader, stdout, stderr io.Writer, extra map[string]string) error {
 	if len(args) == 0 {
 		return errors.New("legacy HAWS command is required")
 	}
@@ -41,6 +47,14 @@ func RunCommand(ctx context.Context, root string, args []string, stdin io.Reader
 	environment := cmd.Env
 	if environment == nil {
 		environment = os.Environ()
+	}
+	keys := make([]string, 0, len(extra))
+	for key := range extra {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		environment = setEnvironment(environment, key, extra[key])
 	}
 	cmd.Env = setEnvironment(environment, "HAWS_GO_HOST", "1")
 	cmd.Stdin = stdin

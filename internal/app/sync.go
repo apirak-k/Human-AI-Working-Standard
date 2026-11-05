@@ -161,13 +161,38 @@ func RunSync(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		Installer:   update.NewInstaller(),
 		RuntimeRoot: runtimeRoot,
 		Legacy: func(ctx context.Context, root string, stdin io.Reader, stdout, stderr io.Writer) error {
-			return runLegacySync(ctx, root, args, stdin, stdout, stderr)
+			binary, binaryErr := os.Executable()
+			if binaryErr != nil {
+				return fmt.Errorf("resolve HAWS Go host binary: %w", binaryErr)
+			}
+			if active, activeErr := update.ActiveBinary(appRoot, runtime.GOOS, runtime.GOARCH); activeErr == nil && active != "" {
+				binary = active
+			}
+			return runLegacySyncWithBinary(ctx, root, args, stdin, stdout, stderr, binary)
 		},
 	}.Run(ctx, root, appRoot, updateEnabled, stdin, stdout, stderr)
 }
 
 func runLegacySync(ctx context.Context, root string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if err := legacy.RunCommand(ctx, root, args, stdin, stdout, stderr); err != nil {
+	binary, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve HAWS Go host binary: %w", err)
+	}
+	return runLegacySyncWithBinary(ctx, root, args, stdin, stdout, stderr, binary)
+}
+
+func runLegacySyncWithBinary(ctx context.Context, root string, args []string, stdin io.Reader, stdout, stderr io.Writer, binary string) error {
+	if binary == "" {
+		return errors.New("HAWS Go host binary is required for native Sync targets")
+	}
+	if resolved, err := filepath.EvalSymlinks(binary); err == nil {
+		binary = resolved
+	}
+	if err := legacy.RunCommandWithEnv(ctx, root, args, stdin, stdout, stderr, map[string]string{
+		"HAWS_NATIVE_BRAIN_SYNC": "1",
+		"HAWS_GO_HOST_BINARY":    binary,
+		"HAWS_SYNC_ROOT":         root,
+	}); err != nil {
 		return err
 	}
 	return completePendingSettingsIntegration(root)

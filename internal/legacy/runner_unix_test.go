@@ -59,12 +59,13 @@ func TestRunPassesInputOutputAndExitStatusToLegacyRuntime(t *testing.T) {
 func TestRunCommandPassesLegacyArguments(t *testing.T) {
 	root := t.TempDir()
 	argsPath := filepath.Join(root, "args.txt")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + argsPath + "\"\n"
+	envPath := filepath.Join(root, "env.txt")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + argsPath + "\"\nprintf '%s\\n' \"$HAWS_NATIVE_TEST\" > \"" + envPath + "\"\n"
 	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := RunCommand(context.Background(), root, []string{"doctor", "--json"}, strings.NewReader(""), io.Discard, io.Discard); err != nil {
-		t.Fatalf("RunCommand() error = %v", err)
+	if err := RunCommandWithEnv(context.Background(), root, []string{"doctor", "--json"}, strings.NewReader(""), io.Discard, io.Discard, map[string]string{"HAWS_NATIVE_TEST": "go"}); err != nil {
+		t.Fatalf("RunCommandWithEnv() error = %v", err)
 	}
 	args, err := os.ReadFile(argsPath)
 	if err != nil {
@@ -72,5 +73,8 @@ func TestRunCommandPassesLegacyArguments(t *testing.T) {
 	}
 	if string(args) != "doctor\n--json\n" {
 		t.Fatalf("legacy args = %q", args)
+	}
+	if env, err := os.ReadFile(envPath); err != nil || string(env) != "go\n" {
+		t.Fatalf("legacy environment = %q, %v", env, err)
 	}
 }

@@ -90,6 +90,45 @@ func TestRunPrintsVersionWithoutFindingCheckout(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeSyncTargetWithoutReenteringTheShellHost(t *testing.T) {
+	root := t.TempDir()
+	brain := filepath.Join(root, "secondbrain")
+	if err := os.MkdirAll(brain, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("git", "init", brain).CombinedOutput(); err != nil {
+		t.Fatalf("initialize local Second Brain: %v: %s", err, output)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-target", "secondbrain"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native Sync target exit = %d, stderr = %q", code, stderr.String())
+	}
+	if got, want := stdout.String(), "skipped\t-\tSecond Brain is local-only\n"; got != want {
+		t.Fatalf("native Sync result = %q, want %q", got, want)
+	}
+}
+
+func TestRunSkipsNativeBrainSyncWhenDisabled(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, ".haws", "state")
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "settings.tsv"), []byte("schema_version\t1\nauto_update_brain\toff\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-target", "secondbrain"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native Sync target exit = %d, stderr = %q", code, stderr.String())
+	}
+	if got, want := stdout.String(), "skipped\t-\tAuto Update is disabled\n"; got != want {
+		t.Fatalf("native Sync result = %q, want %q", got, want)
+	}
+}
+
 func TestRunMigrationUsesInstalledPackageWithoutLegacyRootDiscovery(t *testing.T) {
 	packageRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(packageRoot, "package-manifest.json"), []byte("{}"), 0o600); err != nil {

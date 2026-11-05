@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fixtureGit(t *testing.T, dir string, args ...string) string {
@@ -218,4 +219,103 @@ func TestBrainConnectInitializesIndependentCheckoutAndRejectsLinks(t *testing.T)
 	if string(after) != string(config) {
 		t.Fatal("external Git metadata changed")
 	}
+}
+
+func TestSyncBrainFastForwardsOnlyCleanCheckout(t *testing.T) {
+	seed, brain, remote := brainSyncFixture(t)
+	before := fixtureGit(t, brain, "rev-parse", "HEAD")
+	fixtureFile(t, filepath.Join(seed, "WORKFLOW.md"), "updated workflow\n")
+	fixtureGit(t, seed, "add", "WORKFLOW.md")
+	fixtureGit(t, seed, "commit", "-m", "update workflow")
+	fixtureGit(t, seed, "push", "origin", "main")
+
+	got := SyncBrain(context.Background(), brain, 10*time.Second)
+	after := fixtureGit(t, brain, "rev-parse", "HEAD")
+	if got.Status != "updated" || got.Revision != before+".."+after || got.Detail != "fast-forwarded from remote" {
+		t.Fatalf("SyncBrain() = %#v", got)
+	}
+	body, err := os.ReadFile(filepath.Join(brain, "WORKFLOW.md"))
+	if err != nil || string(body) != "updated workflow\n" {
+		t.Fatalf("fast-forwarded workflow = %q, %v", body, err)
+	}
+	if fixtureGit(t, remote, "rev-parse", "refs/heads/main") != after {
+		t.Fatal("sync changed the remote")
+	}
+	if got := SyncBrain(context.Background(), brain, time.Second); got.Status != "up-to-date" || got.Revision != after {
+		t.Fatalf("second SyncBrain() = %#v", got)
+	}
+}
+
+func TestSyncBrainPreservesDirtyNotesAndRejectsConcurrentBrainOperation(t *testing.T) {
+	seed, brain, _ := brainSyncFixture(t)
+	fixtureFile(t, filepath.Join(seed, "WORKFLOW.md"), "upstream update\n")
+	fixtureGit(t, seed, "add", "WORKFLOW.md")
+	fixtureGit(t, seed, "commit", "-m", "update workflow")
+	fixtureGit(t, seed, "push", "origin", "main")
+	fixtureFile(t, filepath.Join(brain, "private-note.md"), "private\n")
+	head := fixtureGit(t, brain, "rev-parse", "HEAD")
+	if got := SyncBrain(context.Background(), brain, time.Second); got.Status != "failed" || got.Detail != "Second Brain has local changes" {
+		t.Fatalf("dirty SyncBrain() = %#v", got)
+	}
+	if fixtureGit(t, brain, "rev-parse", "HEAD") != head {
+		t.Fatal("dirty checkout advanced")
+	}
+	if body, err := os.ReadFile(filepath.Join(brain, "private-note.md")); err != nil || string(body) != "private\n" {
+		t.Fatalf("private note = %q, %v", body, err)
+	}
+	if err := os.Remove(filepath.Join(brain, "private-note.md")); err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(filepath.Dir(brain), "."+filepath.Base(brain)+".haws-brain-lock")
+	if err := os.Mkdir(lock, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got := SyncBrain(context.Background(), brain, time.Second); got.Status != "failed" || got.Detail != "another Second Brain operation may be active" {
+		t.Fatalf("locked SyncBrain() = %#v", got)
+	}
+}
+
+func TestSyncBrainSkipsLocalOnlyAndUnavailableCheckouts(t *testing.T) {
+	local := fixtureRepo(t)
+	if got := SyncBrain(context.Background(), local, time.Second); got.Status != "skipped" || got.Detail != "Second Brain is local-only" {
+		t.Fatalf("local-only SyncBrain() = %#v", got)
+	}
+	if got := SyncBrain(context.Background(), filepath.Join(t.TempDir(), "missing"), time.Second); got.Status != "failed" || got.Detail != "Second Brain checkout is unavailable" {
+		t.Fatalf("missing SyncBrain() = %#v", got)
+	}
+}
+
+func TestSyncBrainReleasesSharedLockAfterCancellation(t *testing.T) {
+	_, brain, _ := brainSyncFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := SyncBrain(ctx, brain, time.Second); got.Status != "failed" {
+		t.Fatalf("cancelled SyncBrain() = %#v", got)
+	}
+	lock := filepath.Join(filepath.Dir(brain), "."+filepath.Base(brain)+".haws-brain-lock")
+	if _, err := os.Lstat(lock); !os.IsNotExist(err) {
+		t.Fatalf("Brain lock after cancellation: %v", err)
+	}
+}
+
+func brainSyncFixture(t *testing.T) (seed, brain, remote string) {
+	t.Helper()
+	seed = fixtureRepo(t)
+	fixtureFile(t, filepath.Join(seed, "WORKFLOW.md"), "baseline\n")
+	fixtureGit(t, seed, "add", "WORKFLOW.md")
+	fixtureGit(t, seed, "commit", "-m", "baseline")
+	remote = filepath.Join(fixtureDir(t), "remote.git")
+	if output, err := exec.Command("git", "init", "--bare", remote).CombinedOutput(); err != nil {
+		t.Fatalf("git init remote: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main").CombinedOutput(); err != nil {
+		t.Fatalf("set remote HEAD: %v: %s", err, output)
+	}
+	fixtureGit(t, seed, "remote", "add", "origin", remote)
+	fixtureGit(t, seed, "push", "-u", "origin", "main")
+	brain = filepath.Join(fixtureDir(t), "secondbrain")
+	if output, err := exec.Command("git", "clone", remote, brain).CombinedOutput(); err != nil {
+		t.Fatalf("clone brain: %v: %s", err, output)
+	}
+	return seed, brain, remote
 }
