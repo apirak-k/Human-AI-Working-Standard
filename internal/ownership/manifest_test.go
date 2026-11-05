@@ -37,7 +37,7 @@ func makePackage(t *testing.T, root string) Manifest {
 		manifest.Files[relative] = hex.EncodeToString(hash[:])
 	}
 	writeManifest(t, root, manifest)
-	return manifest
+	return readFixtureManifest(t, root)
 }
 
 func writeManifest(t *testing.T, root string, manifest Manifest) {
@@ -49,6 +49,15 @@ func writeManifest(t *testing.T, root string, manifest Manifest) {
 	if err := os.WriteFile(filepath.Join(root, ManifestName), contents, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func readFixtureManifest(t *testing.T, root string) Manifest {
+	t.Helper()
+	manifest, err := ReadManifest(root, runtime.GOOS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return manifest
 }
 
 func TestInspectPackageVerifiesManifestAndFileFingerprints(t *testing.T) {
@@ -165,6 +174,7 @@ func TestRemovePackageFilesRemovesEmptyOwnedRuntimeDirectories(t *testing.T) {
 	hash := sha256.Sum256(runtimeContents)
 	manifest.Files[runtimeFile] = hex.EncodeToString(hash[:])
 	writeManifest(t, root, manifest)
+	manifest = readFixtureManifest(t, root)
 
 	removed, preserved, err := RemovePackageFiles(root, runtime.GOOS, manifest, "")
 	if err != nil {
@@ -198,6 +208,7 @@ func TestRemovePackageFilesPreservesUnownedRuntimeAndDataContent(t *testing.T) {
 	hash := sha256.Sum256(runtimeContents)
 	manifest.Files[runtimeFile] = hex.EncodeToString(hash[:])
 	writeManifest(t, root, manifest)
+	manifest = readFixtureManifest(t, root)
 	if err := os.WriteFile(filepath.Join(root, "runtime", "core", "personal-note.md"), []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -238,6 +249,7 @@ func TestRemovePackageFilesDoesNotTraverseSymlinkedRuntimeAncestor(t *testing.T)
 	hash := sha256.Sum256([]byte("fixture runtime"))
 	manifest.Files[runtimeFile] = hex.EncodeToString(hash[:])
 	writeManifest(t, root, manifest)
+	manifest = readFixtureManifest(t, root)
 
 	_, _, err := RemovePackageFiles(root, runtime.GOOS, manifest, "")
 	if err != nil {
@@ -248,6 +260,125 @@ func TestRemovePackageFilesDoesNotTraverseSymlinkedRuntimeAncestor(t *testing.T)
 	}
 	if info, err := os.Lstat(filepath.Join(root, "runtime")); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("package symlink was changed: info=%v err=%v", info, err)
+	}
+}
+
+func TestRemoveEmptyPackageDirectoryRechecksSwappedAncestorBeforeRemoval(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "runtime", "core"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	external := t.TempDir()
+	if err := os.Mkdir(filepath.Join(external, "core"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(root, "runtime-link")); err != nil {
+		t.Skipf("creating directory symlink is unavailable: %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, "runtime-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, reason, err := removeEmptyPackageDirectoryWithHook(root, "runtime/core", func() {
+		if err := os.Rename(filepath.Join(root, "runtime"), filepath.Join(root, "runtime-original")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(external, filepath.Join(root, "runtime")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed || reason != "symlinked or unowned parent" {
+		t.Fatalf("remove result = %t, %q; want preserved symlinked parent", removed, reason)
+	}
+	for _, directory := range []string{
+		filepath.Join(root, "runtime-original", "core"),
+		filepath.Join(external, "core"),
+	} {
+		if info, err := os.Lstat(directory); err != nil || !info.IsDir() {
+			t.Fatalf("directory %s was removed or changed: info=%v err=%v", directory, info, err)
+		}
+	}
+	if info, err := os.Lstat(filepath.Join(root, "runtime")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("swapped runtime entry = %v, %v; want symlink", info, err)
+	}
+}
+
+func TestRemoveOwnedPackageFileDoesNotFollowSwappedSymlinkAncestor(t *testing.T) {
+	root := t.TempDir()
+	ownedPath := filepath.Join(root, "runtime", "core", "HAWS.md")
+	ownedContents := []byte("owned runtime fixture")
+	if err := os.MkdirAll(filepath.Dir(ownedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ownedPath, ownedContents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	external := t.TempDir()
+	externalPath := filepath.Join(external, "core", "HAWS.md")
+	if err := os.MkdirAll(filepath.Dir(externalPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(externalPath, []byte("user file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	probe := filepath.Join(root, "symlink-probe")
+	if err := os.Symlink(external, probe); err != nil {
+		t.Skipf("creating directory symlink is unavailable: %v", err)
+	}
+	if err := os.Remove(probe); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(ownedContents)
+
+	removed, state, err := removeOwnedPackageFileWithHook(root, "runtime/core/HAWS.md", hex.EncodeToString(hash[:]), func() {
+		if err := os.Rename(filepath.Join(root, "runtime"), filepath.Join(root, "runtime-original")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(external, filepath.Join(root, "runtime")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed || state != "unowned" {
+		t.Fatalf("remove result = %t, %q; want preserved swapped ancestor", removed, state)
+	}
+	if got, err := os.ReadFile(externalPath); err != nil || string(got) != "user file" {
+		t.Fatalf("external user file = %q, %v", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, "runtime-original", "core", "HAWS.md")); err != nil || string(got) != string(ownedContents) {
+		t.Fatalf("original package file = %q, %v", got, err)
+	}
+}
+
+func TestRemovePackageFilesRejectsChangedOwnershipManifestAfterPreview(t *testing.T) {
+	root := t.TempDir()
+	manifest := makePackage(t, root)
+	manifestPath := filepath.Join(root, ManifestName)
+	contents, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, append(contents, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, preserved, err := RemovePackageFiles(root, runtime.GOOS, manifest, "")
+	if err == nil {
+		t.Fatalf("RemovePackageFiles() accepted changed preview manifest: removed=%v preserved=%v", removed, preserved)
+	}
+	if len(removed) != 0 || len(preserved) != 0 {
+		t.Fatalf("cleanup began before rejecting changed manifest: removed=%v preserved=%v", removed, preserved)
+	}
+	if _, err := os.Lstat(manifestPath); err != nil {
+		t.Fatalf("changed ownership manifest was removed: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "README.txt")); err != nil {
+		t.Fatalf("package cleanup began before rejecting changed manifest: %v", err)
 	}
 }
 

@@ -44,6 +44,7 @@ type Manifest struct {
 	Version       string            `json:"version"`
 	Platform      string            `json:"platform"`
 	Files         map[string]string `json:"files"`
+	fingerprint   string
 }
 
 type FileStatus struct {
@@ -108,6 +109,8 @@ func ReadManifest(root, goos string) (Manifest, error) {
 	if err := validateManifest(manifest, goos); err != nil {
 		return Manifest{}, err
 	}
+	digest := sha256.Sum256(contents)
+	manifest.fingerprint = hex.EncodeToString(digest[:])
 	return manifest, nil
 }
 
@@ -146,83 +149,39 @@ func RemovePackageFiles(root, goos string, expected Manifest, currentExecutable 
 		case "missing":
 			continue
 		case "owned":
-			path := filepath.Join(root, filepath.FromSlash(status.Path))
-			if err := os.Remove(path); err != nil {
-				if !errors.Is(err, os.ErrNotExist) {
-					preserved = append(preserved, status.Path)
-					failures = append(failures, fmt.Errorf("remove owned HAWS package file %s: %w", status.Path, err))
-				}
-			} else {
+			wasRemoved, currentState, removeErr := removeOwnedPackageFile(root, status.Path, status.SHA256)
+			if removeErr != nil {
+				preserved = append(preserved, status.Path)
+				failures = append(failures, fmt.Errorf("remove owned HAWS package file %s: %w", status.Path, removeErr))
+			} else if wasRemoved {
 				removed = append(removed, status.Path)
+			} else if currentState != "missing" {
+				preserved = append(preserved, status.Path)
 			}
 		default:
 			preserved = append(preserved, status.Path)
 		}
 	}
 	for _, directory := range packageDirectories(current) {
-		path := filepath.Join(root, filepath.FromSlash(directory))
-		exists, safe, statErr := inspectOwnedDirectoryPath(root, directory)
-		if errors.Is(statErr, os.ErrNotExist) {
-			continue
-		}
-		if statErr != nil {
-			preserved = append(preserved, directory+" (could not inspect)")
-			failures = append(failures, fmt.Errorf("inspect owned HAWS package directory %s: %w", directory, statErr))
-			continue
-		}
-		if !exists {
-			continue
-		}
-		if !safe {
-			preserved = append(preserved, directory+" (symlinked or unowned parent)")
-			continue
-		}
-		entries, readErr := os.ReadDir(path)
-		if readErr != nil {
-			preserved = append(preserved, directory+" (could not inspect)")
-			failures = append(failures, fmt.Errorf("inspect owned HAWS package directory %s: %w", directory, readErr))
-			continue
-		}
-		if len(entries) > 0 {
-			preserved = append(preserved, directory+" (contains unowned files)")
-			continue
-		}
-		// Recheck all components immediately before removal so a swapped
-		// symlinked parent cannot redirect this operation outside the package.
-		exists, safe, statErr = inspectOwnedDirectoryPath(root, directory)
-		if errors.Is(statErr, os.ErrNotExist) {
-			continue
-		}
-		if statErr != nil {
-			preserved = append(preserved, directory+" (could not inspect)")
-			failures = append(failures, fmt.Errorf("recheck owned HAWS package directory %s: %w", directory, statErr))
-			continue
-		}
-		if !exists {
-			continue
-		}
-		if !safe {
-			preserved = append(preserved, directory+" (symlinked or unowned parent)")
-			continue
-		}
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			preserved = append(preserved, directory+" (could not remove)")
-			failures = append(failures, fmt.Errorf("remove empty HAWS package directory %s: %w", directory, err))
+		removed, reason, removeErr := removeEmptyPackageDirectory(root, directory)
+		if removeErr != nil {
+			if reason == "" {
+				reason = "could not remove"
+			}
+			preserved = append(preserved, directory+" ("+reason+")")
+			failures = append(failures, fmt.Errorf("remove empty HAWS package directory %s: %w", directory, removeErr))
+		} else if !removed && reason != "" {
+			preserved = append(preserved, directory+" ("+reason+")")
 		}
 	}
 	if len(preserved) == 0 {
-		manifestPath := filepath.Join(root, ManifestName)
-		info, statErr := os.Lstat(manifestPath)
-		if statErr == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
-			if removeErr := os.Remove(manifestPath); removeErr == nil {
-				removed = append(removed, ManifestName)
-			} else if !errors.Is(removeErr, os.ErrNotExist) {
-				preserved = append(preserved, ManifestName)
-				failures = append(failures, fmt.Errorf("remove HAWS package manifest: %w", removeErr))
-			}
-		} else if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		manifestRemoved, state, removeErr := removeOwnedPackageFile(root, ManifestName, current.fingerprint)
+		if removeErr != nil {
 			preserved = append(preserved, ManifestName)
-		} else if statErr == nil {
+			failures = append(failures, fmt.Errorf("remove HAWS package manifest: %w", removeErr))
+		} else if manifestRemoved {
+			removed = append(removed, ManifestName)
+		} else if state != "missing" {
 			preserved = append(preserved, ManifestName)
 		}
 	} else {
@@ -308,38 +267,325 @@ func inspectFile(root, relative, expectedHash string) (string, error) {
 	return "owned", nil
 }
 
-// inspectOwnedDirectoryPath refuses to follow symlinks or non-directory
-// ancestors while checking a package directory that may be removed.
-func inspectOwnedDirectoryPath(root, relative string) (exists, safe bool, err error) {
-	clean := path.Clean(relative)
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(relative) || strings.Contains(relative, "\\") {
-		return false, false, errors.New("package directory path is invalid")
+func removeEmptyPackageDirectory(root, relative string) (bool, string, error) {
+	return removeEmptyPackageDirectoryWithHook(root, relative, nil)
+}
+
+// removeEmptyPackageDirectoryWithHook removes an empty package directory by
+// retaining and revalidating directory handles for every path component. The
+// hook exists only so tests can exercise a parent replacement between checks.
+func removeEmptyPackageDirectoryWithHook(root, relative string, beforeRemove func()) (bool, string, error) {
+	parts, err := safePackagePathParts(relative)
+	if err != nil || len(parts) == 0 {
+		return false, "", errors.New("package directory path is invalid")
 	}
-	rootInfo, err := os.Lstat(root)
+	rootHandle, exists, safe, err := openVerifiedPackageRoot(root)
+	if err != nil {
+		return false, "could not inspect", err
+	}
+	if !exists {
+		return false, "", nil
+	}
+	if !safe {
+		return false, "symlinked or unowned parent", nil
+	}
+	defer rootHandle.Close()
+
+	parentParts := parts[:len(parts)-1]
+	name := parts[len(parts)-1]
+	parent, parents, parentInfos, reason, err := openPackageDirectoryParent(rootHandle, parentParts, nil)
+	if err != nil || reason != "" || parent == nil {
+		closeRoots(parents)
+		return false, reason, err
+	}
+	finalInfo, err := parent.Lstat(name)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, false, nil
+		closeRoots(parents)
+		return false, "", nil
 	}
 	if err != nil {
-		return false, false, err
+		closeRoots(parents)
+		return false, "could not inspect", err
+	}
+	if finalInfo.Mode()&os.ModeSymlink != 0 || !finalInfo.IsDir() {
+		closeRoots(parents)
+		return false, "symlinked or unowned parent", nil
+	}
+	finalHandle, err := parent.OpenRoot(name)
+	if err != nil {
+		closeRoots(parents)
+		return false, "could not inspect", err
+	}
+	finalHandleInfo, err := finalHandle.Stat(".")
+	if err != nil || !os.SameFile(finalInfo, finalHandleInfo) {
+		_ = finalHandle.Close()
+		closeRoots(parents)
+		if err != nil {
+			return false, "could not inspect", err
+		}
+		return false, "symlinked or unowned parent", nil
+	}
+	finalAfterOpen, err := parent.Lstat(name)
+	if err != nil || finalAfterOpen.Mode()&os.ModeSymlink != 0 || !os.SameFile(finalInfo, finalAfterOpen) {
+		_ = finalHandle.Close()
+		closeRoots(parents)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return false, "could not inspect", err
+		}
+		return false, "symlinked or unowned parent", nil
+	}
+	directory, err := finalHandle.Open(".")
+	if err != nil {
+		_ = finalHandle.Close()
+		closeRoots(parents)
+		return false, "could not inspect", err
+	}
+	entries, readErr := directory.ReadDir(-1)
+	closeErr := directory.Close()
+	_ = finalHandle.Close()
+	closeRoots(parents)
+	if readErr != nil {
+		return false, "could not inspect", readErr
+	}
+	if closeErr != nil {
+		return false, "could not inspect", closeErr
+	}
+	if len(entries) > 0 {
+		return false, "contains unowned files", nil
+	}
+	if beforeRemove != nil {
+		beforeRemove()
+	}
+
+	// Reopen the same parents from the package root and compare each identity
+	// before removing the final component through the retained parent handle.
+	currentParent, currentParents, _, reason, err := openPackageDirectoryParent(rootHandle, parentParts, parentInfos)
+	if err != nil || reason != "" || currentParent == nil {
+		closeRoots(currentParents)
+		return false, reason, err
+	}
+	defer closeRoots(currentParents)
+	currentFinal, err := currentParent.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, "", nil
+	}
+	if err != nil {
+		return false, "could not inspect", err
+	}
+	if currentFinal.Mode()&os.ModeSymlink != 0 || !currentFinal.IsDir() || !os.SameFile(finalInfo, currentFinal) {
+		return false, "symlinked or unowned parent", nil
+	}
+	if err := currentParent.Remove(name); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, "", nil
+		}
+		return false, "could not remove", err
+	}
+	return true, "", nil
+}
+
+func removeOwnedPackageFile(root, relative, expectedHash string) (bool, string, error) {
+	return removeOwnedPackageFileWithHook(root, relative, expectedHash, nil)
+}
+
+func removeOwnedPackageFileWithHook(root, relative, expectedHash string, beforeRemove func()) (bool, string, error) {
+	parts, err := safePackagePathParts(relative)
+	if err != nil || len(parts) == 0 {
+		return false, "unowned", errors.New("package file path is invalid")
+	}
+	rootHandle, exists, safe, err := openVerifiedPackageRoot(root)
+	if err != nil {
+		return false, "unowned", err
+	}
+	if !exists {
+		return false, "missing", nil
+	}
+	if !safe {
+		return false, "unowned", nil
+	}
+	defer rootHandle.Close()
+
+	parentParts := parts[:len(parts)-1]
+	name := parts[len(parts)-1]
+	parent, parents, parentInfos, reason, err := openPackageDirectoryParent(rootHandle, parentParts, nil)
+	if err != nil || reason != "" || parent == nil {
+		closeRoots(parents)
+		if err == nil && reason == "" && parent == nil {
+			return false, "missing", nil
+		}
+		return false, "unowned", err
+	}
+	defer closeRoots(parents)
+	initialInfo, state, err := inspectOwnedFileAt(parent, name, expectedHash)
+	if err != nil || state != "owned" {
+		return false, state, err
+	}
+	if beforeRemove != nil {
+		beforeRemove()
+	}
+
+	currentParent, currentParents, _, reason, err := openPackageDirectoryParent(rootHandle, parentParts, parentInfos)
+	if err != nil || reason != "" || currentParent == nil {
+		closeRoots(currentParents)
+		return false, "unowned", err
+	}
+	defer closeRoots(currentParents)
+	currentInfo, state, err := inspectOwnedFileAt(currentParent, name, expectedHash)
+	if err != nil || state != "owned" || !os.SameFile(initialInfo, currentInfo) {
+		if err == nil && state == "owned" {
+			state = "unowned"
+		}
+		return false, state, err
+	}
+	latestInfo, err := currentParent.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, "missing", nil
+	}
+	if err != nil {
+		return false, "unowned", err
+	}
+	if latestInfo.Mode()&os.ModeSymlink != 0 || !latestInfo.Mode().IsRegular() || !os.SameFile(currentInfo, latestInfo) {
+		return false, "unowned", nil
+	}
+	if err := currentParent.Remove(name); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, "missing", nil
+		}
+		return false, "unowned", err
+	}
+	return true, "missing", nil
+}
+
+func inspectOwnedFileAt(parent *os.Root, name, expectedHash string) (os.FileInfo, string, error) {
+	info, err := parent.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, "missing", nil
+	}
+	if err != nil {
+		return nil, "unowned", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maxPackageFile {
+		return nil, "unowned", nil
+	}
+	file, err := parent.Open(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "missing", nil
+		}
+		return nil, "unowned", err
+	}
+	openedInfo, statErr := file.Stat()
+	if statErr != nil || !os.SameFile(info, openedInfo) {
+		_ = file.Close()
+		if statErr != nil {
+			return nil, "unowned", statErr
+		}
+		return nil, "unowned", nil
+	}
+	hash := sha256.New()
+	_, copyErr := io.Copy(hash, io.LimitReader(file, maxPackageFile+1))
+	closeErr := file.Close()
+	if copyErr != nil {
+		return nil, "unowned", copyErr
+	}
+	if closeErr != nil {
+		return nil, "unowned", closeErr
+	}
+	if hex.EncodeToString(hash.Sum(nil)) != strings.ToLower(expectedHash) {
+		return nil, "changed", nil
+	}
+	return info, "owned", nil
+}
+
+func safePackagePathParts(relative string) ([]string, error) {
+	clean := path.Clean(relative)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || clean != relative || path.IsAbs(relative) || strings.Contains(relative, "\\") {
+		return nil, errors.New("package path is invalid")
+	}
+	return strings.Split(clean, "/"), nil
+}
+
+func openVerifiedPackageRoot(root string) (*os.Root, bool, bool, error) {
+	rootInfo, err := os.Lstat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, false, nil
+	}
+	if err != nil {
+		return nil, true, false, err
 	}
 	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-		return true, false, nil
+		return nil, true, false, nil
 	}
-	current := root
-	for _, part := range strings.Split(clean, "/") {
-		current = filepath.Join(current, part)
-		info, statErr := os.Lstat(current)
-		if errors.Is(statErr, os.ErrNotExist) {
-			return false, false, nil
-		}
-		if statErr != nil {
-			return false, false, statErr
-		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return true, false, nil
-		}
+	rootHandle, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, true, false, err
 	}
-	return true, true, nil
+	openedRootInfo, err := rootHandle.Stat(".")
+	if err != nil {
+		_ = rootHandle.Close()
+		return nil, true, false, err
+	}
+	rootAfterOpen, err := os.Lstat(root)
+	if err != nil {
+		_ = rootHandle.Close()
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, false, false, nil
+		}
+		return nil, true, false, err
+	}
+	if rootAfterOpen.Mode()&os.ModeSymlink != 0 || !os.SameFile(rootInfo, openedRootInfo) || !os.SameFile(rootInfo, rootAfterOpen) {
+		_ = rootHandle.Close()
+		return nil, true, false, nil
+	}
+	return rootHandle, true, true, nil
+}
+
+func openPackageDirectoryParent(root *os.Root, components []string, expected []os.FileInfo) (*os.Root, []*os.Root, []os.FileInfo, string, error) {
+	parent := root
+	opened := make([]*os.Root, 0, len(components))
+	infos := make([]os.FileInfo, 0, len(components))
+	for index, component := range components {
+		info, err := parent.Lstat(component)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, opened, infos, "", nil
+		}
+		if err != nil {
+			return nil, opened, infos, "could not inspect", err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || expected != nil && !os.SameFile(info, expected[index]) {
+			return nil, opened, infos, "symlinked or unowned parent", nil
+		}
+		child, err := parent.OpenRoot(component)
+		if err != nil {
+			return nil, opened, infos, "could not inspect", err
+		}
+		openedInfo, err := child.Stat(".")
+		if err != nil || !os.SameFile(info, openedInfo) {
+			_ = child.Close()
+			if err != nil {
+				return nil, opened, infos, "could not inspect", err
+			}
+			return nil, opened, infos, "symlinked or unowned parent", nil
+		}
+		afterOpen, err := parent.Lstat(component)
+		if err != nil || afterOpen.Mode()&os.ModeSymlink != 0 || !os.SameFile(info, afterOpen) {
+			_ = child.Close()
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, opened, infos, "could not inspect", err
+			}
+			return nil, opened, infos, "symlinked or unowned parent", nil
+		}
+		opened = append(opened, child)
+		infos = append(infos, info)
+		parent = child
+	}
+	return parent, opened, infos, "", nil
+}
+
+func closeRoots(roots []*os.Root) {
+	for index := len(roots) - 1; index >= 0; index-- {
+		_ = roots[index].Close()
+	}
 }
 
 func packageDirectories(manifest Manifest) []string {
@@ -430,7 +676,7 @@ func isSHA256Hex(value string) bool {
 }
 
 func sameManifest(left, right Manifest) bool {
-	if left.SchemaVersion != right.SchemaVersion || left.Version != right.Version || left.Platform != right.Platform || len(left.Files) != len(right.Files) {
+	if left.SchemaVersion != right.SchemaVersion || left.Version != right.Version || left.Platform != right.Platform || left.fingerprint != right.fingerprint || len(left.Files) != len(right.Files) {
 		return false
 	}
 	for path, hash := range left.Files {
