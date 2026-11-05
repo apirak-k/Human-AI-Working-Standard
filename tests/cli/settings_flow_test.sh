@@ -828,6 +828,47 @@ test_internal_codex_install_failure_does_not_complete_settings_apply() {
     assert_output_contains 'Partial failure' || return 1
 }
 
+test_go_host_settings_defers_integration_sync_to_go_runner() {
+    source_haws || return 1
+    local state="${FIXTURE_PROJECT}/.haws/state"
+    local sync_log="${FIXTURE_ROOT}/legacy-sync.log"
+    mkdir -p "${state}" || return 1
+    HAWS_PLAN_FILE="${state}/settings.plan"
+    HAWS_PLAN_KIND=Update
+    HAWS_DRAFT_AUTO_UPDATE=on
+    HAWS_DRAFT_AUTO_UPDATE_SKILLS=on
+    HAWS_DRAFT_AUTO_UPDATE_BRAIN=on
+    printf 'setting\tauto_update\ton\nintegration\tupdate\told HAWS integration\n' \
+        > "${HAWS_PLAN_FILE}" || return 1
+    settings_preflight_plan() { return 0; }
+    settings_save() { return 0; }
+    settings_apply_skill_draft() { return 0; }
+    settings_verify_plan() { return 0; }
+    run_sync() { printf 'called\n' > "${sync_log}"; return 0; }
+
+    HAWS_GO_HOST=1 settings_apply_final >"${OUTPUT_FILE}" 2>&1 || return 1
+    [ ! -e "${sync_log}" ] || return 1
+    grep -Fq $'settings\tcompleted' "${state}/apply.result" || return 1
+    grep -Fq $'integration\tpending' "${state}/apply.result" || return 1
+    assert_output_contains 'Go Home will run the authoritative Sync' || return 1
+    [ -s "${state}/install.complete" ]
+}
+
+test_go_host_settings_flow_preserves_integration_handoff_until_sync() {
+    source_haws || return 1
+    local state="${HAWS_STATE_DIR}"
+    mkdir -p "${state}" || return 1
+    settings_plan_build() { return 0; }
+    settings_preview() { return 0; }
+    settings_apply_final() {
+        printf 'settings\tcompleted\nintegration\tpending\n' > "${state}/apply.result"
+    }
+
+    HAWS_GO_HOST=1 settings_flow_run preview >"${OUTPUT_FILE}" 2>&1 || return 1
+    grep -Fq $'integration\tpending' "${state}/apply.result" || return 1
+    [ ! -e "${state}/settings.plan" ]
+}
+
 test_sync_manifest_stage_failure_is_not_reported_as_success() {
     mkdir -p "${FIXTURE_HOME}/.haws_manifest.tmp" || return 1
     source_haws || return 1
@@ -994,6 +1035,8 @@ run_test test_update_sync_status_2_is_failure_without_rewriting_completion
 run_test test_update_sync_status_130_is_failure_without_rewriting_completion
 run_test test_update_sync_status_1_is_failure_without_rewriting_completion
 run_test test_internal_codex_install_failure_does_not_complete_settings_apply
+run_test test_go_host_settings_defers_integration_sync_to_go_runner
+run_test test_go_host_settings_flow_preserves_integration_handoff_until_sync
 run_test test_sync_manifest_stage_failure_is_not_reported_as_success
 run_test test_settings_repository_remove_shows_loading_status
 run_test test_settings_repository_remove_displays_pack_and_single_without_unbound_variable

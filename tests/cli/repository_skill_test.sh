@@ -460,6 +460,21 @@ test_kit_add_registers_device_source_and_links_skill() {
     _sync_root_preflight
 }
 
+test_kit_add_rejects_unimplemented_tool_lifecycle_without_registering_it_as_a_skill() {
+    prepare_clean_kit_project || return 1
+    make_remote unimplemented-tool single || return 1
+    source_haws || return 1
+    enable_local_sources
+
+    if run_kit add --tool "${REMOTE_URL}" unimplemented-tool >"${OUTPUT_FILE}" 2>&1; then
+        echo 'kit add --tool unexpectedly entered the skill-source lifecycle.' >&2
+        return 1
+    fi
+    assert_output_contains 'Tool installation is not supported yet' || return 1
+    [ ! -e "${FIXTURE_PROJECT}/.haws/state/skill-sources/registry.tsv" ] || return 1
+    [ ! -e "${FIXTURE_PROJECT}/.haws/state/skill-sources/skills/packs/unimplemented-tool" ]
+}
+
 test_kit_add_survives_remote_skill_update() {
     prepare_clean_kit_project || return 1
     make_remote updated-skill single || return 1
@@ -1764,6 +1779,7 @@ run_test test_kit_migrate_refuses_unrelated_gitmodules_addition
 run_test test_kit_migrate_preserves_ignored_submodule_files
 run_test test_add_only_apply_creates_device_local_source
 run_test test_kit_add_registers_device_source_and_links_skill
+run_test test_kit_add_rejects_unimplemented_tool_lifecycle_without_registering_it_as_a_skill
 run_test test_kit_add_survives_remote_skill_update
 run_test test_sync_reclassifies_pack_as_single_and_is_idempotent
 run_test test_sync_reclassifies_single_as_pack_after_remote_addition

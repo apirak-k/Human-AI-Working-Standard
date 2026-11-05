@@ -127,6 +127,8 @@ native_root="$TMP/extracted/haws-go/$native_os"
 [[ -s "$native_root/runtime/source-revisions.tsv" ]] || fail 'packaged pinned source revisions are missing'
 (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" doctor >"$TMP/doctor.log" 2>&1) || { cat "$TMP/doctor.log" >&2; fail 'extracted launcher could not run Doctor'; }
 rg -qi 'doctor|health' "$TMP/doctor.log" || fail 'Doctor action did not run'
+(cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" status >"$TMP/status.log" 2>&1) || { cat "$TMP/status.log" >&2; fail 'extracted launcher could not run Status'; }
+rg -q 'HAWS Status' "$TMP/status.log" || fail 'Status action did not run through the extracted Go host'
 [[ -f "$native_root/data/secondbrain/WORKFLOW.md" ]] || fail 'persistent Second Brain seed was not initialized in data/'
 [[ ! -d "$native_root/runtime/.haws" ]] || fail 'runtime contains writable state'
 
@@ -200,20 +202,22 @@ git -C "$fixture_repo" commit -qm 'fixture update'
 fixture_updated="$(git -C "$fixture_repo" rev-parse HEAD)"
 env HOME="$TMP/home" HAWS_STATE_DIR="$native_root/data/state" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 HAWS_SOURCE_ONLY=1 bash -c '. "$1"; _haws_prepare_device_source "skills/packs/fixture::skills/packs/fixture"' _ "$native_root/runtime/haws.sh" || fail 'could not materialize pinned source'
 [[ "$(git -C "$unowned" rev-parse HEAD)" == "$fixture_revision" ]] || fail 'initial source checkout did not use release pin'
-rm -rf "$unowned"
-rm "$unowned.haws-owned"
 echo keep > "$native_root/data/personal-note"
-if ! printf '\n\033[A\nq' | (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" CODEX_HOME="$TMP/home/.codex" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 "$native_root/$launcher" setup >"$TMP/setup.log" 2>&1); then
+# Customize the first-run draft to keep update checks offline in this isolated
+# package fixture. The Go Sync still applies and reconciles the selected state.
+setup_input="$(printf '\033[B\n\033[B\033[B\033[B\033[B\n\nq\033[B\033[B\033[B\033[B\033[B\n\033[A\nq')"
+if ! printf '%s' "$setup_input" | (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" CODEX_HOME="$TMP/home/.codex" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 "$native_root/$launcher" setup >"$TMP/setup.log" 2>&1); then
  cat "$TMP/setup.log" >&2; fail 'extracted launcher setup failed'
 fi
-rg -q 'Installation state completed' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'first-time setup did not complete'; }
+rg -q 'Settings saved; Go Home will run the authoritative Sync' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'first-time setup did not hand integration work to Go Sync'; }
+rg -Fq $'integration\tcompleted' "$native_root/data/state/apply.result" || { cat "$TMP/setup.log" >&2; fail 'Go Sync did not complete the pending Settings integration'; }
+[[ "$(rg -c '\[PASS\] HAWS synchronization completed' "$TMP/setup.log")" == 1 ]] || { cat "$TMP/setup.log" >&2; fail 'Go-hosted Setup did not run exactly one Sync'; }
 source_dir="$native_root/data/state/skill-sources/skills/packs/fixture"
-[[ "$(git -C "$source_dir" rev-parse HEAD)" == "$fixture_updated" ]] || fail 'setup did not advance the local source'
+[[ "$(git -C "$source_dir" rev-parse HEAD)" == "$fixture_revision" ]] || fail 'Setup changed a source while source auto-update was disabled'
 [[ -f "$source_dir/SKILL.md" ]] || fail 'materialized source is missing its skill'
-rg -q 'fixture +\[PASS\] Updated' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'setup did not synchronize the local source'; }
+rg -q 'Auto Update is disabled' "$TMP/setup.log" || { cat "$TMP/setup.log" >&2; fail 'Setup did not honor the offline update setting'; }
 [[ "$(cat "$native_root/data/personal-note")" == keep ]] || fail 'setup changed personal data'
-# Disable release network checks for the explicit launcher Sync; Setup above already
-# performs a source Sync against the local fixture with updates enabled.
+# Keep release and source network checks disabled for the explicit launcher Sync.
 printf 'schema_version\t1\nauto_update_skills\toff\nauto_update_brain\toff\n' > "$native_root/data/state/settings.tsv"
 (cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" CODEX_HOME="$TMP/home/.codex" HAWS_TEST_ALLOW_LOCAL_SOURCES=1 "$native_root/$launcher" sync >"$TMP/sync.log" 2>&1) || { cat "$TMP/sync.log" >&2; fail 'extracted launcher Sync failed'; }
 rg -q 'Sources are synchronized|Source synchronization' "$TMP/sync.log" || fail 'Sync action did not execute'

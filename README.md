@@ -14,6 +14,16 @@ The actual goal and required outcome always take priority over following rigid p
 
 ## Quick Install and Setup
 
+### Prebuilt Go application
+
+The release workflow is configured to prepare one package for Windows, macOS,
+and Linux. After a Go release is published, choose your operating system's
+package from [HAWS GitHub Releases](https://github.com/apirak-k/Human-AI-Working-Standard/releases),
+extract it, then open its included launcher. The package selects the available
+CPU build automatically. You do not need Go or a HAWS source checkout to run
+the packaged application. See [the package and migration notes](docs/go-package.md)
+for its current lifecycle and state behavior.
+
 ### Launching HAWS
 
 - **Windows**: If you have not cloned HAWS yet, run `git clone --recursive https://github.com/apirak-k/Human-AI-Working-Standard.git` in PowerShell, then `cd Human-AI-Working-Standard`. Double-click **`haws.bat`** (or run `.\haws.bat` from terminal). It automatically locates Git Bash and opens the interactive HAWS interface.
@@ -36,7 +46,13 @@ The actual goal and required outcome always take priority over following rigid p
 
 ---
 
-### Command Line Setup (All Platforms)
+### Source checkout setup (legacy-compatible)
+
+The source checkout launchers remain available for maintainers and existing
+installations. The Go package currently delegates Setup, Settings, Sync,
+Doctor, and integration maintenance to the included Bash runtime; see the
+package notes for required platform tools and migration limits.
+
 Run the shared command engine from Git Bash, macOS, or Linux:
 
 

@@ -10,7 +10,6 @@ import (
 	"runtime"
 
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/legacy"
-	"github.com/apirak-k/Human-AI-Working-Standard/internal/tui"
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/update"
 )
 
@@ -85,14 +84,17 @@ func (s Syncer) Run(ctx context.Context, root, appRoot string, updateEnabled boo
 // RunSync discovers the checkout and installed package, then runs one Sync
 // operation. A source-built Go binary without an OS package keeps the legacy
 // Sync available but has no release-managed package directory to update.
-func RunSync(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) error {
+func RunSync(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		args = []string{"sync"}
+	}
 	root, err := legacy.FindRoot()
 	if err != nil {
 		return err
 	}
 	updateEnabled, settingsErr := legacy.AutoUpdateEnabled(root)
 	if settingsErr != nil {
-		return errors.Join(settingsErr, legacy.Run(ctx, root, tui.ActionSync, stdin, stdout, stderr))
+		return errors.Join(settingsErr, runLegacySync(ctx, root, args, stdin, stdout, stderr))
 	}
 	appRoot := os.Getenv("HAWS_APP_DIR")
 	if appRoot != "" && !filepath.IsAbs(appRoot) {
@@ -110,7 +112,7 @@ func RunSync(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) err
 				return outputErr
 			}
 		}
-		return legacy.Run(ctx, root, tui.ActionSync, stdin, stdout, stderr)
+		return runLegacySync(ctx, root, args, stdin, stdout, stderr)
 	}
 
 	return Syncer{
@@ -118,7 +120,14 @@ func RunSync(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) err
 		Releases:  update.NewReleaseClient(),
 		Installer: update.NewInstaller(),
 		Legacy: func(ctx context.Context, root string, stdin io.Reader, stdout, stderr io.Writer) error {
-			return legacy.Run(ctx, root, tui.ActionSync, stdin, stdout, stderr)
+			return runLegacySync(ctx, root, args, stdin, stdout, stderr)
 		},
 	}.Run(ctx, root, appRoot, updateEnabled, stdin, stdout, stderr)
+}
+
+func runLegacySync(ctx context.Context, root string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if err := legacy.RunCommand(ctx, root, args, stdin, stdout, stderr); err != nil {
+		return err
+	}
+	return completePendingSettingsIntegration(root)
 }

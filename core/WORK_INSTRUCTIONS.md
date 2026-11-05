@@ -1,370 +1,167 @@
 # Work Instructions
 
-## Purpose
+These instructions describe practical defaults for applying HAWS. Adapt them
+to the task, user's instructions, project requirements, and available tools.
+They are not a fixed checklist for every request.
 
-These instructions translate HAWS into the user's current practical working
-procedures.
+## 1. Context and current state
 
-They are the recommended default, not a replacement for HAWS or confirmed
-Project Specific requirements. They may be improved as tools, knowledge, and
-working needs change.
+At the start of a new project or work context, inspect only the information
+needed to understand the request:
 
-## 1. Context loading
+1. read HAWS and these Work Instructions if they are not already known in this
+   context
+2. read relevant Second Brain documents, project instructions, and Handoff
+3. inspect the actual project, branch, and worktree state before relying on a
+   written handoff
+4. check available tools or specialized instructions when the task needs them
+5. summarize the goal, scope, current state, and starting point for substantial
+   work
 
-At the beginning of a new thread or work context:
+Do not reload large documents or dump whole repositories without a reason.
+Use an architecture map, dependency view, or file-backed plan when it makes a
+complex task easier to understand or resume.
 
-1. read the latest `HAWS.md`
-2. read the latest `WORK_INSTRUCTIONS.md`
-3. read the current documents in `secondbrain/` when present; use the generic lifecycle in this document when no overlay is available
-4. inspect the current project source
-5. inspect available tools, methods, and capability descriptions only when the task needs them
-6. read `design.md` if it exists (system architecture & design blueprint)
-7. read `PROJECT_SPECIFIC.md` if it exists
-8. read `HANDOFF.md` when continuing existing work
-9. report the understood goal, scope, current state, and starting point
+## 2. Start and perform work
 
-Read HAWS and applicable project information once per thread or work context.
+Infer the user's intent from the current request and conversation. Ask only
+when missing information materially affects the result, and continue useful
+work that does not depend on the answer.
 
-Do not reread them every message unless they were updated, the context changed,
-or uncertainty exists.
+Before substantial changes, inspect the relevant implementation and callers,
+identify dependencies and risks, and choose checks that can verify the result.
+Use project templates or create planning documents when they provide durable
+value; simple work does not need project scaffolding.
 
-Do not inspect Git history unless current information is insufficient,
-conflicting, or historical verification is required.
+For software and systems work, apply the relevant guidance in
+[`../docs/technical-practices.md`](../docs/technical-practices.md). Use it only
+where it fits the task.
 
-Read only the Specific, Handoff, and reusable information relevant to the
-current project and task.
+### 2.1 Tools, skills, and specialized methods
 
-### 1.1 Context discipline and lean engineering
+- Use a skill, tool, or structured method when its purpose fits the task.
+- Read its instructions before applying a specialized workflow.
+- Carry out the useful steps and verify the result; do not report methods that
+  were not used.
+- Keep simple requests direct and avoid process overhead that does not improve
+  the outcome.
 
-To prevent context rot, maintain high reasoning precision, and keep execution fast and economical across long sessions:
+Delegate independent work when it materially improves speed or review quality
+and the task instructions permit it. Read the relevant agent role before
+delegating. Keep one primary responder responsible for the combined result.
 
-- **Lean context principle**: Avoid flooding the active session with entire dumps of large unparsed files, build logs, or repetitive test output. Retrieve and quote only relevant snippets.
-- **Modular Markdown Partitioning**: Keep markdown documentation modular (~200–300 lines limit per file). Use the **Summary + Pointer pattern (Progressive Disclosure)**: parent documents provide a clear structural overview and link to deep implementation details in `references/` or `docs/`.
-- **On-Demand Loading & Lazy Context**: Load specialized domain specifications, API references, and schemas Just-in-Time only when the active task touches that area. Persist findings to disk and do not retain heavy unparsed text in conversation memory.
-- **File-backed state over memory**: Do not rely on ephemeral chat history to track active plans or critical decisions. Always persist state into structured files (`HANDOFF.md`, task checklists, or implementation plans).
-- **Topological Navigation over Flat Exploration**: In codebases with >10 files, do not read files sequentially. Use an appropriate architecture/dependency map or `templates/ARCHITECTURE.md` when the task needs one, isolate the blast radius, target affected callers, and preserve context budget.
-- **Proactive session compaction**: When a task phase completes, summarize progress, update `HANDOFF.md`, and clean temporary inspection artifacts before initiating the next phase.
+### 2.2 Git and workspace safety
 
-## 2. Starting and performing work
+- Verify the repository, branch, worktree, and existing changes before editing.
+- Preserve unrelated or pre-existing user work. Use an isolated worktree when
+  it materially reduces conflicts or risk.
+- Stage changes intentionally by logical concern. Avoid broad staging when
+  unrelated files may be present.
+- Use history tools such as `git bisect` when they are likely to locate a
+  regression more efficiently than direct inspection and reproduction.
+- Before removing a submodule or managed checkout, verify its registration,
+  local changes, ownership, and dependent links.
+- Do not push, publish, deploy, or merge unless the user has authorized it.
 
-For a new project or major feature:
+### 2.3 External tools and state changes
 
-- do not invent project rules blindly
-- scaffold necessary blueprints from `templates/` based on project requirements
-- connect your active AI assistant by scaffolding the corresponding environment adapter from `ai-configs/`: `gemini/GEMINI.md.template` for Google Antigravity, `claude/CLAUDE.md.template` for Claude Code, or `codex/AGENTS.override.md.template` for OpenAI Codex. Codex uses user skills in `~/.agents/skills` and native role profiles in `~/.codex/agents`; install/check those profiles with `bash haws.sh codex-agents install` / `check` in the HAWS checkout.
-- during discovery and ideation, define project scope, roadmap, and live system state in `PROJECT.md` (from `templates/PROJECT.md`), system boundaries in `ARCHITECTURE.md` (from `templates/ARCHITECTURE.md`), and visual tokens in `DESIGN.md` (from `templates/DESIGN.md`)
-- before writing implementation code, lock down quality thresholds in `CONSTRAINTS.md` (from `templates/CONSTRAINTS.md`) and agent permission boundaries in `AGENTS.md` (from `templates/AGENTS.md`)
-- create or update `HANDOFF.md` when work must pause or transfer across sessions
+Read-only inspection and appropriate local checks can be used within the
+authorized task. Ask for explicit authorization before destructive,
+irreversible, sensitive, permission-changing, or external actions unless that
+authorization is already clear in the request.
 
+When a tool operation changes files, configuration, or runtime state, inspect
+its result and report any required restart or refresh using instructions that
+match the user's application and operating system.
 
+## 3. Classify and organize information
 
+Put information in the source that matches its scope:
 
-Before substantial changes:
+- broadly reusable principles and safeguards → `HAWS.md`
+- reusable practical procedures → `WORK_INSTRUCTIONS.md`
+- confirmed rules for one project → `PROJECT_SPECIFIC.md`
+- current progress, risk, or resume point → `HANDOFF.md`
+- personal knowledge → a private or local Second Brain
 
-1. confirm the intended scope
-2. inspect the affected area and current state
-3. identify dependencies, risks, and appropriate checks
-4. follow confirmed instructions and methods
+Keep one authoritative source for each rule or concept. Do not make temporary
+status, an unconfirmed idea, or an assumption into settled project guidance.
+Use Git history for superseded material unless current users still need it.
 
-### 2.1 Autonomous capability selection and invocation (Dynamic Discovery & Genuine Execution)
+## 4. Review and report
 
-Capability usage is **dynamic, non-rigid, and proportional** — evaluate each task against available tools, methods, and instructions:
-1. **Two Invocation Modes**:
-   - **User Preference**: The user may request a particular method or tool explicitly.
-   - **Autonomous Execution**: The AI proactively matches task context against available capability descriptions and executes the applicable protocol directly.
-2. **Genuine Protocol Execution & Seamless Transparency**:
-   - **Seamless Execution**: Execute the chosen methodology directly and cleanly without artificial announcement banners in user chat.
-   - **Mandatory Instruction Ingestion**: Before applying a specialized protocol, read its instruction source with a file-reading action. Never execute a specialized protocol blindly from memory.
-   - Do NOT use hollow vanity tags.
-   - Execute the actual rigorous workflow required by the chosen method.
-   - All dispatched subagents must log the methods actually used in their returned `<task_report>`.
-3. **Proportionality & Recommendation Rule**:
-   - **Direct Capability Match**: (e.g. feature implementation, UI creation, bug fixing, code review, diagramming) ➔ Execute the matching method automatically and seamlessly.
-   - **Ambiguous / Borderline Tasks**: If uncertain whether the user wants a quick conceptual answer or a structured method, provide a concise direct answer and proactively recommend the matching approach.
-   - **Simple / Trivial Tasks**: (e.g. direct single-value lookup, 1-2 line typo fix) ➔ Execute directly and immediately without overhead.
-4. **Sub-Second Native Inspection**:
-   - For skill counts and health auditing, always run the native fast checker (`bash haws.sh status`) to obtain instant results (< 0.5s) without slow shell loops.
+When the user asks for a Review, inspect and report findings, risks, conflicts,
+and recommendations without changing files, repositories, systems, or external
+state.
 
-### 2.2 Advanced Git Protocols for AI (Worktrees, Bisect & Atomic Staging)
+For authorized implementation work, report the changes, why they were needed,
+checks performed, remaining risks, and next action. Use exact paths, source
+links, command output, or line references when they help the reader verify a
+claim. Mark important unchecked platforms or behaviors `[Unverified]`.
 
-AI agents operating under HAWS must utilize the full capabilities of Git to ensure safety, speed, and clean repository history:
-1. **Branch Isolation via `git worktree`**:
-   - For multi-step refactoring, significant architectural changes, or independent feature tracks, create an isolated workspace (`git worktree add .worktrees/<branch> <branch>`) instead of dirtying the main working tree or repeatedly stashing changes.
-2. **Automated Regression Isolation via `git bisect`**:
-   - When encountering a regression where code previously worked but now fails, use `git bisect start`, `git bisect bad`, and `git bisect good <commit>` with an automated test script (`git bisect run <test-command>`) to mathematically pinpoint the offending commit rather than speculating or guessing root causes.
-3. **Atomic Staging & Commit Discipline (`git add -p`)**:
-   - Stage changes intentionally by logical concern. Never blindly execute broad `git add .` when unrelated modifications, scratch files, or transient artifacts exist in the working directory.
-4. **Submodule & Cache Hygiene**:
-   - When removing or pruning submodules, always deinitialize, remove from git index, and purge the submodule cache (`.git/modules/<path>`) to prevent ghost files and dirty working trees.
+If a check fails, report the failure, trace its cause, and keep the original
+assertions intact while fixing it. Do not hide failures, weaken checks, or
+claim success without evidence.
 
-### 2.3 Autonomous Subagent Delegation Thresholds (When to Delegate vs Solo)
-
-To avoid both under-delegation (cluttering main context) and over-delegation (wasteful subagent spawning latency):
-1. **Action Bias & Uncertainty Prompting Rule**:
-   - **Action Bias**: If there is a plausible opportunity or rationale to delegate to a subagent, dispatch autonomously and immediately.
-   - **Uncertainty Rule**: If uncertain whether the user wants a quick solo answer or a full delegated subagent workflow, proactively ask or recommend delegating in chat.
-2. **Execute Solo (Main Agent Direct Execution)**:
-   - Direct conceptual Q&A, architectural explanations, and guidance.
-   - Minor single-file edits under 30 lines of code.
-   - Initial repository reconnaissance or quick status checks taking under 3 tool calls.
-3. **Autonomous Subagent Delegation (Mandatory Hand-Off)**:
-   - **Backend Implementation / DB Migrations / APIs**: Dispatch `@backend-engineer`.
-   - **Frontend UI / React / Styling / Accessibility**: Dispatch `@frontend-engineer`.
-   - **Testing, Verification Suites & Quality Gates**: Dispatch `@tester`.
-   - **Deep Research, Primary Source Investigations & External Docs**: Dispatch `@researcher`.
-   - **Capability Management, Directory Hygiene & Blueprint Scaffolding**: Dispatch `@organizer`.
-4. **Subagent Capability Autonomy & Single Point of User Contact**:
-   - **Autonomous Capability Execution**: Dispatched subagents have authority to match, read, and execute relevant capabilities without asking for permission.
-   - **Zero User Interruption**: Subagents communicate strictly with the Main Agent through `<task_report>` and never prompt or interrupt the human user directly. The Main Agent is the single point of contact who synthesizes results and presents choices to the user.
-
-### 2.4 Autonomous External Tool & MCP Utilization Protocol
-
-1. **Passive Read / Inspection Tools (Auto-Execute)**:
-   - Linters, format checkers, read-only MCP servers, Chrome DevTools DOM inspection, and `haws.sh doctor/status`.
-   - **Rule**: Run autonomously without user prompt whenever relevant to diagnosis or verification.
-2. **Non-Destructive Local Transformers (Auto-Execute with Verification)**:
-   - Local code formatters, diagram/architecture tools, isolated test runners.
-   - **Rule**: Run autonomously within clean or isolated git worktrees.
-3. **High-Risk / Mutating Operations (Human Gate Required)**:
-   - Production deployments, cloud provisioning, database truncation, and `git push origin`.
-   - **Rule**: Strictly prohibited without explicit human authorization.
-
-For substantial Git-based work, inspecting the current state includes verifying
-the actual repository and active branch. Do not rely solely on a Handoff,
-previous conversation, or expected branch name.
-
-When diagnosing a problem, determine whether the cause is local or shared.
-Within the confirmed scope, prefer the smallest responsible root-cause fix over
-duplicated local workarounds. Before changing shared logic, report the affected
-areas, risks, and why a shared change is appropriate.
-
-When a better method is found:
-
-1. compare it with the current method
-2. identify benefits, disadvantages, risks, and affected scope
-3. recommend it to the user
-4. obtain confirmation before materially changing the agreed approach
-
-Do not change the intended outcome merely because another method is easier.
-
-## 3. Classifying and organizing information
-
-Classify new information before documenting it:
-
-- broadly reusable principle or safeguard → propose a HAWS update
-- reusable general procedure → propose a Work Instructions update
-- stable confirmed project rule or definition → `PROJECT_SPECIFIC.md`
-- current status, pending matter, risk, or resume information → `HANDOFF.md`
-- information worth preserving for repeated use → an appropriate organized
-  reusable source
-- superseded information → Git history by default
-
-Do not promote temporary or unconfirmed information into current truth.
-
-Use clear headings and separate, as relevant:
-
-- current scope
-- confirmed decisions
-- assumptions
-- recommendations
-- pending questions
-- completed and remaining work
-- checks and results
-- risks and blockers
-- exact resume point
-- next action
-
-Do not add unnecessary files or documentation layers when clear sections are
-sufficient.
-
-## 4. Review, action, and reporting
-
-When the user says **Review**:
-
-1. inspect the relevant work
-2. identify findings, risks, conflicts, and recommendations
-3. distinguish confirmed, assumed, recommended, and pending information
-4. do not modify anything
-
-When the user clearly requests reversible work within an agreed scope, proceed
-within that scope.
-
-Request explicit confirmation before destructive, irreversible, external,
-sensitive, permission-changing, or materially out-of-scope actions.
-
-After significant work, report:
-
-- what changed and where
-- checks performed and results
-- unverified areas
-- remaining risks or blockers
-- remaining work
-- next recommended action
-
-### 4.1 Empirical Grounding and Verification Evidence
-- **Execution Proof**: Never claim a function or bug fix works without running test commands and observing exit code 0. Quote command lines and test output snippets.
-- **Source-Cited Citations**: All architectural explanations and file references must include exact line numbers (e.g. `[server.py:L20-L35]`).
-- **Explicit `[Unverified]` Tagging**: Any edge case, platform path, or configuration that was not physically tested must be explicitly tagged `[Unverified]`.
-- **Absolute Failure Transparency**: Fail-fast on build errors. Never enter silent retries or mask underlying errors.
-
-### 4.2 Environment & Window Reload Notifications
-When modifying configuration files, MCP server settings, environment variables, or tool paths that require an IDE/Editor restart to take effect, issue the standardized 100% English notice:
-```text
-[ACTION REQUIRED: RELOAD WINDOW] Please reload window (Ctrl+Shift+P > Developer: Reload Window) to apply configuration changes.
-```
-Do NOT use Thai language in system alert banners or configuration notification tags.
+If a configuration or path change requires restarting an application, state
+the specific action and the right menu or command for that application.
 
 ## 5. Testing and completion
 
-Run checks proportional to the scope and risk.
+Choose tests and checks based on the change's scope and risk. Cover expected
+behavior and relevant invalid, boundary, repeated, blocked, recovery, and
+side-effect cases. Use isolated fixtures for tests that change files or state.
 
-Test the expected behavior and relevant empty, invalid, boundary, repeated,
-blocked, restart, consistency, side-effect, and failure cases.
+Before completion:
 
-Do not report checks or work as completed unless they were performed.
-
-Before treating work as complete:
-
-1. verify the agreed scope and required outcomes
-2. run appropriate final checks
-3. preserve stable confirmed project information in the appropriate current
-   source
-4. resolve or clearly retain pending matters
-5. remove or close obsolete active Handoff information
-6. report the final state and remaining limitations
+1. check the requested outcome against the actual final state
+2. run the required and appropriate checks from the final tree
+3. record material limitations and `[Unverified]` items
+4. update Handoff or project documentation when it will help future work
+5. close or clearly retain pending matters
+6. report the result in a form the user can understand and act on
 
 ## 6. Checkpoint and resume
 
-When work must continue in another session, machine, tool, or AI agent, create
-a recoverable checkpoint.
+When work will continue in another session, tool, machine, or person, preserve
+a concise checkpoint. For Git work, include the actual repository and branch,
+worktree status, completed and remaining changes, checks, risks, and exact next
+action. Update `HANDOFF.md` when it is the project's continuity source.
 
-For Git-based projects, the default procedure is:
+When resuming, compare the Handoff with the actual checkout and current files.
+Do not restart completed work unless verification or changed conditions
+require it. Commit or push only as authorized by the user and project rules.
 
-1. verify the repository and active working branch
-2. inspect the worktree
-3. run appropriate checks
-4. update `HANDOFF.md`
-5. commit the work and Handoff together when appropriate
-6. push when safe and permitted
-7. report the branch and current HEAD commit
+## 7. Improve HAWS and Work Instructions
 
-A useful Handoff includes, as relevant:
+Before updating these documents, determine whether the lesson is broadly
+reusable, a practical procedure, or project-specific. Check existing coverage,
+remove unnecessary duplication, preserve useful safeguards, and keep the
+change as small as the need permits. Follow the user's authorization for the
+requested edit and report the change.
 
-- current goal and scope
-- completed and remaining work
-- confirmed decisions
-- assumptions, recommendations, and pending questions
-- checks and results
-- risks or blockers
-- exact resume point
-- next action
+## 8. Applying an externally prepared patch
 
-The Handoff does not need to contain the SHA of the commit that contains it.
+Use this section only when a separate tool or agent produced a patch that must
+be applied to the user's checkout.
 
-When resuming:
+1. verify the patch's stated base against the current files
+2. choose a targeted diff or full-file replacement based on conflict risk
+3. apply it on the authorized branch or worktree
+4. review the resulting diff and run relevant local checks
+5. inspect staged files for unrelated or confidential data before committing
+6. update Handoff when the work needs a checkpoint
 
-1. read the latest HAWS and Work Instructions
-2. retrieve the project and verify the intended checkpoint
-3. inspect the actual current state
-4. read Project Specific and Handoff
-5. compare documented and actual states
-6. report the resume point before modifying anything
+## 9. Planning artifacts
 
-Do not restart completed work unless verification or changed conditions require
-it.
+For substantial work, create a specification, task plan, or project roadmap
+when it will clarify requirements, dependencies, acceptance checks, or future
+handoff. Choose the artifact format that fits the repository. Do not require a
+fixed prompt, file name, or execution tool for every feature.
 
-## 7. Updating the standards
+## 10. Second Brain
 
-When HAWS or Work Instructions change, the user may instruct the AI to read the
-central files again.
-
-Propose changes according to their scope:
-
-- broadly reusable principle → HAWS
-- current recurring procedure → Work Instructions
-- one-project rule → Project Specific
-- current work state → Handoff
-
-Do not update these sources automatically. Propose the smallest necessary
-change and wait for review and confirmation.
-
-## 8. AI-generated patch workflow (local apply)
-
-Use when code changes are drafted by an AI that has no direct write access to
-the user's local repository or remote (e.g. a sandboxed AI session).
-
-1. Confirm scope conversationally (use clarifying questions or an appropriate discovery method if underspecified) before
-   requesting a patch.
-2. The AI must state the exact base state the patch is generated from (e.g.
-   "based on the file(s) you uploaded on [date]"). If the local repository may
-   have diverged since, re-share the current file(s) before generating a new
-   patch — do not assume the previous diff still applies cleanly.
-3. The AI chooses the patch format appropriate to the change:
-   - **Unified diff** (`git apply`-compatible) for small, targeted edits to
-     existing files.
-   - **Full file replacement** when the file is new, changes exceed roughly
-     half the file, or diff-conflict risk is high.
-   The AI states which format it used and why.
-4. Apply changes on a dedicated feature branch, not directly on the default
-   branch:
-   ```
-   git checkout -b feature/<short-name>
-   git apply <patch-file>   # or manually replace full files
-   ```
-5. Run appropriate build/test checks locally before committing.
-6. Before committing, verify no confidential or real production/factory data
-   is staged, per applicable Project Specific confidentiality rules.
-7. Commit and push the feature branch; merge to the default branch only after
-   verification.
-8. Update `HANDOFF.md` at the checkpoint. The next AI session must be given
-   the latest actual file state (not solely the previous diff or prior
-   conversation memory) before further changes are requested.
-
-## 9. Context Engineering & PRP Lifecycle
-
-Prompting without curated context causes model failure. Context Engineering ensures high-fidelity execution through a 3-step lifecycle:
-
-1. **Ideation (`INITIAL.md`)**: The user provides high-level intent, feature ideas, or business requirements.
-2. **Architecture Blueprint (`PRP.md`)**: The Main Agent translates intent into a Product Requirements Prompt (`PRP.md` using `templates/ARCHITECTURE.md` and `templates/PROJECT.md` as reference blueprints). This includes system boundaries, data contracts, code examples, edge cases, and automated verification commands.
-3. **Execution Loop (`/execute-prp`)**: The implementing agent or subagent executes the tasks under a self-correcting validation loop:
-   - Run tests / build checks.
-   - If tests fail, diagnose systematically (trace input ➔ state ➔ output).
-   - Iterate autonomously until all verification commands pass 100% before requesting user acceptance.
-
-## 10. Persistent Second Brain & Adaptive Workflow
-
-To ensure the AI remembers user preferences, habits, and past mistakes across sessions, machines, and AI tools without risking data loss during upstream updates:
-
-- **`secondbrain/USER_PREFERENCES.md`**: Default document slot for stable preferences, communication style, and project conventions.
-- **`secondbrain/ANTI_PATTERNS.md`**: Default document slot for safeguards, forbidden patterns, and learned lessons.
-- **`secondbrain/WORKFLOW.md`**: Default document slot for the working lifecycle and cadence.
-- **Loading Rule**: Use the neutral starter documents in this checkout. Keep personal data in a private repository or local copy; do not add it to a public repository.
-
-
----
-
-## Role: Main Agent (Orchestrator)
-
-The Main Agent (the primary session conversing directly with the user) serves as the Lead Software Architect, Project Manager, and Central Coordinator of specialized subagents. It enforces end-to-end Software Engineering (SWE) rigor across every phase.
-
-### Professional SWE Lifecycle & Adaptive Operating Workflow
-
-The Main Agent and Subagents execute software engineering work according to the current `secondbrain/WORKFLOW.md`, using the generic discovery-to-delivery lifecycle as the baseline when no personal refinement is present:
-
-1. **Phase 1: Discovery & Clarification**
-2. **Phase 2: Ideation & Architecture**
-3. **Phase 3: Specification & Task Breakdown**
-4. **Phase 4: Implementation**
-5. **Phase 5: Verification & Quality Audit**
-6. **Phase 6: Delivery, Documentation & Handoff**
-
-Refer to the active workflow file for project-specific preferences; select tools and methods dynamically rather than treating a fixed list as a requirement.
-
----
-
-### Flexible Delegation Model & Direct Intervention
-- **Autonomous Proactive Delegation**: The Main Agent evaluates incoming work and autonomously delegates domain-specific tasks to specialist subagents (`@backend-engineer`, `@frontend-engineer`, `@tester`, `@researcher`, `@organizer`) without waiting for explicit human requests.
-- **Dual-Tier Autonomous Capability Selection**: Both Main Agent and Subagents match task context against available capabilities and execute their workflows. Subagents declare the methods applied in `<task_report>`.
-- **Dynamic Routing Over Rigid Sequences**: Delegation decisions must be driven by standard software engineering judgment rather than rigid, hardcoded multi-agent pipelines.
-- **Direct Intervention Protocol**: The Main Agent may resolve a problem directly without delegating when a subagent is blocked, unavailable, or when a targeted direct fix is significantly faster.
-- **Context Isolation**: When delegating to subagents, the Main Agent sends only the atomic task assignment (via `<task_assignment>`), never dumping the entire conversation history. Subagents return concise summaries (via `<task_report>`), keeping all context windows lean and free from rot.
+The public `secondbrain/` files are neutral starter documents. Personal
+preferences, notes, and history belong in a private repository or local copy.
+Preserve personal data during updates and cleanup, and verify the configured
+remote before any action that could publish it.

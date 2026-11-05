@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,7 +20,8 @@ func TestRunPassesInputOutputAndExitStatusToLegacyRuntime(t *testing.T) {
 	root := t.TempDir()
 	argsPath := filepath.Join(root, "args.txt")
 	inputPath := filepath.Join(root, "input.txt")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + argsPath + "\"\ncat > \"" + inputPath + "\"\nprintf 'child-output'\nprintf 'child-error' >&2\nexit 7\n"
+	hostPath := filepath.Join(root, "host.txt")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + argsPath + "\"\nprintf '%s\\n' \"$HAWS_GO_HOST\" > \"" + hostPath + "\"\ncat > \"" + inputPath + "\"\nprintf 'child-output'\nprintf 'child-error' >&2\nexit 7\n"
 	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +41,9 @@ func TestRunPassesInputOutputAndExitStatusToLegacyRuntime(t *testing.T) {
 	if string(args) != "sync\n" {
 		t.Fatalf("legacy args = %q, want %q", args, "sync\n")
 	}
+	if host, err := os.ReadFile(hostPath); err != nil || string(host) != "1\n" {
+		t.Fatalf("HAWS_GO_HOST = %q, %v; want 1", host, err)
+	}
 	input, err := os.ReadFile(inputPath)
 	if err != nil {
 		t.Fatal(err)
@@ -48,5 +53,24 @@ func TestRunPassesInputOutputAndExitStatusToLegacyRuntime(t *testing.T) {
 	}
 	if stdout.String() != "child-output" || stderr.String() != "child-error" {
 		t.Fatalf("stdout/stderr = %q/%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunCommandPassesLegacyArguments(t *testing.T) {
+	root := t.TempDir()
+	argsPath := filepath.Join(root, "args.txt")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + argsPath + "\"\n"
+	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunCommand(context.Background(), root, []string{"doctor", "--json"}, strings.NewReader(""), io.Discard, io.Discard); err != nil {
+		t.Fatalf("RunCommand() error = %v", err)
+	}
+	args, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(args) != "doctor\n--json\n" {
+		t.Fatalf("legacy args = %q", args)
 	}
 }

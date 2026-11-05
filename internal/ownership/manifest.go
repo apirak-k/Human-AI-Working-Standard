@@ -32,7 +32,7 @@ var ErrRunningPackage = errors.New("HAWS base package executable is currently ru
 var RuntimeFiles = []string{
 	"haws.sh", "haws.bat", ".gitmodules", "source-revisions.tsv",
 	"secondbrain/ANTI_PATTERNS.md", "secondbrain/USER_PREFERENCES.md", "secondbrain/WORKFLOW.md",
-	"core/HAWS.md", "core/WORK_INSTRUCTIONS.md",
+	"core/HAWS.md", "core/WORK_INSTRUCTIONS.md", "docs/technical-practices.md",
 	"agents/backend-engineer.md", "agents/frontend-engineer.md", "agents/organizer.md", "agents/researcher.md", "agents/tester.md",
 	"templates/AGENTS.md", "templates/ARCHITECTURE.md", "templates/CONSTRAINTS.md", "templates/DESIGN.md", "templates/HANDOFF.md", "templates/PROJECT.md",
 	"ai-configs/claude/CLAUDE.md.template", "ai-configs/codex/AGENTS.override.md.template", "ai-configs/codex/agents.mjs", "ai-configs/gemini/GEMINI.md.template", "ai-configs/gemini/skills-json.mjs",

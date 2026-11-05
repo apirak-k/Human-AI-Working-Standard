@@ -8,9 +8,10 @@ import (
 	"os/exec"
 )
 
-func legacyCommand(ctx context.Context, root, script, action string) (*exec.Cmd, error) {
-	cmd := command(ctx, "cmd.exe", "/d", "/c", script, action)
+func legacyCommand(ctx context.Context, root, script string, args ...string) (*exec.Cmd, error) {
+	cmdArgs := append([]string{"/d", "/c", script}, args...)
+	cmd := command(ctx, "cmd.exe", cmdArgs...)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "HAWS_NO_PAUSE=1")
+	cmd.Env = setEnvironment(os.Environ(), "HAWS_NO_PAUSE", "1")
 	return cmd, nil
 }

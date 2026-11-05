@@ -133,6 +133,22 @@ Task 1 precedes Task 2 because both touch `haws.sh` and its Sync behavior. Task 
 
 ## Progress
 
-- Round 1 inspected; current branch clean at `a37df8c04033217b89c2a9ae6ae324c2455585e1`.
-- Read-only Round 2 gap mapping complete; no code changed yet.
-- Before implementation, complete the SDD preflight table in the plan ledger and record rulings.
+- Round 1 and the actual Round 2 branch were inspected. Work continued on `codex/go-modernization`; no new branch was created and `main` was not modified.
+- **Task 1 — complete:** unowned Gemini/Antigravity and Claude agent destinations remain untouched; fixture coverage includes regular files, symlinks, dangling links, and directories.
+- **Task 2 — complete:** normal Second Brain Sync/connect preserve local content and do not publish it; explicit publish is previewed and confirmed. Temporary Git fixtures cover refusal, dirty state, and failure paths.
+- **Task 3 — complete for package assembly:** the allowlisted runtime is packaged separately from writable data; all six OS/CPU targets and three archives/checksums are built and inspected. Native package execution is verified on macOS only.
+- **Task 4 — implemented, runtime update and platform verification partial:** versioned Go-binary recovery and ownership-checked uninstall have unit and extracted-package fixtures. Native Windows/Linux behavior remains unverified; the earlier handoff records the narrow final-entry race limit of portable removal checks. Release Sync rejects differing `runtime/` files and does not install runtime changes, so bundled shell/adapter/template fixes cannot currently reach existing packages through Sync.
+- **Task 5 — implemented, runtime transition and Repair preview partial:** Setup, Home, Settings, Sync, Doctor, Repair, and Uninstall are routed from Go; legacy arguments/status remain supported. Setup/Settings now hand integration changes to exactly one Go-hosted Sync. A failing extracted-package regression exposed that the legacy Settings flow deleted `apply.result` before Go could read it; the flow now retains the pending marker until Sync completes. Release Sync currently versions only the Go binary. Repair previews diagnostics and a Sync operation, but does not list each exact source/destination change.
+- **Task 6 — partial:** existing skills remain a single managed source exposed to supported clients. `kit add --tool` now rejects the unsupported lifecycle instead of misclassifying a tool as a skill. Typed CLI/MCP installs, dependency/consumer tracking, and shared-resource removal are not implemented; no arbitrary installer is executed.
+- **Task 7 — implemented, migration partial:** universal principles and adaptive work instructions are separated from technical practices; package/state boundaries and current migration behavior are documented; CI checks complete source history, safety suites, and extracted packages beyond `--version`. Automatic migration of existing state and Second Brain data is not implemented; users must explicitly reuse absolute state paths.
+- **Task 8 — local combined audit complete:** reviewed requirements, routing, package/runtime boundary, ownership/uninstall, Second Brain behavior, official adapters, documentation, CI configuration, and available fixture coverage. The audit identified a high-priority release blocker: Sync cannot transactionally update the packaged runtime. Other important unresolved risks are native Windows/Linux execution, automatic state migration, exact Repair change previews, typed shared CLI/MCP lifecycle, and unsigned macOS launcher behavior.
+
+### Final verification on macOS/arm64 — 2026-11-05
+
+- Go 1.27.3: `go test ./... -count=1` and `go vet ./...` passed.
+- `bash tests/cli/run.sh` passed all batches, including the 155 catalog/performance checks, Settings handoff regression, unowned agent preservation, Second Brain safety, and lifecycle coverage.
+- `bash tests/go/launchers_test.sh` passed.
+- `bash tests/go/package_release_test.sh` passed: all six package targets built, all three archives/checksums inspected, extracted package Doctor/Status/setup/one-Sync/uninstall/data-preservation flows passed.
+- Windows/amd64 and Linux/amd64 test binaries cross-compiled for `cmd/haws`, `internal/app`, `internal/legacy`, `internal/ownership`, `internal/tui`, `internal/uninstall`, and `internal/update`.
+- Shell syntax and `git diff --check` passed. GitHub Actions was not run because this branch was not pushed. Native Windows/Linux runtime checks remain `[Unverified]`.
+- No push, merge, or production release was performed. The temporary Go 1.27.3 toolchain was removed after the final Go checks.

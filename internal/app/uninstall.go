@@ -11,7 +11,6 @@ import (
 	"runtime"
 
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/legacy"
-	"github.com/apirak-k/Human-AI-Working-Standard/internal/tui"
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/uninstall"
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/update"
 )
@@ -73,7 +72,10 @@ func (u Uninstaller) Run(ctx context.Context, root, appRoot string, stdin io.Rea
 	return err
 }
 
-func RunUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) error {
+func RunUninstall(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		args = []string{"uninstall"}
+	}
 	root, err := legacy.FindRoot()
 	if err != nil {
 		return err
@@ -89,13 +91,13 @@ func RunUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		}
 	}
 	if err != nil || appRoot == "" {
-		return legacy.Run(ctx, root, tui.ActionUninstall, stdin, stdout, stderr)
+		return legacy.RunCommand(ctx, root, args, stdin, stdout, stderr)
 	}
 	executable, _ := os.Executable()
 	return (Uninstaller{
 		CurrentExecutable: executable,
 		Legacy: func(ctx context.Context, root string, stdin io.Reader, stdout, stderr io.Writer) error {
-			return legacy.Run(ctx, root, tui.ActionUninstall, stdin, stdout, stderr)
+			return legacy.RunCommand(ctx, root, args, stdin, stdout, stderr)
 		},
 	}).Run(ctx, root, appRoot, stdin, stdout, stderr)
 }

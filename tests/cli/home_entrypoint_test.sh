@@ -73,6 +73,36 @@ test_home_does_not_run_full_health_scan_before_menu() {
     [ ! -e "${scan_log}" ]
 }
 
+test_settings_returns_to_go_host_without_opening_legacy_home() {
+    source_haws || return 1
+    local home_log="${FIXTURE_ROOT}/legacy-home.log"
+    settings_draft_load() { return 0; }
+    settings_flow_run() { [ "$1" = settings ]; }
+    home_run() { printf 'home\n' >> "${home_log}"; }
+
+    HAWS_GO_HOST=1 run_settings_route || return 1
+    [ ! -e "${home_log}" ] || return 1
+    unset HAWS_GO_HOST
+    run_settings_route || return 1
+    [ "$(cat "${home_log}")" = home ]
+}
+
+test_setup_returns_to_go_host_without_opening_legacy_home() {
+    source_haws || return 1
+    local home_log="${FIXTURE_ROOT}/legacy-home.log"
+    interactive_menu() { INTERACTIVE_MENU_SELECTION=0; return 0; }
+    settings_draft_load() { return 0; }
+    _settings_draft_set_defaults() { return 0; }
+    settings_flow_run() { [ "$1" = preview ]; }
+    home_run() { printf 'home\n' >> "${home_log}"; }
+
+    HAWS_GO_HOST=1 setup_run || return 1
+    [ ! -e "${home_log}" ] || return 1
+    unset HAWS_GO_HOST
+    setup_run || return 1
+    [ "$(cat "${home_log}")" = home ]
+}
+
 test_main_menu_is_not_a_second_user_facing_entrypoint() {
     ! grep -q '^run_main_menu()' "${PROJECT_ROOT}/haws.sh"
 }
@@ -80,6 +110,8 @@ test_main_menu_is_not_a_second_user_facing_entrypoint() {
 run_test test_explicit_menu_uses_home_entrypoint
 run_test test_bare_launch_opens_home_from_local_state
 run_test test_home_does_not_run_full_health_scan_before_menu
+run_test test_settings_returns_to_go_host_without_opening_legacy_home
+run_test test_setup_returns_to_go_host_without_opening_legacy_home
 run_test test_main_menu_is_not_a_second_user_facing_entrypoint
 
 echo "Single-entry Home tests: ${passed} passed, ${failed} failed"

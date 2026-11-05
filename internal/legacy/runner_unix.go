@@ -10,12 +10,13 @@ import (
 	"path/filepath"
 )
 
-func legacyCommand(ctx context.Context, root, script, action string) (*exec.Cmd, error) {
+func legacyCommand(ctx context.Context, root, script string, args ...string) (*exec.Cmd, error) {
 	bash, err := findSupportedBash()
 	if err != nil {
 		return nil, err
 	}
-	cmd := command(ctx, bash, script, action)
+	cmdArgs := append([]string{script}, args...)
+	cmd := command(ctx, bash, cmdArgs...)
 	cmd.Dir = root
 	return cmd, nil
 }

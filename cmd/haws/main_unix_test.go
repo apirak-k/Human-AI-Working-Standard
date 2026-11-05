@@ -10,19 +10,6 @@ import (
 	"testing"
 )
 
-func TestRunDirectActionPreservesLegacyExitCode(t *testing.T) {
-	root := t.TempDir()
-	script := "#!/bin/sh\nexit 7\n"
-	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HAWS_ROOT", root)
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"sync"}, strings.NewReader(""), &stdout, &stderr); code != 7 {
-		t.Fatalf("run() exit = %d, want legacy exit 7 (stderr %q)", code, stderr.String())
-	}
-}
-
 func TestRunHomeRoutesSyncToLegacyAndReturnsToMenu(t *testing.T) {
 	root := t.TempDir()
 	argsPath := filepath.Join(root, "args.txt")

@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -73,6 +75,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -124,6 +128,8 @@ jobs:
           Expand-Archive -LiteralPath $archive -DestinationPath $package
           $output = & (Join-Path $package 'haws-go\windows\haws.bat') --version 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or -not $output.Contains('HAWS ')) { throw "Windows package smoke test failed: $output" }
+          $status = & (Join-Path $package 'haws-go\windows\haws.bat') status 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not $status.Contains('HAWS Status')) { throw "Windows package status smoke test failed: $status" }
       - name: Verify and run Unix package
         if: runner.os != 'Windows'
         shell: bash
@@ -145,3 +151,5 @@ jobs:
           tar -xzf "$archive" -C "$package"
           output="$("$package/$launcher" --version)"
           [[ "$output" == HAWS\ * ]]
+          status="$("$package/$launcher" status)"
+          [[ "$status" == *"HAWS Status"* ]]

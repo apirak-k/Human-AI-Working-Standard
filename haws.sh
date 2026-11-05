@@ -5007,14 +5007,16 @@ run_kit() {
 
     case "${action}" in
         add)
-            local target_type="skill"
             local tracked=0
             local url=""
             local name=""
             while [ $# -gt 0 ]; do
                 case "$1" in
-                    --skill) target_type="skill"; shift ;;
-                    --tool) target_type="tool"; shift ;;
+                    --skill) shift ;;
+                    --tool)
+                        echo "Tool installation is not supported yet; HAWS only manages skill sources in this flow." >&2
+                        return 2
+                        ;;
                     --tracked) tracked=1; shift ;;
                     *)
                         if [ -z "${url}" ]; then
@@ -5038,7 +5040,7 @@ run_kit() {
 
             local dest_path="skills/packs/${name}"
 
-            echo "=== Adding ${target_type} to KIT: ${name} ==="
+            echo "=== Adding skill source to HAWS: ${name} ==="
             if [ "${tracked}" -eq 1 ]; then
                 settings_apply_repository_action "add-tracked-source" "${url}" "${dest_path}" kit || return 1
                 echo "  [!] Tracked HAWS files changed. Commit .gitmodules and the skill gitlink before running Sync."
@@ -6775,7 +6777,11 @@ settings_draft_load() {
 
 settings_draft_discard() {
     local state="$(_haws_state_dir)"
-    rm -f -- "${state}/settings.plan" "${state}/apply.result"
+    rm -f -- "${state}/settings.plan"
+    if [ "${HAWS_GO_HOST:-0}" != 1 ] ||
+        ! grep -Fqx $'integration\tpending' "${state}/apply.result" 2>/dev/null; then
+        rm -f -- "${state}/apply.result"
+    fi
     rmdir -- "${state}" 2>/dev/null || true
     rmdir -- "$(dirname "${state}")" 2>/dev/null || true
     unset HAWS_PERSIST_AUTO_UPDATE HAWS_PERSIST_AUTO_UPDATE_SKILLS HAWS_PERSIST_AUTO_UPDATE_BRAIN \
@@ -8389,6 +8395,10 @@ settings_apply_final() {
             initialize|pointer|skill-link|integration)
                 if [ "${HAWS_TEST_NO_INTEGRATION:-0}" = 1 ]; then
                     echo "Skipped: ${action} (test fixture)"
+                elif [ "${HAWS_GO_HOST:-0}" = 1 ]; then
+                    printf 'integration\tpending\n' >> "${state}/apply.result" || return 1
+                    echo "Deferred: Go Home will run the authoritative Sync for these Settings changes."
+                    continue
                 else
                     local sync_exit=0
                     if [ -t 0 ] && [ -t 1 ]; then
@@ -8434,7 +8444,9 @@ settings_apply_final() {
     rm -f -- "${marker_temporary}"
     [ "${result}" -eq 0 ] || return "${result}"
     if [ "${HAWS_INTERACTIVE_RESULT:-0}" -ne 1 ]; then
-        if [ "${HAWS_PLAN_KIND:-Install}" = Install ]; then
+        if grep -Fqx $'integration\tpending' "${state}/apply.result" 2>/dev/null; then
+            echo "Settings saved; Go Home will run the authoritative Sync."
+        elif [ "${HAWS_PLAN_KIND:-Install}" = Install ]; then
             echo "Installation state completed."
         else
             echo "Update completed."
@@ -8526,7 +8538,7 @@ setup_run() {
                     settings_draft_load || return 1
                     _settings_draft_set_defaults || return $?
                     if settings_flow_run preview; then
-                        home_run
+                        _haws_return_to_home
                         return $?
                     else
                         result=$?
@@ -8536,7 +8548,7 @@ setup_run() {
                 1)
                     settings_draft_load || return 1
                     if settings_flow_run settings; then
-                        home_run
+                        _haws_return_to_home
                         return $?
                     else
                         result=$?
@@ -8554,6 +8566,20 @@ setup_run() {
 }
 
 run_setup() { setup_run "$@"; }
+
+_haws_return_to_home() {
+    [ "${HAWS_GO_HOST:-0}" = 1 ] && return 0
+    home_run
+}
+
+run_settings_route() {
+    settings_draft_load || return $?
+    if settings_flow_run settings; then
+        _haws_return_to_home
+    else
+        return $?
+    fi
+}
 
 home_run() {
     local result
@@ -8644,14 +8670,8 @@ case "${COMMAND}" in
         ;;
     settings|configure)
         shift || true
-        settings_draft_load || exit $?
-        settings_flow_run settings
-        result=$?
-        if [ "${result}" -eq 0 ]; then
-            home_run
-            result=$?
-        fi
-        exit "${result}"
+        run_settings_route
+        exit $?
         ;;
     codex-agents)
         shift || true
