@@ -1,25 +1,26 @@
 # Development Handoff
 
-Updated: 2026-11-04
+Updated: 2026-11-05
 
-## HAWS Go Modernization — Round 2 implementation and final audit
+## HAWS Modernization — Completion and final audit
 
 Updated: 2026-11-05
 
-- Worktree: `/Users/bubu/.codex/worktrees/haws-delivery-main/Human-AI-Working-Standard`; branch `codex/go-modernization`; transactional runtime/lifecycle implementation committed as `4070ad7`. This audit handoff is committed separately. No push, merge, production release, or `main` change was made.
-- Tasks 1–3 remain implemented: unowned agent destinations are preserved; normal Second Brain Sync/connect do not publish personal content; and each OS package contains an allowlisted runtime. Tests use isolated fixtures.
-- **Tasks 4–5: runtime updates now include the full runtime.** Release Sync validates and stages Go binaries and runtime files together under one version marker, runs the existing HAWS Sync once against the selected runtime, and restores the previous Go/runtime pair if component Sync fails. Older installed versions without a runtime manifest continue to use the base runtime. Runtime ownership fingerprints are checked during selection and cleanup; modified/unowned runtime files are retained. The earlier runtime-update release blocker is resolved in local code and covered by updater, Sync rollback, ownership, and extracted-package regressions. Setup, Home, Settings, Sync, Doctor, Repair, and Uninstall remain routed through the Go application; Setup/Settings hand integration changes to one Go-hosted Sync. Repair remains partial because its preview describes diagnostics and a Sync operation, not each exact source/destination change.
-- **Task 6 is partial.** Existing skill sources/catalog and supported client links are preserved. `kit add --tool` fails clearly rather than misclassifying tools as skills. Typed CLI/MCP installation, consumer/dependency tracking, and safe shared-resource removal are not implemented; arbitrary installer scripts remain unsupported.
-- **Task 7 is partial for migration and release evidence.** Package/data boundaries and current migration behavior are documented; the legacy disabled-environment setting is copied create-if-absent to package data and its original remains. Automatic migration of `.haws/state`, sources, ownership records, and personal Second Brain data is not implemented; explicit absolute `HAWS_STATE_DIR` and `HAWS_SECOND_BRAIN_DIR` reuse remains available. CI configuration was inspected, but GitHub Actions was not executed.
-- **Combined Round 1 + Round 2 audit:** no critical defect remains in the locally exercised paths. Material unresolved items are native Windows/Linux runtime acceptance; exact Repair change previews; automatic migration; typed shared CLI/MCP lifecycle; and verification of GitHub release delivery, Windows PowerShell behavior, and macOS Gatekeeper handling. The portable uninstall path also retains a narrow final-entry race limitation; platform-native tests are still needed.
+- Worktree: `/Users/bubu/.codex/worktrees/haws-delivery-main/Human-AI-Working-Standard`; branch `codex/go-modernization`, based on `origin/dev`. The local transactional runtime/lifecycle commits are `4070ad7` and `fc4837a`; safe in-place migration and package Sync guard are committed as `b94b49a`. This Handoff update is local. No push, merge, production release, or `main` change was made.
+- **Implemented:** Go TUI, three OS packages, CPU selection, release-managed Go/runtime updates, rollback, ownership-aware cleanup, one Go-hosted Sync, and the existing shell-backed skills, agent, AI integration, and Second Brain behavior. Modified and unowned destinations remain protected. Personal Second Brain publishing still requires an explicit preview and confirmation.
+- **Legacy migration:** Home now offers `Migrate existing installation`; `haws migrate --from ...` shows the exact checkout/state/Second Brain paths and requests confirmation. It stores a bounded, create-only reference in package data and reuses the existing `.haws/state`, skill sources/selections, ownership files, and Second Brain in place. It does not copy, move, or delete legacy data. A confirmed `--clear` removes only the package reference and can recover when the old checkout path is broken. Explicit `HAWS_*_DIR` overrides remain supported. Packaged Sync updates the Go app through Releases and skips self-updating the legacy HAWS checkout, while continuing to update enabled sources.
+- **Repair remains partial:** Doctor stays read-only and Repair requires confirmation, but the preview does not yet enumerate every exact file/source destination and proposed operation.
+- **Shared components remain partial:** existing skill sources are shared through the supported clients' links/registrations. Arbitrary CLI/MCP install, consumer tracking, and safe shared-resource removal are not implemented. `kit add --tool` continues to fail clearly; HAWS does not execute external installer scripts.
+- **Dependency audit:** Go and launchers need no Go installation. Shell-backed lifecycle commands still need Bash 4.2+, Git, and standard POSIX tools; Windows needs Git for Windows and macOS needs a newer Bash than the system 3.2. Node.js is optional for core Sync but required by native Codex agent profiles and some generated AI configuration. No production Python dependency was found in the inspected runtime. Optional tools are not installed automatically.
+- **Final audit:** no critical defect was found in paths exercised on this Mac. The branch is **not ready for a production release** until native Windows/Linux execution and GitHub Actions are verified, and remaining Repair/shared CLI/MCP gaps are dispositioned. Windows PowerShell behavior, macOS Gatekeeper handling, GitHub Release delivery, and the narrow uninstall final-entry race remain open verification items.
 
 ### Requirements coverage
 
 | Audit area | Status | Evidence / remaining gap |
 | --- | --- | --- |
-| Requirements coverage and completeness | Partial | Core packaging/update requirements are implemented locally; exact Repair preview, migration, and typed shared CLI/MCP lifecycle remain. |
-| Functional parity with HAWS v2 | Partial | Existing shell runtime remains the compatibility layer; native Go parity is not complete for shared tools and migration. |
-| UX and lifecycle correctness | Partial | Go routes Setup, Home, Settings, Sync, Doctor, Repair, and Uninstall; Repair preview is not a per-file change plan. |
+| Requirements coverage and completeness | Partial | Packaging, app/runtime update, rollback, in-place migration, and uninstall paths are implemented; exact Repair preview and typed shared CLI/MCP lifecycle remain. |
+| Functional parity with HAWS v2 | Partial | Existing shell runtime retains current skill, agent, integration, and Second Brain behavior; arbitrary shared tools and native Go parity are not implemented. |
+| UX and lifecycle correctness | Partial | Go routes Setup, Home, Settings, Sync, Doctor, Repair, Uninstall, and migration; Repair is not a per-file plan. |
 | Go application architecture | Implemented | Shared Go application; immutable release runtime paired with Go version; writable package data stays separate. |
 | Launcher and distribution packaging | Partial | All six CPU/OS builds and three archives/checksums inspected; native execution only on macOS/arm64. |
 | Cross-platform compatibility | Partial | Windows/Linux cross-builds pass; native Windows/Linux execution is `[Unverified]`. |
@@ -28,22 +29,22 @@ Updated: 2026-11-05
 | Shared component ownership/lifecycle | Partial | Skill sources remain supported; typed shared CLI/MCP ownership and consumers are missing. |
 | Skills, agents, and external sources | Implemented for current behavior | Existing source/catalog/link behavior retained; unowned AI agent destinations covered by regressions. |
 | Second Brain safety and synchronization | Implemented for tested paths | Sync/connect are pull-only or local; explicit publish previews changes and confirms; isolated Git fixtures only. |
-| Migration from existing installations | Partial | Disabled-environment setting has a create-if-absent compatibility copy; broad state/source/ownership/Brain migration is absent. |
+| Migration from existing installations | Implemented in-place | An isolated extracted macOS package reuses legacy state, source data, skill selections, ownership, and Second Brain; no legacy file is copied or removed. The old checkout must remain available. |
 | Uninstall and cleanup | Partial | Manifest/fingerprint removal and data preservation tested; native platform acceptance and final-entry race remain. |
-| Repository structure and documentation | Partial | Principles/practices and package/data docs refined; migration and exact Repair contract still need follow-up. |
+| Repository structure and documentation | Partial | Package docs describe migration and dependencies; exact Repair preview and shared-tool lifecycle still need follow-up. |
 | Tests, CI, and release readiness | Partial | Go, CLI, launcher, and package suites pass locally; GitHub Actions/native Windows/Linux were not run. |
 | Security, failure scenarios, regressions | Implemented for tested boundaries | Package/runtime allowlists, fingerprints, rollback, symlink checks, and unowned-file preservation have regressions; native OS confirmation remains. |
 
 ### Verification — macOS/arm64, 2026-11-05
 
-- Go 1.27.3: `go test ./... -count=1` and `go vet ./...` passed.
-- `bash tests/cli/run.sh` passed all batches, including the 155 catalog/performance checks, Setup/Settings handoff, unowned-agent preservation, Second Brain safety, and lifecycle coverage.
+- Go 1.27.3: `go test ./... -count=1` and `go vet ./...` passed on the final tree.
+- `bash tests/cli/run.sh` passed all batches, including the 155 catalog/performance checks, the package-mode legacy-core Sync regression, Setup/Settings handoff, unowned-agent preservation, Second Brain safety, and lifecycle coverage.
 - `bash tests/go/launchers_test.sh` passed.
-- `bash tests/go/package_release_test.sh` passed: all six OS/CPU targets built; three archives/checksums were inspected; extracted-package Doctor, Status, Setup with one Go-hosted Sync, Uninstall, and data-preservation flows passed.
-- Windows/amd64 and Linux/amd64 test binaries cross-compiled for `cmd/haws`, `internal/app`, `internal/legacy`, `internal/ownership`, `internal/tui`, `internal/uninstall`, and `internal/update`.
-- Shell syntax and `git diff --check` passed. GitHub Actions was not run because this branch was not pushed. Native Windows/Linux runtime checks remain `[Unverified]`.
-- The approved temporary Go 1.27.3 toolchain was downloaded to `/tmp/haws-go-toolchain-round2`, checksum-verified, and removed after verification; its absence was confirmed.
-- Next: complete exact Repair preview, design a reviewable non-destructive migration for existing state, then run native Windows/Linux and GitHub Actions checks before release consideration. Keep this branch local; do not merge or publish without authorization.
+- `bash tests/go/package_release_test.sh` passed: all six OS/CPU targets built; three archives/checksums were inspected; the extracted macOS package completed Doctor, Status, Setup with one Go-hosted Sync, legacy migration + Sync + reference clear, Uninstall, and data-preservation flows.
+- Windows/Linux amd64/arm64 test binaries cross-compiled for the changed Go packages `cmd/haws`, `internal/app`, `internal/legacy`, `internal/migration`, and `internal/tui` (20 binaries). Earlier ownership, uninstall, and update package cross-compilation also passed.
+- Shell syntax, Go formatting, and `git diff --check` passed. GitHub Actions was not run because this branch was not pushed. Native Windows/Linux runtime checks remain `[Unverified]`.
+- The approved temporary Go 1.27.3 toolchain was downloaded to `/tmp/haws-go-toolchain-round2`, checksum-verified, and removed after final verification; its absence was confirmed.
+- Next: decide whether to implement exact Repair planning and typed CLI/MCP lifecycle, then run this branch through native Windows/Linux runners and GitHub Actions before release consideration. Keep this branch local; do not merge or publish without authorization.
 
 ## HAWS Go Modernization — Initial Implementation Stage
 
