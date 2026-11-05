@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -70,5 +71,14 @@ func TestCatalogUsesDeviceMirrorAndFiltersEntrypoints(t *testing.T) {
 	}
 	if len(sources) != 1 || sources[0].ID != "device-demo::skills/packs/demo" || len(skills) != 1 || skills[0].Name != "real" {
 		t.Fatalf("sources=%+v skills=%+v", sources, skills)
+	}
+}
+
+func TestSkillMetadataBoundsUnicodeByCharacters(t *testing.T) {
+	contents := []byte("---\nname: unicode\ndescription: " + strings.Repeat("ก", 70) + "\n---\n")
+	_, description := skillMetadata(contents, "fallback")
+	want := strings.Repeat("ก", 57) + "..."
+	if description != want {
+		t.Fatalf("Unicode description = %q, want %q", description, want)
 	}
 }

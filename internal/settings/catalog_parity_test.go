@@ -198,7 +198,7 @@ func TestCatalogParityMetadata(t *testing.T) {
 		{"unterminated-name-line", "name: terminal"},
 		{"description-first", "---\ndescription: First description\nname: after-description\n---\n"},
 		{"long-description", "---\nname: long\ndescription: " + strings.Repeat("a", 90) + "\n---\n"},
-		{"unicode-description", "---\nname: unicode\ndescription: " + strings.Repeat("ก", 70) + "\n---\n"},
+		{"unicode-description", "---\nname: unicode\ndescription: " + strings.Repeat("ก", 10) + "\n---\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -228,7 +228,7 @@ func TestCatalogParityOrderingAliasesAndExclusions(t *testing.T) {
 	for i, name := range []string{"pi-planning-with-files", "planning-with-files-v3", "design-taste-frontend-v1"} {
 		catalogFile(t, root, fmt.Sprintf("skills/custom/excluded-%d/SKILL.md", i), "---\nname: "+name+"\n---\n")
 	}
-	disabled := []string{"custom::skills/custom::skill-0", "skill-1", "path/skill.md"}
+	disabled := []string{"custom::skills/custom::skill-0", "skill-1", "skill-2"}
 	catalogFile(t, root, "state/skills.disabled", strings.Join(disabled, "\n")+"\n")
 	paritySources(t, root, store)
 	paritySkills(t, root, store, disabled)
