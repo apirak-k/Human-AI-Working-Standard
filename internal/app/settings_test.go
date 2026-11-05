@@ -63,11 +63,12 @@ func TestRunSettingsUsesOneGoHostedSyncWhenIntegrationIsPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(calls) != "settings\nsync\n" {
-		t.Fatalf("legacy commands = %q, want one Settings command and one Go-hosted Sync", calls)
+	gotCalls := strings.ReplaceAll(string(calls), "\r\n", "\n")
+	if gotCalls != "settings\nsync\n" {
+		t.Fatalf("legacy commands = %q, want one Settings command and one Go-hosted Sync", gotCalls)
 	}
 	host, err := os.ReadFile(filepath.Join(root, "host.log"))
-	if err != nil || string(host) != "1\n" {
+	if err != nil || strings.ReplaceAll(string(host), "\r\n", "\n") != "1\n" {
 		t.Fatalf("Go host marker = %q, %v; want 1", host, err)
 	}
 	if !strings.Contains(stdout.String(), "authoritative Sync") {
@@ -88,8 +89,9 @@ func TestRunSettingsDoesNotSyncWhenNoIntegrationIsPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(calls) != "settings\n" {
-		t.Fatalf("legacy commands = %q, want Settings only", calls)
+	gotCalls := strings.ReplaceAll(string(calls), "\r\n", "\n")
+	if gotCalls != "settings\n" {
+		t.Fatalf("legacy commands = %q, want Settings only", gotCalls)
 	}
 }
 
@@ -101,7 +103,7 @@ func TestRunSettingsLeavesPendingStateWhenGoSyncFails(t *testing.T) {
 		t.Fatalf("RunSettings() error = %v, want child exit 7", err)
 	}
 	calls, readErr := os.ReadFile(callsPath)
-	if readErr != nil || string(calls) != "setup\nsync\n" {
+	if readErr != nil || strings.ReplaceAll(string(calls), "\r\n", "\n") != "setup\nsync\n" {
 		t.Fatalf("legacy commands = %q, %v", calls, readErr)
 	}
 	result, readErr := os.ReadFile(resultPath)

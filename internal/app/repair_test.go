@@ -62,8 +62,9 @@ func TestRepairPreviewsThenRunsOneSyncAndPreservesFollowingHomeInput(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(calls) != "doctor --deep\nsync\n" {
-		t.Fatalf("legacy calls = %q, want one diagnostic then one Sync", calls)
+	gotCalls := strings.ReplaceAll(string(calls), "\r\n", "\n")
+	if gotCalls != "doctor --deep\nsync\n" {
+		t.Fatalf("legacy calls = %q, want one diagnostic then one Sync", gotCalls)
 	}
 	if doctor, plan, sync := strings.Index(output.String(), "doctor-preview"), strings.Index(output.String(), "Repair plan"), strings.Index(output.String(), "sync-applied"); doctor < 0 || plan < doctor || sync < plan {
 		t.Fatalf("repair order must be diagnostics, preview, then apply: %q", output.String())
@@ -80,8 +81,9 @@ func TestRepairCancelRunsOnlyReadOnlyDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(calls) != "doctor --deep\n" {
-		t.Fatalf("legacy calls = %q, want diagnostics only", calls)
+	gotCalls := strings.ReplaceAll(string(calls), "\r\n", "\n")
+	if gotCalls != "doctor --deep\n" {
+		t.Fatalf("legacy calls = %q, want diagnostics only", gotCalls)
 	}
 	if !strings.Contains(output.String(), "No changes were made") {
 		t.Fatalf("cancel result missing: %q", output.String())
@@ -102,8 +104,9 @@ func TestRepairCanPreviewBlockedDoctorFindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(calls) != "doctor --deep\n" {
-		t.Fatalf("legacy calls = %q, want diagnostics only", calls)
+	gotCalls := strings.ReplaceAll(string(calls), "\r\n", "\n")
+	if gotCalls != "doctor --deep\n" {
+		t.Fatalf("legacy calls = %q, want diagnostics only", gotCalls)
 	}
 }
 
@@ -122,7 +125,8 @@ func TestRepairStopsWhenDoctorCannotRun(t *testing.T) {
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if string(calls) != "doctor --deep\n" {
-		t.Fatalf("legacy calls = %q, want diagnostics only", calls)
+	gotCalls := strings.ReplaceAll(string(calls), "\r\n", "\n")
+	if gotCalls != "doctor --deep\n" {
+		t.Fatalf("legacy calls = %q, want diagnostics only", gotCalls)
 	}
 }
