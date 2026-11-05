@@ -53,6 +53,56 @@ func TestRemoveInstalledVersionRejectsReplacedVersionsParent(t *testing.T) {
 	}
 }
 
+func TestRemoveInstalledVersionRemovesOnlyFingerprintedRuntime(t *testing.T) {
+	binaries := buildFixtureBinaries(t, "v1.2.3")
+	root := newAppRoot(t, binaries)
+	archive := releaseArchiveFixture(t, "v1.2.3", binaries, archiveEntryFixture{
+		name: "haws-go/" + packageOSForTest() + "/runtime/haws.sh",
+		data: []byte("versioned runtime"),
+		mode: 0644,
+	})
+	if err := Install(root, "v1.2.3", archive); err != nil {
+		t.Fatal(err)
+	}
+	versions, err := InstalledVersions(root)
+	if err != nil || len(versions) != 1 {
+		t.Fatalf("InstalledVersions() = %#v, %v; want one version", versions, err)
+	}
+	if err := RemoveInstalledVersion(root, versions[0], ""); err != nil {
+		t.Fatalf("RemoveInstalledVersion() failed: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "versions", "v1.2.3")); !os.IsNotExist(err) {
+		t.Fatalf("version directory remains: %v", err)
+	}
+}
+
+func TestRemoveInstalledVersionPreservesModifiedRuntime(t *testing.T) {
+	binaries := buildFixtureBinaries(t, "v1.2.3")
+	root := newAppRoot(t, binaries)
+	archive := releaseArchiveFixture(t, "v1.2.3", binaries, archiveEntryFixture{
+		name: "haws-go/" + packageOSForTest() + "/runtime/haws.sh",
+		data: []byte("versioned runtime"),
+		mode: 0644,
+	})
+	if err := Install(root, "v1.2.3", archive); err != nil {
+		t.Fatal(err)
+	}
+	versions, err := InstalledVersions(root)
+	if err != nil || len(versions) != 1 {
+		t.Fatalf("InstalledVersions() = %#v, %v; want one version", versions, err)
+	}
+	runtimeFile := filepath.Join(root, "versions", "v1.2.3", "runtime", "haws.sh")
+	if err := os.WriteFile(runtimeFile, []byte("user-modified runtime"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveInstalledVersion(root, versions[0], ""); err == nil {
+		t.Fatal("RemoveInstalledVersion() removed a modified runtime")
+	}
+	if contents, err := os.ReadFile(runtimeFile); err != nil || string(contents) != "user-modified runtime" {
+		t.Fatalf("modified runtime = %q, %v; expected it to remain", contents, err)
+	}
+}
+
 func TestActiveBinaryReturnsValidatedInstalledVersion(t *testing.T) {
 	binaries := buildFixtureBinaries(t, "v1.2.3")
 	root := newAppRoot(t, binaries)

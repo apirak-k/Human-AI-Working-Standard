@@ -13,8 +13,10 @@ SHA-256 sidecar. The launcher selects a binary for the current CPU.
 
 The installed package has two different areas:
 
-- `runtime/` contains the HAWS shell runtime, AI adapters, templates, and
-  neutral Second Brain starter documents.
+- `runtime/` contains the package's base HAWS shell runtime, AI adapters,
+  templates, and neutral Second Brain starter documents. Each installed
+  release also keeps its own immutable runtime at
+  `versions/<version>/runtime/` beside the matching Go binaries.
 - `data/` contains mutable settings, source checkouts, caches, and personal
   Second Brain documents. Package updates do not replace `data/`; uninstall
   preserves it by default.
@@ -27,15 +29,14 @@ need Go or a complete HAWS developer checkout.
 The Go Home TUI routes Setup, Settings, Sync, Doctor, Repair, and Uninstall.
 Existing skill, agent, AI integration, and Second Brain operations still run
 through the included HAWS runtime. A Go Sync checks the configured release,
-activates a verified app version when available, then runs one existing HAWS
-Sync for enabled sources and integrations. If that Sync fails after a new app
-version was activated, the Go app restores the previous version.
-
-At this stage, Release Sync versions the Go executable only. It keeps the
-installed `runtime/` unchanged and rejects an incoming package whose runtime
-files differ. As a result, shell-runtime fixes, AI adapter changes, templates,
-and bundled instructions require replacing/reinstalling the package until a
-transactional versioned-runtime update is implemented and verified.
+validates the package's complete allowlisted runtime and both CPU binaries,
+stages them together under one version directory, and activates them with one
+version marker. It then runs one HAWS Sync for enabled sources and integrations
+using that version's runtime. If component Sync fails, the marker returns to
+the previous Go and runtime pair. Installed runtime files are fingerprinted;
+a modified runtime cannot be selected or removed as HAWS-owned. Older installed
+Go versions without a versioned runtime continue using the package's base
+`runtime/`.
 
 Doctor is read-only. Repair shows deep diagnostics and a Sync-based operation
 plan, asks before applying it, and then runs one Sync. The plan describes the
@@ -54,10 +55,17 @@ tool lifecycle. HAWS does not execute installer scripts from external sources.
 
 ## Existing installation state
 
-Package data defaults to the package's sibling `data/` directory. The package
-does not automatically copy a checkout's `.haws/state` or personal Second Brain
-files into that directory. This avoids silently changing or merging existing
-state, but means the first package launch can appear to have fresh settings.
+Package data defaults to the package's sibling `data/` directory. During
+package startup, HAWS copies the legacy
+`runtime/ai-configs/environments.disabled` setting into
+`data/state/environments.disabled` with create-if-absent behavior; it leaves
+the original file in place. New package Settings write that mutable file under
+`data/state/`, outside the versioned runtime.
+
+The package does not automatically copy a checkout's `.haws/state`, source
+checkouts, ownership records, or personal Second Brain files into `data/`.
+This avoids silently changing or merging existing state, but means the first
+package launch can appear to have fresh settings.
 
 To keep using existing state and personal Brain files without copying them,
 start the package from a terminal with `HAWS_STATE_DIR` and

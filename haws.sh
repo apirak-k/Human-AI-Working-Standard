@@ -772,6 +772,11 @@ _haws_state_dir() {
 _haws_compat_file() {
     local filename="$1"
     local candidate
+    if [ "${filename}" = environments.disabled ] &&
+        [ -n "${HAWS_PACKAGE_DIR:-}" ] && [ -n "${HAWS_DISABLED_ENVIRONMENTS_FILE:-}" ]; then
+        printf '%s\n' "${HAWS_DISABLED_ENVIRONMENTS_FILE}"
+        return 0
+    fi
     for candidate in \
         "${SCRIPT_DIR}/ai-configs/${filename}" \
         "${SCRIPT_DIR}/config/${filename}" \

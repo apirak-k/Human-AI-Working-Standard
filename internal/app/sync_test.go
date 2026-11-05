@@ -33,6 +33,7 @@ func (f *fakeReleaseSource) DownloadLatestIfChanged(_ context.Context, goos, act
 
 type fakeInstaller struct {
 	active      string
+	previous    string
 	installErr  error
 	rollbackErr error
 	installs    []string
@@ -48,6 +49,7 @@ func (f *fakeInstaller) Install(_ string, version string, _ []byte) error {
 		*f.order = append(*f.order, "install")
 	}
 	if f.installErr == nil {
+		f.previous = f.active
 		f.active = version
 	}
 	return f.installErr
@@ -57,6 +59,9 @@ func (f *fakeInstaller) Rollback(string) error {
 	f.rollbacks++
 	if f.order != nil {
 		*f.order = append(*f.order, "rollback")
+	}
+	if f.rollbackErr == nil && f.previous != "" {
+		f.active = f.previous
 	}
 	return f.rollbackErr
 }
@@ -76,16 +81,22 @@ func TestSyncerInstallsReleaseBeforeRunningLegacySyncOnce(t *testing.T) {
 		GOOS:      "darwin",
 		Releases:  releases,
 		Installer: installer,
+		RuntimeRoot: func(appRoot string) (string, error) {
+			if appRoot != "/app" {
+				t.Fatalf("runtime resolver got app root %q", appRoot)
+			}
+			return "/app/versions/v1.2.3/runtime", nil
+		},
 		Legacy: func(_ context.Context, root string, gotIn io.Reader, gotOut, gotErr io.Writer) error {
 			legacyCalls++
-			if root != "/checkout" || gotIn != stdin || gotOut != &stdout || gotErr != &stderr {
+			if root != "/app/versions/v1.2.3/runtime" || gotIn != stdin || gotOut != &stdout || gotErr != &stderr {
 				t.Fatal("legacy Sync did not receive its root and terminal streams")
 			}
 			order = append(order, "legacy")
 			return nil
 		},
 	}
-	if err := syncer.Run(context.Background(), "/checkout", "/app", true, stdin, &stdout, &stderr); err != nil {
+	if err := syncer.Run(context.Background(), "/app/runtime", "/app", true, stdin, &stdout, &stderr); err != nil {
 		t.Fatalf("Syncer.Run() error = %v", err)
 	}
 	if legacyCalls != 1 || releases.calls != 1 || releases.active != "base" || releases.goos != "darwin" {
@@ -144,11 +155,26 @@ func TestSyncerRollsBackInstalledAppWhenLegacySyncFails(t *testing.T) {
 	order := []string{}
 	releases := &fakeReleaseSource{packageData: update.ReleasePackage{Version: "v1.2.3"}, changed: true, order: &order}
 	installer := &fakeInstaller{active: "base", order: &order}
+	selectedRuntime := ""
 	syncer := Syncer{
 		GOOS:      "linux",
 		Releases:  releases,
 		Installer: installer,
-		Legacy: func(context.Context, string, io.Reader, io.Writer, io.Writer) error {
+		RuntimeRoot: func(appRoot string) (string, error) {
+			if appRoot != "/app" {
+				t.Fatalf("runtime resolver got app root %q", appRoot)
+			}
+			if installer.active == "base" {
+				selectedRuntime = "/app/runtime"
+				return selectedRuntime, nil
+			}
+			selectedRuntime = "/app/versions/" + installer.active + "/runtime"
+			return selectedRuntime, nil
+		},
+		Legacy: func(_ context.Context, root string, _ io.Reader, _, _ io.Writer) error {
+			if root != "/app/versions/v1.2.3/runtime" {
+				t.Fatalf("legacy Sync used runtime %q before rollback", root)
+			}
 			order = append(order, "legacy")
 			return legacyErr
 		},
@@ -159,6 +185,12 @@ func TestSyncerRollsBackInstalledAppWhenLegacySyncFails(t *testing.T) {
 	}
 	if got := strings.Join(order, ","); got != "release,install,legacy,rollback" {
 		t.Fatalf("operation order = %q", got)
+	}
+	if installer.active != "base" {
+		t.Fatalf("active app version after rollback = %q; want base", installer.active)
+	}
+	if selectedRuntime != "/app/runtime" {
+		t.Fatalf("runtime after rollback = %q; want /app/runtime", selectedRuntime)
 	}
 }
 

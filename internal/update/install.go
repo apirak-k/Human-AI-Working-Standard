@@ -26,6 +26,7 @@ const (
 	activeMarkerHeader  = "HAWS_GO_ACTIVE_V1"
 	maxInstalledBinary  = 64 << 20
 	maxInstalledTotal   = 132 << 20
+	maxRuntimeFileBytes = 1 << 20
 	maxControlFileBytes = 256 << 10
 )
 
@@ -39,6 +40,7 @@ type installManifest struct {
 	Platform      string            `json:"platform"`
 	ArchiveSHA256 string            `json:"archive_sha256"`
 	Binaries      map[string]string `json:"binaries"`
+	Runtime       map[string]string `json:"runtime,omitempty"`
 }
 
 type Installer struct {
@@ -115,6 +117,46 @@ func ActiveBinary(root, goos, goarch string) (string, error) {
 	return binaryPath(filepath.Join(root, "versions", state.Active), spec, goarch), nil
 }
 
+// ActiveRuntime returns the immutable HAWS shell/runtime resources paired
+// with the active Go application version. Older installed Go versions without
+// a runtime manifest continue using the package's original runtime.
+func ActiveRuntime(root, goos string) (string, error) {
+	spec, err := platformForOS(goos)
+	if err != nil {
+		return "", err
+	}
+	root, err = resolveInstallRoot(root)
+	if err != nil {
+		return "", err
+	}
+	state, err := readActiveState(root)
+	if err != nil {
+		return "", err
+	}
+	if state.Active == baseVersion {
+		runtimeDir := filepath.Join(root, "runtime")
+		if _, err := runtimeHashesWithLegacySettings(runtimeDir); err != nil {
+			return "", fmt.Errorf("base HAWS runtime is not valid: %w", err)
+		}
+		return runtimeDir, nil
+	}
+	if err := validateInstalledVersion(root, state.Active, spec); err != nil {
+		return "", fmt.Errorf("active HAWS runtime is not valid: %w", err)
+	}
+	manifest, err := readInstallManifest(filepath.Join(root, "versions", state.Active), state.Active, spec)
+	if err != nil {
+		return "", err
+	}
+	if manifest.Runtime == nil {
+		runtimeDir := filepath.Join(root, "runtime")
+		if _, err := runtimeHashes(runtimeDir); err != nil {
+			return "", fmt.Errorf("legacy HAWS runtime is not valid: %w", err)
+		}
+		return runtimeDir, nil
+	}
+	return filepath.Join(root, "versions", state.Active, "runtime"), nil
+}
+
 func (i *Installer) Install(root, version string, archive []byte) error {
 	if i == nil {
 		return errors.New("installer is not configured")
@@ -145,7 +187,7 @@ func (i *Installer) Install(root, version string, archive []byte) error {
 		return fmt.Errorf("current HAWS version is not valid: %w", err)
 	}
 
-	// Validate runtime compatibility before either installing or reactivating a version.
+	// Validate the package before either installing or reactivating a version.
 	checkDir, err := os.MkdirTemp("", "haws-runtime-check-")
 	if err != nil {
 		return err
@@ -154,10 +196,6 @@ func (i *Installer) Install(root, version string, archive []byte) error {
 	if err := extractPackage(spec, archive, checkDir); err != nil {
 		return fmt.Errorf("validate release package: %w", err)
 	}
-	if err := verifyRuntimeCompatibility(root, checkDir); err != nil {
-		return err
-	}
-
 	archiveDigest := sha256.Sum256(archive)
 	archiveHash := hex.EncodeToString(archiveDigest[:])
 	versionDir := filepath.Join(root, "versions", version)
@@ -198,18 +236,20 @@ func (i *Installer) Install(root, version string, archive []byte) error {
 	if err := extractPackage(spec, archive, stageDir); err != nil {
 		return fmt.Errorf("validate release package: %w", err)
 	}
-	if err := os.RemoveAll(filepath.Join(stageDir, "runtime")); err != nil {
-		return err
-	}
 	binaryHashes, err := validateVersionBinaries(stageDir, spec)
 	if err != nil {
 		return err
+	}
+	runtimeHashes, err := runtimeHashes(filepath.Join(stageDir, "runtime"))
+	if err != nil {
+		return fmt.Errorf("validate staged HAWS runtime: %w", err)
 	}
 	manifest := installManifest{
 		Version:       version,
 		Platform:      spec.packageOS,
 		ArchiveSHA256: archiveHash,
 		Binaries:      binaryHashes,
+		Runtime:       runtimeHashes,
 	}
 	if err := writeInstallManifest(stageDir, manifest); err != nil {
 		return err
@@ -528,6 +568,9 @@ func readInstallManifest(versionDir, version string, spec platformSpec) (install
 			return installManifest{}, fmt.Errorf("installed %s binary fingerprint does not match its manifest", arch)
 		}
 	}
+	if err := validateRuntimeManifest(versionDir, manifest.Runtime); err != nil {
+		return installManifest{}, err
+	}
 	return manifest, nil
 }
 
@@ -737,7 +780,7 @@ func acceptPackageFile(spec platformSpec, stageDir, name string, contents []byte
 
 	for _, file := range packagedRuntimeFiles() {
 		if name == prefix+"/runtime/"+file {
-			if len(contents) == 0 || len(contents) > maxControlFileBytes {
+			if len(contents) == 0 || len(contents) > maxRuntimeFileBytes {
 				return fmt.Errorf("runtime file %q is empty or oversized", name)
 			}
 			destination := filepath.Join(stageDir, "runtime", filepath.FromSlash(file))
@@ -778,6 +821,9 @@ func acceptPackageFile(spec platformSpec, stageDir, name string, contents []byte
 func requirePackageFiles(spec platformSpec, seen map[string]bool) error {
 	prefix := "haws-go/" + spec.packageOS
 	required := []string{prefix + "/README.txt", prefix + "/package-manifest.json", prefix + "/" + spec.launcher}
+	for _, file := range packagedRuntimeFiles() {
+		required = append(required, prefix+"/runtime/"+file)
+	}
 	for _, arch := range []string{"amd64", "arm64"} {
 		extension := ""
 		if spec.packageOS == "windows" {
@@ -797,51 +843,120 @@ func packagedRuntimeFiles() []string {
 	return ownership.RuntimeFiles
 }
 
-// Until runtime updates are transactional, reject any difference, including omissions.
-func verifyRuntimeCompatibility(root, stage string) error {
-	base, incoming := filepath.Join(root, "runtime"), filepath.Join(stage, "runtime")
-	snapshot := func(dir string) (map[string][32]byte, error) {
-		files := make(map[string][32]byte)
-		err := filepath.WalkDir(dir, func(name string, entry os.DirEntry, err error) error {
-			if errors.Is(err, os.ErrNotExist) && name == dir {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			if entry.IsDir() {
-				return nil
-			}
-			if !entry.Type().IsRegular() {
-				return fmt.Errorf("unsafe runtime entry %s", name)
-			}
-			rel, err := filepath.Rel(dir, name)
-			if err != nil {
-				return err
-			}
-			data, err := os.ReadFile(name)
-			if err != nil {
-				return err
-			}
-			files[rel] = sha256.Sum256(data)
+func runtimeHashes(runtimeDir string) (map[string]string, error) {
+	return runtimeHashesWithSettings(runtimeDir, false)
+}
+
+func runtimeHashesWithLegacySettings(runtimeDir string) (map[string]string, error) {
+	return runtimeHashesWithSettings(runtimeDir, true)
+}
+
+func runtimeHashesWithSettings(runtimeDir string, allowLegacySettings bool) (map[string]string, error) {
+	info, err := os.Lstat(runtimeDir)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return nil, errors.New("runtime path is not a regular directory")
+	}
+	allowedFiles := make(map[string]bool, len(packagedRuntimeFiles()))
+	allowedDirs := map[string]bool{}
+	for _, file := range packagedRuntimeFiles() {
+		allowedFiles[file] = true
+		for directory := path.Dir(file); directory != "."; directory = path.Dir(directory) {
+			allowedDirs[filepath.FromSlash(directory)] = true
+		}
+	}
+	if allowLegacySettings {
+		allowedFiles["ai-configs/environments.disabled"] = true
+	}
+	hashes := make(map[string]string, len(allowedFiles))
+	directories := make([]string, 0)
+	var total int64
+	err = filepath.WalkDir(runtimeDir, func(filename string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if filename == runtimeDir {
 			return nil
-		})
-		return files, err
-	}
-	a, err := snapshot(base)
+		}
+		relative, err := filepath.Rel(runtimeDir, filename)
+		if err != nil {
+			return err
+		}
+		relative = filepath.Clean(relative)
+		if entry.IsDir() {
+			if !allowedDirs[relative] {
+				return fmt.Errorf("runtime contains an unowned directory %q", relative)
+			}
+			directories = append(directories, relative)
+			return nil
+		}
+		fileInfo, err := os.Lstat(filename)
+		if err != nil {
+			return err
+		}
+		if fileInfo.Mode()&os.ModeSymlink != 0 || !fileInfo.Mode().IsRegular() || fileInfo.Size() <= 0 || fileInfo.Size() > maxRuntimeFileBytes {
+			return fmt.Errorf("runtime file %q is not a bounded regular file", relative)
+		}
+		slashPath := filepath.ToSlash(relative)
+		if !allowedFiles[slashPath] {
+			return fmt.Errorf("runtime contains an unowned file %q", slashPath)
+		}
+		total += fileInfo.Size()
+		if total > maxInstalledTotal {
+			return errors.New("runtime exceeds the installed size limit")
+		}
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			return err
+		}
+		digest := sha256.Sum256(data)
+		hashes[slashPath] = hex.EncodeToString(digest[:])
+		return nil
+	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	b, err := snapshot(incoming)
+	if _, ok := hashes["haws.sh"]; !ok {
+		return nil, errors.New("runtime is missing haws.sh")
+	}
+	for _, directory := range directories {
+		prefix := directory + string(filepath.Separator)
+		containsFile := false
+		for file := range hashes {
+			if strings.HasPrefix(filepath.FromSlash(file), prefix) {
+				containsFile = true
+				break
+			}
+		}
+		if !containsFile {
+			return nil, fmt.Errorf("runtime contains an empty directory %q", directory)
+		}
+	}
+	return hashes, nil
+}
+
+func validateRuntimeManifest(versionDir string, expected map[string]string) error {
+	runtimeDir := filepath.Join(versionDir, "runtime")
+	if expected == nil {
+		if _, err := os.Lstat(runtimeDir); errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("inspect unmanifested installed runtime: %w", err)
+		}
+		return errors.New("installed runtime has no ownership fingerprints")
+	}
+	actual, err := runtimeHashes(runtimeDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("validate installed runtime: %w", err)
 	}
-	if len(a) != len(b) {
-		return errors.New("release runtime differs from installed runtime; update requires runtime transaction")
+	if len(actual) != len(expected) {
+		return errors.New("installed runtime file list does not match its manifest")
 	}
-	for name, hash := range a {
-		if other, ok := b[name]; !ok || other != hash {
-			return errors.New("release runtime differs from installed runtime; update requires runtime transaction")
+	for file, hash := range expected {
+		if !isSHA256Hex(hash) || actual[file] != hash {
+			return fmt.Errorf("installed runtime fingerprint does not match for %q", file)
 		}
 	}
 	return nil

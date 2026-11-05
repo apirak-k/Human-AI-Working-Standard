@@ -63,7 +63,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "menu" || args[0] == "interactive") {
 		args = nil
 	}
-	root, err := legacy.FindRoot()
+	root, err := findRootForRun()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -77,6 +77,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return actionExitCode(runAction(ctx, root, action, args, stdin, stdout, stderr), stderr)
 	}
 	err = tui.Run(stdin, stdout, func(action tui.Action, actionInput io.Reader) error {
+		root, err = findRootForRun()
+		if err != nil {
+			return err
+		}
 		return runAction(ctx, root, action, nil, actionInput, stdout, stderr)
 	})
 	if err != nil {
@@ -84,6 +88,60 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func findRootForRun() (string, error) {
+	explicitRoot := os.Getenv("HAWS_ROOT")
+	appRoot := ""
+	if explicitRoot != "" {
+		appRoot = packageRootForPath(explicitRoot)
+		if appRoot == "" {
+			packageDir := os.Getenv("HAWS_PACKAGE_DIR")
+			if packageDir != "" {
+				appRoot = packageDir
+			}
+		}
+		if appRoot == "" {
+			return legacy.FindRoot()
+		}
+	} else if configured := os.Getenv("HAWS_APP_DIR"); configured != "" {
+		appRoot = configured
+	} else {
+		executable, err := os.Executable()
+		if err != nil {
+			return "", fmt.Errorf("resolve HAWS executable path: %w", err)
+		}
+		if installedRoot, err := update.FindInstallRoot(executable, runtime.GOOS); err == nil {
+			appRoot = installedRoot
+		}
+	}
+	if appRoot == "" {
+		return legacy.FindRoot()
+	}
+	runtimeRoot, err := update.ActiveRuntime(appRoot, runtime.GOOS)
+	if err != nil {
+		return "", err
+	}
+	return legacy.ConfigurePackageRuntime(appRoot, runtimeRoot)
+}
+
+func packageRootForPath(root string) string {
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return ""
+	}
+	if hasPackageManifest(absolute) {
+		return absolute
+	}
+	if filepath.Base(absolute) == "runtime" && hasPackageManifest(filepath.Dir(absolute)) {
+		return filepath.Dir(absolute)
+	}
+	return ""
+}
+
+func hasPackageManifest(root string) bool {
+	info, err := os.Lstat(filepath.Join(root, "package-manifest.json"))
+	return err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0
 }
 
 func commandAction(command string) tui.Action {

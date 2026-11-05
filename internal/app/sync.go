@@ -26,10 +26,11 @@ type packageInstaller interface {
 type legacySync func(context.Context, string, io.Reader, io.Writer, io.Writer) error
 
 type Syncer struct {
-	GOOS      string
-	Releases  releaseSource
-	Installer packageInstaller
-	Legacy    legacySync
+	GOOS        string
+	Releases    releaseSource
+	Installer   packageInstaller
+	RuntimeRoot func(string) (string, error)
+	Legacy      legacySync
 }
 
 // Run performs the release-managed app update and then delegates the existing
@@ -67,14 +68,42 @@ func (s Syncer) Run(ctx context.Context, root, appRoot string, updateEnabled boo
 		}
 	}
 
-	legacyErr := s.Legacy(ctx, root, stdin, stdout, stderr)
+	legacyRoot := root
+	if s.RuntimeRoot != nil {
+		activeRoot, runtimeErr := s.RuntimeRoot(appRoot)
+		if runtimeErr != nil {
+			failures = append(failures, fmt.Errorf("select active HAWS runtime: %w", runtimeErr))
+			if installedVersion != "" {
+				if rollbackErr := s.Installer.Rollback(appRoot); rollbackErr != nil {
+					failures = append(failures, fmt.Errorf("roll back HAWS app after runtime selection failed: %w", rollbackErr))
+				} else {
+					if restoredRoot, restoreErr := s.RuntimeRoot(appRoot); restoreErr != nil {
+						failures = append(failures, fmt.Errorf("select restored HAWS runtime: %w", restoreErr))
+					} else {
+						legacyRoot = restoredRoot
+					}
+				}
+				installedVersion = ""
+			}
+		} else {
+			legacyRoot = activeRoot
+		}
+	}
+	legacyErr := s.Legacy(ctx, legacyRoot, stdin, stdout, stderr)
 	if legacyErr != nil {
 		failures = append(failures, fmt.Errorf("synchronize HAWS components: %w", legacyErr))
 		if installedVersion != "" {
 			if rollbackErr := s.Installer.Rollback(appRoot); rollbackErr != nil {
 				failures = append(failures, fmt.Errorf("roll back HAWS app after Sync failure: %w", rollbackErr))
-			} else if _, outputErr := fmt.Fprintf(stdout, "[WARN] HAWS app update was rolled back after Sync failed.\n"); outputErr != nil {
-				failures = append(failures, fmt.Errorf("report HAWS app rollback: %w", outputErr))
+			} else {
+				if s.RuntimeRoot != nil {
+					if _, runtimeErr := s.RuntimeRoot(appRoot); runtimeErr != nil {
+						failures = append(failures, fmt.Errorf("select HAWS runtime after rollback: %w", runtimeErr))
+					}
+				}
+				if _, outputErr := fmt.Fprintf(stdout, "[WARN] HAWS app update was rolled back after Sync failed.\n"); outputErr != nil {
+					failures = append(failures, fmt.Errorf("report HAWS app rollback: %w", outputErr))
+				}
 			}
 		}
 	}
@@ -115,10 +144,22 @@ func RunSync(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return runLegacySync(ctx, root, args, stdin, stdout, stderr)
 	}
 
+	usePackagedRuntime := os.Getenv("HAWS_PACKAGE_DIR") != "" && filepath.Clean(os.Getenv("HAWS_PACKAGE_DIR")) == filepath.Clean(appRoot)
+	var runtimeRoot func(string) (string, error)
+	if usePackagedRuntime {
+		runtimeRoot = func(appRoot string) (string, error) {
+			activeRoot, err := update.ActiveRuntime(appRoot, runtime.GOOS)
+			if err != nil {
+				return "", err
+			}
+			return legacy.ConfigurePackageRuntime(appRoot, activeRoot)
+		}
+	}
 	return Syncer{
-		GOOS:      runtime.GOOS,
-		Releases:  update.NewReleaseClient(),
-		Installer: update.NewInstaller(),
+		GOOS:        runtime.GOOS,
+		Releases:    update.NewReleaseClient(),
+		Installer:   update.NewInstaller(),
+		RuntimeRoot: runtimeRoot,
 		Legacy: func(ctx context.Context, root string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return runLegacySync(ctx, root, args, stdin, stdout, stderr)
 		},

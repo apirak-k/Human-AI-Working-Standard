@@ -2,11 +2,14 @@ package update
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -122,7 +125,7 @@ func RemoveActiveMarker(root string, expected []byte) error {
 }
 
 // RemoveInstalledVersion verifies its recorded fingerprints again and removes
-// only the two expected binaries and manifest, followed by empty directories.
+// only the version's owned binaries, runtime files, and manifest.
 func RemoveInstalledVersion(root string, version InstalledVersion, currentExecutable string) error {
 	if !validInstallVersion(version.Version) || !isSHA256Hex(version.ArchiveSHA256) {
 		return errors.New("refusing to remove an invalid HAWS version record")
@@ -165,6 +168,9 @@ func RemoveInstalledVersion(root string, version InstalledVersion, currentExecut
 			return ErrRunningVersion
 		}
 	}
+	if err := removeInstalledRuntime(versionDir, manifest.Runtime); err != nil {
+		return err
+	}
 
 	for _, arch := range []string{"amd64", "arm64"} {
 		binary := binaryPath(versionDir, spec, arch)
@@ -189,7 +195,7 @@ func RemoveInstalledVersion(root string, version InstalledVersion, currentExecut
 
 func ownedVersionTreeOnly(versionDir string, spec platformSpec) bool {
 	entries, err := os.ReadDir(versionDir)
-	if err != nil || len(entries) != 2 {
+	if err != nil || (len(entries) != 2 && len(entries) != 3) {
 		return false
 	}
 	seen := make(map[string]bool, len(entries))
@@ -200,8 +206,13 @@ func ownedVersionTreeOnly(versionDir string, spec platformSpec) bool {
 			return false
 		}
 	}
-	if !seen["bin"] || !seen["install.json"] {
+	if !seen["bin"] || !seen["install.json"] || (len(entries) == 3 && !seen["runtime"]) {
 		return false
+	}
+	for name := range seen {
+		if name != "bin" && name != "install.json" && name != "runtime" {
+			return false
+		}
 	}
 	binDir := filepath.Join(versionDir, "bin")
 	info, err := os.Lstat(binDir)
@@ -239,7 +250,88 @@ func ownedVersionTreeOnly(versionDir string, spec platformSpec) bool {
 			return false
 		}
 	}
+	if seen["runtime"] {
+		runtimeInfo, err := os.Lstat(filepath.Join(versionDir, "runtime"))
+		if err != nil || runtimeInfo.Mode()&os.ModeSymlink != 0 || !runtimeInfo.IsDir() {
+			return false
+		}
+		if _, err := runtimeHashes(filepath.Join(versionDir, "runtime")); err != nil {
+			return false
+		}
+	}
 	return true
+}
+
+func removeInstalledRuntime(versionDir string, expected map[string]string) error {
+	if expected == nil {
+		return nil
+	}
+	runtimeDir := filepath.Join(versionDir, "runtime")
+	if err := validateRuntimeManifest(versionDir, expected); err != nil {
+		return fmt.Errorf("verify HAWS runtime before removal: %w", err)
+	}
+	files := make([]string, 0, len(expected))
+	for file := range expected {
+		files = append(files, file)
+	}
+	sort.Strings(files)
+	for _, file := range files {
+		filename := filepath.Join(runtimeDir, filepath.FromSlash(file))
+		if err := removeVerifiedFingerprint(filename, expected[file]); err != nil {
+			return err
+		}
+	}
+	directories := map[string]bool{".": true}
+	for _, file := range files {
+		for directory := filepath.Dir(filepath.FromSlash(file)); directory != "."; directory = filepath.Dir(directory) {
+			directories[directory] = true
+		}
+	}
+	orderedDirectories := make([]string, 0, len(directories))
+	for directory := range directories {
+		orderedDirectories = append(orderedDirectories, directory)
+	}
+	sort.Slice(orderedDirectories, func(i, j int) bool {
+		depth := func(directory string) int {
+			if directory == "." {
+				return 0
+			}
+			return strings.Count(directory, string(filepath.Separator)) + 1
+		}
+		return depth(orderedDirectories[i]) > depth(orderedDirectories[j])
+	})
+	for _, directory := range orderedDirectories {
+		path := runtimeDir
+		if directory != "." {
+			path = filepath.Join(runtimeDir, directory)
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove empty HAWS runtime directory: %w", err)
+		}
+	}
+	return nil
+}
+
+func removeVerifiedFingerprint(filename, expectedHash string) error {
+	info, err := os.Lstat(filename)
+	if err != nil {
+		return fmt.Errorf("inspect owned HAWS runtime file before removal: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return errors.New("refusing to remove a non-regular or unowned HAWS runtime file")
+	}
+	contents, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("read owned HAWS runtime file before removal: %w", err)
+	}
+	digest := sha256.Sum256(contents)
+	if hex.EncodeToString(digest[:]) != expectedHash {
+		return errors.New("HAWS runtime file changed before removal")
+	}
+	if err := os.Remove(filename); err != nil {
+		return fmt.Errorf("remove owned HAWS runtime file: %w", err)
+	}
+	return nil
 }
 
 func removeVerifiedRegularFile(filename string) error {
