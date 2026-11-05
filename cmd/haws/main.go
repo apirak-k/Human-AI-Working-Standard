@@ -60,6 +60,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "HAWS %s\n", version)
 		return 0
 	}
+	if len(args) > 0 && args[0] == "migrate" {
+		packageRoot, err := findPackageRootForRun()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return actionExitCode(app.RunMigration(packageRoot, args[1:], stdin, stdout, stderr), stderr)
+	}
 	if len(args) == 1 && (args[0] == "menu" || args[0] == "interactive") {
 		args = nil
 	}
@@ -125,6 +133,31 @@ func findRootForRun() (string, error) {
 	return legacy.ConfigurePackageRuntime(appRoot, runtimeRoot)
 }
 
+func findPackageRootForRun() (string, error) {
+	for _, candidate := range []string{os.Getenv("HAWS_APP_DIR"), os.Getenv("HAWS_PACKAGE_DIR"), os.Getenv("HAWS_ROOT")} {
+		if packageRoot := packageRootForPath(candidate); packageRoot != "" {
+			resolved, err := filepath.EvalSymlinks(packageRoot)
+			if err != nil {
+				return "", fmt.Errorf("resolve HAWS package directory: %w", err)
+			}
+			return resolved, nil
+		}
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolve HAWS executable path: %w", err)
+	}
+	packageRoot, err := update.FindInstallRoot(executable, runtime.GOOS)
+	if err != nil || packageRoot == "" || !hasPackageManifest(packageRoot) {
+		return "", errors.New("migration is available from an installed HAWS package; start the package launcher first")
+	}
+	resolved, err := filepath.EvalSymlinks(packageRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve HAWS package directory: %w", err)
+	}
+	return resolved, nil
+}
+
 func packageRootForPath(root string) string {
 	absolute, err := filepath.Abs(root)
 	if err != nil {
@@ -178,6 +211,13 @@ func runAction(ctx context.Context, root string, action tui.Action, args []strin
 	}
 	if action == tui.ActionUninstall {
 		return app.RunUninstall(ctx, args, stdin, stdout, stderr)
+	}
+	if action == tui.ActionMigration {
+		packageRoot, err := findPackageRootForRun()
+		if err != nil {
+			return err
+		}
+		return app.RunMigrationWizard(packageRoot, stdin, stdout, stderr)
 	}
 	return legacy.RunCommand(ctx, root, args, stdin, stdout, stderr)
 }

@@ -2952,7 +2952,8 @@ _sync_prefetch_all() {
     mkdir -p "${state}" || return 1
     export HAWS_SYNC_PREFETCH_MATERIALIZED_FILE
     local pids=()
-    if git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
+    if [ -z "${HAWS_PACKAGE_DIR:-}" ] &&
+        git -C "$(_catalog_repo_dir)" remote get-url origin >/dev/null 2>&1; then
         _sync_prefetch_target haws &
         pids+=($!)
     fi
@@ -2983,6 +2984,12 @@ sync_target() {
     if [ "${auto_update_flag}" != on ]; then
         sync_result_write "${target}" skipped - "Auto Update is disabled" || return 1
         _sync_legacy_echo "${target}: skipped (Auto Update is disabled)"
+        return 0
+    fi
+
+    if [ "${target}" = haws ] && [ -n "${HAWS_PACKAGE_DIR:-}" ]; then
+        sync_result_write "${target}" skipped - "HAWS app update is managed by Go" || return 1
+        _sync_legacy_echo "${target}: skipped (HAWS app update is managed by Go)"
         return 0
     fi
 

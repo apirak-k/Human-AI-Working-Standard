@@ -10,14 +10,14 @@ import (
 func TestRunHomeDispatchesEachActionAndQuits(t *testing.T) {
 	var got []Action
 	var out strings.Builder
-	err := Run(strings.NewReader("1\n2\n3\n4\n5\n6\nq\n"), &out, func(action Action, _ io.Reader) error {
+	err := Run(strings.NewReader("1\n2\n3\n4\n5\n6\n7\nq\n"), &out, func(action Action, _ io.Reader) error {
 		got = append(got, action)
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	want := []Action{ActionSync, ActionSettings, ActionDoctor, ActionRepair, ActionUninstall, ActionSetup}
+	want := []Action{ActionSync, ActionSettings, ActionDoctor, ActionRepair, ActionUninstall, ActionSetup, ActionMigration}
 	if len(got) != len(want) {
 		t.Fatalf("actions = %#v, want %#v", got, want)
 	}
@@ -26,7 +26,7 @@ func TestRunHomeDispatchesEachActionAndQuits(t *testing.T) {
 			t.Fatalf("actions = %#v, want %#v", got, want)
 		}
 	}
-	for _, label := range []string{"Sync", "Settings", "Doctor", "Repair", "Uninstall", "Setup"} {
+	for _, label := range []string{"Sync", "Settings", "Doctor", "Repair", "Uninstall", "Setup", "Migrate existing installation"} {
 		if !strings.Contains(out.String(), label) {
 			t.Errorf("menu output missing %q", label)
 		}
@@ -46,7 +46,7 @@ func TestRunHomeIgnoresInvalidChoice(t *testing.T) {
 	if called {
 		t.Fatal("invalid choice dispatched an action")
 	}
-	if !strings.Contains(out.String(), "Choose 1, 2, 3, 4, 5, 6, or q") {
+	if !strings.Contains(out.String(), "Choose 1, 2, 3, 4, 5, 6, 7, or q") {
 		t.Fatalf("invalid choice was not explained: %q", out.String())
 	}
 }

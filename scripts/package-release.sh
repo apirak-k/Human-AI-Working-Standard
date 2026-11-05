@@ -93,6 +93,15 @@ directory contains HAWS resources and neutral Second Brain seeds. Persistent
 personal state and Second Brain documents are created in the sibling data/
 directory; retain data/ when removing or replacing a package. The manifest
 records shipped files and never includes personal data.
+
+To keep using an existing HAWS installation, open a terminal in this folder
+and run: $launcher migrate --from "/path/to/old/HAWS/checkout". The Home menu
+also includes Migrate existing installation. HAWS shows the paths first and
+asks for confirmation. Migration reuses the old settings, sources, skill
+selections, ownership records, integrations, and Second Brain in place; it
+does not copy, move, or remove those files. Use 'migrate --clear --yes' to
+remove only the saved reference. Keep the old checkout while using migrated
+sources.
 EOF
  {
   printf '{\n  "schema_version": 1,\n  "version": "%s",\n  "platform": "%s",\n  "files": {\n' "$version" "$os"

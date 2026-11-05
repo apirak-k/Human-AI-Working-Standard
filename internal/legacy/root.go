@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/migration"
 )
 
 func FindRoot() (string, error) {
@@ -29,7 +31,7 @@ func FindRoot() (string, error) {
 			return ConfigurePackageRuntime(filepath.Dir(absolute), runtimeRoot)
 		}
 		if packageDir := os.Getenv("HAWS_PACKAGE_DIR"); packageDir != "" {
-			return preparePackageRootAt(absolute, packageDir)
+			return preparePackageRootAt(absolute, packageDir, "")
 		}
 		return validateRoot(root)
 	}
@@ -127,6 +129,21 @@ func ConfigurePackageRuntime(packageDir, runtimeRoot string) (string, error) {
 	if err != nil || !validPackageRuntimeRelative(relative) {
 		return "", errors.New("HAWS runtime is outside the package's owned runtime locations")
 	}
+	profile, migrated, err := migration.LoadPackageProfile(packageAbs)
+	if err != nil {
+		return "", err
+	}
+	if migrated {
+		if err := migration.ApplyProfileEnvironmentForPackage(profile, packageAbs); err != nil {
+			return "", err
+		}
+		packageDisabledFile := filepath.Join(packageAbs, "data", "state", "environments.disabled")
+		if migration.PathsEqual(os.Getenv("HAWS_DISABLED_ENVIRONMENTS_FILE"), packageDisabledFile) {
+			if err := os.Unsetenv("HAWS_DISABLED_ENVIRONMENTS_FILE"); err != nil {
+				return "", err
+			}
+		}
+	}
 	current := packageAbs
 	for _, part := range strings.Split(filepath.Clean(relative), string(filepath.Separator)) {
 		current = filepath.Join(current, part)
@@ -144,7 +161,7 @@ func ConfigurePackageRuntime(packageDir, runtimeRoot string) (string, error) {
 	if err := os.Setenv("HAWS_ROOT", runtimeAbs); err != nil {
 		return "", err
 	}
-	return preparePackageRootAt(runtimeAbs, packageAbs)
+	return preparePackageRootAt(runtimeAbs, packageAbs, profile.LegacyRoot)
 }
 
 func validPackageRuntimeRelative(relative string) bool {
@@ -157,10 +174,10 @@ func validPackageRuntimeRelative(relative string) bool {
 
 // preparePackageRoot keeps mutable state outside the shipped runtime.
 func preparePackageRoot(root string) (string, error) {
-	return preparePackageRootAt(root, filepath.Dir(root))
+	return preparePackageRootAt(root, filepath.Dir(root), "")
 }
 
-func preparePackageRootAt(root, packageDir string) (string, error) {
+func preparePackageRootAt(root, packageDir, legacyRoot string) (string, error) {
 	var err error
 	packageDir, err = filepath.Abs(packageDir)
 	if err != nil {
@@ -196,7 +213,7 @@ func preparePackageRootAt(root, packageDir string) (string, error) {
 	stateDir := os.Getenv("HAWS_STATE_DIR")
 	if os.Getenv("HAWS_DISABLED_ENVIRONMENTS_FILE") == "" {
 		disabledFile := filepath.Join(stateDir, "environments.disabled")
-		if err := migratePackageCompatibilitySettings(root, packageDir, disabledFile); err != nil {
+		if err := migratePackageCompatibilitySettings(root, packageDir, legacyRoot, disabledFile); err != nil {
 			return "", err
 		}
 		if err := os.Setenv("HAWS_DISABLED_ENVIRONMENTS_FILE", disabledFile); err != nil {
@@ -254,7 +271,7 @@ func ensurePackageDirectory(packageDir, relative string) error {
 	return nil
 }
 
-func migratePackageCompatibilitySettings(runtimeRoot, packageDir, destination string) error {
+func migratePackageCompatibilitySettings(runtimeRoot, packageDir, legacyRoot, destination string) error {
 	if info, err := os.Lstat(destination); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maxPackageSettingsBytes {
 			return errors.New("packaged AI environment settings are not a bounded regular file")
@@ -270,6 +287,13 @@ func migratePackageCompatibilitySettings(runtimeRoot, packageDir, destination st
 		filepath.Join(packageDir, "runtime", "ai-configs", "environments.disabled"),
 		filepath.Join(packageDir, "runtime", "config", "environments.disabled"),
 		filepath.Join(packageDir, "runtime", "environments.disabled"),
+	}
+	if legacyRoot != "" {
+		candidates = append(candidates,
+			filepath.Join(legacyRoot, "ai-configs", "environments.disabled"),
+			filepath.Join(legacyRoot, "config", "environments.disabled"),
+			filepath.Join(legacyRoot, "environments.disabled"),
+		)
 	}
 	seen := make(map[string]bool, len(candidates))
 	for _, candidate := range candidates {

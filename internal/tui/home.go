@@ -16,6 +16,7 @@ const (
 	ActionDoctor    Action = "doctor"
 	ActionRepair    Action = "repair"
 	ActionUninstall Action = "uninstall"
+	ActionMigration Action = "migration"
 )
 
 const homeMenu = "HAWS — Human-AI Working Standard\n\n" +
@@ -25,6 +26,7 @@ const homeMenu = "HAWS — Human-AI Working Standard\n\n" +
 	"4) Repair\n" +
 	"5) Uninstall\n" +
 	"6) Setup\n" +
+	"7) Migrate existing installation\n" +
 	"q) Quit\n\n" +
 	"Select an action: "
 
@@ -59,10 +61,12 @@ func Run(in io.Reader, out io.Writer, runAction func(Action, io.Reader) error) e
 			action = ActionUninstall
 		case "6", "setup":
 			action = ActionSetup
+		case "7", "migrate", "migration":
+			action = ActionMigration
 		case "q", "quit", "exit":
 			return nil
 		default:
-			if _, err := fmt.Fprintln(out, "Choose 1, 2, 3, 4, 5, 6, or q."); err != nil {
+			if _, err := fmt.Fprintln(out, "Choose 1, 2, 3, 4, 5, 6, 7, or q."); err != nil {
 				return err
 			}
 		}

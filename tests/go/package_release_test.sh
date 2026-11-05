@@ -12,6 +12,16 @@ fail() {
 	exit 1
 }
 
+file_sha256() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | awk '{print $1}'
+	elif command -v shasum >/dev/null 2>&1; then
+		shasum -a 256 "$1" | awk '{print $1}'
+	else
+		fail 'SHA-256 utility not found'
+	fi
+}
+
 for tool in zip unzip tar; do
 	command -v "$tool" >/dev/null 2>&1 || fail "required test utility not found: $tool"
 done
@@ -131,6 +141,60 @@ rg -qi 'doctor|health' "$TMP/doctor.log" || fail 'Doctor action did not run'
 rg -q 'HAWS Status' "$TMP/status.log" || fail 'Status action did not run through the extracted Go host'
 [[ -f "$native_root/data/secondbrain/WORKFLOW.md" ]] || fail 'persistent Second Brain seed was not initialized in data/'
 [[ ! -d "$native_root/runtime/.haws" ]] || fail 'runtime contains writable state'
+
+# Migrate an isolated legacy checkout, then prove the extracted package uses
+# its existing state and personal Second Brain in place without copying them.
+legacy_root="$TMP/legacy-install"
+mkdir -p "$legacy_root/.haws/state/skill-sources/skills/packs/sample" "$legacy_root/secondbrain"
+cp "$ROOT/haws.sh" "$legacy_root/haws.sh"
+: > "$legacy_root/.gitmodules"
+printf '%s\n' '.haws/' 'secondbrain/' > "$legacy_root/.gitignore"
+printf 'schema_version\t1\nauto_update_skills\toff\nsecond_brain\toff\nauto_update_brain\toff\n' \
+  > "$legacy_root/.haws/state/settings.tsv"
+printf '%s\n' 'source checkout data' > "$legacy_root/.haws/state/skill-sources/skills/packs/sample/SKILL.md"
+printf 'fixture\treference\tlegacy-target\tlegacy-source\tfixture-fingerprint\tschema=2\n' \
+  > "$legacy_root/.haws/state/ownership.tsv"
+printf '%s\n' 'sample::unused' > "$legacy_root/.haws/state/skills.disabled"
+printf '%s\n' 'private Second Brain note' > "$legacy_root/secondbrain/private.md"
+git init -q "$legacy_root"
+git -C "$legacy_root" config user.name 'HAWS Test'
+git -C "$legacy_root" config user.email test@example.invalid
+git -C "$legacy_root" add haws.sh .gitmodules .gitignore
+git -C "$legacy_root" commit -qm 'legacy HAWS fixture'
+package_sync_state="$native_root/data/state/sync-state.tsv"
+if [[ -f "$package_sync_state" ]]; then
+	cp "$package_sync_state" "$TMP/package-sync-state.before"
+	package_sync_state_existed=yes
+else
+	package_sync_state_existed=no
+fi
+(cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" migrate --from "$legacy_root" --yes >"$TMP/migrate.log" 2>&1) || { cat "$TMP/migrate.log" >&2; fail 'extracted package could not configure legacy migration'; }
+rg -q 'No files will be copied, moved, or deleted' "$TMP/migrate.log" || fail 'migration did not show its non-destructive preview'
+[[ -f "$native_root/data/state/legacy-migration.json" ]] || fail 'migration reference was not saved inside package data'
+before_settings="$(file_sha256 "$legacy_root/.haws/state/settings.tsv")"
+before_source="$(file_sha256 "$legacy_root/.haws/state/skill-sources/skills/packs/sample/SKILL.md")"
+legacy_ownership_record=$'fixture\treference\tlegacy-target\tlegacy-source\tfixture-fingerprint\tschema=2'
+before_disabled="$(file_sha256 "$legacy_root/.haws/state/skills.disabled")"
+before_brain="$(file_sha256 "$legacy_root/secondbrain/private.md")"
+(cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" sync >"$TMP/migrated-sync.log" 2>&1) || { cat "$TMP/migrated-sync.log" >&2; fail 'extracted package could not Sync with migrated data'; }
+[[ -f "$legacy_root/.haws/state/sync-state.tsv" ]] || fail 'migrated Sync did not use the existing state directory'
+[[ ! -f "$native_root/data/state/sync-state.tsv" ]] || fail 'migrated Sync wrote its state into package data instead of the legacy state directory'
+[[ "$(file_sha256 "$legacy_root/.haws/state/settings.tsv")" == "$before_settings" ]] || fail 'migration changed legacy settings'
+[[ "$(file_sha256 "$legacy_root/.haws/state/skill-sources/skills/packs/sample/SKILL.md")" == "$before_source" ]] || fail 'migration changed an existing source checkout'
+grep -Fqx -- "$legacy_ownership_record" "$legacy_root/.haws/state/ownership.tsv" || {
+	cat "$legacy_root/.haws/state/ownership.tsv" >&2
+	fail 'migration did not preserve the existing ownership record'
+}
+[[ "$(file_sha256 "$legacy_root/.haws/state/skills.disabled")" == "$before_disabled" ]] || fail 'migration changed existing skill selections'
+[[ "$(file_sha256 "$legacy_root/secondbrain/private.md")" == "$before_brain" ]] || fail 'migration changed the existing Second Brain'
+if [[ "$package_sync_state_existed" == yes ]]; then
+	cmp -s "$package_sync_state" "$TMP/package-sync-state.before" || fail 'migration changed existing package sync state'
+else
+	[[ ! -e "$package_sync_state" ]] || fail 'migration unexpectedly created a package sync state copy'
+fi
+(cd "$TMP/home" && env -u HAWS_ROOT HOME="$TMP/home" "$native_root/$launcher" migrate --clear --yes >"$TMP/migrate-clear.log" 2>&1) || { cat "$TMP/migrate-clear.log" >&2; fail 'extracted package could not clear a migration reference'; }
+[[ ! -e "$native_root/data/state/legacy-migration.json" ]] || fail 'cleared migration reference remains in package data'
+[[ "$(file_sha256 "$legacy_root/secondbrain/private.md")" == "$before_brain" ]] || fail 'clearing migration removed or changed personal data'
 
 
 # Inspect every actual archive and compare each shipped file to its manifest.

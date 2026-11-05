@@ -39,6 +39,7 @@ cleanup_fixture() {
     fi
     unset HAWS_REPO_DIR HAWS_STATE_DIR HAWS_SOURCE_ONLY HAWS_TEST_SYNC_DELAY \
         HAWS_AUTO_UPDATE AUTO_UPDATE HAWS_SECOND_BRAIN_ENABLED HAWS_SYNC_PREFETCH_DONE \
+        HAWS_PACKAGE_DIR \
         HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
         GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
@@ -774,6 +775,41 @@ test_haws_sync_treats_remote_ancestor_as_up_to_date() {
     [ "$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" = "${local_head}" ] || return 1
     assert_record haws up-to-date || return 1
     grep -F 'local HEAD is ahead of remote candidate' "${OUTPUT_FILE}" >/dev/null || return 1
+}
+
+test_go_package_sync_does_not_update_legacy_haws_checkout() {
+    source_haws
+    write_settings on
+    local remote="${FIXTURE_ROOT}/legacy-core.git" seed="${FIXTURE_ROOT}/legacy-seed"
+    local before after
+    git init --bare -q "${remote}" || return 1
+    printf '%s\n' '.haws/' > "${FIXTURE_REPO}/.gitignore"
+    git -C "${FIXTURE_REPO}" add haws.sh .gitmodules .gitignore || return 1
+    git -C "${FIXTURE_REPO}" commit -q -m baseline || return 1
+    git -C "${FIXTURE_REPO}" branch -M main || return 1
+    git -C "${FIXTURE_REPO}" remote add origin "${remote}" || return 1
+    git -C "${FIXTURE_REPO}" push -q -u origin main || return 1
+    git --git-dir="${remote}" symbolic-ref HEAD refs/heads/main || return 1
+    git clone -q "${remote}" "${seed}" || return 1
+    printf '%s\n' '# newer legacy HAWS runtime' > "${seed}/haws.sh"
+    git -C "${seed}" add haws.sh || return 1
+    git -C "${seed}" commit -q -m 'advance legacy HAWS runtime' || return 1
+    git -C "${seed}" push -q origin main || return 1
+    before="$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" || return 1
+    export HAWS_PACKAGE_DIR="${FIXTURE_ROOT}/go-package"
+    HAWS_SYNC_PRESENTATION=1
+    SYNC_SUMMARY_UPDATED=0 SYNC_SUMMARY_UP_TO_DATE=0 SYNC_SUMMARY_SKIPPED=0
+    SYNC_SUMMARY_BLOCKED=0 SYNC_SUMMARY_FAILED=0 SYNC_SUMMARY_TIMEOUT=0
+    sync_run >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    after="$(git -C "${FIXTURE_REPO}" rev-parse HEAD)" || return 1
+    [ "${before}" = "${after}" ] || return 1
+    grep -F 'HAWS app update is managed by Go' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F $'\thaws\tskipped\t-\tHAWS app update is managed by Go' \
+        "${FIXTURE_REPO}/.haws/state/sync-state.tsv" >/dev/null || return 1
+    [ "${SYNC_SUMMARY_FAILED}" -eq 0 ] && [ "${SYNC_SUMMARY_SKIPPED}" -eq 1 ]
 }
 
 test_up_to_date_requires_measured_head_equality() {
@@ -1648,6 +1684,7 @@ else
     run_test test_root_preflight_ignores_only_legacy_submodule_worktree_drift
     run_test test_root_preflight_blocks_tracked_untracked_and_gitmodules_edits
     run_test test_haws_sync_treats_remote_ancestor_as_up_to_date
+    run_test test_go_package_sync_does_not_update_legacy_haws_checkout
     run_test test_up_to_date_requires_measured_head_equality
     run_test test_dirty_source_is_blocked_while_clean_source_continues
     run_test test_second_brain_dirty_sync_is_refused

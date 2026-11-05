@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/migration"
 )
 
 func TestPackagedRuntimeStopsGitDiscoveringParentCheckout(t *testing.T) {
@@ -156,6 +158,76 @@ func TestVersionedPackageRuntimeKeepsSharedPackageData(t *testing.T) {
 	}
 	if contents, err := os.ReadFile(personal); err != nil || string(contents) != "personal content" {
 		t.Fatalf("personal Second Brain content = %q, %v", contents, err)
+	}
+}
+
+func TestConfiguredMigrationProfileReusesLegacyStateAndSecondBrain(t *testing.T) {
+	pkg := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pkg, "package-manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacyRoot := t.TempDir()
+	if output, err := exec.Command("git", "init", legacyRoot).CombinedOutput(); err != nil {
+		t.Fatalf("initialize legacy checkout: %v: %s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(legacyRoot, "haws.sh"), []byte("legacy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(legacyRoot, ".haws", "state")
+	if err := os.MkdirAll(filepath.Join(stateDir, "skill-sources"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(stateDir, "settings.tsv")
+	if err := os.WriteFile(settings, []byte("schema_version\t1\nauto_update_skills\toff\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	brainDir := filepath.Join(legacyRoot, "secondbrain")
+	if err := os.Mkdir(brainDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	personal := filepath.Join(brainDir, "personal.md")
+	if err := os.WriteFile(personal, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtimeRoot := filepath.Join(pkg, "runtime")
+	for _, name := range []string{"haws.sh", "secondbrain/ANTI_PATTERNS.md", "secondbrain/USER_PREFERENCES.md", "secondbrain/WORKFLOW.md"} {
+		filename := filepath.Join(runtimeRoot, name)
+		if err := os.MkdirAll(filepath.Dir(filename), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filename, []byte("package seed"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	profile, err := migration.BuildProfile(legacyRoot, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := migration.SavePackageProfile(pkg, profile); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_APP_DIR", "")
+	t.Setenv("HAWS_PACKAGE_DIR", "")
+	t.Setenv("HAWS_ROOT", "")
+	t.Setenv("HAWS_REPO_DIR", "")
+	t.Setenv("HAWS_STATE_DIR", filepath.Join(pkg, "data", "state"))
+	t.Setenv("HAWS_SECOND_BRAIN_DIR", filepath.Join(pkg, "data", "secondbrain"))
+	t.Setenv("HAWS_DISABLED_ENVIRONMENTS_FILE", filepath.Join(pkg, "data", "state", "environments.disabled"))
+	t.Setenv("GIT_CEILING_DIRECTORIES", "")
+	if _, err := ConfigurePackageRuntime(pkg, runtimeRoot); err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("HAWS_REPO_DIR") != profile.LegacyRoot || os.Getenv("HAWS_STATE_DIR") != profile.StateDir || os.Getenv("HAWS_SECOND_BRAIN_DIR") != profile.SecondBrainDir {
+		t.Fatalf("migration paths were not activated: repo=%q state=%q brain=%q", os.Getenv("HAWS_REPO_DIR"), os.Getenv("HAWS_STATE_DIR"), os.Getenv("HAWS_SECOND_BRAIN_DIR"))
+	}
+	if os.Getenv("HAWS_DISABLED_ENVIRONMENTS_FILE") != filepath.Join(profile.StateDir, "environments.disabled") {
+		t.Fatalf("disabled-environment settings still use package data: %q", os.Getenv("HAWS_DISABLED_ENVIRONMENTS_FILE"))
+	}
+	if contents, err := os.ReadFile(settings); err != nil || string(contents) != "schema_version\t1\nauto_update_skills\toff\n" {
+		t.Fatalf("legacy settings changed: %q, %v", contents, err)
+	}
+	if contents, err := os.ReadFile(personal); err != nil || string(contents) != "keep me" {
+		t.Fatalf("legacy personal data changed: %q, %v", contents, err)
 	}
 }
 

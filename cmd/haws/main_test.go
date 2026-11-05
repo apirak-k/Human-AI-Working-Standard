@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/migration"
 )
 
 func TestRunPreservesSupportedLegacyArgumentsAndExitStatus(t *testing.T) {
@@ -84,6 +87,38 @@ func TestRunPrintsVersionWithoutFindingCheckout(t *testing.T) {
 	}
 	if stdout.String() != "HAWS dev\n" {
 		t.Fatalf("version output = %q, want %q", stdout.String(), "HAWS dev\n")
+	}
+}
+
+func TestRunMigrationUsesInstalledPackageWithoutLegacyRootDiscovery(t *testing.T) {
+	packageRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(packageRoot, "package-manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacyRoot := t.TempDir()
+	if output, err := exec.Command("git", "init", legacyRoot).CombinedOutput(); err != nil {
+		t.Fatalf("initialize legacy checkout: %v: %s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(legacyRoot, "haws.sh"), []byte("legacy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(legacyRoot, ".haws", "state")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "settings.tsv"), []byte("schema_version\t1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_APP_DIR", packageRoot)
+	t.Setenv("HAWS_PACKAGE_DIR", "")
+	t.Setenv("HAWS_ROOT", filepath.Join(t.TempDir(), "not-a-checkout"))
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"migrate", "--from", legacyRoot, "--yes"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("migrate exit = %d, stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	profile, exists, err := migration.LoadPackageProfile(packageRoot)
+	if err != nil || !exists || profile.LegacyRoot == "" {
+		t.Fatalf("migration profile = %#v, exists=%v, err=%v", profile, exists, err)
 	}
 }
 
