@@ -12,15 +12,24 @@ import (
 
 // NativeSyncTarget runs one migrated Sync target while the legacy Sync host
 // retains its existing lock, ordering, and result presentation.
-// shortcut: only Second Brain is native, migrate other targets before removing the shell Sync host.
+// shortcut: only HAWS root and Second Brain are native, migrate other targets before removing the shell Sync host.
 func NativeSyncTarget(ctx context.Context, root, target string) (settings.SyncResult, error) {
-	if target != "secondbrain" {
+	if target != "secondbrain" && target != "haws" {
 		return settings.SyncResult{}, errors.New("unsupported native Sync target")
+	}
+	if target == "haws" && os.Getenv("HAWS_PACKAGE_DIR") != "" {
+		return settings.SyncResult{Status: "skipped", Revision: "-", Detail: "HAWS app update is managed by Go"}, nil
 	}
 	store := settings.NewStore(root)
 	state, err := store.Load()
 	if err != nil {
 		return settings.SyncResult{Status: "failed", Revision: "-", Detail: "HAWS settings could not be read"}, nil
+	}
+	if target == "haws" {
+		if !state.Config.AutoUpdateSkills {
+			return settings.SyncResult{Status: "skipped", Revision: "-", Detail: "Auto Update is disabled"}, nil
+		}
+		return settings.SyncHawsRoot(ctx, store.Root, syncTargetTimeout()), nil
 	}
 	if !state.Config.AutoUpdateBrain {
 		return settings.SyncResult{Status: "skipped", Revision: "-", Detail: "Auto Update is disabled"}, nil

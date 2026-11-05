@@ -30,12 +30,16 @@ targets.
 
 ## Priority 2 progress — Native Sync
 
+- [x] HAWS root target: Go validates the current upstream and checkout, fetches
+  through the existing candidate ref, preserves local custom skills and tracked
+  Gitlink worktree drift, validates `haws.sh`, and fast-forwards the current
+  branch only. Existing shell result recording and restart behavior remain.
 - [x] Second Brain target: Go reads the existing auto-update setting, locks
   against concurrent connection changes, rejects dirty checkouts, and only
   fast-forwards `origin/main`. It uses the legacy Sync result row and state
   record.
-- [ ] HAWS/source repository updates, skills, agents, AI integrations, and the
-  remaining Sync orchestration.
+- [ ] Registered source repository updates, skills, agents, AI integrations,
+  and the remaining Sync orchestration.
 
 ## Remaining priorities, after Priority 1 parity
 

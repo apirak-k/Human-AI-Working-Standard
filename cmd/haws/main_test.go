@@ -129,6 +129,105 @@ func TestRunSkipsNativeBrainSyncWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeHawsRootSyncTarget(t *testing.T) {
+	root, seed, remote := nativeHawsSyncFixture(t)
+	if err := os.WriteFile(filepath.Join(seed, "release.txt"), []byte("new release\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitForNativeSync(t, seed, "add", "release.txt")
+	gitForNativeSync(t, seed, "commit", "-m", "advance remote")
+	gitForNativeSync(t, seed, "push", "origin", "main")
+	want := gitForNativeSync(t, seed, "rev-parse", "HEAD")
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", filepath.Join(root, ".haws", "state"))
+	t.Setenv("HAWS_SYNC_CANDIDATE_REF", "refs/haws-sync/777-haws")
+	t.Setenv("HAWS_SYNC_PREFETCH_DONE", "")
+	t.Setenv("HAWS_SYNC_TIMEOUT_SECONDS", "10")
+	t.Setenv("HAWS_PACKAGE_DIR", "")
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-target", "haws"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native HAWS target exit = %d, stderr = %q", code, stderr.String())
+	}
+	if got, want := stdout.String(), "updated\t"+want+"\tfinal HEAD equals candidate\n"; got != want {
+		t.Fatalf("native HAWS result = %q, want %q", got, want)
+	}
+	if got := gitForNativeSync(t, root, "rev-parse", "HEAD"); got != want {
+		t.Fatalf("HAWS root HEAD = %s, want %s", got, want)
+	}
+	if got := gitForNativeSync(t, remote, "rev-parse", "refs/heads/main"); got != want {
+		t.Fatalf("HAWS remote HEAD = %s, want %s", got, want)
+	}
+	if got := gitForNativeSync(t, root, "for-each-ref", "refs/haws-sync"); got != "" {
+		t.Fatalf("native candidate ref leaked: %s", got)
+	}
+}
+
+func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, ".haws", "state")
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "settings.tsv"), []byte("schema_version\t1\nauto_update_skills\toff\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	t.Setenv("HAWS_PACKAGE_DIR", "")
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-target", "haws"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native HAWS target exit = %d, stderr = %q", code, stderr.String())
+	}
+	if got, want := stdout.String(), "skipped\t-\tAuto Update is disabled\n"; got != want {
+		t.Fatalf("native HAWS result = %q, want %q", got, want)
+	}
+}
+
+func TestRunSkipsNativeHawsRootSyncForInstalledPackage(t *testing.T) {
+	t.Setenv("HAWS_SYNC_ROOT", t.TempDir())
+	t.Setenv("HAWS_PACKAGE_DIR", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-target", "haws"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native HAWS target exit = %d, stderr = %q", code, stderr.String())
+	}
+	if got, want := stdout.String(), "skipped\t-\tHAWS app update is managed by Go\n"; got != want {
+		t.Fatalf("native HAWS result = %q, want %q", got, want)
+	}
+}
+
+func nativeHawsSyncFixture(t *testing.T) (root, seed, remote string) {
+	t.Helper()
+	root = t.TempDir()
+	gitForNativeSync(t, root, "init", "-b", "main")
+	gitForNativeSync(t, root, "config", "user.email", "test@example.invalid")
+	gitForNativeSync(t, root, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte("#!/usr/bin/env bash\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitForNativeSync(t, root, "add", "haws.sh")
+	gitForNativeSync(t, root, "commit", "-m", "baseline")
+	remote = filepath.Join(t.TempDir(), "haws.git")
+	gitForNativeSync(t, filepath.Dir(remote), "init", "--bare", remote)
+	gitForNativeSync(t, root, "remote", "add", "origin", remote)
+	gitForNativeSync(t, root, "push", "-u", "origin", "main")
+	gitForNativeSync(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+	seed = filepath.Join(t.TempDir(), "seed")
+	gitForNativeSync(t, filepath.Dir(seed), "clone", remote, seed)
+	gitForNativeSync(t, seed, "config", "user.email", "test@example.invalid")
+	gitForNativeSync(t, seed, "config", "user.name", "Test")
+	return root, seed, remote
+}
+
+func gitForNativeSync(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git -C %s %v: %v: %s", dir, args, err, output)
+	}
+	return strings.TrimSpace(string(output))
+}
+
 func TestRunMigrationUsesInstalledPackageWithoutLegacyRootDiscovery(t *testing.T) {
 	packageRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(packageRoot, "package-manifest.json"), []byte("{}"), 0o600); err != nil {

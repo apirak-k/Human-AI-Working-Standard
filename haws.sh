@@ -2993,6 +2993,31 @@ sync_target() {
         return 0
     fi
 
+    if [ "${target}" = haws ] && [ "${HAWS_NATIVE_ROOT_SYNC:-0}" = 1 ]; then
+        local native_result native_status native_revision native_detail
+        candidate_ref="$(_sync_candidate_ref "${target}")"
+        if [ -n "${HAWS_GO_HOST_BINARY:-}" ] &&
+            native_result="$(HAWS_SYNC_CANDIDATE_REF="${candidate_ref}" \
+                "${HAWS_GO_HOST_BINARY}" --haws-sync-target haws)"; then
+            IFS=$'\t' read -r native_status native_revision native_detail <<< "${native_result}"
+        else
+            native_status=failed
+            native_revision=-
+            native_detail="native HAWS synchronization failed"
+        fi
+        _sync_candidate_cleanup "$(_catalog_repo_dir)" "${candidate_ref}"
+        case "${native_status}" in
+            updated|up-to-date|skipped|blocked|failed) ;;
+            *) native_status=failed; native_revision=-; native_detail="native HAWS returned an invalid result" ;;
+        esac
+        sync_result_write haws "${native_status}" "${native_revision:--}" \
+            "${native_detail:-native HAWS returned no detail}" || return 1
+        _sync_legacy_echo "haws: ${native_status}"
+        [ "${native_status}" != updated ] || HAWS_SYNC_HAWS_UPDATED=1
+        [ "${native_status}" != failed ] && [ "${native_status}" != blocked ] || return 1
+        return 0
+    fi
+
     if [ "${target}" = haws ]; then
         source_dir="$(_catalog_repo_dir)"
         current_branch="$(git -C "${source_dir}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
