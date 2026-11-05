@@ -36,8 +36,8 @@ func settingsHostFixture(t *testing.T, pending bool, syncExit string) (string, s
 		"esac\n"
 	if runtime.GOOS == "windows" {
 		batch := "@echo off\r\necho(%1>>\"%HAWS_CALL_LOG%\"\r\n" +
-			"if /I \"%1\"==\"settings\" echo(%HAWS_GO_HOST%>\"%HAWS_HOST_LOG%\"\r\n" +
-			"if /I \"%1\"==\"setup\" echo(%HAWS_GO_HOST%>\"%HAWS_HOST_LOG%\"\r\n" +
+			"if /I \"%1\"==\"settings\" echo %HAWS_GO_HOST% > \"%HAWS_HOST_LOG%\"\r\n" +
+			"if /I \"%1\"==\"setup\" echo %HAWS_GO_HOST% > \"%HAWS_HOST_LOG%\"\r\n" +
 			"if /I \"%1\"==\"sync\" exit /b %HAWS_TEST_SYNC_EXIT%\r\n"
 		if err := os.WriteFile(filepath.Join(root, "haws.bat"), []byte(batch), 0o600); err != nil {
 			t.Fatal(err)
@@ -68,7 +68,7 @@ func TestRunSettingsUsesOneGoHostedSyncWhenIntegrationIsPending(t *testing.T) {
 		t.Fatalf("legacy commands = %q, want one Settings command and one Go-hosted Sync", gotCalls)
 	}
 	host, err := os.ReadFile(filepath.Join(root, "host.log"))
-	if err != nil || strings.ReplaceAll(string(host), "\r\n", "\n") != "1\n" {
+	if err != nil || strings.TrimSpace(strings.ReplaceAll(string(host), "\r\n", "\n")) != "1" {
 		t.Fatalf("Go host marker = %q, %v; want 1", host, err)
 	}
 	if !strings.Contains(stdout.String(), "authoritative Sync") {
