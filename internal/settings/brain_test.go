@@ -235,7 +235,7 @@ func TestSyncBrainFastForwardsOnlyCleanCheckout(t *testing.T) {
 		t.Fatalf("SyncBrain() = %#v", got)
 	}
 	body, err := os.ReadFile(filepath.Join(brain, "WORKFLOW.md"))
-	if err != nil || string(body) != "updated workflow\n" {
+	if err != nil || strings.ReplaceAll(string(body), "\r\n", "\n") != "updated workflow\n" {
 		t.Fatalf("fast-forwarded workflow = %q, %v", body, err)
 	}
 	if fixtureGit(t, remote, "rev-parse", "refs/heads/main") != after {
