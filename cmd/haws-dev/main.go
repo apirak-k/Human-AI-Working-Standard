@@ -248,6 +248,9 @@ func syncRuntime(sourceRoot, runtimeRoot string) error {
 			return fmt.Errorf("refresh isolated HAWS source: %w", err)
 		}
 	}
+	if err := runGit(runtimeRoot, "config", "core.autocrlf", "false"); err != nil {
+		return fmt.Errorf("configure isolated HAWS runtime line endings: %w", err)
+	}
 	if err := runGit(runtimeRoot, "reset", "--hard", head); err != nil {
 		return fmt.Errorf("refresh isolated HAWS runtime files: %w", err)
 	}

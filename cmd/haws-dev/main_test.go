@@ -24,6 +24,9 @@ func TestSyncRuntimeUsesCurrentCodeAndExcludesPersonalPaths(t *testing.T) {
 	writeTestFile(t, source, "tracked.txt", "base\n")
 	gitTest(t, source, "add", ".gitignore", "haws.sh", "tracked.txt")
 	gitTest(t, source, "commit", "-qm", "base")
+	globalConfig := filepath.Join(root, "global.gitconfig")
+	writeTestFile(t, root, "global.gitconfig", "[core]\n\tautocrlf = true\n")
+	t.Setenv("GIT_CONFIG_GLOBAL", globalConfig)
 	if err := syncRuntime(source, runtimeRoot); err != nil {
 		t.Fatalf("syncRuntime() first run: %v", err)
 	}
