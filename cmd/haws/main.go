@@ -84,6 +84,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return actionExitCode(runAction(ctx, root, action, args, stdin, stdout, stderr), stderr)
 	}
+	if !setupAlreadyExists(root) {
+		if _, err := fmt.Fprintln(stdout, "[INFO] First launch detected; starting HAWS Setup."); err != nil {
+			fmt.Fprintln(stderr, "write first-run message:", err)
+			return 1
+		}
+		if err := runAction(ctx, root, tui.ActionSetup, nil, stdin, stdout, stderr); err != nil {
+			return actionExitCode(err, stderr)
+		}
+	}
 	err = tui.Run(stdin, stdout, func(action tui.Action, actionInput io.Reader) error {
 		root, err = findRootForRun()
 		if err != nil {
@@ -96,6 +105,22 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func setupAlreadyExists(root string) bool {
+	stateDir := os.Getenv("HAWS_STATE_DIR")
+	if stateDir == "" {
+		stateDir = filepath.Join(root, ".haws", "state")
+	} else if !filepath.IsAbs(stateDir) {
+		stateDir = filepath.Join(root, stateDir)
+	}
+	for _, name := range []string{"install.complete", "settings.tsv"} {
+		info, err := os.Lstat(filepath.Join(stateDir, name))
+		if err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 && (name != "install.complete" || info.Size() > 0) {
+			return true
+		}
+	}
+	return false
 }
 
 func findRootForRun() (string, error) {

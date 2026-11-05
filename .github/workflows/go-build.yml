@@ -38,6 +38,9 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Install Bash for remaining legacy compatibility paths
+        if: runner.os == 'macOS'
+        run: brew install bash
       - name: Test Go code
         run: go test ./...
       - name: Vet Go code
@@ -114,6 +117,9 @@ jobs:
         with:
           name: haws-release-packages
           path: ${{ runner.temp }}/haws-release
+      - name: Install Bash for remaining legacy package paths
+        if: runner.os == 'macOS'
+        run: brew install bash
       - name: Verify and run Windows package
         if: runner.os == 'Windows'
         shell: pwsh

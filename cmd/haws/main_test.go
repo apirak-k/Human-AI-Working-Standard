@@ -146,6 +146,51 @@ func TestRunRequiresAValidCheckout(t *testing.T) {
 	}
 }
 
+func TestRunStartsSetupOnFirstLaunchThenShowsHome(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, ".haws", "state")
+	argsPath := filepath.Join(root, "actions.txt")
+	writeSetupRuntime(t, root, argsPath)
+	t.Setenv("HAWS_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	t.Setenv("HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, strings.NewReader("q\n"), &stdout, &stderr); code != 0 {
+		t.Fatalf("first-run exit = %d, stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "First launch detected") || !strings.Contains(stdout.String(), "HAWS — Human-AI Working Standard") {
+		t.Fatalf("first run did not go through Setup and then Home: %q", stdout.String())
+	}
+	if got := strings.TrimSpace(readFile(t, argsPath)); got != "setup" {
+		t.Fatalf("legacy actions = %q, want setup once", got)
+	}
+}
+
+func TestRunOpensHomeForExistingSettingsWithoutRepeatingSetup(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, ".haws", "state")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "settings.tsv"), []byte("schema_version\t1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	argsPath := filepath.Join(root, "actions.txt")
+	writeSetupRuntime(t, root, argsPath)
+	t.Setenv("HAWS_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, strings.NewReader("q\n"), &stdout, &stderr); code != 0 {
+		t.Fatalf("existing-install exit = %d, stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "HAWS — Human-AI Working Standard") || strings.Contains(stdout.String(), "First launch detected") {
+		t.Fatalf("existing install did not open Home directly: %q", stdout.String())
+	}
+	if _, err := os.Stat(argsPath); !os.IsNotExist(err) {
+		t.Fatalf("Setup was invoked for an existing installation: err=%v", err)
+	}
+}
+
 func writeArgsRuntime(t *testing.T, root, argsPath string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -194,4 +239,43 @@ func writeDoctorRuntime(t *testing.T, root, argsPath string) {
 	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeSetupRuntime(t *testing.T, root, argsPath string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Setenv("HAWS_TEST_ARGS", argsPath)
+		batch := "@echo off\r\necho %1>> \"%HAWS_TEST_ARGS%\"\r\n" +
+			"if /I \"%1\"==\"setup\" (if not exist \"%HAWS_STATE_DIR%\" mkdir \"%HAWS_STATE_DIR%\" & echo schema=1> \"%HAWS_STATE_DIR%\\install.complete\")\r\n"
+		if err := os.WriteFile(filepath.Join(root, "haws.bat"), []byte(batch), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	script := "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"" + argsPath + "\"\n" +
+		"if [ \"$1\" = setup ]; then mkdir -p \"$HAWS_STATE_DIR\"; printf 'schema=1\\n' > \"$HAWS_STATE_DIR/install.complete\"; fi\n"
+	if err := os.WriteFile(filepath.Join(root, "haws.sh"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	fakeBin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(fakeBin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fakeBash := "#!/bin/sh\nif [ \"$1\" = -c ]; then exit 0; fi\nexec /bin/sh \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(fakeBin, "bash"), []byte(fakeBash), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(contents)
 }

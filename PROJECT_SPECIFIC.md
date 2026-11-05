@@ -12,3 +12,10 @@
 - At the end of a substantial `dev` task, update `HANDOFF.md` with the root cause or decision, changed files, executed checks and results, commit/push state, and exact resume point.
 
 This standing instruction means completed user-facing work delivered to `dev` is also delivered to `main`, without a repeated request; development-only files remain on `dev`.
+
+## Go modernization delivery constraints
+
+- Continue the existing Go TUI migration incrementally. Keep the legacy runtime until the corresponding native Go behavior passes parity and safety checks. Do not describe an action as native while it invokes Bash.
+- Keep the developer's live test path available from the current checkout and isolate its runtime, settings, AI configuration, credentials, and Second Brain from the regular HAWS installation. See `docs/development.md`.
+- Future packaging requirement, deferred while application behavior is being completed: provide one convenient downloadable artifact per supported operating system that can launch HAWS without manual ZIP extraction or user-installed developer tools. Do not prioritize packaging until the application lifecycle and native behavior are verified.
+- The active request explicitly limits this delivery to `dev`; do not merge or synchronize it to `main` unless the user later authorizes that work.

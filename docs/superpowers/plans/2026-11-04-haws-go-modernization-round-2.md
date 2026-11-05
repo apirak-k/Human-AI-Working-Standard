@@ -143,6 +143,14 @@ Task 1 precedes Task 2 because both touch `haws.sh` and its Sync behavior. Task 
 - **Task 7 — implemented, migration partial:** universal principles and adaptive work instructions are separated from technical practices; package/state boundaries and current migration behavior are documented; CI checks complete source history, safety suites, and extracted packages beyond `--version`. Automatic migration of existing state and Second Brain data is not implemented; users must explicitly reuse absolute state paths.
 - **Task 8 — local combined audit complete:** reviewed requirements, routing, package/runtime boundary, ownership/uninstall, Second Brain behavior, official adapters, documentation, CI configuration, and available fixture coverage. The former runtime-update blocker was closed by the versioned runtime transaction and its regression tests. Remaining material risks are native Windows/Linux execution, automatic state migration, exact Repair change previews, typed shared CLI/MCP lifecycle, end-to-end published-release behavior, and unsigned macOS launcher behavior.
 
+### Live developer workflow follow-up — 2026-11-05
+
+- Added `scripts/dev-haws.sh` and `scripts/dev-haws.ps1` plus `cmd/haws-dev`, which rebuild and run the real Go app with a persistent isolated runtime/state/home sandbox. Pinned Go 1.27.3 is checksum-verified before it is cached per user when no suitable Go is present.
+- Go startup now runs Setup before Home when there is no install marker or saved settings. Existing saved settings skip Setup. The Go Home and Setup entry point was exercised on macOS; the interactive Setup was cancelled before applying changes.
+- macOS GitHub Actions runners install Homebrew Bash for the still-shell-backed test and package paths. This addresses the runner's available Bash version only; it is not completion of the native migration.
+- Local Go, CLI, launcher, package, syntax, and diff checks passed on macOS/arm64. Native Windows/Linux launcher runs and complete first-run installation remain `[Unverified]`.
+- The package goal remains future work: one convenient artifact per supported OS that users can launch without manual ZIP extraction or developer tools. Do not prioritize it over feature parity and native platform verification.
+
 ### Final verification on macOS/arm64 — 2026-11-05
 
 - Go 1.27.3: `go test ./... -count=1` and `go vet ./...` passed.

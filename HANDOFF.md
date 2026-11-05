@@ -2,6 +2,17 @@
 
 Updated: 2026-11-05
 
+## HAWS Go Modernization — Live Developer Entry Point (2026-11-05)
+
+- Actual checkout: `/Users/bubu/.codex/worktrees/haws-delivery-main/Human-AI-Working-Standard`, branch `codex/go-modernization`, based on `origin/dev` at `9ebd7e3b58b8c4e7f2c7e9b70eef4a9536fd6595`. This worktree contains only the current modernization changes. The separate local `dev` worktree has unrelated uncommitted changes and was not touched; local `main` was not touched.
+- Added a repeatable development entry point: run `./scripts/dev-haws.sh` from the checkout on macOS/Linux, or `./scripts/dev-haws.ps1` from PowerShell on Windows. Each launch rebuilds the real Go app and refreshes a separate runtime checkout and isolated home/state under `HAWS/development-sandbox-live`; no existing HAWS install, AI configuration, Git/SSH/API credentials, or Second Brain path is used by the launched process.
+- The launchers use an existing Go 1.26+ or bootstrap pinned Go 1.27.3 into a per-user cache after SHA-256 verification; they do not install Go globally. This Mac's cached Go 1.27.3 checksum was verified against the official Go download list. The cache is not a production dependency.
+- Go startup now enters Setup on a first launch with neither a valid completion marker nor saved settings, then opens the Go Home TUI. Saved settings count as an existing installation. The live interactive check opened Setup and returned to Home after cancellation; no setup changes were applied. A complete first-run install was not performed.
+- macOS CI now installs Homebrew Bash for tests and package smoke checks that still exercise the transitional shell runtime. This keeps existing coverage executable; it does **not** remove the product's Bash 4.2+ dependency.
+- Local verification: `go test ./... -count=1`, `go vet ./...`, `bash tests/cli/run.sh` (all batches passed; no failures), `bash tests/go/launchers_test.sh`, `bash tests/go/package_release_test.sh` (six OS/CPU builds and macOS extracted-package lifecycle), `bash -n scripts/dev-haws.sh`, and `git diff --check` passed. The follow-up sandbox-parent symlink regression passed on macOS; the updated developer helper test binary cross-compiled for Windows/amd64 and Linux/amd64. Native Windows/Linux launcher execution is `[Unverified]`.
+- **Modernization remains incomplete:** Setup, Settings, Doctor, Repair diagnostics, component Sync, and full Uninstall still use legacy Bash. Shared CLI/MCP lifecycle is incomplete. The app has not been verified natively on Windows/Linux, and the full first-run install was not exercised. Do not describe this as a completed native Go product or production release.
+- Next: use the documented entry point to evaluate the real TUI in its isolated sandbox, then continue replacing shell-backed lifecycle behavior with tested Go implementations. Keep the new cache sandbox separate from the older interrupted `~/.cache/HAWS/development-sandbox`; do not delete that older directory without inspecting ownership and contents.
+
 ## Go Modernization — CI Root-Cause Follow-up (2026-11-05)
 
 - This follow-up supersedes the earlier CI statement below. The checked remote `origin/dev` head before this work was `bda7035f0031046850fa1a741d8dc69dbfcb801e`; the active worktree is `codex/go-modernization`, and the delivered head is `e2f5822def8a673b7553d6addd345e72cd63aa0b`. The separate local `dev` worktree contains unrelated uncommitted changes and was left untouched.

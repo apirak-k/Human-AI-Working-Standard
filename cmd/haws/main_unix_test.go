@@ -18,6 +18,14 @@ func TestRunHomeRoutesSyncToLegacyAndReturnsToMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HAWS_ROOT", root)
+	stateDir := filepath.Join(root, ".haws", "state")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "settings.tsv"), []byte("schema_version\t1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_STATE_DIR", stateDir)
 	var stdout, stderr bytes.Buffer
 	if code := run(nil, strings.NewReader("1\nq\n"), &stdout, &stderr); code != 0 {
 		t.Fatalf("run() exit = %d, stderr %q", code, stderr.String())
