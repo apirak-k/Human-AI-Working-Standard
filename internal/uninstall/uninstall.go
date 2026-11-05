@@ -135,7 +135,15 @@ func Apply(p Plan) (Summary, error) {
 	if p.root == "" {
 		return result, errors.New("HAWS uninstall plan is empty")
 	}
+	if err := verifyInstallRootIdentity(p.root, p.rootInfo); err != nil {
+		result.Preserved = append(result.Preserved, "installation directory changed after uninstall preview")
+		return result, err
+	}
 	if p.hasMarker {
+		if err := verifyInstallRootIdentity(p.root, p.rootInfo); err != nil {
+			result.Preserved = append(result.Preserved, "installation directory changed after uninstall preview")
+			return result, err
+		}
 		if err := update.RemoveActiveMarker(p.root, p.marker); err != nil {
 			return result, err
 		}
@@ -152,6 +160,10 @@ func Apply(p Plan) (Summary, error) {
 
 	var failures []error
 	for _, version := range p.versions {
+		if err := verifyInstallRootIdentity(p.root, p.rootInfo); err != nil {
+			result.Preserved = append(result.Preserved, "installation directory changed after uninstall preview")
+			return result, err
+		}
 		if err := update.RemoveInstalledVersion(p.root, version, p.currentExe); err != nil {
 			label := "Go app version " + version.Version
 			if errors.Is(err, update.ErrRunningVersion) {
@@ -164,6 +176,10 @@ func Apply(p Plan) (Summary, error) {
 		result.Removed = append(result.Removed, "Go app version "+version.Version)
 	}
 	if p.hasBase {
+		if err := verifyInstallRootIdentity(p.root, p.rootInfo); err != nil {
+			result.Preserved = append(result.Preserved, "installation directory changed after uninstall preview")
+			return result, err
+		}
 		removed, preserved, err := ownership.RemovePackageFiles(p.root, runtime.GOOS, p.base, p.currentExe)
 		for _, path := range removed {
 			result.Removed = append(result.Removed, "base package file "+path)
@@ -183,18 +199,24 @@ func Apply(p Plan) (Summary, error) {
 		failures = append(failures, fmt.Errorf("inspect HAWS versions directory after cleanup: %w", statErr))
 	} else if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		result.Preserved = append(result.Preserved, "versions path (unowned or reparse point)")
-	} else if err := os.Remove(versionsDir); err == nil {
-		result.Removed = append(result.Removed, "empty versions directory")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		entries, readErr := os.ReadDir(versionsDir)
-		if readErr == nil && len(entries) > 0 {
-			result.Preserved = append(result.Preserved, "versions directory contains unowned or active files")
-		} else {
-			result.Preserved = append(result.Preserved, "versions directory could not be removed")
-			if readErr != nil {
-				failures = append(failures, fmt.Errorf("inspect HAWS versions directory after cleanup: %w", readErr))
+	} else {
+		if err := verifyInstallRootIdentity(p.root, p.rootInfo); err != nil {
+			result.Preserved = append(result.Preserved, "installation directory changed after uninstall preview")
+			return result, err
+		}
+		if err := os.Remove(versionsDir); err == nil {
+			result.Removed = append(result.Removed, "empty versions directory")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			entries, readErr := os.ReadDir(versionsDir)
+			if readErr == nil && len(entries) > 0 {
+				result.Preserved = append(result.Preserved, "versions directory contains unowned or active files")
 			} else {
-				failures = append(failures, fmt.Errorf("remove empty HAWS versions directory: %w", err))
+				result.Preserved = append(result.Preserved, "versions directory could not be removed")
+				if readErr != nil {
+					failures = append(failures, fmt.Errorf("inspect HAWS versions directory after cleanup: %w", readErr))
+				} else {
+					failures = append(failures, fmt.Errorf("remove empty HAWS versions directory: %w", err))
+				}
 			}
 		}
 	}
@@ -215,26 +237,37 @@ func Apply(p Plan) (Summary, error) {
 	return result, errors.Join(failures...)
 }
 
-func removeEmptyInstallDirectory(root string, expected os.FileInfo) (bool, error) {
+func verifyInstallRootIdentity(root string, expected os.FileInfo) error {
 	info, err := os.Lstat(root)
+	if err != nil {
+		return fmt.Errorf("inspect HAWS installation directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return errors.New("HAWS installation path is not a regular directory")
+	}
+	if expected == nil || !os.SameFile(info, expected) {
+		return errors.New("HAWS installation directory changed after uninstall preview")
+	}
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("resolve HAWS installation directory: %w", err)
+	}
+	if filepath.Clean(resolved) != filepath.Clean(root) {
+		return errors.New("HAWS installation directory changed after uninstall preview")
+	}
+	return nil
+}
+
+func removeEmptyInstallDirectory(root string, expected os.FileInfo) (bool, error) {
+	_, err := os.Lstat(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return false, errors.New("installation path is not a regular directory")
-	}
-	if expected == nil || !os.SameFile(info, expected) {
-		return false, errors.New("installation directory changed after uninstall preview")
-	}
-	resolved, err := filepath.EvalSymlinks(root)
-	if err != nil {
+	if err := verifyInstallRootIdentity(root, expected); err != nil {
 		return false, err
-	}
-	if filepath.Clean(resolved) != filepath.Clean(root) {
-		return false, errors.New("installation directory changed after uninstall preview")
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {

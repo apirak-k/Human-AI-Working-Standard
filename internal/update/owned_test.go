@@ -1,11 +1,16 @@
 package update
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/ownership"
 )
 
 func TestRemoveInstalledVersionRejectsReplacedVersionsParent(t *testing.T) {
@@ -112,6 +117,7 @@ func TestActiveBinaryRecoversCorruptActiveVersionToBasePackage(t *testing.T) {
 	if err := Install(root, "v1.2.3", releaseArchiveFixture(t, "v1.2.3", v1Binaries)); err != nil {
 		t.Fatal(err)
 	}
+	writeOwnedBasePackageForTest(t, root)
 	spec := platformForRuntimeTest(t)
 	activeBinary := binaryPath(filepath.Join(root, "versions", "v1.2.3"), spec, runtime.GOARCH)
 	if err := os.WriteFile(activeBinary, []byte("corrupt active executable"), 0o755); err != nil {
@@ -124,6 +130,165 @@ func TestActiveBinaryRecoversCorruptActiveVersionToBasePackage(t *testing.T) {
 	}
 	if active, err := ActiveVersion(root); err != nil || active != baseVersion {
 		t.Fatalf("active version after base recovery = %q, %v; want base", active, err)
+	}
+}
+
+func TestActiveBinaryRejectsBaseWithModifiedButValidGoBinary(t *testing.T) {
+	v1Binaries := buildFixtureBinaries(t, "v1.2.3")
+	root := newAppRoot(t, v1Binaries)
+	if err := Install(root, "v1.2.3", releaseArchiveFixture(t, "v1.2.3", v1Binaries)); err != nil {
+		t.Fatal(err)
+	}
+	writeOwnedBasePackageForTest(t, root)
+	spec := platformForRuntimeTest(t)
+	corruptVersionBinary(t, root, "v1.2.3", spec)
+
+	baseBinary := binaryPath(root, spec, runtime.GOARCH)
+	changedBinaries := buildFixtureBinaries(t, "v1.2.4")
+	contents := changedBinaries[spec.packageOS+"-"+runtime.GOARCH]
+	if err := os.WriteFile(baseBinary, contents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateGoBinary(baseBinary, spec.goos, runtime.GOARCH); err != nil {
+		t.Fatalf("test fixture lost valid Go metadata: %v", err)
+	}
+	assertActiveRecoveryFailsWithoutChangingMarker(t, root)
+}
+
+func TestActiveBinaryRejectsBaseBehindSymlinkedBinParent(t *testing.T) {
+	v1Binaries := buildFixtureBinaries(t, "v1.2.3")
+	root := newAppRoot(t, v1Binaries)
+	if err := Install(root, "v1.2.3", releaseArchiveFixture(t, "v1.2.3", v1Binaries)); err != nil {
+		t.Fatal(err)
+	}
+	writeOwnedBasePackageForTest(t, root)
+	spec := platformForRuntimeTest(t)
+	corruptVersionBinary(t, root, "v1.2.3", spec)
+
+	binPath := filepath.Join(root, "bin")
+	externalBin := filepath.Join(t.TempDir(), "bin")
+	if err := os.Rename(binPath, externalBin); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(externalBin, binPath); err != nil {
+		t.Skipf("creating directory symlink is unavailable: %v", err)
+	}
+	assertActiveRecoveryFailsWithoutChangingMarker(t, root)
+	externalBinary := filepath.Join(externalBin, spec.packageOS+"-"+runtime.GOARCH, "haws"+spec.extension)
+	if _, err := os.Stat(externalBinary); err != nil {
+		t.Fatalf("external base binary was changed: %v", err)
+	}
+}
+
+func TestActiveBinaryRequiresBaseOwnershipManifestForRecovery(t *testing.T) {
+	v1Binaries := buildFixtureBinaries(t, "v1.2.3")
+	root := newAppRoot(t, v1Binaries)
+	if err := Install(root, "v1.2.3", releaseArchiveFixture(t, "v1.2.3", v1Binaries)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, ownership.ManifestName)); err != nil {
+		t.Fatal(err)
+	}
+	corruptVersionBinary(t, root, "v1.2.3", platformForRuntimeTest(t))
+	assertActiveRecoveryFailsWithoutChangingMarker(t, root)
+}
+
+func TestActiveBinaryRejectsSymlinkedVersionsParentForRecovery(t *testing.T) {
+	v1Binaries := buildFixtureBinaries(t, "v1.2.3")
+	root := newAppRoot(t, v1Binaries)
+	if err := Install(root, "v1.2.3", releaseArchiveFixture(t, "v1.2.3", v1Binaries)); err != nil {
+		t.Fatal(err)
+	}
+	v2Binaries := buildFixtureBinaries(t, "v1.2.4")
+	if err := Install(root, "v1.2.4", releaseArchiveFixture(t, "v1.2.4", v2Binaries)); err != nil {
+		t.Fatal(err)
+	}
+	versionsPath := filepath.Join(root, "versions")
+	externalVersions := filepath.Join(t.TempDir(), "versions")
+	if err := os.Rename(versionsPath, externalVersions); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(externalVersions, versionsPath); err != nil {
+		t.Skipf("creating directory symlink is unavailable: %v", err)
+	}
+	assertActiveRecoveryFailsWithoutChangingMarker(t, root)
+	if _, err := os.Stat(filepath.Join(externalVersions, "v1.2.3")); err != nil {
+		t.Fatalf("external previous version was changed: %v", err)
+	}
+}
+
+func TestActiveBinaryRejectsMalformedMarkerWithoutRecovery(t *testing.T) {
+	root := newAppRoot(t, buildFixtureBinaries(t, "v1.2.3"))
+	marker := filepath.Join(root, activeMarkerName)
+	contents := []byte("unowned marker content\n")
+	if err := os.WriteFile(marker, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertActiveRecoveryFailsWithoutChangingMarker(t, root)
+}
+
+func writeOwnedBasePackageForTest(t *testing.T, root string) {
+	t.Helper()
+	spec := platformForRuntimeTest(t)
+	files := map[string][]byte{
+		"README.txt":  []byte("HAWS package fixture"),
+		spec.launcher: []byte("launcher fixture"),
+	}
+	for _, arch := range []string{"amd64", "arm64"} {
+		relative := filepath.ToSlash(filepath.Join("bin", spec.packageOS+"-"+arch, "haws"+spec.extension))
+		contents, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[relative] = contents
+	}
+	manifest := ownership.Manifest{
+		SchemaVersion: 1,
+		Version:       "v1.2.3",
+		Platform:      spec.packageOS,
+		Files:         make(map[string]string, len(files)),
+	}
+	for relative, contents := range files {
+		filename := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filename, contents, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		hash := sha256.Sum256(contents)
+		manifest.Files[relative] = hex.EncodeToString(hash[:])
+	}
+	contents, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ownership.ManifestName), contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func corruptVersionBinary(t *testing.T, root, version string, spec platformSpec) {
+	t.Helper()
+	binary := binaryPath(filepath.Join(root, "versions", version), spec, runtime.GOARCH)
+	if err := os.WriteFile(binary, []byte("corrupt active executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertActiveRecoveryFailsWithoutChangingMarker(t *testing.T, root string) {
+	t.Helper()
+	marker := filepath.Join(root, activeMarkerName)
+	before, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ActiveBinary(root, runtime.GOOS, runtime.GOARCH); err == nil {
+		t.Fatal("ActiveBinary() recovered using an untrusted base package")
+	}
+	after, err := os.ReadFile(marker)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("failed recovery changed marker: before %q after %q (%v)", before, after, err)
 	}
 }
 

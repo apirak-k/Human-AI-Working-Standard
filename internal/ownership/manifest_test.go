@@ -224,6 +224,33 @@ func TestRemovePackageFilesPreservesUnownedRuntimeAndDataContent(t *testing.T) {
 	}
 }
 
+func TestRemovePackageFilesDoesNotTraverseSymlinkedRuntimeAncestor(t *testing.T) {
+	root := t.TempDir()
+	manifest := makePackage(t, root)
+	external := t.TempDir()
+	if err := os.Mkdir(filepath.Join(external, "core"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(root, "runtime")); err != nil {
+		t.Skipf("creating directory symlink is unavailable: %v", err)
+	}
+	runtimeFile := "runtime/core/HAWS.md"
+	hash := sha256.Sum256([]byte("fixture runtime"))
+	manifest.Files[runtimeFile] = hex.EncodeToString(hash[:])
+	writeManifest(t, root, manifest)
+
+	_, _, err := RemovePackageFiles(root, runtime.GOOS, manifest, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(filepath.Join(external, "core")); err != nil || !info.IsDir() {
+		t.Fatalf("external directory beneath symlink was removed: info=%v err=%v", info, err)
+	}
+	if info, err := os.Lstat(filepath.Join(root, "runtime")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("package symlink was changed: info=%v err=%v", info, err)
+	}
+}
+
 func TestReadManifestRejectsTraversalUnknownAndUntrustedManifest(t *testing.T) {
 	root := t.TempDir()
 	manifest := makePackage(t, root)

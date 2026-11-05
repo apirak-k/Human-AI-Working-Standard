@@ -5,7 +5,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
 	"debug/buildinfo"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -15,6 +18,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/apirak-k/Human-AI-Working-Standard/internal/ownership"
 )
 
 type archiveEntryFixture struct {
@@ -221,19 +226,47 @@ func releaseArchiveFixture(t *testing.T, version string, binaries map[string][]b
 func newAppRoot(t *testing.T, binaries map[string][]byte) string {
 	t.Helper()
 	root := t.TempDir()
-	platform := packageOSForTest()
-	extension := ""
-	if platform == "windows" {
-		extension = ".exe"
+	spec, err := platformForOS(runtime.GOOS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{
+		"README.txt":  []byte("HAWS package fixture"),
+		spec.launcher: []byte("launcher fixture"),
 	}
 	for _, arch := range []string{"amd64", "arm64"} {
-		folder := filepath.Join(root, "bin", platform+"-"+arch)
-		if err := os.MkdirAll(folder, 0o755); err != nil {
+		relative := filepath.ToSlash(filepath.Join("bin", spec.packageOS+"-"+arch, "haws"+spec.extension))
+		data, ok := binaries[spec.packageOS+"-"+arch]
+		if !ok {
+			t.Fatalf("fixture binary missing for %s-%s", spec.packageOS, arch)
+		}
+		files[relative] = data
+	}
+	for relative, data := range files {
+		filename := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(folder, "haws"+extension), binaries[platform+"-"+arch], 0o755); err != nil {
+		if err := os.WriteFile(filename, data, 0o755); err != nil {
 			t.Fatal(err)
 		}
+	}
+	manifest := ownership.Manifest{
+		SchemaVersion: 1,
+		Version:       "v1.2.3",
+		Platform:      spec.packageOS,
+		Files:         make(map[string]string, len(files)),
+	}
+	for relative, data := range files {
+		hash := sha256.Sum256(data)
+		manifest.Files[relative] = hex.EncodeToString(hash[:])
+	}
+	contents, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ownership.ManifestName), contents, 0o600); err != nil {
+		t.Fatal(err)
 	}
 	return root
 }

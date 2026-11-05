@@ -161,33 +161,53 @@ func RemovePackageFiles(root, goos string, expected Manifest, currentExecutable 
 	}
 	for _, directory := range packageDirectories(current) {
 		path := filepath.Join(root, filepath.FromSlash(directory))
-		info, statErr := os.Lstat(path)
+		exists, safe, statErr := inspectOwnedDirectoryPath(root, directory)
 		if errors.Is(statErr, os.ErrNotExist) {
 			continue
 		}
 		if statErr != nil {
 			preserved = append(preserved, directory+" (could not inspect)")
+			failures = append(failures, fmt.Errorf("inspect owned HAWS package directory %s: %w", directory, statErr))
 			continue
 		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			preserved = append(preserved, directory+" (not a regular directory)")
+		if !exists {
 			continue
 		}
-		if err := os.Remove(path); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			entries, readErr := os.ReadDir(path)
-			if readErr == nil && len(entries) > 0 {
-				preserved = append(preserved, directory+" (contains unowned files)")
-				continue
-			}
+		if !safe {
+			preserved = append(preserved, directory+" (symlinked or unowned parent)")
+			continue
+		}
+		entries, readErr := os.ReadDir(path)
+		if readErr != nil {
+			preserved = append(preserved, directory+" (could not inspect)")
+			failures = append(failures, fmt.Errorf("inspect owned HAWS package directory %s: %w", directory, readErr))
+			continue
+		}
+		if len(entries) > 0 {
+			preserved = append(preserved, directory+" (contains unowned files)")
+			continue
+		}
+		// Recheck all components immediately before removal so a swapped
+		// symlinked parent cannot redirect this operation outside the package.
+		exists, safe, statErr = inspectOwnedDirectoryPath(root, directory)
+		if errors.Is(statErr, os.ErrNotExist) {
+			continue
+		}
+		if statErr != nil {
+			preserved = append(preserved, directory+" (could not inspect)")
+			failures = append(failures, fmt.Errorf("recheck owned HAWS package directory %s: %w", directory, statErr))
+			continue
+		}
+		if !exists {
+			continue
+		}
+		if !safe {
+			preserved = append(preserved, directory+" (symlinked or unowned parent)")
+			continue
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			preserved = append(preserved, directory+" (could not remove)")
-			if readErr != nil {
-				failures = append(failures, fmt.Errorf("inspect owned HAWS package directory %s: %w", directory, readErr))
-			} else {
-				failures = append(failures, fmt.Errorf("remove empty HAWS package directory %s: %w", directory, err))
-			}
+			failures = append(failures, fmt.Errorf("remove empty HAWS package directory %s: %w", directory, err))
 		}
 	}
 	if len(preserved) == 0 {
@@ -286,6 +306,40 @@ func inspectFile(root, relative, expectedHash string) (string, error) {
 		return "changed", nil
 	}
 	return "owned", nil
+}
+
+// inspectOwnedDirectoryPath refuses to follow symlinks or non-directory
+// ancestors while checking a package directory that may be removed.
+func inspectOwnedDirectoryPath(root, relative string) (exists, safe bool, err error) {
+	clean := path.Clean(relative)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(relative) || strings.Contains(relative, "\\") {
+		return false, false, errors.New("package directory path is invalid")
+	}
+	rootInfo, err := os.Lstat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+		return true, false, nil
+	}
+	current := root
+	for _, part := range strings.Split(clean, "/") {
+		current = filepath.Join(current, part)
+		info, statErr := os.Lstat(current)
+		if errors.Is(statErr, os.ErrNotExist) {
+			return false, false, nil
+		}
+		if statErr != nil {
+			return false, false, statErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return true, false, nil
+		}
+	}
+	return true, true, nil
 }
 
 func packageDirectories(manifest Manifest) []string {

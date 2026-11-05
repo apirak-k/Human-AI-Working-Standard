@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -527,6 +528,79 @@ func TestApplyDoesNotRemoveReplacedInstallationDirectory(t *testing.T) {
 			t.Fatalf("original package file was changed at %s: %v", relative, statErr)
 		}
 	}
+}
+
+func TestApplyPreservesCopiedReplacementInstallationBeforeCleanup(t *testing.T) {
+	root := t.TempDir()
+	makeOwnedBasePackage(t, root)
+	writeActiveMarker(t, root, "base")
+	plan, err := Preview(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	replacement := t.TempDir()
+	makeOwnedBasePackage(t, replacement)
+	writeActiveMarker(t, replacement, "base")
+	want := snapshotFiles(t, replacement)
+	backup := root + "-original"
+	defer func() { _ = os.RemoveAll(backup) }()
+	if err := os.Rename(root, backup); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, root); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Apply(plan)
+	if err == nil {
+		t.Fatalf("Apply() succeeded after installation directory was replaced by a matching copy: %#v", result)
+	}
+	got := snapshotFiles(t, root)
+	if len(got) != len(want) {
+		t.Fatalf("replacement file count changed: got %v, want %v; result=%#v", sortedSnapshotPaths(got), sortedSnapshotPaths(want), result)
+	}
+	for path, expected := range want {
+		if contents, ok := got[path]; !ok || string(contents) != string(expected) {
+			t.Fatalf("replacement file %s changed: got %q, want %q; result=%#v", path, contents, expected, result)
+		}
+	}
+}
+
+func snapshotFiles(t *testing.T, root string) map[string][]byte {
+	t.Helper()
+	files := make(map[string][]byte)
+	err := filepath.WalkDir(root, func(filename string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(root, filename)
+		if err != nil {
+			return err
+		}
+		contents, err := os.ReadFile(filename)
+		if err != nil {
+			return err
+		}
+		files[relative] = contents
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func sortedSnapshotPaths(files map[string][]byte) []string {
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 func TestApplyRemovesExtractedPackageToEmpty(t *testing.T) {

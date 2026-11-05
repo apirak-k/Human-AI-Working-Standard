@@ -406,7 +406,21 @@ func writeActiveState(root string, state activeState) error {
 }
 
 func validateBasePackage(root string, spec platformSpec) error {
+	_, statuses, err := ownership.InspectPackage(root, spec.goos)
+	if err != nil {
+		return fmt.Errorf("base HAWS package ownership cannot be verified: %w", err)
+	}
+	owned := make(map[string]bool, len(statuses))
+	for _, status := range statuses {
+		if status.State == "owned" {
+			owned[status.Path] = true
+		}
+	}
 	for _, arch := range []string{"amd64", "arm64"} {
+		relative := path.Join("bin", spec.packageOS+"-"+arch, "haws"+spec.extension)
+		if !owned[relative] {
+			return fmt.Errorf("base %s binary ownership cannot be verified", arch)
+		}
 		if _, err := validateGoBinary(binaryPath(root, spec, arch), spec.goos, arch); err != nil {
 			return fmt.Errorf("invalid base %s binary: %w", arch, err)
 		}
