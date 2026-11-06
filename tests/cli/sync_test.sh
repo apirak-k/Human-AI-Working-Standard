@@ -42,7 +42,7 @@ cleanup_fixture() {
         HAWS_SYNC_PRESENTATION SYNC_SUMMARY_UPDATED \
         HAWS_PACKAGE_DIR \
         HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
-        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
+        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
         HAWS_SYNC_CANDIDATE_REF HAWS_NATIVE_HELPER_LOG \
         GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
@@ -1010,6 +1010,38 @@ EOF
         [ ! -L "${FIXTURE_HOME}/.agents/skills/native-skill" ]
 }
 
+test_go_host_runs_native_claude_skill_linker_inside_sync() {
+    local helper="${FIXTURE_ROOT}/native-go-host"
+    local helper_log="${FIXTURE_ROOT}/native-go-host.log"
+    mkdir -p "${FIXTURE_REPO}/skills/custom/native-skill" "${FIXTURE_HOME}/.claude"
+    printf '%s\n' '---' 'name: native-skill' 'description: Native link fixture.' '---' \
+        > "${FIXTURE_REPO}/skills/custom/native-skill/SKILL.md"
+    cp -R "${PROJECT_ROOT}/ai-configs" "${FIXTURE_REPO}/ai-configs" || return 1
+    cp -R "${PROJECT_ROOT}/agents" "${FIXTURE_REPO}/agents" || return 1
+    cat > "${helper}" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
+printf '1\t0\t0\t1\t2\n'
+EOF
+    chmod +x "${helper}"
+    write_settings off
+    source_haws || return 1
+    export HAWS_NATIVE_CLAUDE_SKILLS=1
+    export HAWS_GO_HOST_BINARY="${helper}"
+    export HAWS_NATIVE_HELPER_LOG="${helper_log}"
+    run_sync >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -Fx -- '--haws-sync-claude-skills' "${helper_log}" >/dev/null || return 1
+    grep -F '[NATIVE] Claude skill links reconciled (linked: 1; preserved: 1; pruned: 2).' \
+        "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F 'Claude links: 1' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F 'Auto-pruned 2 obsolete item(s).' "${OUTPUT_FILE}" >/dev/null || return 1
+    [ ! -e "${FIXTURE_HOME}/.claude/skills/native-skill" ] && \
+        [ ! -L "${FIXTURE_HOME}/.claude/skills/native-skill" ]
+}
+
 test_native_codex_skill_linker_status_two_uses_legacy_fallback() {
     local helper="${FIXTURE_ROOT}/native-go-host"
     local helper_log="${FIXTURE_ROOT}/native-go-host.log"
@@ -1863,6 +1895,7 @@ else
     run_test test_go_host_runs_native_haws_target_and_preserves_restart_signal
     run_test test_go_host_runs_native_registered_source_target_inside_existing_sync_presentation
     run_test test_native_source_preparation_falls_back_for_legacy_device_materialization
+    run_test test_go_host_runs_native_claude_skill_linker_inside_sync
     run_test test_go_host_runs_native_codex_skill_linker_inside_sync
     run_test test_native_codex_skill_linker_status_two_uses_legacy_fallback
     run_test test_second_brain_push_failure_is_reported

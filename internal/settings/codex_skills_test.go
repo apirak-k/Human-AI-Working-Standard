@@ -272,6 +272,68 @@ func TestSyncCodexSkillLinksRejectsSymlinkedSkillsParent(t *testing.T) {
 	}
 }
 
+func TestSyncClaudeSkillLinksCreatesAndReusesOwnedLink(t *testing.T) {
+	store, home, source := codexSkillFixture(t, "demo")
+	first, err := SyncClaudeSkillLinks(context.Background(), store, home)
+	if err != nil || first.Linked != 1 || first.Pruned != 0 {
+		t.Fatalf("first result = %+v, %v", first, err)
+	}
+	destination := filepath.Join(home, ".claude", "skills", "demo")
+	if got, err := os.Readlink(destination); err != nil || got != source {
+		t.Fatalf("Claude link target = %q, %v; want %q", got, err, source)
+	}
+	second, err := SyncClaudeSkillLinks(context.Background(), store, home)
+	if err != nil || second.Linked != 1 || second.AlreadyLinked != 1 {
+		t.Fatalf("second result = %+v, %v; want idempotent link", second, err)
+	}
+}
+
+func TestSyncClaudeSkillLinksPrunesOnlyStaleClaudeOwnedLink(t *testing.T) {
+	store, home, _ := codexSkillFixture(t, "demo")
+	retiredSource := filepath.Join(t.TempDir(), "retired")
+	if err := os.MkdirAll(retiredSource, 0700); err != nil {
+		t.Fatal(err)
+	}
+	claudeDestination := filepath.Join(home, ".claude", "skills", "retired")
+	codexDestination := filepath.Join(home, ".agents", "skills", "retired")
+	for _, destination := range []string{claudeDestination, codexDestination} {
+		if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(retiredSource, destination); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linkKind := "symlink"
+	if runtime.GOOS == "windows" {
+		linkKind = "junction"
+	}
+	claudeRow := "skills\t" + linkKind + "\t" + claudeDestination + "\t" + retiredSource + "\t" + retiredSource + "\tschema=2\n"
+	codexRow := "skills\t" + linkKind + "\t" + codexDestination + "\t" + retiredSource + "\t" + retiredSource + "\tschema=2\n"
+	ledger := filepath.Join(home, ".haws", "skills-ownership.tsv")
+	if err := os.MkdirAll(filepath.Dir(ledger), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ledger, []byte(claudeRow+codexRow), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := SyncClaudeSkillLinks(context.Background(), store, home)
+	if err != nil || result.Pruned != 1 {
+		t.Fatalf("result = %+v, %v; want one Claude link pruned", result, err)
+	}
+	if _, err := os.Lstat(claudeDestination); !os.IsNotExist(err) {
+		t.Fatalf("stale Claude link remains: %v", err)
+	}
+	if got, err := os.Readlink(codexDestination); err != nil || got != retiredSource {
+		t.Fatalf("Codex link changed during Claude sync: %q, %v", got, err)
+	}
+	updated, err := os.ReadFile(ledger)
+	if err != nil || strings.Contains(string(updated), claudeDestination) || !strings.Contains(string(updated), codexRow) {
+		t.Fatalf("ledger did not retain only the unrelated Codex row: %q, %v", updated, err)
+	}
+}
+
 func TestSyncCodexSkillLinksUsesSourceSuffixForDuplicateNames(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()

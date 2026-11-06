@@ -319,6 +319,35 @@ func TestRunExecutesNativeCodexSkillLinker(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeClaudeSkillLinker(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	path := filepath.Join(root, "skills", "custom", "demo", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: demo\n---\nSkill.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_ROOT", root)
+	t.Setenv("HAWS_REPO_DIR", root)
+	t.Setenv("HAWS_STATE_DIR", "")
+	t.Setenv("HOME", home)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-claude-skills"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native Claude skill linker exit = %d, stderr = %q", code, stderr.String())
+	}
+	if got, want := stdout.String(), "1\t0\t0\t0\t0\n"; got != want {
+		t.Fatalf("native Claude skill result = %q, want %q", got, want)
+	}
+	destination := filepath.Join(home, ".claude", "skills", "demo")
+	target, err := os.Readlink(destination)
+	if err != nil || target != filepath.Join(root, "skills", "custom", "demo") {
+		t.Fatalf("native Claude skill link = %q, %v", target, err)
+	}
+}
+
 func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".haws", "state")

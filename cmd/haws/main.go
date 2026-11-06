@@ -107,30 +107,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if len(args) == 1 && args[0] == "--haws-sync-codex-skills" {
-		root := nativeSyncRoot()
-		if root == "" {
-			fmt.Fprintln(stderr, "native Codex skill linking needs its HAWS root")
-			return 1
-		}
-		home := os.Getenv("HOME")
-		if home == "" {
-			var err error
-			home, err = os.UserHomeDir()
-			if err != nil {
-				fmt.Fprintln(stderr, "resolve Codex home directory:", err)
-				return 1
-			}
-		}
-		result, err := settings.SyncCodexSkillLinks(context.Background(), settings.NewStore(root), home)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\n", result.Linked, result.AlreadyLinked, result.PluginOwned, result.Preserved, result.Pruned); err != nil {
-			fmt.Fprintln(stderr, "write native Codex skill result:", err)
-			return 1
-		}
-		return 0
+		return runNativeSkillLinker("codex", stdout, stderr)
+	}
+	if len(args) == 1 && args[0] == "--haws-sync-claude-skills" {
+		return runNativeSkillLinker("claude", stdout, stderr)
 	}
 	if len(args) > 0 && args[0] == "migrate" {
 		packageRoot, err := findPackageRootForRun()
@@ -184,6 +164,43 @@ func nativeSyncRoot() string {
 		return root
 	}
 	return os.Getenv("HAWS_ROOT")
+}
+
+func runNativeSkillLinker(environment string, stdout, stderr io.Writer) int {
+	root := nativeSyncRoot()
+	if root == "" {
+		fmt.Fprintf(stderr, "native %s skill linking needs its HAWS root\n", environment)
+		return 1
+	}
+	home := os.Getenv("HOME")
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintln(stderr, "resolve user home directory:", err)
+			return 1
+		}
+	}
+	var result settings.SkillLinkSyncResult
+	var err error
+	switch environment {
+	case "claude":
+		result, err = settings.SyncClaudeSkillLinks(context.Background(), settings.NewStore(root), home)
+	case "codex":
+		result, err = settings.SyncCodexSkillLinks(context.Background(), settings.NewStore(root), home)
+	default:
+		fmt.Fprintf(stderr, "unsupported native skill-link environment %q\n", environment)
+		return 1
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\n", result.Linked, result.AlreadyLinked, result.PluginOwned, result.Preserved, result.Pruned); err != nil {
+		fmt.Fprintf(stderr, "write native %s skill result: %v\n", environment, err)
+		return 1
+	}
+	return 0
 }
 
 func nativeSyncPreparationTimeout() time.Duration {

@@ -17,13 +17,15 @@ import (
 
 const maxSkillOwnershipBytes = 1 << 20
 
-type CodexSkillSyncResult struct {
+type SkillLinkSyncResult struct {
 	Linked        int
 	AlreadyLinked int
 	PluginOwned   int
 	Preserved     int
 	Pruned        int
 }
+
+type CodexSkillSyncResult = SkillLinkSyncResult
 
 type codexSkillTarget struct {
 	name, pluginName, source, destination string
@@ -36,22 +38,36 @@ type skillOwnershipRecord struct {
 
 // SyncCodexSkillLinks reconciles active catalog skills with Codex's shared
 // ~/.agents/skills directory. It uses the same ownership ledger as Sync.
-func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSkillSyncResult, error) {
-	var result CodexSkillSyncResult
+func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (SkillLinkSyncResult, error) {
+	return syncSkillDirectoryLinks(ctx, store, home, "codex")
+}
+
+// SyncClaudeSkillLinks reconciles active catalog skills with Claude's
+// ~/.claude/skills directory using the shared skill-link ownership ledger.
+func SyncClaudeSkillLinks(ctx context.Context, store Store, home string) (SkillLinkSyncResult, error) {
+	return syncSkillDirectoryLinks(ctx, store, home, "claude")
+}
+
+func syncSkillDirectoryLinks(ctx context.Context, store Store, home, environment string) (SkillLinkSyncResult, error) {
+	var result SkillLinkSyncResult
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
 	if !filepath.IsAbs(home) || home == "." {
-		return result, errors.New("Codex skill linking needs an absolute home directory")
+		return result, errors.New("skill linking needs an absolute home directory")
 	}
-	if err := safeCodexSkillDirectory(home, filepath.Join(home, ".agents", "skills")); err != nil {
-		return result, fmt.Errorf("Codex skills directory is unsafe: %w", err)
+	skillRoot := skillDirectoryRoot(home, environment)
+	if skillRoot == "" {
+		return result, fmt.Errorf("unsupported skill-link environment %q", environment)
+	}
+	if err := safeSkillLinkDirectory(home, skillRoot); err != nil {
+		return result, fmt.Errorf("%s skills directory is unsafe: %w", environment, err)
 	}
 	state, err := store.Load()
 	if err != nil {
 		return result, fmt.Errorf("load skill selections: %w", err)
 	}
-	if contains(state.DisabledEnvironments, "codex") {
+	if contains(state.DisabledEnvironments, environment) {
 		return result, nil
 	}
 	sources, err := store.Sources(ctx)
@@ -112,8 +128,8 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 			name:        name,
 			pluginName:  skill.Name,
 			source:      skillDir,
-			destination: filepath.Join(home, ".agents", "skills", filepath.FromSlash(name)),
-			pluginOwned: strings.HasPrefix(skill.Name, "ponytail"),
+			destination: filepath.Join(skillRoot, filepath.FromSlash(name)),
+			pluginOwned: environment == "codex" && strings.HasPrefix(skill.Name, "ponytail"),
 		})
 	}
 
@@ -144,8 +160,8 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		if err := safeCodexSkillParent(home, target.destination); err != nil {
-			return result, fmt.Errorf("Codex skill destination is unsafe: %w", err)
+		if err := safeSkillLinkParent(home, target.destination); err != nil {
+			return result, fmt.Errorf("%s skill destination is unsafe: %w", environment, err)
 		}
 		record, owned, err := findSkillOwnership(target.destination, stateOwnership, globalOwnership)
 		if err != nil {
@@ -190,7 +206,7 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 		}
 
 		if isLink {
-			if codexLinkPointsTo(target.source, target.destination, linkTarget) {
+			if skillLinkPointsTo(target.source, target.destination, linkTarget) {
 				result.Linked++
 				result.AlreadyLinked++
 				continue
@@ -222,7 +238,7 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 		}
 		result.Linked++
 	}
-	pruned, preserved, err := pruneStaleCodexSkillLinks(ctx, home, activeDestinations, stateOwnership, globalOwnership, store.Dir, globalLedger)
+	pruned, preserved, err := pruneStaleSkillLinks(ctx, home, skillRoot, activeDestinations, stateOwnership, globalOwnership, store.Dir, globalLedger)
 	if err != nil {
 		return result, err
 	}
@@ -341,11 +357,22 @@ func skillPathKey(path string) string {
 	return path
 }
 
-func safeCodexSkillParent(home, destination string) error {
-	return safeCodexSkillDirectory(home, filepath.Dir(destination))
+func skillDirectoryRoot(home, environment string) string {
+	switch environment {
+	case "claude":
+		return filepath.Join(home, ".claude", "skills")
+	case "codex":
+		return filepath.Join(home, ".agents", "skills")
+	default:
+		return ""
+	}
 }
 
-func safeCodexSkillDirectory(home, directory string) error {
+func safeSkillLinkParent(home, destination string) error {
+	return safeSkillLinkDirectory(home, filepath.Dir(destination))
+}
+
+func safeSkillLinkDirectory(home, directory string) error {
 	home, err := filepath.Abs(home)
 	if err != nil {
 		return err
@@ -379,17 +406,16 @@ func safeCodexSkillDirectory(home, directory string) error {
 			return err
 		}
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return fmt.Errorf("Codex skills parent is not an unlinked directory: %s", current)
+			return fmt.Errorf("skill-link parent is not an unlinked directory: %s", current)
 		}
 	}
 	return nil
 }
 
-func codexSkillDestination(home, destination string) bool {
+func skillDestinationUnderRoot(root, destination string) bool {
 	if !filepath.IsAbs(destination) {
 		return false
 	}
-	root := filepath.Join(home, ".agents", "skills")
 	relative, err := filepath.Rel(root, filepath.Clean(destination))
 	if err != nil || filepath.IsAbs(relative) || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return false
@@ -397,12 +423,12 @@ func codexSkillDestination(home, destination string) bool {
 	return safeSkillTargetName(filepath.ToSlash(relative))
 }
 
-func pruneStaleCodexSkillLinks(ctx context.Context, home string, active map[string]bool, stateRecords, globalRecords []skillOwnershipRecord, stateDir, globalLedger string) (int, int, error) {
+func pruneStaleSkillLinks(ctx context.Context, home, skillRoot string, active map[string]bool, stateRecords, globalRecords []skillOwnershipRecord, stateDir, globalLedger string) (int, int, error) {
 	pruned, preserved := 0, 0
 	seen := make(map[string]string)
 	for _, records := range [][]skillOwnershipRecord{stateRecords, globalRecords} {
 		for _, record := range records {
-			if !codexSkillDestination(home, record.path) {
+			if !skillDestinationUnderRoot(skillRoot, record.path) {
 				continue
 			}
 			key := skillPathKey(record.path)
@@ -423,7 +449,7 @@ func pruneStaleCodexSkillLinks(ctx context.Context, home string, active map[stri
 		if err := ctx.Err(); err != nil {
 			return pruned, preserved, err
 		}
-		if err := safeCodexSkillParent(home, destination); err != nil {
+		if err := safeSkillLinkParent(home, destination); err != nil {
 			preserved++
 			continue
 		}
@@ -524,7 +550,7 @@ func resolveLinkTarget(destination, target string) string {
 	return filepath.Clean(resolved)
 }
 
-func codexLinkPointsTo(source, destination, linkTarget string) bool {
+func skillLinkPointsTo(source, destination, linkTarget string) bool {
 	current := resolveLinkTarget(destination, linkTarget)
 	expected, err := filepath.Abs(source)
 	if err != nil || current == "" {

@@ -3620,6 +3620,7 @@ _run_sync_impl() {
     local claude_linked_count=0
     local codex_linked_count=0
     local codex_plugin_count=0
+    local native_claude_skills=0 claude_pruned_count=0
     local native_codex_skills=0 codex_pruned_count=0
     local IS_WINDOWS=false
     if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
@@ -4176,6 +4177,35 @@ _run_sync_impl() {
         fi
     else
         local rec
+        local native_claude_result native_claude_status
+        local claude_already_linked_count=0 claude_unused_plugin_count=0 claude_preserved_count=0
+        if [ "$DETECTED_CLAUDE" = true ] &&
+            [ "${HAWS_NATIVE_CLAUDE_SKILLS:-0}" = 1 ] &&
+            [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+            if native_claude_result="$("${HAWS_GO_HOST_BINARY}" --haws-sync-claude-skills 2>&1)"; then
+                IFS=$'\t' read -r claude_linked_count claude_already_linked_count \
+                    claude_unused_plugin_count claude_preserved_count claude_pruned_count <<< "${native_claude_result}"
+                if [[ ! "${claude_linked_count}" =~ ^[0-9]+$ ]] ||
+                    [[ ! "${claude_already_linked_count}" =~ ^[0-9]+$ ]] ||
+                    [[ ! "${claude_unused_plugin_count}" =~ ^[0-9]+$ ]] ||
+                    [[ ! "${claude_preserved_count}" =~ ^[0-9]+$ ]] ||
+                    [[ ! "${claude_pruned_count}" =~ ^[0-9]+$ ]]; then
+                    echo "  [FAIL] Native Claude skill linker returned an invalid result: ${native_claude_result}" >&2
+                    return 1
+                fi
+                native_claude_skills=1
+                SKILLS_LINKED=$((SKILLS_LINKED + claude_linked_count))
+                SKIPPED_COUNT=$((SKIPPED_COUNT + claude_already_linked_count))
+                echo "  [NATIVE] Claude skill links reconciled (linked: ${claude_linked_count}; preserved: ${claude_preserved_count}; pruned: ${claude_pruned_count})."
+            else
+                native_claude_status=$?
+                if [ "${native_claude_status}" -ne 2 ]; then
+                    echo "  [FAIL] Native Claude skill linking failed: ${native_claude_result}" >&2
+                    return 1
+                fi
+            fi
+        fi
+
         local native_codex_result native_codex_status
         local codex_already_linked_count=0 codex_preserved_count=0
         if [ "$DETECTED_CODEX" = true ] &&
@@ -4213,7 +4243,7 @@ _run_sync_impl() {
                 *) skill_dir="${source_dir}" ;;
             esac
 
-            if [ "$DETECTED_CLAUDE" = true ]; then
+            if [ "$DETECTED_CLAUDE" = true ] && [ "${native_claude_skills}" -eq 0 ]; then
                 safe_link_dir "${skill_dir}" "${HOME}/.claude/skills/${target_name}" \
                     "Claude Skill [${target_name}]" || return 1
                 if _haws_skill_link_matches_source "${skill_dir}" "${HOME}/.claude/skills/${target_name}"; then
@@ -4476,7 +4506,7 @@ EOF
 
     # 4. Finalize linked state and prune removed items
     echo "  [*] Pruning removed items"
-    local PRUNED="${codex_pruned_count}"
+    local PRUNED=$((claude_pruned_count + codex_pruned_count))
     prune_owned_file() {
         local dest="$1" label="$2"
         local record kind path source fingerprint
@@ -4516,7 +4546,8 @@ EOF
                     # Keep the link if the current manifest still owns this target.
                     _manifest_has_skill_target "${MANIFEST_FILE}" "${target_name}" && continue
                     local stale_skill_pruned=0
-                    if _haws_skill_link_remove_if_owned "${HOME}/.claude/skills/${target_name}"; then
+                    if [ "${native_claude_skills}" -eq 0 ] &&
+                        _haws_skill_link_remove_if_owned "${HOME}/.claude/skills/${target_name}"; then
                         PRUNED=$((PRUNED + 1))
                         stale_skill_pruned=$((stale_skill_pruned + 1))
                     fi

@@ -25,9 +25,9 @@ catalog and configuration actions; `internal/tui` renders the draft flow;
 authoritative Sync once when integrations change. Settings edits stay in
 memory until confirmation. The Go-hosted Sync now migrates HAWS root, registered
 source repositories, and Second Brain targets natively while retaining the
-legacy orchestrator for Claude/Gemini skill linking, agents, integrations, and
-ordering. Codex active-skill links, Gitlink preparation, and stale-link pruning
-now run in Go within the same Sync presentation.
+legacy orchestrator for Gemini skills configuration, agents, integrations, and
+ordering. Claude and Codex active-skill links, Gitlink preparation, and
+stale-link pruning now run in Go within the same Sync presentation.
 
 ## Priority 2 progress — Native Sync
 
@@ -53,8 +53,11 @@ now run in Go within the same Sync presentation.
   Codex plugins, removes only verified HAWS-owned links, and preserves foreign,
   edited, malformed, and symlink-parent destinations. Unix links use symlinks;
   Windows links use junctions.
-- [ ] Remaining skill lifecycle: Claude symlinks and Gemini skills
-  configuration.
+- [x] Claude active and stale links: Go reconciles `.claude/skills` against the
+  same catalog and ledgers, preserves edited or unowned paths, prunes only links
+  still matching HAWS ownership, and leaves Codex destinations untouched.
+- [ ] Remaining skill lifecycle: Gemini skills JSON configuration and its
+  ownership manifest.
 - [ ] Agents, AI integrations, and the remaining Sync orchestration.
 
 ## Remaining priorities, after Priority 1 parity
