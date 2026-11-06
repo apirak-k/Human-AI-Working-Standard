@@ -145,30 +145,16 @@ func TestSyncGitHooksRequiresRepositoryRoot(t *testing.T) {
 }
 
 func TestSyncGitHooksRollsBackConfigWhenOwnershipCannotBeRecorded(t *testing.T) {
-	parent, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
+	root, stateDir, _ := gitHooksFixture(t)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	root := filepath.Join(parent, "repo\nwith newline")
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	ledgerPath := filepath.Join(stateDir, "ownership.tsv")
+	if err := os.WriteFile(ledgerPath, []byte(strings.Repeat("x", maxSkillOwnershipBytes)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	fixtureGit(t, root, "init", "-b", "main")
-	fixtureGit(t, root, "config", "user.email", "test@example.invalid")
-	fixtureGit(t, root, "config", "user.name", "Test")
-	hook := filepath.Join(root, ".githooks", "commit-msg")
-	fixtureFile(t, hook, "#!/bin/sh\nexit 0\n")
-	if err := os.Chmod(hook, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	fixtureGit(t, root, "config", "--local", "core.hooksPath", "unused-test-hooks")
-	fixtureGit(t, root, "add", ".githooks/commit-msg")
-	fixtureGit(t, root, "commit", "-m", "add advisory hook")
-	fixtureGit(t, root, "config", "--local", "--unset-all", "core.hooksPath")
-
-	stateDir := filepath.Join(root, ".haws", "state")
-	if _, err := SyncGitHooks(context.Background(), root, stateDir, false); err == nil || !strings.Contains(err.Error(), "cannot contain tabs or newlines") {
-		t.Fatal("ownership row with an unrepresentable path was written")
+	if _, err := SyncGitHooks(context.Background(), root, stateDir, false); err == nil || !strings.Contains(err.Error(), "ownership ledger exceeds size limit") {
+		t.Fatal("ownership ledger overflow was written")
 	}
 	if _, err := fixtureGitOutput(t, root, "config", "--local", "--get-all", "core.hooksPath"); err == nil {
 		t.Fatal("Git hook configuration was not rolled back after ownership failure")
