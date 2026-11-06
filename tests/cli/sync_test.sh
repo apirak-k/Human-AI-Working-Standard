@@ -989,7 +989,7 @@ test_go_host_runs_native_codex_skill_linker_inside_sync() {
     cat > "${helper}" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
-printf '1\t0\t0\t1\n'
+printf '1\t0\t0\t1\t2\n'
 EOF
     chmod +x "${helper}"
     write_settings off
@@ -1002,8 +1002,9 @@ EOF
         return 1
     }
     grep -Fx -- '--haws-sync-codex-skills' "${helper_log}" >/dev/null || return 1
-    grep -F '[NATIVE] Codex skill links reconciled (linked: 1; plugin-owned: 0; preserved: 1).' \
+    grep -F '[NATIVE] Codex skill links reconciled (linked: 1; plugin-owned: 0; preserved: 1; pruned: 2).' \
         "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F 'Auto-pruned 2 obsolete item(s).' "${OUTPUT_FILE}" >/dev/null || return 1
     grep -F 'Codex links: 1' "${OUTPUT_FILE}" >/dev/null || return 1
     [ ! -e "${FIXTURE_HOME}/.agents/skills/native-skill" ] && \
         [ ! -L "${FIXTURE_HOME}/.agents/skills/native-skill" ]

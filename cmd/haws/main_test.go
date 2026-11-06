@@ -309,7 +309,7 @@ func TestRunExecutesNativeCodexSkillLinker(t *testing.T) {
 	if code := run([]string{"--haws-sync-codex-skills"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
 		t.Fatalf("native Codex skill linker exit = %d, stderr = %q", code, stderr.String())
 	}
-	if got, want := stdout.String(), "1\t0\t0\t0\n"; got != want {
+	if got, want := stdout.String(), "1\t0\t0\t0\t0\n"; got != want {
 		t.Fatalf("native Codex skill result = %q, want %q", got, want)
 	}
 	destination := filepath.Join(home, ".agents", "skills", "demo")

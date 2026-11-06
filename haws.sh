@@ -3620,6 +3620,7 @@ _run_sync_impl() {
     local claude_linked_count=0
     local codex_linked_count=0
     local codex_plugin_count=0
+    local native_codex_skills=0 codex_pruned_count=0
     local IS_WINDOWS=false
     if [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]] || command -v cygpath &>/dev/null; then
         IS_WINDOWS=true
@@ -4175,25 +4176,26 @@ _run_sync_impl() {
         fi
     else
         local rec
-        local native_codex_skills=0 native_codex_result native_codex_status
+        local native_codex_result native_codex_status
         local codex_already_linked_count=0 codex_preserved_count=0
         if [ "$DETECTED_CODEX" = true ] &&
             [ "${HAWS_NATIVE_CODEX_SKILLS:-0}" = 1 ] &&
             [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
             if native_codex_result="$("${HAWS_GO_HOST_BINARY}" --haws-sync-codex-skills 2>&1)"; then
                 IFS=$'\t' read -r codex_linked_count codex_already_linked_count \
-                    codex_plugin_count codex_preserved_count <<< "${native_codex_result}"
+                    codex_plugin_count codex_preserved_count codex_pruned_count <<< "${native_codex_result}"
                 if [[ ! "${codex_linked_count}" =~ ^[0-9]+$ ]] ||
                     [[ ! "${codex_already_linked_count}" =~ ^[0-9]+$ ]] ||
                     [[ ! "${codex_plugin_count}" =~ ^[0-9]+$ ]] ||
-                    [[ ! "${codex_preserved_count}" =~ ^[0-9]+$ ]]; then
+                    [[ ! "${codex_preserved_count}" =~ ^[0-9]+$ ]] ||
+                    [[ ! "${codex_pruned_count}" =~ ^[0-9]+$ ]]; then
                     echo "  [FAIL] Native Codex skill linker returned an invalid result: ${native_codex_result}" >&2
                     return 1
                 fi
                 native_codex_skills=1
                 SKILLS_LINKED=$((SKILLS_LINKED + codex_linked_count))
                 SKIPPED_COUNT=$((SKIPPED_COUNT + codex_already_linked_count))
-                echo "  [NATIVE] Codex skill links reconciled (linked: ${codex_linked_count}; plugin-owned: ${codex_plugin_count}; preserved: ${codex_preserved_count})."
+                echo "  [NATIVE] Codex skill links reconciled (linked: ${codex_linked_count}; plugin-owned: ${codex_plugin_count}; preserved: ${codex_preserved_count}; pruned: ${codex_pruned_count})."
             else
                 native_codex_status=$?
                 if [ "${native_codex_status}" -ne 2 ]; then
@@ -4474,7 +4476,7 @@ EOF
 
     # 4. Finalize linked state and prune removed items
     echo "  [*] Pruning removed items"
-    local PRUNED=0
+    local PRUNED="${codex_pruned_count}"
     prune_owned_file() {
         local dest="$1" label="$2"
         local record kind path source fingerprint
@@ -4513,13 +4515,19 @@ EOF
                     # Skill IDs can change when legacy entries gain a source scope.
                     # Keep the link if the current manifest still owns this target.
                     _manifest_has_skill_target "${MANIFEST_FILE}" "${target_name}" && continue
+                    local stale_skill_pruned=0
                     if _haws_skill_link_remove_if_owned "${HOME}/.claude/skills/${target_name}"; then
                         PRUNED=$((PRUNED + 1))
+                        stale_skill_pruned=$((stale_skill_pruned + 1))
                     fi
-                    if _haws_skill_link_remove_if_owned "${HOME}/.agents/skills/${target_name}"; then
+                    if [ "${native_codex_skills}" -eq 0 ] &&
+                        _haws_skill_link_remove_if_owned "${HOME}/.agents/skills/${target_name}"; then
                         PRUNED=$((PRUNED + 1))
+                        stale_skill_pruned=$((stale_skill_pruned + 1))
                     fi
-                    echo "  [PRUNED] Skill [${target_name}] (owned links only)"
+                    if [ "${stale_skill_pruned}" -gt 0 ]; then
+                        echo "  [PRUNED] Skill [${target_name}] (owned links only)"
+                    fi
                 elif [ "$type" = "agent" ]; then
                     prune_owned_file "${HOME}/.claude/agents/${name}.md" "Claude Agent [${name}]" || return 1
                     prune_owned_file "${HOME}/.gemini/config/agents/${name}/agent.md" "Antigravity Agent [${name}]" || return 1

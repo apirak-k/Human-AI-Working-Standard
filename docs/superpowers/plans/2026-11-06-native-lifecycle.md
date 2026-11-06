@@ -25,7 +25,9 @@ catalog and configuration actions; `internal/tui` renders the draft flow;
 authoritative Sync once when integrations change. Settings edits stay in
 memory until confirmation. The Go-hosted Sync now migrates HAWS root, registered
 source repositories, and Second Brain targets natively while retaining the
-legacy orchestrator for skill installation, agents, integrations, and ordering.
+legacy orchestrator for Claude/Gemini skill linking, agents, integrations, and
+ordering. Codex active-skill links, Gitlink preparation, and stale-link pruning
+now run in Go within the same Sync presentation.
 
 ## Priority 2 progress — Native Sync
 
@@ -42,14 +44,22 @@ legacy orchestrator for skill installation, agents, integrations, and ordering.
   and only checks out a candidate when an enabled skill changes or an eligible
   skill entrypoint changes. Go also prepares absent registered device sources
   with a staged clone under the source registry lock and validates the
-  registered remote and a skill entrypoint before activation. Gitlink
-  preparation and result-table orchestration remain shell-hosted.
-- [ ] Skill installation/linking, Gitlink preparation, agents, AI integrations,
-  and the remaining Sync orchestration.
+  registered remote and a skill entrypoint before activation.
+- [x] Gitlink source preparation: Go materializes tracked and package-pinned
+  Gitlinks through staged checkouts, validates remote, pin, path, and skill
+  entrypoint, and preserves unowned nonempty destinations.
+- [x] Codex active and stale links: Go uses the native catalog and shared
+  ownership ledgers, keeps source-qualified duplicate names, defers Ponytail to
+  Codex plugins, removes only verified HAWS-owned links, and preserves foreign,
+  edited, malformed, and symlink-parent destinations. Unix links use symlinks;
+  Windows links use junctions.
+- [ ] Remaining skill lifecycle: Claude symlinks and Gemini skills
+  configuration.
+- [ ] Agents, AI integrations, and the remaining Sync orchestration.
 
 ## Remaining priorities, after Priority 1 parity
 
-- [ ] Finish native Sync parity for skills, Gitlink preparation, agents,
+- [ ] Finish native Sync parity for remaining skills, agents,
   integrations, and the remaining orchestration (HAWS root, registered sources,
   and Second Brain are now native targets).
 - [ ] AI client configuration parity and ownership preservation.

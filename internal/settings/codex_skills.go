@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -21,6 +22,7 @@ type CodexSkillSyncResult struct {
 	AlreadyLinked int
 	PluginOwned   int
 	Preserved     int
+	Pruned        int
 }
 
 type codexSkillTarget struct {
@@ -41,6 +43,9 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 	}
 	if !filepath.IsAbs(home) || home == "." {
 		return result, errors.New("Codex skill linking needs an absolute home directory")
+	}
+	if err := safeCodexSkillDirectory(home, filepath.Join(home, ".agents", "skills")); err != nil {
+		return result, fmt.Errorf("Codex skills directory is unsafe: %w", err)
 	}
 	state, err := store.Load()
 	if err != nil {
@@ -130,10 +135,17 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 			return result, err
 		}
 	}
+	activeDestinations := make(map[string]bool, len(targets))
+	for _, target := range targets {
+		activeDestinations[skillPathKey(target.destination)] = true
+	}
 
 	for _, target := range targets {
 		if err := ctx.Err(); err != nil {
 			return result, err
+		}
+		if err := safeCodexSkillParent(home, target.destination); err != nil {
+			return result, fmt.Errorf("Codex skill destination is unsafe: %w", err)
 		}
 		record, owned, err := findSkillOwnership(target.destination, stateOwnership, globalOwnership)
 		if err != nil {
@@ -151,6 +163,13 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 					if err := os.Remove(target.destination); err != nil {
 						return result, fmt.Errorf("remove HAWS-owned Codex skill link %s: %w", target.destination, err)
 					}
+					removed, err := removeSkillOwnershipFromLedgers(target.destination, store.Dir, globalLedger)
+					if err != nil {
+						return result, err
+					}
+					if removed {
+						result.Pruned++
+					}
 				} else {
 					result.Preserved++
 				}
@@ -158,6 +177,14 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 				result.Preserved++
 			} else if !errors.Is(err, os.ErrNotExist) {
 				return result, err
+			} else {
+				removed, err := removeSkillOwnershipFromLedgers(target.destination, store.Dir, globalLedger)
+				if err != nil {
+					return result, err
+				}
+				if removed {
+					result.Pruned++
+				}
 			}
 			continue
 		}
@@ -195,6 +222,12 @@ func SyncCodexSkillLinks(ctx context.Context, store Store, home string) (CodexSk
 		}
 		result.Linked++
 	}
+	pruned, preserved, err := pruneStaleCodexSkillLinks(ctx, home, activeDestinations, stateOwnership, globalOwnership, store.Dir, globalLedger)
+	if err != nil {
+		return result, err
+	}
+	result.Pruned += pruned
+	result.Preserved += preserved
 	return result, nil
 }
 
@@ -300,6 +333,136 @@ func sameSkillPath(left, right string) bool {
 	return left == right
 }
 
+func skillPathKey(path string) string {
+	path = filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
+func safeCodexSkillParent(home, destination string) error {
+	return safeCodexSkillDirectory(home, filepath.Dir(destination))
+}
+
+func safeCodexSkillDirectory(home, directory string) error {
+	home, err := filepath.Abs(home)
+	if err != nil {
+		return err
+	}
+	homeInfo, err := os.Lstat(home)
+	if err != nil {
+		return err
+	}
+	if !homeInfo.IsDir() || homeInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("home is not an unlinked directory: %s", home)
+	}
+	directory, err = filepath.Abs(directory)
+	if err != nil {
+		return err
+	}
+	relative, err := filepath.Rel(home, directory)
+	if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("skill path escapes home: %s", directory)
+	}
+	current := home
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("Codex skills parent is not an unlinked directory: %s", current)
+		}
+	}
+	return nil
+}
+
+func codexSkillDestination(home, destination string) bool {
+	if !filepath.IsAbs(destination) {
+		return false
+	}
+	root := filepath.Join(home, ".agents", "skills")
+	relative, err := filepath.Rel(root, filepath.Clean(destination))
+	if err != nil || filepath.IsAbs(relative) || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return safeSkillTargetName(filepath.ToSlash(relative))
+}
+
+func pruneStaleCodexSkillLinks(ctx context.Context, home string, active map[string]bool, stateRecords, globalRecords []skillOwnershipRecord, stateDir, globalLedger string) (int, int, error) {
+	pruned, preserved := 0, 0
+	seen := make(map[string]string)
+	for _, records := range [][]skillOwnershipRecord{stateRecords, globalRecords} {
+		for _, record := range records {
+			if !codexSkillDestination(home, record.path) {
+				continue
+			}
+			key := skillPathKey(record.path)
+			if active[key] {
+				continue
+			}
+			if _, ok := seen[key]; !ok {
+				seen[key] = filepath.Clean(record.path)
+			}
+		}
+	}
+	destinations := make([]string, 0, len(seen))
+	for _, destination := range seen {
+		destinations = append(destinations, destination)
+	}
+	sort.Strings(destinations)
+	for _, destination := range destinations {
+		if err := ctx.Err(); err != nil {
+			return pruned, preserved, err
+		}
+		if err := safeCodexSkillParent(home, destination); err != nil {
+			preserved++
+			continue
+		}
+		record, owned, err := findSkillOwnership(destination, stateRecords, globalRecords)
+		if err != nil {
+			return pruned, preserved, err
+		}
+		if !owned {
+			continue
+		}
+		linkTarget, isLink, err := readDirectoryLink(destination)
+		if err != nil {
+			return pruned, preserved, err
+		}
+		if isLink {
+			if !skillLinkMatchesRecord(destination, linkTarget, record) {
+				preserved++
+				continue
+			}
+			if err := os.Remove(destination); err != nil {
+				return pruned, preserved, fmt.Errorf("remove stale HAWS-owned Codex skill link %s: %w", destination, err)
+			}
+		} else if _, err := os.Lstat(destination); err == nil {
+			preserved++
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return pruned, preserved, err
+		}
+		removed, err := removeSkillOwnershipFromLedgers(destination, stateDir, globalLedger)
+		if err != nil {
+			return pruned, preserved, err
+		}
+		if isLink || removed {
+			pruned++
+		}
+	}
+	return pruned, preserved, nil
+}
+
 func readDirectoryLink(path string) (string, bool, error) {
 	target, err := os.Readlink(path)
 	if err == nil {
@@ -376,77 +539,112 @@ func codexLinkPointsTo(source, destination, linkTarget string) bool {
 }
 
 func recordSkillOwnership(ledger, kind, destination, source string) error {
-	if err := os.MkdirAll(filepath.Dir(ledger), 0700); err != nil {
-		return fmt.Errorf("create skill ownership directory: %w", err)
+	newRecord := strings.Join([]string{"skills", kind, destination, source, source, "schema=2"}, "\t")
+	_, err := updateSkillOwnershipLedger(ledger, destination, &newRecord)
+	return err
+}
+
+func removeSkillOwnershipFromLedgers(destination, stateDir, globalLedger string) (bool, error) {
+	stateRemoved, err := updateSkillOwnershipLedger(filepath.Join(stateDir, "ownership.tsv"), destination, nil)
+	if err != nil {
+		return stateRemoved, err
 	}
+	globalRemoved, err := updateSkillOwnershipLedger(globalLedger, destination, nil)
+	return stateRemoved || globalRemoved, err
+}
+
+func updateSkillOwnershipLedger(ledger, destination string, replacement *string) (bool, error) {
 	info, err := os.Lstat(ledger)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect skill ownership ledger %s: %w", ledger, err)
+		return false, fmt.Errorf("inspect skill ownership ledger %s: %w", ledger, err)
 	}
 	if err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > maxSkillOwnershipBytes) {
-		return fmt.Errorf("skill ownership ledger is not a bounded regular file: %s", ledger)
+		return false, fmt.Errorf("skill ownership ledger is not a bounded regular file: %s", ledger)
+	}
+	if errors.Is(err, os.ErrNotExist) && replacement == nil {
+		return false, nil
 	}
 	var lines []string
 	if err == nil {
 		contents, readErr := os.ReadFile(ledger)
 		if readErr != nil {
-			return fmt.Errorf("read skill ownership ledger %s: %w", ledger, readErr)
+			return false, fmt.Errorf("read skill ownership ledger %s: %w", ledger, readErr)
 		}
 		lines = strings.Split(strings.TrimSuffix(string(contents), "\n"), "\n")
 		if len(lines) == 1 && lines[0] == "" {
 			lines = nil
 		}
 	}
-	newRecord := strings.Join([]string{"skills", kind, destination, source, source, "schema=2"}, "\t")
 	updated := make([]string, 0, len(lines)+1)
 	found := false
+	matched := false
 	for _, line := range lines {
 		fields := strings.Split(line, "\t")
-		if len(fields) >= 3 && fields[0] == "skills" && sameSkillPath(fields[2], destination) {
-			if !found {
-				updated = append(updated, newRecord)
-				found = true
+		if validSkillOwnershipLine(fields) && sameSkillPath(fields[2], destination) {
+			matched = true
+			if replacement != nil {
+				if !found {
+					updated = append(updated, *replacement)
+					found = true
+				}
 			}
 			continue
 		}
 		updated = append(updated, line)
 	}
-	if !found {
-		updated = append(updated, newRecord)
+	if replacement != nil && !found {
+		updated = append(updated, *replacement)
+	}
+	if replacement == nil && len(updated) == len(lines) {
+		return false, nil
 	}
 	data := []byte(strings.Join(updated, "\n") + "\n")
 	if len(data) > maxSkillOwnershipBytes {
-		return errors.New("skill ownership ledger exceeds size limit")
+		return false, errors.New("skill ownership ledger exceeds size limit")
 	}
 	mode := fs.FileMode(0600)
 	if err == nil {
 		mode = info.Mode().Perm()
+	} else if replacement != nil {
+		if err := os.MkdirAll(filepath.Dir(ledger), 0700); err != nil {
+			return false, fmt.Errorf("create skill ownership directory: %w", err)
+		}
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(ledger), ".skills-ownership-*.tmp")
 	if err != nil {
-		return fmt.Errorf("stage skill ownership ledger: %w", err)
+		return false, fmt.Errorf("stage skill ownership ledger: %w", err)
 	}
 	tempPath := temporary.Name()
 	defer os.Remove(tempPath)
 	if err := temporary.Chmod(mode); err != nil {
 		_ = temporary.Close()
-		return fmt.Errorf("set skill ownership ledger mode: %w", err)
+		return false, fmt.Errorf("set skill ownership ledger mode: %w", err)
 	}
 	if _, err := temporary.Write(data); err != nil {
 		_ = temporary.Close()
-		return fmt.Errorf("write skill ownership ledger: %w", err)
+		return false, fmt.Errorf("write skill ownership ledger: %w", err)
 	}
 	if err := temporary.Sync(); err != nil {
 		_ = temporary.Close()
-		return fmt.Errorf("sync skill ownership ledger: %w", err)
+		return false, fmt.Errorf("sync skill ownership ledger: %w", err)
 	}
 	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close skill ownership ledger: %w", err)
+		return false, fmt.Errorf("close skill ownership ledger: %w", err)
 	}
 	if err := os.Rename(tempPath, ledger); err != nil {
-		return fmt.Errorf("replace skill ownership ledger: %w", err)
+		return false, fmt.Errorf("replace skill ownership ledger: %w", err)
 	}
-	return nil
+	return replacement == nil && matched, nil
+}
+
+func validSkillOwnershipLine(fields []string) bool {
+	if fields[0] != "skills" || (len(fields) != 5 && !(len(fields) == 6 && fields[5] == "schema=2")) {
+		return false
+	}
+	if fields[1] != "symlink" && fields[1] != "junction" && fields[1] != "directory-link" {
+		return false
+	}
+	return fields[2] != "" && fields[3] != "" && fields[4] != ""
 }
 
 func codexPluginOwnsSkill(ctx context.Context, home, skillName string) (bool, error) {

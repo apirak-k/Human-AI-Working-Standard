@@ -131,11 +131,144 @@ func TestSyncCodexSkillLinksDefersToPonytailPluginAndPrunesOnlyOwnedLink(t *test
 	catalogFile(t, home, ".codex/plugins/cache/plugin/skills/ponytail/SKILL.md", "plugin skill\n")
 
 	result, err := SyncCodexSkillLinks(context.Background(), store, home)
-	if err != nil || result.PluginOwned != 1 || result.Linked != 0 {
+	if err != nil || result.PluginOwned != 1 || result.Linked != 0 || result.Pruned != 1 {
 		t.Fatalf("plugin result = %+v, %v", result, err)
 	}
 	if _, err := os.Lstat(dest); !os.IsNotExist(err) {
 		t.Fatalf("HAWS-owned link remained beside Codex plugin skill: %v", err)
+	}
+	ledger, err := os.ReadFile(filepath.Join(home, ".haws", "skills-ownership.tsv"))
+	if err != nil || strings.Contains(string(ledger), dest) {
+		t.Fatalf("plugin-owned link ownership remained in ledger: %q, %v", ledger, err)
+	}
+}
+
+func TestSyncCodexSkillLinksPrunesStaleOwnedLinksAndLedgerRows(t *testing.T) {
+	store, home, _ := codexSkillFixture(t, "demo")
+	destination := filepath.Join(home, ".agents", "skills", "removed")
+	oldSource := filepath.Join(t.TempDir(), "removed")
+	if err := os.MkdirAll(oldSource, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(oldSource, destination); err != nil {
+		t.Fatal(err)
+	}
+	linkKind := "symlink"
+	if runtime.GOOS == "windows" {
+		linkKind = "junction"
+	}
+	owned := "skills\t" + linkKind + "\t" + destination + "\t" + oldSource + "\t" + oldSource + "\tschema=2\n"
+	malformed := "skills\tunknown-kind\t" + destination + "\t" + oldSource + "\tfingerprint\tschema=1\n"
+	other := "agents\tgenerated-file\t" + filepath.Join(home, ".agents", "AGENTS.md") + "\t" + oldSource + "\tfingerprint\tschema=2\n"
+	globalLedger := filepath.Join(home, ".haws", "skills-ownership.tsv")
+	if err := os.MkdirAll(filepath.Dir(globalLedger), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(globalLedger, []byte(owned+malformed+other), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stateLedger := store.Path("ownership.tsv")
+	if err := os.MkdirAll(filepath.Dir(stateLedger), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stateLedger, []byte(owned+other), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := SyncCodexSkillLinks(context.Background(), store, home)
+	if err != nil || result.Pruned != 1 {
+		t.Fatalf("result = %+v, %v; want one stale link pruned", result, err)
+	}
+	if _, err := os.Lstat(destination); !os.IsNotExist(err) {
+		t.Fatalf("stale owned link remains: %v", err)
+	}
+	for _, ledger := range []string{globalLedger, stateLedger} {
+		updated, err := os.ReadFile(ledger)
+		if err != nil || strings.Contains(string(updated), owned) || !strings.Contains(string(updated), other) {
+			t.Fatalf("ledger %s was not safely pruned: %q, %v", ledger, updated, err)
+		}
+		if ledger == globalLedger && !strings.Contains(string(updated), malformed) {
+			t.Fatalf("malformed ownership row was lost: %q", updated)
+		}
+	}
+}
+
+func TestSyncCodexSkillLinksPreservesEditedStaleLinkAndOwnership(t *testing.T) {
+	store, home, _ := codexSkillFixture(t, "demo")
+	destination := filepath.Join(home, ".agents", "skills", "removed")
+	foreign := filepath.Join(t.TempDir(), "foreign")
+	oldSource := filepath.Join(t.TempDir(), "removed")
+	for _, path := range []string{foreign, oldSource} {
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(foreign, destination); err != nil {
+		t.Fatal(err)
+	}
+	ledger := filepath.Join(home, ".haws", "skills-ownership.tsv")
+	if err := os.MkdirAll(filepath.Dir(ledger), 0700); err != nil {
+		t.Fatal(err)
+	}
+	row := "skills\tsymlink\t" + destination + "\t" + oldSource + "\t" + oldSource + "\tschema=2\n"
+	if err := os.WriteFile(ledger, []byte(row), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := SyncCodexSkillLinks(context.Background(), store, home)
+	if err != nil || result.Pruned != 0 || result.Preserved != 1 {
+		t.Fatalf("result = %+v, %v; want changed stale link preserved", result, err)
+	}
+	if got, err := os.Readlink(destination); err != nil || got != foreign {
+		t.Fatalf("edited stale link changed to %q: %v", got, err)
+	}
+	updated, err := os.ReadFile(ledger)
+	if err != nil || !strings.Contains(string(updated), row) {
+		t.Fatalf("ownership for edited stale link was lost: %q, %v", updated, err)
+	}
+}
+
+func TestSyncCodexSkillLinksPreservesUnownedStaleDirectory(t *testing.T) {
+	store, home, _ := codexSkillFixture(t, "demo")
+	destination := filepath.Join(home, ".agents", "skills", "removed")
+	if err := os.MkdirAll(destination, 0700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(destination, "user.txt")
+	if err := os.WriteFile(marker, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := SyncCodexSkillLinks(context.Background(), store, home)
+	if err != nil || result.Pruned != 0 {
+		t.Fatalf("result = %+v, %v; want unowned stale directory untouched", result, err)
+	}
+	if got, err := os.ReadFile(marker); err != nil || string(got) != "keep" {
+		t.Fatalf("unowned stale directory changed: %q, %v", got, err)
+	}
+}
+
+func TestSyncCodexSkillLinksRejectsSymlinkedSkillsParent(t *testing.T) {
+	store, home, _ := codexSkillFixture(t, "demo")
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outside, "skills", "removed"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(home, ".agents")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := SyncCodexSkillLinks(context.Background(), store, home); err == nil {
+		t.Fatal("symlinked Codex skills parent was accepted")
+	}
+	if _, err := os.Lstat(filepath.Join(outside, "skills", "demo")); !os.IsNotExist(err) {
+		t.Fatalf("active link escaped through symlinked parent: %v", err)
 	}
 }
 

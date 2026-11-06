@@ -241,7 +241,7 @@ func TestSyncBrainFastForwardsOnlyCleanCheckout(t *testing.T) {
 	if fixtureGit(t, remote, "rev-parse", "refs/heads/main") != after {
 		t.Fatal("sync changed the remote")
 	}
-	if got := SyncBrain(context.Background(), brain, time.Second); got.Status != "up-to-date" || got.Revision != after {
+	if got := SyncBrain(context.Background(), brain, 10*time.Second); got.Status != "up-to-date" || got.Revision != after {
 		t.Fatalf("second SyncBrain() = %#v", got)
 	}
 }

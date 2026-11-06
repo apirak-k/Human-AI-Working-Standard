@@ -126,7 +126,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\n", result.Linked, result.AlreadyLinked, result.PluginOwned, result.Preserved); err != nil {
+		if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\n", result.Linked, result.AlreadyLinked, result.PluginOwned, result.Preserved, result.Pruned); err != nil {
 			fmt.Fprintln(stderr, "write native Codex skill result:", err)
 			return 1
 		}
