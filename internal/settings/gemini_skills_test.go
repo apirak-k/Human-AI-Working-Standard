@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -98,7 +99,10 @@ func TestApplyGeminiSkillConfigPreservesUsersAndPrunesOnlyMissingCacheEntries(t 
 		t.Fatalf("ownership record = %#v", owned)
 	}
 	info, err := os.Stat(config)
-	if err != nil || info.Mode().Perm() != 0o640 {
+	if err != nil {
+		t.Fatalf("stat updated config: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o640 {
 		t.Fatalf("config mode = %v, %v; want 0640", info, err)
 	}
 	if strings.Contains(string(originalConfig), "new-skill") {
