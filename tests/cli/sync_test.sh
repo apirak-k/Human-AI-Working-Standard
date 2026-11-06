@@ -946,6 +946,38 @@ EOF
     grep -F 'nativesource' "${OUTPUT_FILE}" | grep -F '[PASS] Updated' >/dev/null
 }
 
+test_native_source_preparation_falls_back_for_legacy_device_materialization() {
+    local name="preparesource" target helper helper_log candidate_ref
+    target="$(device_source_id "${name}")"
+    helper="${FIXTURE_ROOT}/native-go-host"
+    helper_log="${FIXTURE_ROOT}/native-go-host.log"
+    add_device_source_pack "${name}" 1
+    write_settings on
+    cat > "${helper}" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
+if [ "$1" = "--haws-prepare-source" ]; then
+    exit 2
+fi
+printf 'updated\t1111111111111111111111111111111111111111\tfinal HEAD equals candidate\n'
+EOF
+    chmod +x "${helper}"
+    source_haws || return 1
+    export HAWS_NATIVE_SOURCE_SYNC=1
+    export HAWS_GO_HOST_BINARY="${helper}"
+    export HAWS_NATIVE_HELPER_LOG="${helper_log}"
+    candidate_ref="$(_sync_candidate_ref "${target}")"
+    HAWS_SYNC_CANDIDATE_REF="${candidate_ref}" _sync_prefetch_target "${target}" || return 1
+    HAWS_SYNC_PRESENTATION=1
+    SYNC_SUMMARY_UPDATED=0
+    sync_target "${target}" >"${OUTPUT_FILE}" 2>&1 || return 1
+    grep -Fx -- "--haws-prepare-source ${target}" "${helper_log}" >/dev/null || return 1
+    grep -Fx -- "--haws-sync-target ${target}" "${helper_log}" >/dev/null || return 1
+    [ -d "$(device_source_dir "${name}")" ] || return 1
+    [ "$(git -C "$(device_source_dir "${name}")" remote get-url origin)" = "file://${FIXTURE_ROOT}/${name}.git" ] || return 1
+    assert_record "${target}" updated || return 1
+}
+
 test_second_brain_push_failure_is_reported() {
     add_second_brain
     printf '%s\n' 'local preference' >> "${FIXTURE_REPO}/secondbrain/USER_PREFERENCES.md"
@@ -1768,6 +1800,7 @@ else
     run_test test_go_host_runs_native_second_brain_target_inside_existing_sync_presentation
     run_test test_go_host_runs_native_haws_target_and_preserves_restart_signal
     run_test test_go_host_runs_native_registered_source_target_inside_existing_sync_presentation
+    run_test test_native_source_preparation_falls_back_for_legacy_device_materialization
     run_test test_second_brain_push_failure_is_reported
     run_test test_candidate_accepts_moved_and_removed_skill_entrypoints
     run_test test_missing_candidate_entrypoint_does_not_fall_back_to_old_content

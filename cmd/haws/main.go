@@ -9,7 +9,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/app"
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/legacy"
@@ -62,8 +64,31 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "HAWS %s\n", version)
 		return 0
 	}
+	if len(args) == 2 && args[0] == "--haws-prepare-source" {
+		root := nativeSyncRoot()
+		if root == "" {
+			fmt.Fprintln(stderr, "native source preparation needs its HAWS root")
+			return 1
+		}
+		prepareCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		if os.Getenv("HAWS_SYNC_PREFETCH_MODE") == "1" {
+			var cancel context.CancelFunc
+			prepareCtx, cancel = context.WithTimeout(prepareCtx, nativeSyncPreparationTimeout())
+			defer cancel()
+		}
+		handled, err := settings.PrepareRegisteredSource(prepareCtx, settings.NewStore(root), args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if !handled {
+			return 2
+		}
+		return 0
+	}
 	if len(args) == 2 && args[0] == "--haws-sync-target" {
-		root := os.Getenv("HAWS_SYNC_ROOT")
+		root := nativeSyncRoot()
 		if root == "" {
 			fmt.Fprintln(stderr, "native Sync target needs its HAWS root")
 			return 1
@@ -126,6 +151,25 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func nativeSyncRoot() string {
+	if root := os.Getenv("HAWS_SYNC_ROOT"); root != "" {
+		return root
+	}
+	return os.Getenv("HAWS_ROOT")
+}
+
+func nativeSyncPreparationTimeout() time.Duration {
+	seconds, err := strconv.Atoi(os.Getenv("HAWS_SYNC_TIMEOUT_SECONDS"))
+	if err != nil || seconds <= 0 || seconds > 86400 {
+		seconds = 30
+	}
+	timeout := time.Duration(seconds)*time.Second - 250*time.Millisecond
+	if timeout <= 0 {
+		return 250 * time.Millisecond
+	}
+	return timeout
 }
 
 func syncTargetField(value string) string {

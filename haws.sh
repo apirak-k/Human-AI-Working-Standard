@@ -1822,6 +1822,20 @@ _haws_prepare_device_source() {
     return 0
 }
 
+_haws_prepare_sync_source() {
+    local source_id="${1:-}" native_status=0
+    if [ "${HAWS_NATIVE_SOURCE_SYNC:-0}" = 1 ] && [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+        HAWS_SYNC_ROOT="${HAWS_SYNC_ROOT:-${SCRIPT_DIR}}" \
+            "${HAWS_GO_HOST_BINARY}" --haws-prepare-source "${source_id}" >/dev/null || native_status=$?
+        case "${native_status}" in
+            0) return 0 ;;
+            2) ;;
+            *) return 1 ;;
+        esac
+    fi
+    _haws_prepare_device_source "${source_id}"
+}
+
 _catalog_probe_source_revision() {
     local source_dir="${1:-}" out_var="${2:-}" repository_info repository_root revision
     local physical_source_dir physical_repository_root
@@ -2935,7 +2949,7 @@ _sync_prefetch_target() {
     else
         source_path="$(_sync_source_path "${target}" 2>/dev/null || true)"
         [ -n "${source_path}" ] || return 0
-        _haws_prepare_device_source "${target}" || return 1
+        HAWS_SYNC_PREFETCH_MODE=1 _haws_prepare_sync_source "${target}" || return 1
         source_dir="$(_catalog_runtime_source_dir "${source_path}")"
         [ -d "${source_dir}" ] || return 0
     fi
@@ -3044,7 +3058,7 @@ sync_target() {
             _sync_legacy_echo "${target}: failed (source is not registered)"
             return 1
         }
-        if ! _haws_prepare_device_source "${target}"; then
+        if ! _haws_prepare_sync_source "${target}"; then
             sync_result_write "${target}" failed - "device skill source could not be prepared" || true
             _sync_legacy_echo "${target}: failed (device skill source could not be prepared)"
             return 1

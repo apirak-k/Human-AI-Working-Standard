@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apirak-k/Human-AI-Working-Standard/internal/migration"
 )
@@ -90,6 +91,17 @@ func TestRunPrintsVersionWithoutFindingCheckout(t *testing.T) {
 	}
 }
 
+func TestNativeSyncPreparationTimeoutLeavesRoomForShellDeadline(t *testing.T) {
+	t.Setenv("HAWS_SYNC_TIMEOUT_SECONDS", "10")
+	if got, want := nativeSyncPreparationTimeout(), 9750*time.Millisecond; got != want {
+		t.Fatalf("configured preparation timeout = %s, want %s", got, want)
+	}
+	t.Setenv("HAWS_SYNC_TIMEOUT_SECONDS", "invalid")
+	if got, want := nativeSyncPreparationTimeout(), 29750*time.Millisecond; got != want {
+		t.Fatalf("default preparation timeout = %s, want %s", got, want)
+	}
+}
+
 func TestRunExecutesNativeSyncTargetWithoutReenteringTheShellHost(t *testing.T) {
 	root := t.TempDir()
 	brain := filepath.Join(root, "secondbrain")
@@ -99,7 +111,8 @@ func TestRunExecutesNativeSyncTargetWithoutReenteringTheShellHost(t *testing.T) 
 	if output, err := exec.Command("git", "init", brain).CombinedOutput(); err != nil {
 		t.Fatalf("initialize local Second Brain: %v: %s", err, output)
 	}
-	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_SYNC_ROOT", "")
+	t.Setenv("HAWS_ROOT", root)
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"--haws-sync-target", "secondbrain"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
 		t.Fatalf("native Sync target exit = %d, stderr = %q", code, stderr.String())
@@ -118,7 +131,8 @@ func TestRunSkipsNativeBrainSyncWhenDisabled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stateDir, "settings.tsv"), []byte("schema_version\t1\nauto_update_brain\toff\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_SYNC_ROOT", "")
+	t.Setenv("HAWS_ROOT", root)
 	t.Setenv("HAWS_STATE_DIR", stateDir)
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"--haws-sync-target", "secondbrain"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
@@ -225,6 +239,53 @@ func TestRunExecutesNativeRegisteredSourceSyncTarget(t *testing.T) {
 	}
 	if got := gitForNativeSync(t, sourceDir, "for-each-ref", "refs/haws-sync"); got != "" {
 		t.Fatalf("native source candidate ref leaked: %s", got)
+	}
+}
+
+func TestRunPreparesRegisteredDeviceSourceAndSignalsLegacyGitlinkFallback(t *testing.T) {
+	root := t.TempDir()
+	seed := t.TempDir()
+	gitForNativeSync(t, seed, "init", "-b", "main")
+	gitForNativeSync(t, seed, "config", "user.email", "test@example.invalid")
+	gitForNativeSync(t, seed, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(seed, "SKILL.md"), []byte("---\nname: demo\ndescription: fixture\n---\n\nSkill.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitForNativeSync(t, seed, "add", "SKILL.md")
+	gitForNativeSync(t, seed, "commit", "-m", "baseline")
+	remote := filepath.Join(t.TempDir(), "demo.git")
+	gitForNativeSync(t, filepath.Dir(remote), "init", "--bare", remote)
+	gitForNativeSync(t, seed, "remote", "add", "origin", remote)
+	gitForNativeSync(t, seed, "push", "-u", "origin", "main")
+	gitForNativeSync(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+
+	stateDir := filepath.Join(root, ".haws", "state")
+	registryDir := filepath.Join(stateDir, "skill-sources")
+	if err := os.MkdirAll(registryDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	const sourcePath = "skills/packs/demo"
+	if err := os.WriteFile(filepath.Join(registryDir, "registry.tsv"), []byte("demo\t"+sourcePath+"\t"+remote+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", "")
+	t.Setenv("HAWS_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	t.Setenv("HAWS_TEST_ALLOW_LOCAL_SOURCES", "1")
+	t.Setenv("HAWS_SYNC_PREFETCH_MODE", "1")
+	t.Setenv("HAWS_SYNC_TIMEOUT_SECONDS", "10")
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-prepare-source", "device-demo::" + sourcePath}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("registered source preparation exit = %d, stderr = %q", code, stderr.String())
+	}
+	checkout := filepath.Join(registryDir, filepath.FromSlash(sourcePath))
+	if got := gitForNativeSync(t, checkout, "remote", "get-url", "origin"); got != remote {
+		t.Fatalf("prepared origin = %q, want %q", got, remote)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--haws-prepare-source", "demo::" + sourcePath}, strings.NewReader(""), &stdout, &stderr); code != 2 {
+		t.Fatalf("Gitlink fallback exit = %d, want 2 (stderr %q)", code, stderr.String())
 	}
 }
 

@@ -40,16 +40,18 @@ legacy orchestrator for skill installation, agents, integrations, and ordering.
 - [x] Registered source repository targets: Go validates the registered
   checkout and candidate, blocks dirty sources, preserves local-ahead commits,
   and only checks out a candidate when an enabled skill changes or an eligible
-  skill entrypoint changes. The existing shell host still prepares device
-  sources and records the result in its target table and Sync state.
-- [ ] Skill installation, agents, AI integrations, and the remaining Sync
-  orchestration.
+  skill entrypoint changes. Go also prepares absent registered device sources
+  with a staged clone under the source registry lock and validates the
+  registered remote and a skill entrypoint before activation. Gitlink
+  preparation and result-table orchestration remain shell-hosted.
+- [ ] Skill installation/linking, Gitlink preparation, agents, AI integrations,
+  and the remaining Sync orchestration.
 
 ## Remaining priorities, after Priority 1 parity
 
-- [ ] Finish native Sync parity for skills, agents, integrations, and the
-  remaining orchestration (HAWS root, registered sources, and Second Brain are
-  now native targets).
+- [ ] Finish native Sync parity for skills, Gitlink preparation, agents,
+  integrations, and the remaining orchestration (HAWS root, registered sources,
+  and Second Brain are now native targets).
 - [ ] AI client configuration parity and ownership preservation.
 - [ ] Shared CLI/MCP inventory, consumers, installation and safe removal.
 - [ ] Read-only Doctor and exact confirmed Repair.
