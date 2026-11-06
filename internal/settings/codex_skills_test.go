@@ -111,7 +111,11 @@ func TestSyncCodexSkillLinksRepairsOwnedLinkAndPreservesOtherRows(t *testing.T) 
 		t.Fatalf("repaired link = %q, %v; want %q", got, err, source)
 	}
 	updated, err := os.ReadFile(ledger)
-	newOwned := "skills\tsymlink\t" + dest + "\t" + source + "\t" + source + "\tschema=2\n"
+	linkKind := "symlink"
+	if runtime.GOOS == "windows" {
+		linkKind = "junction"
+	}
+	newOwned := "skills\t" + linkKind + "\t" + dest + "\t" + source + "\t" + source + "\tschema=2\n"
 	if err != nil || !strings.Contains(string(updated), other) || !strings.Contains(string(updated), newOwned) || strings.Contains(string(updated), owned) {
 		t.Fatalf("ledger did not preserve unrelated rows and refresh ownership: %q, %v", updated, err)
 	}
