@@ -191,6 +191,7 @@ func runLegacySyncWithBinary(ctx context.Context, root string, args []string, st
 	if err := legacy.RunCommandWithEnv(ctx, root, args, stdin, stdout, stderr, map[string]string{
 		"HAWS_NATIVE_BRAIN_SYNC":    "1",
 		"HAWS_NATIVE_CLAUDE_SKILLS": "1",
+		"HAWS_NATIVE_CODEX_AGENTS":  "1",
 		"HAWS_NATIVE_CODEX_SKILLS":  "1",
 		"HAWS_NATIVE_GEMINI_SKILLS": "1",
 		"HAWS_NATIVE_ROOT_SYNC":     "1",

@@ -29,8 +29,10 @@ need Go or a complete HAWS developer checkout.
 
 The Go Home TUI routes Setup, Settings, Sync, Doctor, Repair, Uninstall, and
 Migrate existing installation. Setup and Settings configuration run in Go.
-Skill and agent synchronization, client integration application, and Second
-Brain synchronization still use the included HAWS runtime. A Go Sync
+Go Sync reconciles Claude/Codex skill links, Codex agent profiles, and Gemini
+skills JSON. Remaining agent projections, client integration application, and
+Second Brain synchronization still use the included HAWS runtime. The Go CLI
+also exposes `codex-agents [install|check|uninstall] [--dry-run]`. A Go Sync
 checks the configured release, validates the package's complete allowlisted
 runtime and both CPU binaries, stages them together under one version
 directory, and activates them with one version marker. It then runs one HAWS
@@ -100,14 +102,17 @@ supported as explicit per-process overrides.
 The package does not require a Go installation. Because component lifecycle
 operations still use the existing runtime, Git and Bash 4.2 or newer are
 required for component Sync and integration work. Setup/Settings drafts, saved
-configuration, repository registration, and Second Brain connection are native
-Go; confirmed integration changes still invoke the component runtime. Windows users need Git for
+configuration, repository registration, Second Brain connection, Codex agent
+profiles, Claude/Codex skill links, and Gemini skills JSON reconciliation are
+native Go; remaining agent projections, target ordering, and confirmed client
+configuration changes still invoke the component runtime. Windows users need Git for
 Windows; macOS users need a newer Bash such as Homebrew Bash because the
 built-in Bash is 3.2. The shell runtime also uses standard POSIX tools such as
 `awk`, `sed`, `grep`, `find`, `sort`, and `cmp`. Node.js is optional for the
-core launcher and Sync, but is needed for native Codex agent profiles and some
-AI-specific generated configuration. No production runtime Python dependency
-was found in the inspected HAWS shell, Go, launcher, and adapter code.
+Go launcher and Go-hosted Sync. It remains a dependency of direct legacy-shell
+Codex profile commands and some AI-specific generated configuration. No
+production runtime Python dependency was found in the inspected HAWS shell,
+Go, launcher, and adapter code.
 
 The native Go binary and launcher can start without a source checkout. HAWS
 does not install these system tools automatically.

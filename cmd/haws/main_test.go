@@ -385,6 +385,65 @@ func TestRunExecutesNativeGeminiSkillsJSONLifecycle(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeCodexAgentLifecycle(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "HAWS source with spaces")
+	if err := os.MkdirAll(filepath.Join(source, "agents"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	roles := []string{"backend-engineer", "frontend-engineer", "organizer", "researcher", "tester"}
+	for _, role := range roles {
+		body := "---\nname: " + role + "\ndescription: Canonical " + role + " requirements.\n---\n\nRole.\n"
+		if err := os.WriteFile(filepath.Join(source, "agents", role+".md"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	home := filepath.Join(t.TempDir(), "Codex home with spaces")
+	t.Setenv("HAWS_ROOT", "")
+	t.Setenv("HAWS_APP_DIR", "")
+	t.Setenv("HAWS_PACKAGE_DIR", "")
+	t.Setenv("HAWS_SYNC_ROOT", source)
+	t.Setenv("CODEX_HOME", "")
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"codex-agents", "install", "--source", source, "--codex-home", home}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native Codex agent install exit = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "install 5 Codex profiles") || stderr.Len() != 0 {
+		t.Fatalf("native Codex agent install output = (%q, %q)", stdout.String(), stderr.String())
+	}
+	for _, role := range roles {
+		if _, err := os.Stat(filepath.Join(home, "agents", role+".toml")); err != nil {
+			t.Fatalf("native install did not create %s profile: %v", role, err)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--haws-codex-agents", "install", "--source", source, "--codex-home", home, "--emit-ownership"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native Codex agent ownership result exit = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	rows := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(rows) != len(roles)+1 || !strings.HasPrefix(rows[len(rows)-1], "manifest\t") {
+		t.Fatalf("native ownership rows = %q; want five profiles and a manifest", stdout.String())
+	}
+	for index, row := range rows[:len(roles)] {
+		fields := strings.Split(row, "\t")
+		if len(fields) != 5 || fields[0] != "profile" || fields[1] != roles[index] {
+			t.Fatalf("ownership row = %q; want profile row for %s", row, roles[index])
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--haws-codex-agents", "uninstall", "--source", source, "--codex-home", home}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native Codex agent uninstall exit = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, role := range roles {
+		if _, err := os.Stat(filepath.Join(home, "agents", role+".toml")); !os.IsNotExist(err) {
+			t.Fatalf("native uninstall left %s profile: %v", role, err)
+		}
+	}
+}
+
 func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".haws", "state")

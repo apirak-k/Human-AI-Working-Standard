@@ -77,7 +77,7 @@ HAWS core requires Git and Bash. Node.js and Python are needed only for the inte
 | :--- | :---: | :--- |
 | **Git** | 2.30+ | Required to clone and update HAWS and its skill repositories |
 | **Bash** | 4.2+ / Git Bash | Required to run the command engine (`haws.sh`); Git for Windows provides Git Bash |
-| **Node.js** | 20+ | For native Codex agent profiles and Antigravity `skills.json` integration |
+| **Node.js** | 20+ | For direct legacy-shell Codex profiles and generated Antigravity `skills.json` fallback |
 | **Python** | 3.10+ | For merging Second Brain documents during cloud sync |
 
 ### Cross-Platform Setup Details

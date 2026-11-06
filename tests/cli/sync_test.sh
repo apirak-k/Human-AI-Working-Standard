@@ -42,7 +42,7 @@ cleanup_fixture() {
         HAWS_SYNC_PRESENTATION SYNC_SUMMARY_UPDATED \
         HAWS_PACKAGE_DIR \
         HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
-        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_GEMINI_SKILLS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
+        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_AGENTS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_GEMINI_SKILLS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
         HAWS_SYNC_CANDIDATE_REF HAWS_NATIVE_HELPER_LOG \
         GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
@@ -1010,6 +1010,47 @@ EOF
         [ ! -L "${FIXTURE_HOME}/.agents/skills/native-skill" ]
 }
 
+test_go_host_runs_native_codex_agents_inside_sync() {
+    local helper="${FIXTURE_ROOT}/native-go-host"
+    local helper_log="${FIXTURE_ROOT}/native-go-host.log"
+    mkdir -p "${FIXTURE_HOME}/.codex" "${FIXTURE_REPO}/agents"
+    cp -R "${PROJECT_ROOT}/ai-configs" "${FIXTURE_REPO}/ai-configs" || return 1
+    cp -R "${PROJECT_ROOT}/agents" "${FIXTURE_REPO}/agents" || return 1
+    cat > "${helper}" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
+[ "$1" = "--haws-codex-agents" ] && [ "$2" = install ] || exit 2
+agents_dir="$HOME/.codex/agents"
+manifest="$HOME/.codex/haws-agents.json"
+mkdir -p "$agents_dir" || exit 1
+for role in backend-engineer frontend-engineer organizer researcher tester; do
+    source="$4/agents/$role.md"
+    profile="$agents_dir/$role.toml"
+    printf 'name = "%s"\n' "$role" > "$profile" || exit 1
+    hash="$(sha256sum "$profile" | awk '{print $1}')" || exit 1
+    printf 'profile\t%s\t%s\t%s\t%s\n' "$role" "$profile" "$source" "$hash"
+done
+printf '%s\n' '{"version":1,"owner":"HAWS","hashes":{}}' > "$manifest" || exit 1
+hash="$(sha256sum "$manifest" | awk '{print $1}')" || exit 1
+printf 'manifest\t-\t%s\t%s\t%s\n' "$manifest" "$4/ai-configs/codex/agents.mjs" "$hash"
+EOF
+    chmod +x "${helper}"
+    write_settings off
+    source_haws || return 1
+    export HAWS_NATIVE_CODEX_AGENTS=1
+    export HAWS_GO_HOST_BINARY="${helper}"
+    export HAWS_NATIVE_HELPER_LOG="${helper_log}"
+    run_sync >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -F -- '--haws-codex-agents install ' "${helper_log}" >/dev/null || return 1
+    grep -F '[NATIVE] Codex agent profiles reconciled (5 canonical roles).' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -E 'agents[[:space:]]+generated-file' "${FIXTURE_REPO}/.haws/state/ownership.tsv" >/dev/null || return 1
+    grep -F 'haws-agents.json' "${FIXTURE_REPO}/.haws/state/ownership.tsv" >/dev/null || return 1
+    [ -f "${FIXTURE_HOME}/.codex/agents/tester.toml" ]
+}
+
 test_go_host_runs_native_claude_skill_linker_inside_sync() {
     local helper="${FIXTURE_ROOT}/native-go-host"
     local helper_log="${FIXTURE_ROOT}/native-go-host.log"
@@ -1935,6 +1976,7 @@ else
     run_test test_go_host_runs_native_claude_skill_linker_inside_sync
     run_test test_go_host_runs_native_gemini_skills_config_inside_sync
     run_test test_go_host_runs_native_codex_skill_linker_inside_sync
+    run_test test_go_host_runs_native_codex_agents_inside_sync
     run_test test_native_codex_skill_linker_status_two_uses_legacy_fallback
     run_test test_second_brain_push_failure_is_reported
     run_test test_candidate_accepts_moved_and_removed_skill_entrypoints

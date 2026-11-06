@@ -106,6 +106,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
+	if len(args) > 0 && args[0] == "--haws-codex-agents" {
+		root := nativeSyncRoot()
+		if root == "" {
+			fmt.Fprintln(stderr, "native Codex agent profiles need their HAWS root")
+			return 1
+		}
+		return runNativeCodexAgents(root, args[1:], stdout, stderr)
+	}
 	if len(args) == 1 && args[0] == "--haws-sync-codex-skills" {
 		return runNativeSkillLinker("codex", stdout, stderr)
 	}
@@ -133,6 +141,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	if len(args) > 0 {
+		if args[0] == "codex-agents" {
+			return runNativeCodexAgents(root, args[1:], stdout, stderr)
+		}
 		action := commandAction(args[0])
 		if action == "" {
 			return actionExitCode(legacy.RunCommand(ctx, root, args, stdin, stdout, stderr), stderr)
@@ -157,6 +168,88 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	return 0
+}
+
+func runNativeCodexAgents(sourceRoot string, args []string, stdout, stderr io.Writer) int {
+	command := "check"
+	codexHome := ""
+	dryRun := false
+	emitOwnership := false
+	positionals := 0
+
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		name, value, hasValue := strings.Cut(argument, "=")
+		switch name {
+		case "--source", "--codex-home":
+			if !hasValue {
+				index++
+				if index >= len(args) || strings.HasPrefix(args[index], "--") {
+					fmt.Fprintf(stderr, "HAWS Codex agents: %s requires a path\n", name)
+					return 1
+				}
+				value = args[index]
+			}
+			if value == "" {
+				fmt.Fprintf(stderr, "HAWS Codex agents: %s requires a path\n", name)
+				return 1
+			}
+			if name == "--source" {
+				sourceRoot = value
+			} else {
+				codexHome = value
+			}
+		case "--dry-run":
+			if hasValue {
+				fmt.Fprintln(stderr, "HAWS Codex agents: --dry-run does not take a value")
+				return 1
+			}
+			dryRun = true
+		case "--emit-ownership":
+			if hasValue {
+				fmt.Fprintln(stderr, "HAWS Codex agents: --emit-ownership does not take a value")
+				return 1
+			}
+			emitOwnership = true
+		default:
+			if strings.HasPrefix(argument, "-") || positionals > 0 {
+				fmt.Fprintln(stderr, "usage: codex-agents [install|check|uninstall] [--dry-run] [--source PATH] [--codex-home PATH]")
+				return 1
+			}
+			command = argument
+			positionals++
+		}
+	}
+
+	result, err := settings.RunCodexAgents(command, sourceRoot, codexHome, dryRun)
+	if err != nil {
+		fmt.Fprintf(stderr, "HAWS Codex agents: %v\n", err)
+		return 1
+	}
+	if emitOwnership {
+		for _, profile := range result.Profiles {
+			if !profile.Managed {
+				continue
+			}
+			if _, err := fmt.Fprintf(stdout, "profile\t%s\t%s\t%s\t%s\n", profile.Name, profile.Path, profile.Source, profile.Hash); err != nil {
+				fmt.Fprintf(stderr, "write Codex agent ownership result: %v\n", err)
+				return 1
+			}
+		}
+		if result.ManifestHash != "" {
+			manifestSource := filepath.Join(sourceRoot, "ai-configs", "codex", "agents.mjs")
+			if _, err := fmt.Fprintf(stdout, "manifest\t-\t%s\t%s\t%s\n", result.ManifestPath, manifestSource, result.ManifestHash); err != nil {
+				fmt.Fprintf(stderr, "write Codex agent ownership result: %v\n", err)
+				return 1
+			}
+		}
+		return 0
+	}
+	if _, err := fmt.Fprintln(stdout, result.Message); err != nil {
+		fmt.Fprintf(stderr, "write Codex agent result: %v\n", err)
 		return 1
 	}
 	return 0

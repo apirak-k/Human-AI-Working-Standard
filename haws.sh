@@ -44,10 +44,14 @@ haws_set_terminal_title() {
     printf '\033]0;%s\007' "${HAWS_WINDOW_TITLE}"
 }
 
-# Native Codex agent installation is also available without a global sync.
+# Go-hosted Sync uses the native helper; direct shell commands keep Node compatibility.
 run_codex_agents() {
+    if [ "${HAWS_NATIVE_CODEX_AGENTS:-0}" = 1 ] && [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+        "${HAWS_GO_HOST_BINARY}" --haws-codex-agents "$@"
+        return $?
+    fi
     if ! command -v node >/dev/null 2>&1; then
-        echo "[ERROR] Node.js is required for native Codex agent profiles." >&2
+        echo "[ERROR] Node.js is required for the legacy Codex agent profile path." >&2
         return 1
     fi
     # Preserve the source path when HAWS runs from a managed/symlinked checkout.
@@ -4410,31 +4414,65 @@ _run_sync_impl() {
     # Link Subagents
     echo "  [*] Linking native subagent profiles"
     if [ "$DETECTED_CODEX" = true ]; then
-        run_codex_agents install --source "${SOURCE_DIR}" || return 1
-        local codex_agents_dir codex_manifest codex_owned_hash
-        codex_agents_dir="$(_haws_codex_agents_dir)" || return 1
-        codex_manifest="$(_haws_codex_agents_manifest)" || return 1
-        for agent_file in "${SOURCE_DIR}/agents"/*.md; do
-            [ -f "${agent_file}" ] || continue
-            local profile_name profile_path
-            profile_name="$(basename "${agent_file}" .md)"
-            profile_path="${codex_agents_dir}/${profile_name}.toml"
-            [ -f "${profile_path}" ] || continue
-            codex_owned_hash="$(node -e 'const fs = require("node:fs"); const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(manifest.hashes[process.argv[2]] || "");' "${codex_manifest}" "${profile_name}")" || return 1
-            if [ "${codex_owned_hash}" = "$(_haws_sha256 "${profile_path}")" ]; then
-                ownership_record agents generated-file "${profile_path}" "${agent_file}" "${codex_owned_hash}" || return 1
-            else
-                local previous_profile_record
-                previous_profile_record="$(ownership_record_for_path agents "${profile_path}" 2>/dev/null || true)"
-                if [ -n "${previous_profile_record}" ]; then
-                    local previous_kind previous_path previous_source previous_fingerprint
-                    IFS=$'\t' read -r previous_kind previous_path previous_source previous_fingerprint <<< "${previous_profile_record}"
-                    _ownership_remove_record "agents"$'\t'"${previous_kind}"$'\t'"${previous_path}"$'\t'"${previous_source}"$'\t'"${previous_fingerprint}" || return 1
-                fi
-            fi
-        done
-        [ ! -f "${codex_manifest}" ] ||
-            ownership_record agents generated-file "${codex_manifest}" "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$(_haws_sha256 "${codex_manifest}")" || return 1
+		local codex_native_records
+		if [ "${HAWS_NATIVE_CODEX_AGENTS:-0}" = 1 ] && [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+			codex_native_records="$(run_codex_agents install --source "${SOURCE_DIR}" --emit-ownership)" || return 1
+			local record_type profile_name profile_path agent_file codex_owned_hash
+			local previous_profile_record previous_kind previous_path previous_source previous_fingerprint
+			while IFS=$'\t' read -r record_type profile_name profile_path agent_file codex_owned_hash ||
+				[ -n "${record_type}" ]; do
+				[ -n "${record_type}" ] || continue
+				case "${record_type}" in
+					profile)
+						if [ -f "${profile_path}" ] && [ "${codex_owned_hash}" = "$(_haws_sha256 "${profile_path}")" ]; then
+							ownership_record agents generated-file "${profile_path}" "${agent_file}" "${codex_owned_hash}" || return 1
+						else
+							previous_profile_record="$(ownership_record_for_path agents "${profile_path}" 2>/dev/null || true)"
+							if [ -n "${previous_profile_record}" ]; then
+								IFS=$'\t' read -r previous_kind previous_path previous_source previous_fingerprint <<< "${previous_profile_record}"
+								_ownership_remove_record "agents"$'\t'"${previous_kind}"$'\t'"${previous_path}"$'\t'"${previous_source}"$'\t'"${previous_fingerprint}" || return 1
+							fi
+						fi
+						;;
+					manifest)
+						[ -f "${profile_path}" ] || continue
+						[ "${codex_owned_hash}" = "$(_haws_sha256 "${profile_path}")" ] || return 1
+						ownership_record agents generated-file "${profile_path}" "${agent_file}" "${codex_owned_hash}" || return 1
+						;;
+					*)
+						echo "  [FAIL] Native Codex agent reconciler returned an invalid ownership row." >&2
+						return 1
+						;;
+				esac
+			done <<< "${codex_native_records}"
+			echo "  [NATIVE] Codex agent profiles reconciled (5 canonical roles)."
+		else
+			run_codex_agents install --source "${SOURCE_DIR}" || return 1
+			local codex_agents_dir codex_manifest codex_owned_hash
+			codex_agents_dir="$(_haws_codex_agents_dir)" || return 1
+			codex_manifest="$(_haws_codex_agents_manifest)" || return 1
+			for agent_file in "${SOURCE_DIR}/agents"/*.md; do
+				[ -f "${agent_file}" ] || continue
+				local profile_name profile_path
+				profile_name="$(basename "${agent_file}" .md)"
+				profile_path="${codex_agents_dir}/${profile_name}.toml"
+				[ -f "${profile_path}" ] || continue
+				codex_owned_hash="$(node -e 'const fs = require("node:fs"); const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(manifest.hashes[process.argv[2]] || "");' "${codex_manifest}" "${profile_name}")" || return 1
+				if [ "${codex_owned_hash}" = "$(_haws_sha256 "${profile_path}")" ]; then
+					ownership_record agents generated-file "${profile_path}" "${agent_file}" "${codex_owned_hash}" || return 1
+				else
+					local previous_profile_record
+					previous_profile_record="$(ownership_record_for_path agents "${profile_path}" 2>/dev/null || true)"
+					if [ -n "${previous_profile_record}" ]; then
+						local previous_kind previous_path previous_source previous_fingerprint
+						IFS=$'\t' read -r previous_kind previous_path previous_source previous_fingerprint <<< "${previous_profile_record}"
+						_ownership_remove_record "agents"$'\t'"${previous_kind}"$'\t'"${previous_path}"$'\t'"${previous_source}"$'\t'"${previous_fingerprint}" || return 1
+					fi
+				fi
+			done
+			[ ! -f "${codex_manifest}" ] ||
+				ownership_record agents generated-file "${codex_manifest}" "${SCRIPT_DIR}/ai-configs/codex/agents.mjs" "$(_haws_sha256 "${codex_manifest}")" || return 1
+		fi
         AGENTS_LINKED=$((AGENTS_LINKED + 5))
     fi
     if [ -d "${SOURCE_DIR}/agents" ]; then

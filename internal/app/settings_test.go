@@ -38,7 +38,7 @@ func settingsHostFixture(t *testing.T, pending bool, syncExit string) (string, s
 	script := "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$HAWS_CALL_LOG\"\n" +
 		"case \"$1\" in\n" +
 		"  settings|setup) exit 91;;\n" +
-		"  sync) printf '%s\\n' \"$HAWS_GO_HOST\" > \"$HAWS_HOST_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_ROOT_SYNC\" > \"$HAWS_ROOT_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_SOURCE_SYNC\" > \"$HAWS_SOURCE_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_CLAUDE_SKILLS\" > \"$HAWS_CLAUDE_SKILLS_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_CODEX_SKILLS\" > \"$HAWS_CODEX_SKILLS_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_GEMINI_SKILLS\" > \"$HAWS_GEMINI_SKILLS_SYNC_LOG\"; exit \"${HAWS_TEST_SYNC_EXIT:-0}\";;\n" +
+		"  sync) printf '%s\\n' \"$HAWS_GO_HOST\" > \"$HAWS_HOST_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_ROOT_SYNC\" > \"$HAWS_ROOT_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_SOURCE_SYNC\" > \"$HAWS_SOURCE_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_CLAUDE_SKILLS\" > \"$HAWS_CLAUDE_SKILLS_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_CODEX_AGENTS\" > \"$HAWS_CODEX_AGENTS_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_CODEX_SKILLS\" > \"$HAWS_CODEX_SKILLS_SYNC_LOG\"; printf '%s\\n' \"$HAWS_NATIVE_GEMINI_SKILLS\" > \"$HAWS_GEMINI_SKILLS_SYNC_LOG\"; exit \"${HAWS_TEST_SYNC_EXIT:-0}\";;\n" +
 		"esac\n"
 	if runtime.GOOS == "windows" {
 		batch := "@echo off\r\necho(%1>>\"%HAWS_CALL_LOG%\"\r\n" +
@@ -48,6 +48,7 @@ func settingsHostFixture(t *testing.T, pending bool, syncExit string) (string, s
 			"if /I \"%1\"==\"sync\" echo %HAWS_NATIVE_ROOT_SYNC% > \"%HAWS_ROOT_SYNC_LOG%\"\r\n" +
 			"if /I \"%1\"==\"sync\" echo %HAWS_NATIVE_SOURCE_SYNC% > \"%HAWS_SOURCE_SYNC_LOG%\"\r\n" +
 			"if /I \"%1\"==\"sync\" echo %HAWS_NATIVE_CLAUDE_SKILLS% > \"%HAWS_CLAUDE_SKILLS_SYNC_LOG%\"\r\n" +
+			"if /I \"%1\"==\"sync\" echo %HAWS_NATIVE_CODEX_AGENTS% > \"%HAWS_CODEX_AGENTS_SYNC_LOG%\"\r\n" +
 			"if /I \"%1\"==\"sync\" echo %HAWS_NATIVE_CODEX_SKILLS% > \"%HAWS_CODEX_SKILLS_SYNC_LOG%\"\r\n" +
 			"if /I \"%1\"==\"sync\" echo %HAWS_NATIVE_GEMINI_SKILLS% > \"%HAWS_GEMINI_SKILLS_SYNC_LOG%\"\r\n" +
 			"if /I \"%1\"==\"sync\" exit /b %HAWS_TEST_SYNC_EXIT%\r\n"
@@ -76,6 +77,7 @@ func settingsHostFixture(t *testing.T, pending bool, syncExit string) (string, s
 	t.Setenv("HAWS_ROOT_SYNC_LOG", filepath.Join(root, "root-sync.log"))
 	t.Setenv("HAWS_SOURCE_SYNC_LOG", filepath.Join(root, "source-sync.log"))
 	t.Setenv("HAWS_CLAUDE_SKILLS_SYNC_LOG", filepath.Join(root, "claude-skills-sync.log"))
+	t.Setenv("HAWS_CODEX_AGENTS_SYNC_LOG", filepath.Join(root, "codex-agents-sync.log"))
 	t.Setenv("HAWS_CODEX_SKILLS_SYNC_LOG", filepath.Join(root, "codex-skills-sync.log"))
 	t.Setenv("HAWS_GEMINI_SKILLS_SYNC_LOG", filepath.Join(root, "gemini-skills-sync.log"))
 	t.Setenv("HAWS_TEST_SYNC_EXIT", syncExit)
@@ -119,6 +121,10 @@ func TestRunSettingsUsesOneGoHostedSyncWhenIntegrationIsPending(t *testing.T) {
 	geminiSkillsSync, err := os.ReadFile(filepath.Join(root, "gemini-skills-sync.log"))
 	if err != nil || strings.TrimSpace(strings.ReplaceAll(string(geminiSkillsSync), "\r\n", "\n")) != "1" {
 		t.Fatalf("native Gemini skill Sync marker = %q, %v; want 1", geminiSkillsSync, err)
+	}
+	codexAgentsSync, err := os.ReadFile(filepath.Join(root, "codex-agents-sync.log"))
+	if err != nil || strings.TrimSpace(strings.ReplaceAll(string(codexAgentsSync), "\r\n", "\n")) != "1" {
+		t.Fatalf("native Codex agent Sync marker = %q, %v; want 1", codexAgentsSync, err)
 	}
 	if !strings.Contains(stdout.String(), "authoritative Sync") {
 		t.Fatalf("Go-hosted Sync was not explained: %q", stdout.String())
