@@ -120,6 +120,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "--haws-sync-claude-commands" {
 		return runNativeClaudeCommands(args[1:], stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "--haws-sync-global-pointers" {
+		return runNativeGlobalPointers(args[1:], stdout, stderr)
+	}
 	if len(args) == 1 && args[0] == "--haws-sync-codex-skills" {
 		return runNativeSkillLinker("codex", stdout, stderr)
 	}
@@ -467,6 +470,63 @@ func runNativeClaudeCommands(args []string, stdout, stderr io.Writer) int {
 	}
 	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\n", result.Targets, result.Generated, result.Preserved, result.Adopted); err != nil {
 		fmt.Fprintln(stderr, "write native Claude command result:", err)
+		return 1
+	}
+	return 0
+}
+
+func runNativeGlobalPointers(args []string, stdout, stderr io.Writer) int {
+	root := nativeSyncRoot()
+	if root == "" {
+		fmt.Fprintln(stderr, "native global pointer sync needs its HAWS root")
+		return 1
+	}
+	home := os.Getenv("HOME")
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintln(stderr, "resolve user home directory:", err)
+			return 1
+		}
+	}
+	stateDir := os.Getenv("HAWS_STATE_DIR")
+	if stateDir == "" {
+		stateDir = filepath.Join(root, ".haws", "state")
+	}
+	environments := make([]string, 0, 3)
+	adoptLegacy, recoverLegacy := false, false
+	for _, argument := range args {
+		name, _, hasValue := strings.Cut(argument, "=")
+		if hasValue {
+			fmt.Fprintln(stderr, "usage: --haws-sync-global-pointers [--claude] [--gemini] [--codex] [--adopt-legacy] [--recover-legacy]")
+			return 1
+		}
+		switch name {
+		case "--claude", "--gemini", "--codex":
+			environments = append(environments, strings.TrimPrefix(name, "--"))
+		case "--adopt-legacy":
+			adoptLegacy = true
+		case "--recover-legacy":
+			recoverLegacy = true
+		default:
+			fmt.Fprintln(stderr, "usage: --haws-sync-global-pointers [--claude] [--gemini] [--codex] [--adopt-legacy] [--recover-legacy]")
+			return 1
+		}
+	}
+	result, err := settings.SyncGlobalPointers(context.Background(), root, home, stateDir, settings.BrainDirectory(root), environments, adoptLegacy, recoverLegacy)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	for _, message := range result.Messages {
+		if _, err := fmt.Fprintln(stderr, "  "+message); err != nil {
+			fmt.Fprintln(stderr, "write native global pointer message:", err)
+			return 1
+		}
+	}
+	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\n", result.Targets, result.Updated, result.Preserved, result.Adopted, result.Skipped); err != nil {
+		fmt.Fprintln(stderr, "write native global pointer result:", err)
 		return 1
 	}
 	return 0

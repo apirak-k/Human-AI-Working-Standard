@@ -4038,19 +4038,47 @@ _run_sync_impl() {
 
     # 3. Setup Global Pointers
     echo "[*] Step 3: Configuring global environment pointers"
-    if [ "$DETECTED_CLAUDE" = true ]; then
-        safe_append_pointer "${HOME}/.claude/CLAUDE.md" || return 1
+    local native_global_pointers=false
+    if { [ "$DETECTED_CLAUDE" = true ] || [ "$DETECTED_GEMINI" = true ] || [ "$DETECTED_CODEX" = true ]; } &&
+        [ "${HAWS_NATIVE_GLOBAL_POINTERS:-0}" = 1 ] && [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+        local -a native_pointer_args=()
+        [ "$DETECTED_CLAUDE" != true ] || native_pointer_args+=(--claude)
+        [ "$DETECTED_GEMINI" != true ] || native_pointer_args+=(--gemini)
+        [ "$DETECTED_CODEX" != true ] || native_pointer_args+=(--codex)
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" != 1 ] || native_pointer_args+=(--adopt-legacy)
+        [ "${HAWS_LEGACY_POINTER_RECOVERY:-0}" != 1 ] || native_pointer_args+=(--recover-legacy)
+        local native_pointer_result native_pointer_targets native_pointer_updated
+        local native_pointer_preserved native_pointer_adopted native_pointer_skipped native_pointer_field
+        native_pointer_result="$("${HAWS_GO_HOST_BINARY}" --haws-sync-global-pointers "${native_pointer_args[@]}")" || return 1
+        IFS=$'\t' read -r native_pointer_targets native_pointer_updated native_pointer_preserved \
+            native_pointer_adopted native_pointer_skipped <<< "${native_pointer_result}"
+        for native_pointer_field in "${native_pointer_targets}" "${native_pointer_updated}" \
+            "${native_pointer_preserved}" "${native_pointer_adopted}" "${native_pointer_skipped}"; do
+            [[ "${native_pointer_field}" =~ ^[0-9]+$ ]] || {
+                echo "  [FAIL] Native global pointer reconciler returned an invalid result." >&2
+                return 1
+            }
+        done
+        RULES_LINKED=$((RULES_LINKED + native_pointer_updated))
+        SKIPPED_COUNT=$((SKIPPED_COUNT + native_pointer_skipped))
+        echo "  [NATIVE] Global pointers reconciled (updated: ${native_pointer_updated}; preserved: ${native_pointer_preserved}; adopted: ${native_pointer_adopted})."
+        native_global_pointers=true
     fi
-    if [ "$DETECTED_GEMINI" = true ]; then
-        safe_append_pointer "${HOME}/.gemini/GEMINI.md" || return 1
-    fi
-    if [ "$DETECTED_CODEX" = true ]; then
-        if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.override.md" || return 1
-        elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.md" || return 1
-        elif [ -d "${HOME}/.codex" ]; then
-            safe_append_pointer "${HOME}/.codex/AGENTS.override.md" || return 1
+    if [ "${native_global_pointers}" != true ]; then
+        if [ "$DETECTED_CLAUDE" = true ]; then
+            safe_append_pointer "${HOME}/.claude/CLAUDE.md" || return 1
+        fi
+        if [ "$DETECTED_GEMINI" = true ]; then
+            safe_append_pointer "${HOME}/.gemini/GEMINI.md" || return 1
+        fi
+        if [ "$DETECTED_CODEX" = true ]; then
+            if [ -s "${HOME}/.codex/AGENTS.override.md" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.override.md" || return 1
+            elif [ -f "${HOME}/.codex/AGENTS.md" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.md" || return 1
+            elif [ -d "${HOME}/.codex" ]; then
+                safe_append_pointer "${HOME}/.codex/AGENTS.override.md" || return 1
+            fi
         fi
     fi
     echo "[PASS] Global environment pointers configured"

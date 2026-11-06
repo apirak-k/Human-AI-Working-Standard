@@ -514,6 +514,45 @@ func TestRunExecutesNativeClaudeCommandProjection(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeGlobalPointerProjection(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, ".haws", "state")
+	home := filepath.Join(t.TempDir(), "HAWS home")
+	brain := filepath.Join(root, "private brain")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	t.Setenv("HAWS_SECOND_BRAIN_DIR", brain)
+	t.Setenv("HOME", home)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-global-pointers", "--claude"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native global pointer projection exit = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "1\t1\t0\t0\t0"; got != want {
+		t.Fatalf("native global pointer result = %q; want %q", got, want)
+	}
+	target := filepath.Join(home, ".claude", "CLAUDE.md")
+	contents, err := os.ReadFile(target)
+	want := settingsPointerContent(root, brain)
+	if err != nil || !strings.Contains(string(contents), want) {
+		t.Fatalf("generated global pointer = %q, %v; want %q", contents, err, want)
+	}
+}
+
+func settingsPointerContent(root, brain string) string {
+	return "<!-- HAWS_GLOBAL_POINTER_START -->\n" +
+		"# HAWS — Human-AI Working Standard\n" +
+		"This environment operates under HAWS. Read and adhere to:\n" +
+		"- Core Standard: " + filepath.Join(root, "core", "HAWS.md") + "\n" +
+		"- Work Instructions: " + filepath.Join(root, "core", "WORK_INSTRUCTIONS.md") + "\n" +
+		"- Second Brain documents: " + brain + "/ (neutral defaults in public main; personal DEV content stays in the private DEV checkout)\n" +
+		"- Subagent roles: " + root + "/agents/ (organizer, researcher, frontend-engineer, backend-engineer, tester). Read the relevant role before delegating with available native subagent tools.\n" +
+		"<!-- HAWS_GLOBAL_POINTER_END -->\n"
+}
+
 func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".haws", "state")

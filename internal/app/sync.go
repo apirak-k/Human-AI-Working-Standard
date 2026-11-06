@@ -196,6 +196,7 @@ func runLegacySyncWithBinary(ctx context.Context, root string, args []string, st
 		"HAWS_NATIVE_CODEX_AGENTS":    "1",
 		"HAWS_NATIVE_CODEX_SKILLS":    "1",
 		"HAWS_NATIVE_GEMINI_SKILLS":   "1",
+		"HAWS_NATIVE_GLOBAL_POINTERS": "1",
 		"HAWS_NATIVE_ROOT_SYNC":       "1",
 		"HAWS_NATIVE_SOURCE_SYNC":     "1",
 		"HAWS_GO_HOST_BINARY":         binary,
