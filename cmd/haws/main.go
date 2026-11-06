@@ -123,6 +123,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "--haws-sync-global-pointers" {
 		return runNativeGlobalPointers(args[1:], stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "--haws-sync-hooks" {
+		return runNativeGitHooks(args[1:], stdout, stderr)
+	}
 	if len(args) == 1 && args[0] == "--haws-sync-codex-skills" {
 		return runNativeSkillLinker("codex", stdout, stderr)
 	}
@@ -528,6 +531,71 @@ func runNativeGlobalPointers(args []string, stdout, stderr io.Writer) int {
 	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\n", result.Targets, result.Updated, result.Preserved, result.Adopted, result.Skipped); err != nil {
 		fmt.Fprintln(stderr, "write native global pointer result:", err)
 		return 1
+	}
+	return 0
+}
+
+func runNativeGitHooks(args []string, stdout, stderr io.Writer) int {
+	root := nativeSyncRoot()
+	if root == "" {
+		fmt.Fprintln(stderr, "native Git hook setup needs its HAWS root")
+		return 1
+	}
+	stateDir := os.Getenv("HAWS_STATE_DIR")
+	if stateDir == "" {
+		stateDir = filepath.Join(root, ".haws", "state")
+	}
+	action := "install"
+	actionSeen := false
+	adoptLegacy := false
+	for _, argument := range args {
+		switch argument {
+		case "install", "status":
+			if actionSeen {
+				fmt.Fprintln(stderr, "usage: --haws-sync-hooks [install|status] [--adopt-legacy]")
+				return 1
+			}
+			action = argument
+			actionSeen = true
+		case "--adopt-legacy":
+			adoptLegacy = true
+		default:
+			fmt.Fprintln(stderr, "usage: --haws-sync-hooks [install|status] [--adopt-legacy]")
+			return 1
+		}
+	}
+	if action == "status" && adoptLegacy {
+		fmt.Fprintln(stderr, "usage: --haws-sync-hooks [install|status] [--adopt-legacy]")
+		return 1
+	}
+	if action == "status" {
+		status, err := settings.GitHooksStatus(context.Background(), root)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if _, err := fmt.Fprint(stdout, status); err != nil {
+			fmt.Fprintln(stderr, "write Git hook status:", err)
+			return 1
+		}
+		return 0
+	}
+	result, err := settings.SyncGitHooks(context.Background(), root, stateDir, adoptLegacy)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	for _, message := range result.Messages {
+		if _, err := fmt.Fprintln(stdout, "  "+message); err != nil {
+			fmt.Fprintln(stderr, "write Git hook message:", err)
+			return 1
+		}
+	}
+	if result.Configured {
+		if _, err := fmt.Fprintln(stdout, "  [✓] Git core.hooksPath set to .githooks\n  [✓] commit-msg hook active (advisory; does not block commits)"); err != nil {
+			fmt.Fprintln(stderr, "write Git hook result:", err)
+			return 1
+		}
 	}
 	return 0
 }

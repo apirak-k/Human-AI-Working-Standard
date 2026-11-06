@@ -287,17 +287,17 @@ func readAgentOwnershipLedger(path string) ([]string, bool, fs.FileMode, error) 
 		return nil, false, 0o600, nil
 	}
 	if err != nil {
-		return nil, false, 0, fmt.Errorf("inspect agent ownership ledger %s: %w", path, err)
+		return nil, false, 0, fmt.Errorf("inspect ownership ledger %s: %w", path, err)
 	}
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > maxSkillOwnershipBytes {
-		return nil, false, 0, fmt.Errorf("agent ownership ledger is not a bounded regular file: %s", path)
+		return nil, false, 0, fmt.Errorf("ownership ledger is not a bounded regular file: %s", path)
 	}
 	contents, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false, 0, fmt.Errorf("read agent ownership ledger %s: %w", path, err)
+		return nil, false, 0, fmt.Errorf("read ownership ledger %s: %w", path, err)
 	}
 	if len(contents) > maxSkillOwnershipBytes {
-		return nil, false, 0, fmt.Errorf("agent ownership ledger exceeds size limit: %s", path)
+		return nil, false, 0, fmt.Errorf("ownership ledger exceeds size limit: %s", path)
 	}
 	trimmed := strings.TrimSuffix(string(contents), "\n")
 	if trimmed == "" {
@@ -493,14 +493,14 @@ func upsertAgentFileOwnership(lines []string, record agentFileOwnership) ([]stri
 func writeAgentOwnershipLedger(path string, lines []string, mode fs.FileMode) error {
 	data := []byte(strings.Join(lines, "\n") + "\n")
 	if len(data) > maxSkillOwnershipBytes {
-		return errors.New("agent ownership ledger exceeds size limit")
+		return errors.New("ownership ledger exceeds size limit")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create agent ownership directory: %w", err)
+		return fmt.Errorf("create ownership ledger directory: %w", err)
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".agents-ownership-*.tmp")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".haws-ownership-*.tmp")
 	if err != nil {
-		return fmt.Errorf("stage agent ownership ledger: %w", err)
+		return fmt.Errorf("stage ownership ledger: %w", err)
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
@@ -520,7 +520,7 @@ func writeAgentOwnershipLedger(path string, lines []string, mode fs.FileMode) er
 		return err
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("replace agent ownership ledger: %w", err)
+		return fmt.Errorf("replace ownership ledger: %w", err)
 	}
 	return nil
 }

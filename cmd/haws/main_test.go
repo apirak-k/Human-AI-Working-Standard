@@ -553,6 +553,42 @@ func settingsPointerContent(root, brain string) string {
 		"<!-- HAWS_GLOBAL_POINTER_END -->\n"
 }
 
+func TestRunExecutesNativeGitHookInstallerAndStatus(t *testing.T) {
+	root := t.TempDir()
+	gitForNativeSync(t, root, "init", "-b", "main")
+	gitForNativeSync(t, root, "config", "user.email", "test@example.invalid")
+	gitForNativeSync(t, root, "config", "user.name", "Test")
+	gitForNativeSync(t, root, "config", "--local", "core.hooksPath", "unused-test-hooks")
+	hook := filepath.Join(root, ".githooks", "commit-msg")
+	if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitForNativeSync(t, root, "add", ".githooks/commit-msg")
+	gitForNativeSync(t, root, "commit", "-m", "add advisory hook")
+	gitForNativeSync(t, root, "config", "--local", "--unset-all", "core.hooksPath")
+	stateDir := filepath.Join(root, ".haws", "state")
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-hooks", "install"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native Git hook install exit = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "commit-msg hook active") {
+		t.Fatalf("native Git hook install output = %q", stdout.String())
+	}
+	var statusOut, statusErr bytes.Buffer
+	if code := run([]string{"--haws-sync-hooks", "status"}, strings.NewReader(""), &statusOut, &statusErr); code != 0 {
+		t.Fatalf("native Git hook status exit = %d, stdout=%q stderr=%q", code, statusOut.String(), statusErr.String())
+	}
+	if !strings.Contains(statusOut.String(), "Status: [ACTIVE & ADVISORY]") {
+		t.Fatalf("native Git hook status output = %q", statusOut.String())
+	}
+}
+
 func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".haws", "state")

@@ -25,9 +25,10 @@ catalog and configuration actions; `internal/tui` renders the draft flow;
 authoritative Sync once when integrations change. Settings edits stay in
 memory until confirmation. The Go-hosted Sync now migrates HAWS root, registered
 source repositories, Second Brain targets, Claude/Codex skill links, Claude and
-Gemini agent files, Claude slash commands, Codex agent profiles, and Gemini
-skills JSON operations natively while retaining the legacy orchestrator for
-remaining AI client integrations and target ordering. Bash still builds the
+Gemini agent files, Claude slash commands, Codex agent profiles, Gemini skills
+JSON operations, Claude/Gemini/Codex global pointers, and Git advisory hook
+configuration natively while retaining the legacy orchestrator for remaining
+AI client integrations and target ordering. Bash still builds the
 Gemini candidate from the catalog. Codex agent profile install/check/uninstall
 and profile generation during Go-hosted Sync now run in Go; Node remains as a
 fallback for direct legacy-shell entrypoints.
@@ -76,6 +77,14 @@ fallback for direct legacy-shell entrypoints.
   command files, preserves unowned or edited files, adopts only exact legacy
   output during migration, and records schema-2 ownership. Direct shell
   entrypoints retain the generated-file fallback.
+- [x] Claude/Gemini/Codex global instruction pointers: Go preserves surrounding
+  user content, refuses edited or unowned noncanonical blocks, adopts exact
+  legacy blocks during migration, records schema-2 ownership, and leaves
+  unchanged pointers untouched.
+- [x] Git advisory hook setup: Go sets only a missing local `core.hooksPath`,
+  records compatible ownership, preserves custom and unowned settings, adopts
+  only the exact tracked legacy hook, and rolls back Git config if ownership
+  recording fails. Direct shell hook commands remain available.
 - [ ] Remaining AI integrations and Sync orchestration.
 
 ## Remaining priorities, after Priority 1 parity

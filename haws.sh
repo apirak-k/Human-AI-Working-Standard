@@ -6006,6 +6006,12 @@ second_brain_detail_page() {
 
 run_hooks() {
     local action="${1:-install}"
+    if [ "${HAWS_NATIVE_HOOKS:-0}" = 1 ] && [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+        local -a native_hook_args=("${action}")
+        [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" != 1 ] || native_hook_args+=(--adopt-legacy)
+        "${HAWS_GO_HOST_BINARY}" --haws-sync-hooks "${native_hook_args[@]}"
+        return $?
+    fi
     case "${action}" in
         install)
             echo "=== Installing HAWS Git Hooks ==="

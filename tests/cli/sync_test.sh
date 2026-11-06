@@ -42,7 +42,7 @@ cleanup_fixture() {
         HAWS_SYNC_PRESENTATION SYNC_SUMMARY_UPDATED \
         HAWS_PACKAGE_DIR \
         HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
-        HAWS_NATIVE_AGENT_FILES HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_COMMANDS HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_AGENTS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_GEMINI_SKILLS HAWS_NATIVE_GLOBAL_POINTERS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
+        HAWS_NATIVE_AGENT_FILES HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_COMMANDS HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_AGENTS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_GEMINI_SKILLS HAWS_NATIVE_GLOBAL_POINTERS HAWS_NATIVE_HOOKS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
         HAWS_SYNC_CANDIDATE_REF HAWS_NATIVE_HELPER_LOG \
         GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
@@ -1159,6 +1159,30 @@ EOF
     grep -Fx 'Global Rules  : 1' "${OUTPUT_FILE}" >/dev/null || return 1
 }
 
+test_go_host_runs_native_git_hooks_inside_sync() {
+    local helper="${FIXTURE_ROOT}/native-go-host"
+    local helper_log="${FIXTURE_ROOT}/native-go-host.log"
+    mkdir -p "${FIXTURE_REPO}/.githooks" || return 1
+    printf '#!/bin/sh\nexit 0\n' > "${FIXTURE_REPO}/.githooks/commit-msg" || return 1
+    cat > "${helper}" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
+exit 0
+EOF
+    chmod +x "${helper}"
+    write_settings off
+    source_haws || return 1
+    export HAWS_NATIVE_HOOKS=1
+    export HAWS_GO_HOST_BINARY="${helper}"
+    export HAWS_NATIVE_HELPER_LOG="${helper_log}"
+    run_sync >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -Fx -- '--haws-sync-hooks install' "${helper_log}" >/dev/null || return 1
+    grep -F '[PASS] Git advisory hooks configured' "${OUTPUT_FILE}" >/dev/null || return 1
+}
+
 test_go_host_runs_native_claude_skill_linker_inside_sync() {
     local helper="${FIXTURE_ROOT}/native-go-host"
     local helper_log="${FIXTURE_ROOT}/native-go-host.log"
@@ -2088,6 +2112,7 @@ else
     run_test test_go_host_runs_native_agent_file_projection_inside_sync
     run_test test_go_host_runs_native_claude_command_projection_inside_sync
     run_test test_go_host_runs_native_global_pointer_projection_inside_sync
+    run_test test_go_host_runs_native_git_hooks_inside_sync
     run_test test_native_codex_skill_linker_status_two_uses_legacy_fallback
     run_test test_second_brain_push_failure_is_reported
     run_test test_candidate_accepts_moved_and_removed_skill_entrypoints
