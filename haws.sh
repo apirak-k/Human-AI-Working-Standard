@@ -4175,6 +4175,33 @@ _run_sync_impl() {
         fi
     else
         local rec
+        local native_codex_skills=0 native_codex_result native_codex_status
+        local codex_already_linked_count=0 codex_preserved_count=0
+        if [ "$DETECTED_CODEX" = true ] &&
+            [ "${HAWS_NATIVE_CODEX_SKILLS:-0}" = 1 ] &&
+            [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+            if native_codex_result="$("${HAWS_GO_HOST_BINARY}" --haws-sync-codex-skills 2>&1)"; then
+                IFS=$'\t' read -r codex_linked_count codex_already_linked_count \
+                    codex_plugin_count codex_preserved_count <<< "${native_codex_result}"
+                if [[ ! "${codex_linked_count}" =~ ^[0-9]+$ ]] ||
+                    [[ ! "${codex_already_linked_count}" =~ ^[0-9]+$ ]] ||
+                    [[ ! "${codex_plugin_count}" =~ ^[0-9]+$ ]] ||
+                    [[ ! "${codex_preserved_count}" =~ ^[0-9]+$ ]]; then
+                    echo "  [FAIL] Native Codex skill linker returned an invalid result: ${native_codex_result}" >&2
+                    return 1
+                fi
+                native_codex_skills=1
+                SKILLS_LINKED=$((SKILLS_LINKED + codex_linked_count))
+                SKIPPED_COUNT=$((SKIPPED_COUNT + codex_already_linked_count))
+                echo "  [NATIVE] Codex skill links reconciled (linked: ${codex_linked_count}; plugin-owned: ${codex_plugin_count}; preserved: ${codex_preserved_count})."
+            else
+                native_codex_status=$?
+                if [ "${native_codex_status}" -ne 2 ]; then
+                    echo "  [FAIL] Native Codex skill linking failed: ${native_codex_result}" >&2
+                    return 1
+                fi
+            fi
+        fi
         for rec in "${active_skill_records[@]}"; do
             IFS=$'\t' read -r source_path entrypoint target_name skill_display <<< "${rec}"
             _haws_sync_runtime_source_dir "${source_path}" || continue
@@ -4192,7 +4219,7 @@ _run_sync_impl() {
                     SKILLS_LINKED=$((SKILLS_LINKED + 1))
                 fi
             fi
-            if [ "$DETECTED_CODEX" = true ]; then
+            if [ "$DETECTED_CODEX" = true ] && [ "${native_codex_skills}" -eq 0 ]; then
                 local plugin_dir=""
                 if [[ "${skill_display}" == ponytail* ]]; then
                     plugin_dir="$(_codex_plugin_skill_dir "${skill_display}" 2>/dev/null || true)"

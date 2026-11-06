@@ -106,6 +106,32 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
+	if len(args) == 1 && args[0] == "--haws-sync-codex-skills" {
+		root := nativeSyncRoot()
+		if root == "" {
+			fmt.Fprintln(stderr, "native Codex skill linking needs its HAWS root")
+			return 1
+		}
+		home := os.Getenv("HOME")
+		if home == "" {
+			var err error
+			home, err = os.UserHomeDir()
+			if err != nil {
+				fmt.Fprintln(stderr, "resolve Codex home directory:", err)
+				return 1
+			}
+		}
+		result, err := settings.SyncCodexSkillLinks(context.Background(), settings.NewStore(root), home)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\n", result.Linked, result.AlreadyLinked, result.PluginOwned, result.Preserved); err != nil {
+			fmt.Fprintln(stderr, "write native Codex skill result:", err)
+			return 1
+		}
+		return 0
+	}
 	if len(args) > 0 && args[0] == "migrate" {
 		packageRoot, err := findPackageRootForRun()
 		if err != nil {
