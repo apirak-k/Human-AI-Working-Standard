@@ -5,9 +5,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func fixtureGitRemote(path string) string {
+	path = filepath.ToSlash(path)
+	if runtime.GOOS == "windows" {
+		return "file:///" + path
+	}
+	return "file://" + path
+}
 
 func registeredSourceFixture(t *testing.T, withSkill bool) (Store, string, string, string) {
 	t.Helper()
@@ -50,11 +59,12 @@ func trackedGitlinkSourceFixture(t *testing.T) (Store, string, string, string, s
 	fixtureGit(t, seed, "add", ".")
 	fixtureGit(t, seed, "commit", "-m", "source baseline")
 	revision := fixtureGit(t, seed, "rev-parse", "HEAD")
-	remote := filepath.Join(fixtureDir(t), "demo.git")
-	fixtureGit(t, filepath.Dir(remote), "init", "--bare", remote)
+	remoteDir := filepath.Join(fixtureDir(t), "demo.git")
+	remote := fixtureGitRemote(remoteDir)
+	fixtureGit(t, filepath.Dir(remoteDir), "init", "--bare", remoteDir)
 	fixtureGit(t, seed, "remote", "add", "origin", remote)
 	fixtureGit(t, seed, "push", "-u", "origin", "main")
-	fixtureGit(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+	fixtureGit(t, remoteDir, "symbolic-ref", "HEAD", "refs/heads/main")
 
 	fixtureFile(t, filepath.Join(root, ".gitmodules"), "[submodule \"demo\"]\n\tpath = "+sourcePath+"\n\turl = "+remote+"\n")
 	t.Setenv("GIT_CONFIG_COUNT", "1")
@@ -101,11 +111,12 @@ func TestPreparePackagedGitlinkUsesPinnedRevisionAndPreservesUnownedCheckout(t *
 	fixtureGit(t, seed, "add", ".")
 	fixtureGit(t, seed, "commit", "-m", "pinned source")
 	pinned := fixtureGit(t, seed, "rev-parse", "HEAD")
-	remote := filepath.Join(fixtureDir(t), "demo.git")
-	fixtureGit(t, filepath.Dir(remote), "init", "--bare", remote)
+	remoteDir := filepath.Join(fixtureDir(t), "demo.git")
+	remote := fixtureGitRemote(remoteDir)
+	fixtureGit(t, filepath.Dir(remoteDir), "init", "--bare", remoteDir)
 	fixtureGit(t, seed, "remote", "add", "origin", remote)
 	fixtureGit(t, seed, "push", "-u", "origin", "main")
-	fixtureGit(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+	fixtureGit(t, remoteDir, "symbolic-ref", "HEAD", "refs/heads/main")
 
 	fixtureFile(t, filepath.Join(root, ".gitmodules"), "[submodule \"demo\"]\n\tpath = "+sourcePath+"\n\turl = "+remote+"\n")
 	fixtureFile(t, filepath.Join(root, "source-revisions.tsv"), sourcePath+"\t"+pinned+"\n")
