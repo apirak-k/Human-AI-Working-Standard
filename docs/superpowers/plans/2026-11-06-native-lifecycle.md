@@ -68,8 +68,11 @@ fallback for direct legacy-shell entrypoints.
   conflicts, preserves exact unowned profiles, updates only hash-owned output,
   supports dry-run/check/uninstall, and rolls back partial writes. Go-hosted
   Sync records the generated files in the existing ownership ledger.
-- [ ] Remaining Claude/Gemini agent projections, AI integrations, and Sync
-  orchestration.
+- [x] Claude/Gemini agent projections: Go preserves unowned and edited files,
+  verifies existing ownership, supports exact legacy adoption during migration,
+  and writes schema-2 ownership rows. Direct shell entrypoints keep their
+  existing fallback.
+- [ ] Remaining AI integrations and Sync orchestration.
 
 ## Remaining priorities, after Priority 1 parity
 

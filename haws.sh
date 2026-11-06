@@ -4475,6 +4475,34 @@ _run_sync_impl() {
 		fi
         AGENTS_LINKED=$((AGENTS_LINKED + 5))
     fi
+    local native_agent_files=false
+    if { [ "$DETECTED_CLAUDE" = true ] || [ "$DETECTED_GEMINI" = true ]; } &&
+        [ "${HAWS_NATIVE_AGENT_FILES:-0}" = 1 ] && [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+        local -a native_agent_args=(--source "${SOURCE_DIR}" --home "${HOME}" --state-dir "$(_haws_state_dir)")
+        [ "$DETECTED_CLAUDE" != true ] || native_agent_args+=(--claude)
+        [ "$DETECTED_GEMINI" != true ] || native_agent_args+=(--gemini)
+        if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ]; then
+            native_agent_args+=(--adopt-legacy --legacy-manifest "${PREV_MANIFEST}")
+        fi
+        local native_agent_result native_agent_targets native_agent_linked
+        local native_agent_hardlinked native_agent_copied native_agent_already
+        local native_agent_preserved native_agent_adopted native_agent_field
+        native_agent_result="$("${HAWS_GO_HOST_BINARY}" --haws-sync-agent-files "${native_agent_args[@]}")" || return 1
+        IFS=$'\t' read -r native_agent_targets native_agent_linked native_agent_hardlinked \
+            native_agent_copied native_agent_already native_agent_preserved native_agent_adopted \
+            <<< "${native_agent_result}"
+        for native_agent_field in "${native_agent_targets}" "${native_agent_linked}" \
+            "${native_agent_hardlinked}" "${native_agent_copied}" "${native_agent_already}" \
+            "${native_agent_preserved}" "${native_agent_adopted}"; do
+            [[ "${native_agent_field}" =~ ^[0-9]+$ ]] || {
+                echo "  [FAIL] Native agent file reconciler returned an invalid result." >&2
+                return 1
+            }
+        done
+        AGENTS_LINKED=$((AGENTS_LINKED + native_agent_targets))
+        echo "  [NATIVE] Claude/Gemini agent files reconciled (linked: ${native_agent_linked}; hardlinked: ${native_agent_hardlinked}; copied: ${native_agent_copied}; already linked: ${native_agent_already}; preserved: ${native_agent_preserved}; adopted: ${native_agent_adopted})."
+        native_agent_files=true
+    fi
     if [ -d "${SOURCE_DIR}/agents" ]; then
         for agent_file in "${SOURCE_DIR}/agents"/*.md; do
             if [ -f "${agent_file}" ]; then
@@ -4482,15 +4510,17 @@ _run_sync_impl() {
                 agent_name="$(basename "${agent_file}" .md)"
                 printf 'agent:%s\n' "${agent_name}" >> "${TMP_MANIFEST}" || return 1
 
-                if [ "$DETECTED_CLAUDE" = true ]; then
-                    safe_link_file "${agent_file}" "${HOME}/.claude/agents/${agent_name}.md" "Claude Agent [${agent_name}]" || return 1
-                    AGENTS_LINKED=$((AGENTS_LINKED + 1))
-                fi
-                if [ "$DETECTED_GEMINI" = true ]; then
-                    local gemini_agent_dir="${HOME}/.gemini/config/agents/${agent_name}"
-                    mkdir -p "${gemini_agent_dir}" || return 1
-                    safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]" || return 1
-                    AGENTS_LINKED=$((AGENTS_LINKED + 1))
+                if [ "${native_agent_files}" != true ]; then
+                    if [ "$DETECTED_CLAUDE" = true ]; then
+                        safe_link_file "${agent_file}" "${HOME}/.claude/agents/${agent_name}.md" "Claude Agent [${agent_name}]" || return 1
+                        AGENTS_LINKED=$((AGENTS_LINKED + 1))
+                    fi
+                    if [ "$DETECTED_GEMINI" = true ]; then
+                        local gemini_agent_dir="${HOME}/.gemini/config/agents/${agent_name}"
+                        mkdir -p "${gemini_agent_dir}" || return 1
+                        safe_link_file "${agent_file}" "${gemini_agent_dir}/agent.md" "Antigravity Agent [${agent_name}]" || return 1
+                        AGENTS_LINKED=$((AGENTS_LINKED + 1))
+                    fi
                 fi
             fi
         done

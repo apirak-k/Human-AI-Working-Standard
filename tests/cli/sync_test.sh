@@ -42,7 +42,7 @@ cleanup_fixture() {
         HAWS_SYNC_PRESENTATION SYNC_SUMMARY_UPDATED \
         HAWS_PACKAGE_DIR \
         HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
-        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_AGENTS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_GEMINI_SKILLS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
+        HAWS_NATIVE_AGENT_FILES HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_AGENTS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_GEMINI_SKILLS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
         HAWS_SYNC_CANDIDATE_REF HAWS_NATIVE_HELPER_LOG \
         GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
@@ -1051,6 +1051,58 @@ EOF
     [ -f "${FIXTURE_HOME}/.codex/agents/tester.toml" ]
 }
 
+test_go_host_runs_native_agent_file_projection_inside_sync() {
+    local helper="${FIXTURE_ROOT}/native-go-host"
+    local helper_log="${FIXTURE_ROOT}/native-go-host.log"
+    mkdir -p "${FIXTURE_HOME}/.claude" "${FIXTURE_REPO}/agents" || return 1
+    cp "${PROJECT_ROOT}/agents/backend-engineer.md" \
+        "${FIXTURE_REPO}/agents/backend-engineer.md" || return 1
+    cp -R "${PROJECT_ROOT}/ai-configs" "${FIXTURE_REPO}/ai-configs" || return 1
+    cat > "${helper}" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
+[ "$1" = "--haws-sync-agent-files" ] || exit 2
+shift
+adopt=0
+legacy_manifest=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --adopt-legacy) adopt=1; shift ;;
+        --legacy-manifest)
+            shift
+            [ "${1:-}" = "$HOME/.haws_manifest.prev" ] || exit 3
+            legacy_manifest=1
+            shift
+            ;;
+        *) shift ;;
+    esac
+done
+[ "$adopt" = 1 ] && [ "$legacy_manifest" = 1 ] || exit 4
+printf '1\t1\t0\t0\t0\t0\t0\n'
+EOF
+    chmod +x "${helper}"
+    write_settings off
+    printf 'installed\n' > "${FIXTURE_REPO}/.haws/state/install.complete"
+    printf 'agent:backend-engineer\n' > "${FIXTURE_HOME}/.haws_manifest"
+    source_haws || return 1
+    export HAWS_NATIVE_AGENT_FILES=1
+    export HAWS_GO_HOST_BINARY="${helper}"
+    export HAWS_NATIVE_HELPER_LOG="${helper_log}"
+    run_sync >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -F -- '--haws-sync-agent-files --source ' "${helper_log}" >/dev/null || return 1
+    grep -F -- '--claude' "${helper_log}" >/dev/null || return 1
+    grep -F -- '--adopt-legacy --legacy-manifest ' "${helper_log}" >/dev/null || return 1
+    grep -F "${FIXTURE_HOME}/.haws_manifest.prev" "${helper_log}" >/dev/null || return 1
+    grep -F '[NATIVE] Claude/Gemini agent files reconciled (linked: 1; hardlinked: 0; copied: 0; already linked: 0; preserved: 0; adopted: 0).' \
+        "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -F 'Agents Linked : 1' "${OUTPUT_FILE}" >/dev/null || return 1
+    grep -Fx 'agent:backend-engineer' "${FIXTURE_HOME}/.haws_manifest" >/dev/null || return 1
+    [ ! -e "${FIXTURE_HOME}/.claude/agents/backend-engineer.md" ]
+}
+
 test_go_host_runs_native_claude_skill_linker_inside_sync() {
     local helper="${FIXTURE_ROOT}/native-go-host"
     local helper_log="${FIXTURE_ROOT}/native-go-host.log"
@@ -1977,6 +2029,7 @@ else
     run_test test_go_host_runs_native_gemini_skills_config_inside_sync
     run_test test_go_host_runs_native_codex_skill_linker_inside_sync
     run_test test_go_host_runs_native_codex_agents_inside_sync
+    run_test test_go_host_runs_native_agent_file_projection_inside_sync
     run_test test_native_codex_skill_linker_status_two_uses_legacy_fallback
     run_test test_second_brain_push_failure_is_reported
     run_test test_candidate_accepts_moved_and_removed_skill_entrypoints

@@ -444,6 +444,43 @@ func TestRunExecutesNativeCodexAgentLifecycle(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeAgentFileProjection(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, ".haws", "state")
+	home := filepath.Join(t.TempDir(), "agent home")
+	if err := os.MkdirAll(filepath.Join(root, "agents"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "agents", "backend-engineer.md"), []byte("Canonical agent.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	t.Setenv("HOME", home)
+	var stdout, stderr bytes.Buffer
+	args := []string{"--haws-sync-agent-files", "--source", root, "--home", home, "--state-dir", stateDir, "--claude", "--gemini"}
+	if code := run(args, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native agent file projection exit = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	fields := strings.Split(strings.TrimSpace(stdout.String()), "\t")
+	if len(fields) != 7 || fields[0] != "2" {
+		t.Fatalf("native agent file result = %q; want seven fields and two targets", stdout.String())
+	}
+	for _, destination := range []string{
+		filepath.Join(home, ".claude", "agents", "backend-engineer.md"),
+		filepath.Join(home, ".gemini", "config", "agents", "backend-engineer", "agent.md"),
+	} {
+		contents, err := os.ReadFile(destination)
+		if err != nil || string(contents) != "Canonical agent.\n" {
+			t.Fatalf("native projection %s = %q, %v", destination, contents, err)
+		}
+	}
+}
+
 func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".haws", "state")

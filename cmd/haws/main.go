@@ -114,6 +114,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return runNativeCodexAgents(root, args[1:], stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "--haws-sync-agent-files" {
+		return runNativeAgentFiles(args[1:], stdout, stderr)
+	}
 	if len(args) == 1 && args[0] == "--haws-sync-codex-skills" {
 		return runNativeSkillLinker("codex", stdout, stderr)
 	}
@@ -294,6 +297,101 @@ func runNativeSkillLinker(environment string, stdout, stderr io.Writer) int {
 	}
 	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\n", result.Linked, result.AlreadyLinked, result.PluginOwned, result.Preserved, result.Pruned); err != nil {
 		fmt.Fprintf(stderr, "write native %s skill result: %v\n", environment, err)
+		return 1
+	}
+	return 0
+}
+
+func runNativeAgentFiles(args []string, stdout, stderr io.Writer) int {
+	root := nativeSyncRoot()
+	if root == "" {
+		fmt.Fprintln(stderr, "native agent file linking needs its HAWS root")
+		return 1
+	}
+	sourceRoot := root
+	home := os.Getenv("HOME")
+	stateDir := os.Getenv("HAWS_STATE_DIR")
+	if stateDir == "" {
+		stateDir = filepath.Join(root, ".haws", "state")
+	}
+	var environments []string
+	legacyManifest := ""
+	adoptLegacy := false
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		name, value, hasValue := strings.Cut(argument, "=")
+		switch name {
+		case "--source", "--home", "--state-dir", "--legacy-manifest":
+			if !hasValue {
+				index++
+				if index >= len(args) || strings.HasPrefix(args[index], "--") {
+					fmt.Fprintf(stderr, "HAWS agent files: %s requires a path\n", name)
+					return 1
+				}
+				value = args[index]
+			}
+			if value == "" {
+				fmt.Fprintf(stderr, "HAWS agent files: %s requires a path\n", name)
+				return 1
+			}
+			switch name {
+			case "--source":
+				sourceRoot = value
+			case "--home":
+				home = value
+			case "--state-dir":
+				stateDir = value
+			case "--legacy-manifest":
+				legacyManifest = value
+			}
+		case "--claude":
+			if hasValue {
+				fmt.Fprintln(stderr, "HAWS agent files: --claude does not take a value")
+				return 1
+			}
+			environments = append(environments, "claude")
+		case "--gemini":
+			if hasValue {
+				fmt.Fprintln(stderr, "HAWS agent files: --gemini does not take a value")
+				return 1
+			}
+			environments = append(environments, "gemini")
+		case "--adopt-legacy":
+			if hasValue {
+				fmt.Fprintln(stderr, "HAWS agent files: --adopt-legacy does not take a value")
+				return 1
+			}
+			adoptLegacy = true
+		default:
+			fmt.Fprintln(stderr, "usage: --haws-sync-agent-files --source PATH --home PATH --state-dir PATH (--claude|--gemini)... [--adopt-legacy --legacy-manifest PATH]")
+			return 1
+		}
+	}
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintln(stderr, "resolve user home directory:", err)
+			return 1
+		}
+	}
+	if adoptLegacy && legacyManifest == "" {
+		fmt.Fprintln(stderr, "HAWS agent files: --adopt-legacy requires --legacy-manifest")
+		return 1
+	}
+	result, err := settings.SyncAgentFiles(context.Background(), sourceRoot, home, stateDir, environments, legacyManifest, adoptLegacy)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	for _, message := range result.Messages {
+		if _, err := fmt.Fprintln(stderr, "  "+message); err != nil {
+			fmt.Fprintln(stderr, "write native agent file message:", err)
+			return 1
+		}
+	}
+	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\t%d\t%d\n", result.Targets, result.Linked, result.Hardlinked, result.Copied, result.Already, result.Preserved, result.Adopted); err != nil {
+		fmt.Fprintln(stderr, "write native agent file result:", err)
 		return 1
 	}
 	return 0
