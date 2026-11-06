@@ -4370,7 +4370,7 @@ _run_sync_impl() {
             if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ] &&
                 [ -z "${previous_gemini_record}" ] && [ ! -f "${gemini_manifest}" ] &&
                 [ -f "${PREV_MANIFEST}" ] && [ -f "${target_json}" ]; then
-                node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
+                _haws_gemini_skills_json \
                     adopt "${target_json}" "${gemini_manifest}" "${candidate_json}" \
                     "${PREV_MANIFEST}" "${candidate_legacy_map}" || {
                     rm -f -- "${candidate_json}" "${candidate_legacy_map}"
@@ -4379,8 +4379,7 @@ _run_sync_impl() {
             fi
             local -a gemini_apply_args=(apply "${target_json}" "${gemini_manifest}" "${candidate_json}")
             [ "${replace_owned_gemini}" -eq 0 ] || gemini_apply_args+=(--replace-owned)
-            node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
-                "${gemini_apply_args[@]}" || {
+            _haws_gemini_skills_json "${gemini_apply_args[@]}" || {
                 rm -f -- "${candidate_json}" "${candidate_legacy_map}"
                 return 1
             }
@@ -6015,6 +6014,19 @@ canonical_path() {
     esac
 }
 
+_haws_gemini_skills_json() {
+    if [ "${HAWS_NATIVE_GEMINI_SKILLS:-0}" = 1 ] && [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+        local status
+        if "${HAWS_GO_HOST_BINARY}" --haws-gemini-skills-json "$@"; then
+            return 0
+        else
+            status=$?
+            [ "${status}" -eq 2 ] || return "${status}"
+        fi
+    fi
+    node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" "$@"
+}
+
 _ownership_path_safe() {
     local raw_path="$1"
     local path
@@ -6101,8 +6113,7 @@ ownership_verify() {
                 [ -f "$manifest_path" ] && [ ! -L "$manifest_path" ] || return 1
             manifest_hash="$(_haws_sha256 "$manifest_path")"
             [ -n "$manifest_hash" ] && [ "$manifest_hash" = "$fingerprint" ] || return 1
-            node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
-                verify "$actual" "$manifest_path" >/dev/null 2>&1
+            _haws_gemini_skills_json verify "$actual" "$manifest_path" >/dev/null 2>&1
             ;;
         pointer-block)
             local pointer_hash
@@ -6297,8 +6308,7 @@ _uninstall_remove_path() {
         gemini-skills-json)
             local manifest_path
             manifest_path="$(_uninstall_native_path "$source")"
-            node --preserve-symlinks-main "${SCRIPT_DIR}/ai-configs/gemini/skills-json.mjs" \
-                uninstall "$path" "$manifest_path"
+            _haws_gemini_skills_json uninstall "$path" "$manifest_path"
             return $?
             ;;
         git-config)

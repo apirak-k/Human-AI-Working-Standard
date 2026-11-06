@@ -348,6 +348,43 @@ func TestRunExecutesNativeClaudeSkillLinker(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeGeminiSkillsJSONLifecycle(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "skills.json")
+	manifest := filepath.Join(root, "state", "gemini-skills-ownership.json")
+	candidate := filepath.Join(root, "candidate.json")
+	if err := os.MkdirAll(filepath.Dir(manifest), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte("{\n  \"entries\": [{\"path\": \"/user\"}]\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(candidate, []byte("{\"entries\":[{\"path\":\"/haws/skill\"}]}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	invoke := func(args ...string) (string, string, int) {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		code := run(append([]string{"--haws-gemini-skills-json"}, args...), strings.NewReader(""), &stdout, &stderr)
+		return stdout.String(), stderr.String(), code
+	}
+	stdout, stderr, code := invoke("apply", config, manifest, candidate)
+	if code != 0 || stderr != "" || stdout != "OK: merged 1 new HAWS Antigravity skill entries; preserved 1 existing entries.\n" {
+		t.Fatalf("native apply = (%q, %q, %d)", stdout, stderr, code)
+	}
+	if stdout, stderr, code = invoke("verify", config, manifest); code != 0 || stderr != "" || !strings.Contains(stdout, "readable") {
+		t.Fatalf("native verify = (%q, %q, %d)", stdout, stderr, code)
+	}
+	stdout, stderr, code = invoke("uninstall", config, manifest)
+	if code != 0 || stderr != "" || stdout != "OK: removed 1 HAWS Antigravity skill entries; preserved 1 other entries.\n" {
+		t.Fatalf("native uninstall = (%q, %q, %d)", stdout, stderr, code)
+	}
+	configBytes, err := os.ReadFile(config)
+	if err != nil || !strings.Contains(string(configBytes), `"/user"`) || strings.Contains(string(configBytes), `"/haws/skill"`) {
+		t.Fatalf("uninstall config = %q, %v", configBytes, err)
+	}
+}
+
 func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".haws", "state")

@@ -112,6 +112,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "--haws-sync-claude-skills" {
 		return runNativeSkillLinker("claude", stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "--haws-gemini-skills-json" {
+		return runNativeGeminiSkillsJSON(args[1:], stdout, stderr)
+	}
 	if len(args) > 0 && args[0] == "migrate" {
 		packageRoot, err := findPackageRootForRun()
 		if err != nil {
@@ -198,6 +201,78 @@ func runNativeSkillLinker(environment string, stdout, stderr io.Writer) int {
 	}
 	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\n", result.Linked, result.AlreadyLinked, result.PluginOwned, result.Preserved, result.Pruned); err != nil {
 		fmt.Fprintf(stderr, "write native %s skill result: %v\n", environment, err)
+		return 1
+	}
+	return 0
+}
+
+func runNativeGeminiSkillsJSON(args []string, stdout, stderr io.Writer) int {
+	usage := "usage: --haws-gemini-skills-json apply <file> <manifest> <candidate> [--replace-owned] | adopt <file> <manifest> <candidate> <legacy-manifest> <legacy-skill-map> | verify <file> <manifest> | uninstall <file> <manifest>"
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, usage)
+		return 1
+	}
+	command := args[0]
+	var result settings.GeminiSkillConfigResult
+	var message string
+	var err error
+	switch command {
+	case "apply":
+		if len(args) != 4 && len(args) != 5 || len(args) == 5 && args[4] != "--replace-owned" {
+			fmt.Fprintln(stderr, usage)
+			return 1
+		}
+		result, err = settings.ApplyGeminiSkillConfig(args[1], args[2], args[3], len(args) == 5)
+		if err == nil {
+			if result.Pruned > 0 {
+				message = fmt.Sprintf("OK: pruned %d missing HAWS skill source entries.\n", result.Pruned)
+			}
+			message += fmt.Sprintf("OK: merged %d new HAWS Antigravity skill entries; preserved %d existing entries.\n", result.Added, result.Preserved)
+		}
+	case "adopt":
+		if len(args) != 6 {
+			fmt.Fprintln(stderr, usage)
+			return 1
+		}
+		var adoption settings.GeminiSkillAdoptionResult
+		adoption, err = settings.AdoptGeminiSkillOwnership(args[1], args[2], args[3], args[4], args[5])
+		if err == nil {
+			if adoption.Adopted > 0 {
+				message = fmt.Sprintf("OK: adopted %d exact legacy HAWS skill entries; left skills config unchanged.\n", adoption.Adopted)
+			} else if adoption.LegacyRecords == 0 {
+				message = "OK: no legacy skill records to adopt.\n"
+			} else {
+				message = "OK: no exact legacy HAWS skill entries to adopt.\n"
+			}
+		}
+	case "verify":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, usage)
+			return 1
+		}
+		err = settings.VerifyGeminiSkillConfig(args[1], args[2])
+		if err == nil {
+			message = "OK: Antigravity skills config and ownership record are readable.\n"
+		}
+	case "uninstall":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, usage)
+			return 1
+		}
+		result, err = settings.UninstallGeminiSkillConfig(args[1], args[2])
+		if err == nil {
+			message = fmt.Sprintf("OK: removed %d HAWS Antigravity skill entries; preserved %d other entries.\n", result.Removed, result.Preserved)
+		}
+	default:
+		fmt.Fprintln(stderr, usage)
+		return 1
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "HAWS Antigravity skills: %v\n", err)
+		return 1
+	}
+	if _, err := io.WriteString(stdout, message); err != nil {
+		fmt.Fprintf(stderr, "write native Antigravity skill result: %v\n", err)
 		return 1
 	}
 	return 0

@@ -42,7 +42,7 @@ cleanup_fixture() {
         HAWS_SYNC_PRESENTATION SYNC_SUMMARY_UPDATED \
         HAWS_PACKAGE_DIR \
         HAWS_TEST_ALLOW_LOCAL_SOURCES HAWS_CATALOG_SOURCES_CACHE HAWS_CATALOG_SKILLS_CACHE \
-        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
+        HAWS_NATIVE_BRAIN_SYNC HAWS_NATIVE_CLAUDE_SKILLS HAWS_NATIVE_CODEX_SKILLS HAWS_NATIVE_GEMINI_SKILLS HAWS_NATIVE_ROOT_SYNC HAWS_NATIVE_SOURCE_SYNC HAWS_GO_HOST_BINARY HAWS_SYNC_ROOT \
         HAWS_SYNC_CANDIDATE_REF HAWS_NATIVE_HELPER_LOG \
         GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
     FIXTURE_ROOT=""
@@ -1042,6 +1042,43 @@ EOF
         [ ! -L "${FIXTURE_HOME}/.claude/skills/native-skill" ]
 }
 
+test_go_host_runs_native_gemini_skills_config_inside_sync() {
+    local helper="${FIXTURE_ROOT}/native-go-host"
+    local helper_log="${FIXTURE_ROOT}/native-go-host.log"
+    local config="${FIXTURE_HOME}/.gemini/config/skills.json"
+    mkdir -p "${FIXTURE_REPO}/skills/custom/native-skill" "${FIXTURE_HOME}/.gemini/config"
+    printf '%s\n' '---' 'name: native-skill' 'description: Native Gemini fixture.' '---' \
+        > "${FIXTURE_REPO}/skills/custom/native-skill/SKILL.md"
+    cp -R "${PROJECT_ROOT}/ai-configs" "${FIXTURE_REPO}/ai-configs" || return 1
+    cp -R "${PROJECT_ROOT}/agents" "${FIXTURE_REPO}/agents" || return 1
+    cat > "${helper}" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HAWS_NATIVE_HELPER_LOG"
+case "$2" in
+    verify) printf '%s\n' 'OK: Antigravity skills config and ownership record are readable.' ;;
+    apply)
+        cp "$5" "$3" || exit 1
+        printf '%s\n' '{"version":1,"paths":[]}' > "$4" || exit 1
+        printf '%s\n' 'OK: merged 1 new HAWS Antigravity skill entries; preserved 0 existing entries.'
+        ;;
+    *) exit 2 ;;
+esac
+EOF
+    chmod +x "${helper}"
+    write_settings off
+    source_haws || return 1
+    export HAWS_NATIVE_GEMINI_SKILLS=1
+    export HAWS_GO_HOST_BINARY="${helper}"
+    export HAWS_NATIVE_HELPER_LOG="${helper_log}"
+    run_sync >"${OUTPUT_FILE}" 2>&1 || {
+        cat "${OUTPUT_FILE}" >&2
+        return 1
+    }
+    grep -F -- '--haws-gemini-skills-json apply ' "${helper_log}" >/dev/null || return 1
+    grep -F 'native-skill' "${config}" >/dev/null || return 1
+    grep -F 'Antigravity Native Config (Dynamic)' "${OUTPUT_FILE}" >/dev/null || return 1
+}
+
 test_native_codex_skill_linker_status_two_uses_legacy_fallback() {
     local helper="${FIXTURE_ROOT}/native-go-host"
     local helper_log="${FIXTURE_ROOT}/native-go-host.log"
@@ -1896,6 +1933,7 @@ else
     run_test test_go_host_runs_native_registered_source_target_inside_existing_sync_presentation
     run_test test_native_source_preparation_falls_back_for_legacy_device_materialization
     run_test test_go_host_runs_native_claude_skill_linker_inside_sync
+    run_test test_go_host_runs_native_gemini_skills_config_inside_sync
     run_test test_go_host_runs_native_codex_skill_linker_inside_sync
     run_test test_native_codex_skill_linker_status_two_uses_legacy_fallback
     run_test test_second_brain_push_failure_is_reported
