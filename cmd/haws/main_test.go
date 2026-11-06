@@ -481,6 +481,39 @@ func TestRunExecutesNativeAgentFileProjection(t *testing.T) {
 	}
 }
 
+func TestRunExecutesNativeClaudeCommandProjection(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, ".haws", "state")
+	home := filepath.Join(t.TempDir(), "Claude home with spaces")
+	skillDir := filepath.Join(root, "skills", "custom", "demo")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: demo\ndescription: Run demo.\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HAWS_SYNC_ROOT", root)
+	t.Setenv("HAWS_ROOT", root)
+	t.Setenv("HAWS_STATE_DIR", stateDir)
+	t.Setenv("HOME", home)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--haws-sync-claude-commands"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("native Claude command projection exit = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "1\t1\t0\t0"; got != want {
+		t.Fatalf("native Claude command result = %q; want %q", got, want)
+	}
+	target := filepath.Join(home, ".claude", "commands", "demo.md")
+	contents, err := os.ReadFile(target)
+	want := "---\ndescription: Run demo.\n---\nExecute the demo skill workflow defined in ~/.claude/skills/demo/SKILL.md.\n"
+	if err != nil || string(contents) != want {
+		t.Fatalf("generated Claude command = %q, %v; want %q", contents, err, want)
+	}
+}
+
 func TestRunSkipsNativeHawsRootSyncWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".haws", "state")

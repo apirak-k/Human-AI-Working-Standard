@@ -4530,7 +4530,31 @@ _run_sync_impl() {
     # Link Custom Commands
     echo "  [*] Preparing custom skill commands"
     local COMMANDS_LINKED=0
-    if [ "$DETECTED_CLAUDE" = true ] && [ -d "${SOURCE_DIR}/skills/custom" ]; then
+    local native_claude_commands=false
+    if [ "$DETECTED_CLAUDE" = true ] && [ -d "${SOURCE_DIR}/skills/custom" ] &&
+        [ "${HAWS_NATIVE_CLAUDE_COMMANDS:-0}" = 1 ] && [ -n "${HAWS_GO_HOST_BINARY:-}" ]; then
+        local -a native_command_args=()
+        if [ "${HAWS_LEGACY_INTEGRATION_MIGRATION:-0}" = 1 ]; then
+            native_command_args+=(--adopt-legacy --legacy-manifest "${PREV_MANIFEST}")
+        fi
+        local native_command_result native_command_targets native_command_generated
+        local native_command_preserved native_command_adopted native_command_field
+        native_command_result="$("${HAWS_GO_HOST_BINARY}" --haws-sync-claude-commands "${native_command_args[@]}")" || return 1
+        IFS=$'\t' read -r native_command_targets native_command_generated \
+            native_command_preserved native_command_adopted <<< "${native_command_result}"
+        for native_command_field in "${native_command_targets}" "${native_command_generated}" \
+            "${native_command_preserved}" "${native_command_adopted}"; do
+            [[ "${native_command_field}" =~ ^[0-9]+$ ]] || {
+                echo "  [FAIL] Native Claude command reconciler returned an invalid result." >&2
+                return 1
+            }
+        done
+        COMMANDS_LINKED="${native_command_targets}"
+        echo "  [NATIVE] Claude slash commands reconciled (generated: ${native_command_generated}; preserved: ${native_command_preserved}; adopted: ${native_command_adopted})."
+        native_claude_commands=true
+    fi
+    if [ "$DETECTED_CLAUDE" = true ] && [ -d "${SOURCE_DIR}/skills/custom" ] &&
+        [ "${native_claude_commands}" != true ]; then
         mkdir -p "${HOME}/.claude/commands"
         for custom_skill_dir in "${SOURCE_DIR}/skills/custom"/*; do
             if [ -d "${custom_skill_dir}" ]; then

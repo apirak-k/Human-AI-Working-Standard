@@ -117,6 +117,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "--haws-sync-agent-files" {
 		return runNativeAgentFiles(args[1:], stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "--haws-sync-claude-commands" {
+		return runNativeClaudeCommands(args[1:], stdout, stderr)
+	}
 	if len(args) == 1 && args[0] == "--haws-sync-codex-skills" {
 		return runNativeSkillLinker("codex", stdout, stderr)
 	}
@@ -392,6 +395,78 @@ func runNativeAgentFiles(args []string, stdout, stderr io.Writer) int {
 	}
 	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\t%d\t%d\n", result.Targets, result.Linked, result.Hardlinked, result.Copied, result.Already, result.Preserved, result.Adopted); err != nil {
 		fmt.Fprintln(stderr, "write native agent file result:", err)
+		return 1
+	}
+	return 0
+}
+
+func runNativeClaudeCommands(args []string, stdout, stderr io.Writer) int {
+	root := nativeSyncRoot()
+	if root == "" {
+		fmt.Fprintln(stderr, "native Claude command linking needs its HAWS root")
+		return 1
+	}
+	home := os.Getenv("HOME")
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintln(stderr, "resolve user home directory:", err)
+			return 1
+		}
+	}
+	stateDir := os.Getenv("HAWS_STATE_DIR")
+	if stateDir == "" {
+		stateDir = filepath.Join(root, ".haws", "state")
+	}
+	legacyManifest := ""
+	adoptLegacy := false
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		name, value, hasValue := strings.Cut(argument, "=")
+		switch name {
+		case "--adopt-legacy":
+			if hasValue {
+				fmt.Fprintln(stderr, "HAWS Claude commands: --adopt-legacy does not take a value")
+				return 1
+			}
+			adoptLegacy = true
+		case "--legacy-manifest":
+			if !hasValue {
+				index++
+				if index >= len(args) || strings.HasPrefix(args[index], "--") {
+					fmt.Fprintln(stderr, "HAWS Claude commands: --legacy-manifest requires a path")
+					return 1
+				}
+				value = args[index]
+			}
+			if value == "" {
+				fmt.Fprintln(stderr, "HAWS Claude commands: --legacy-manifest requires a path")
+				return 1
+			}
+			legacyManifest = value
+		default:
+			fmt.Fprintln(stderr, "usage: --haws-sync-claude-commands [--adopt-legacy --legacy-manifest PATH]")
+			return 1
+		}
+	}
+	if adoptLegacy && legacyManifest == "" {
+		fmt.Fprintln(stderr, "HAWS Claude commands: --adopt-legacy requires --legacy-manifest")
+		return 1
+	}
+	result, err := settings.SyncClaudeCommands(context.Background(), root, home, stateDir, legacyManifest, adoptLegacy)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	for _, message := range result.Messages {
+		if _, err := fmt.Fprintln(stderr, "  "+message); err != nil {
+			fmt.Fprintln(stderr, "write native Claude command message:", err)
+			return 1
+		}
+	}
+	if _, err := fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\n", result.Targets, result.Generated, result.Preserved, result.Adopted); err != nil {
+		fmt.Fprintln(stderr, "write native Claude command result:", err)
 		return 1
 	}
 	return 0

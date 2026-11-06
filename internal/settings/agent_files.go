@@ -72,10 +72,8 @@ func SyncAgentFiles(ctx context.Context, sourceRoot, home, stateDir string, envi
 	if len(selected) == 0 {
 		return result, errors.New("agent file linking needs at least one environment")
 	}
-	if stateInfo, err := os.Lstat(stateDir); err == nil && (!stateInfo.IsDir() || stateInfo.Mode()&os.ModeSymlink != 0) {
-		return result, fmt.Errorf("HAWS state path is not an unlinked directory: %s", stateDir)
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return result, fmt.Errorf("inspect HAWS state directory: %w", err)
+	if err := validateAgentStateDir(stateDir); err != nil {
+		return result, err
 	}
 
 	agentsDir := filepath.Join(sourceRoot, "agents")
@@ -272,6 +270,15 @@ func SyncAgentFiles(ctx context.Context, sourceRoot, home, stateDir string, envi
 		}
 	}
 	return result, nil
+}
+
+func validateAgentStateDir(stateDir string) error {
+	if stateInfo, err := os.Lstat(stateDir); err == nil && (!stateInfo.IsDir() || stateInfo.Mode()&os.ModeSymlink != 0) {
+		return fmt.Errorf("HAWS state path is not an unlinked directory: %s", stateDir)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect HAWS state directory: %w", err)
+	}
+	return nil
 }
 
 func readAgentOwnershipLedger(path string) ([]string, bool, fs.FileMode, error) {

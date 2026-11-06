@@ -189,16 +189,17 @@ func runLegacySyncWithBinary(ctx context.Context, root string, args []string, st
 		binary = resolved
 	}
 	if err := legacy.RunCommandWithEnv(ctx, root, args, stdin, stdout, stderr, map[string]string{
-		"HAWS_NATIVE_AGENT_FILES":   "1",
-		"HAWS_NATIVE_BRAIN_SYNC":    "1",
-		"HAWS_NATIVE_CLAUDE_SKILLS": "1",
-		"HAWS_NATIVE_CODEX_AGENTS":  "1",
-		"HAWS_NATIVE_CODEX_SKILLS":  "1",
-		"HAWS_NATIVE_GEMINI_SKILLS": "1",
-		"HAWS_NATIVE_ROOT_SYNC":     "1",
-		"HAWS_NATIVE_SOURCE_SYNC":   "1",
-		"HAWS_GO_HOST_BINARY":       binary,
-		"HAWS_SYNC_ROOT":            root,
+		"HAWS_NATIVE_AGENT_FILES":     "1",
+		"HAWS_NATIVE_BRAIN_SYNC":      "1",
+		"HAWS_NATIVE_CLAUDE_COMMANDS": "1",
+		"HAWS_NATIVE_CLAUDE_SKILLS":   "1",
+		"HAWS_NATIVE_CODEX_AGENTS":    "1",
+		"HAWS_NATIVE_CODEX_SKILLS":    "1",
+		"HAWS_NATIVE_GEMINI_SKILLS":   "1",
+		"HAWS_NATIVE_ROOT_SYNC":       "1",
+		"HAWS_NATIVE_SOURCE_SYNC":     "1",
+		"HAWS_GO_HOST_BINARY":         binary,
+		"HAWS_SYNC_ROOT":              root,
 	}); err != nil {
 		return err
 	}
