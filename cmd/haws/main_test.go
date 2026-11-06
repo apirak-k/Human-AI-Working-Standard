@@ -242,7 +242,7 @@ func TestRunExecutesNativeRegisteredSourceSyncTarget(t *testing.T) {
 	}
 }
 
-func TestRunPreparesRegisteredDeviceSourceAndSignalsLegacyGitlinkFallback(t *testing.T) {
+func TestRunPreparesRegisteredDeviceSourceAndLeavesUnknownSourceForLegacyFallback(t *testing.T) {
 	root := t.TempDir()
 	seed := t.TempDir()
 	gitForNativeSync(t, seed, "init", "-b", "main")
